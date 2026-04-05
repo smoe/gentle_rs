@@ -1189,9 +1189,11 @@ order. Durable architecture constraints and decisions remain in
       arrangement/rack model:
       - broader physical template catalog beyond the initial PCR-tube storage
         and pipetting families
-      - richer carrier-matched label-sheet/front-strip layouts
+      - richer carrier-matched label-sheet/front-strip layouts beyond the
+        current front-strip/module-card baseline
       - simulations as a first-class downstream consumer of the same
-        arrangement/rack-placement/physical-template records
+        arrangement/rack-placement/physical-template records beyond the
+        current simulator-facing JSON baseline
     - richer drag/drop polish beyond the current baseline
       (for example autoscroll tuning, animated polish refinements, and richer
       preview refinements; baseline ghost previews, animated/fading drop
@@ -2596,6 +2598,12 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
       - arrangement order now drives physical rack placement and label export,
         including dense plate formats such as 384-well layouts when one bench
         day/project shares a carrier
+      - physical rack fabrication/export now ships on the same linked
+        arrangement/rack model:
+        - deterministic fabrication/planning SVG
+        - parameterized OpenSCAD export
+        - carrier-matched front-strip/module-label SVG export
+        - first simulator-facing JSON export on the same template geometry
   - next:
     - multi-fragment Gibson planning, preview, and cartoon generation
     - broader user influence over Gibson PCR/primer design beyond the current

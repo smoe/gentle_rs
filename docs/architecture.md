@@ -85,7 +85,7 @@ Rack-placement rule (target model):
     - planning/fabrication SVG
     - label/front-strip export
     - parameterized 3D/OpenSCAD export
-    - future simulation adapters
+    - simulation-facing JSON export and future simulation adapters
 - Quick rack-authoring templates should also stay engine-owned:
   - they are convenience overlays on one persisted rack snapshot
   - they may adjust fill direction and blocked coordinates together

@@ -2963,6 +2963,20 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackCarrierLabelsSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        arrangement_id: Option<String>,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
+    ExportRackSimulationJson {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportDnaLadders {
         path: String,
         #[serde(default)]
@@ -4618,6 +4632,8 @@ impl GentleEngine {
                 "ExportRackLabelsSvg".to_string(),
                 "ExportRackFabricationSvg".to_string(),
                 "ExportRackOpenScad".to_string(),
+                "ExportRackCarrierLabelsSvg".to_string(),
+                "ExportRackSimulationJson".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
@@ -5929,6 +5945,8 @@ impl GentleEngine {
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
+                | Operation::ExportRackCarrierLabelsSvg { .. }
+                | Operation::ExportRackSimulationJson { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }

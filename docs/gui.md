@@ -2199,6 +2199,9 @@ Serial gel export is available in two places:
   - `Arrangements` table: `Labels SVG` exports one deterministic label sheet
     scoped to that arrangement on its linked rack draft, using the currently
     selected label-sheet preset.
+  - `Arrangements` table: `Carrier SVG` exports one carrier-matched front-strip
+    plus module-label SVG for that arrangement from its linked rack draft,
+    using the currently selected physical template.
   - `Arrangements` table: `Place on Existing Rack...` appends the arrangement
     as one contiguous block onto another saved rack.
 
@@ -2328,6 +2331,11 @@ Exports:
   currently shown rack using the selected physical template.
 - `OpenSCAD...` exports one parameterized 3D-printable OpenSCAD source file
   for the currently shown rack using that same physical template.
+- `Carrier labels SVG...` exports one carrier-matched front-strip plus
+  module-label SVG sheet for the currently shown rack using that same physical
+  template.
+- `Simulation JSON...` exports one machine-readable rack geometry/placement
+  JSON for downstream simulation adapters using that same physical template.
 - Built-in label-sheet presets:
   - `Compact cards`
   - `Print A4`

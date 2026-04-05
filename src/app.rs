@@ -74,10 +74,10 @@ use crate::{
         ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackFillDirection,
         RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
         RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
-        RoutineDecisionTraceComparison,
-        RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
-        RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
-        RoutineDecisionTraceStore, SequenceGenomeAnchorSummary,
+        RoutineDecisionTraceComparison, RoutineDecisionTraceDisambiguationAnswer,
+        RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTraceExportEvent,
+        RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
+        SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -6948,6 +6948,45 @@ Error: `{err}`"
         }
     }
 
+    fn prompt_export_arrangement_carrier_labels_svg(&mut self, arrangement_id: &str) {
+        let Some(rack_id) = self.ensure_default_rack_for_arrangement_ui(arrangement_id) else {
+            return;
+        };
+        let stem = Self::sanitize_file_stem(arrangement_id, "rack_carrier_labels");
+        let default_file_name = format!("{stem}.carrier.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack carrier-label SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackCarrierLabelsSvg {
+                rack_id: rack_id.clone(),
+                path: path_text.clone(),
+                arrangement_id: Some(arrangement_id.trim().to_string()),
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status =
+                    op_result.messages.first().cloned().unwrap_or_else(|| {
+                        format!("Wrote rack carrier-label SVG to '{path_text}'")
+                    });
+            }
+            Err(err) => {
+                self.app_status =
+                    format!("Could not export rack carrier-label SVG: {}", err.message);
+            }
+        }
+    }
+
     fn prompt_export_rack_fabrication_svg(&mut self, rack_id: &str) {
         let rack_id = rack_id.trim();
         if rack_id.is_empty() {
@@ -6976,9 +7015,11 @@ Error: `{err}`"
             });
         match result {
             Ok(op_result) => {
-                self.app_status = op_result.messages.first().cloned().unwrap_or_else(|| {
-                    format!("Wrote rack fabrication SVG to '{path_text}'")
-                });
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote rack fabrication SVG to '{path_text}'"));
                 self.rack_view_status = self.app_status.clone();
             }
             Err(err) => {
@@ -7025,6 +7066,91 @@ Error: `{err}`"
             }
             Err(err) => {
                 self.app_status = format!("Could not export rack OpenSCAD: {}", err.message);
+                self.rack_view_status = self.app_status.clone();
+            }
+        }
+    }
+
+    fn prompt_export_rack_carrier_labels_svg(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack carrier-label export requires a non-empty rack id".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(rack_id, "rack_carrier_labels");
+        let default_file_name = format!("{stem}.carrier.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack carrier-label SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackCarrierLabelsSvg {
+                rack_id: rack_id.to_string(),
+                path: path_text.clone(),
+                arrangement_id: None,
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status =
+                    op_result.messages.first().cloned().unwrap_or_else(|| {
+                        format!("Wrote rack carrier-label SVG to '{path_text}'")
+                    });
+                self.rack_view_status = self.app_status.clone();
+            }
+            Err(err) => {
+                self.app_status =
+                    format!("Could not export rack carrier-label SVG: {}", err.message);
+                self.rack_view_status = self.app_status.clone();
+            }
+        }
+    }
+
+    fn prompt_export_rack_simulation_json(&mut self, rack_id: &str) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack simulation export requires a non-empty rack id".to_string();
+            return;
+        }
+        let stem = Self::sanitize_file_stem(rack_id, "rack_simulation");
+        let default_file_name = format!("{stem}.simulation.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Rack simulation JSON export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ExportRackSimulationJson {
+                rack_id: rack_id.to_string(),
+                path: path_text.clone(),
+                template: self.rack_physical_template_kind,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote rack simulation JSON to '{path_text}'"));
+                self.rack_view_status = self.app_status.clone();
+            }
+            Err(err) => {
+                self.app_status = format!("Could not export rack simulation JSON: {}", err.message);
                 self.rack_view_status = self.app_status.clone();
             }
         }
@@ -7256,19 +7382,11 @@ Error: `{err}`"
     }
 
     fn rack_help_toggle_label(collapsed: bool) -> &'static str {
-        if collapsed {
-            "Show help"
-        } else {
-            "Hide help"
-        }
+        if collapsed { "Show help" } else { "Hide help" }
     }
 
     fn rack_help_pin_label(pinned: bool) -> &'static str {
-        if pinned {
-            "Unpin"
-        } else {
-            "Pin open"
-        }
+        if pinned { "Unpin" } else { "Pin open" }
     }
 
     fn record_successful_rack_move_and_maybe_autocollapse(&mut self) {
@@ -7290,11 +7408,7 @@ Error: `{err}`"
         }
     }
 
-    fn render_rack_help_strip(
-        &mut self,
-        ui: &mut Ui,
-        arrangement_ids: &[String],
-    ) {
+    fn render_rack_help_strip(&mut self, ui: &mut Ui, arrangement_ids: &[String]) {
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
@@ -7473,11 +7587,13 @@ Error: `{err}`"
             .map(|(index, _, entry)| (*index, entry.clone()))
             .collect::<Vec<_>>();
         let from_coordinate = match drag {
-            RackDragState::Sample { from_coordinate, .. } => from_coordinate.as_str(),
+            RackDragState::Sample {
+                from_coordinate, ..
+            } => from_coordinate.as_str(),
             RackDragState::Samples {
                 from_coordinates, ..
             } => from_coordinates.first()?.as_str(),
-            | RackDragState::ArrangementBlock {
+            RackDragState::ArrangementBlock {
                 from_coordinate, ..
             }
             | RackDragState::ArrangementBlocks {
@@ -7552,7 +7668,8 @@ Error: `{err}`"
                     .iter()
                     .map(|(_, entry)| entry.clone())
                     .collect::<Vec<_>>();
-                let selected_coordinates = from_coordinates.iter().cloned().collect::<BTreeSet<_>>();
+                let selected_coordinates =
+                    from_coordinates.iter().cloned().collect::<BTreeSet<_>>();
                 let selected_local_positions = ordered[block_start..=block_end]
                     .iter()
                     .enumerate()
@@ -7564,8 +7681,10 @@ Error: `{err}`"
                         }
                     })
                     .collect::<Vec<_>>();
-                let selected_local_set =
-                    selected_local_positions.iter().copied().collect::<BTreeSet<_>>();
+                let selected_local_set = selected_local_positions
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
                 let selected_entries = block_entries
                     .iter()
                     .enumerate()
@@ -7875,9 +7994,10 @@ Error: `{err}`"
             });
         match result {
             Ok(op_result) => {
-                self.rack_view_status = op_result.messages.first().cloned().unwrap_or_else(|| {
-                    format!("Moved {} samples on rack", from_coordinates.len())
-                });
+                self.rack_view_status =
+                    op_result.messages.first().cloned().unwrap_or_else(|| {
+                        format!("Moved {} samples on rack", from_coordinates.len())
+                    });
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
                 self.record_rack_drop_ghost(rack_id, before_rack);
@@ -8775,11 +8895,7 @@ Error: `{err}`"
                         from_coordinates, ..
                     } => {
                         if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move_samples(
-                                &rack.rack_id,
-                                &from_coordinates,
-                                target,
-                            );
+                            self.apply_rack_move_samples(&rack.rack_id, &from_coordinates, target);
                         }
                     }
                     RackDragState::ArrangementBlock {
@@ -8902,6 +9018,20 @@ Error: `{err}`"
                 .clicked()
             {
                 self.prompt_export_rack_openscad(&rack.rack_id);
+            }
+            if ui
+                .button("Carrier labels SVG...")
+                .on_hover_text("Export one carrier-matched front-strip plus module-label SVG sheet for the current rack using the selected physical carrier template")
+                .clicked()
+            {
+                self.prompt_export_rack_carrier_labels_svg(&rack.rack_id);
+            }
+            if ui
+                .button("Simulation JSON...")
+                .on_hover_text("Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters using the selected physical carrier template")
+                .clicked()
+            {
+                self.prompt_export_rack_simulation_json(&rack.rack_id);
             }
         });
         close_requested
@@ -32443,6 +32573,17 @@ Error: `{err}`"
                                                     &arrangement.arrangement_id,
                                                 );
                                             }
+                                            if ui
+                                                .button("Carrier SVG")
+                                                .on_hover_text(
+                                                    "Export carrier-matched front-strip and module-label SVGs for this arrangement from its linked rack draft using the current physical template",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.prompt_export_arrangement_carrier_labels_svg(
+                                                    &arrangement.arrangement_id,
+                                                );
+                                            }
                                             if !self.lineage_racks.is_empty()
                                                 && ui
                                                     .button("Place on Existing Rack...")
@@ -36187,6 +36328,28 @@ Error: `{err}`"
                 template.as_str(),
                 path
             ),
+            Operation::ExportRackCarrierLabelsSvg {
+                rack_id,
+                path,
+                arrangement_id,
+                template,
+            } => format!(
+                "Export rack carrier labels SVG: rack_id={}, arrangement_id={}, template={}, path={}",
+                rack_id.trim(),
+                arrangement_id.as_deref().unwrap_or("all"),
+                template.as_str(),
+                path
+            ),
+            Operation::ExportRackSimulationJson {
+                rack_id,
+                path,
+                template,
+            } => format!(
+                "Export rack simulation JSON: rack_id={}, template={}, path={}",
+                rack_id.trim(),
+                template.as_str(),
+                path
+            ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
                 "Export DNA ladders: path={}, filter={}",
                 path,
@@ -36673,13 +36836,13 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PersistedRackWorkspace, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
-        RACK_WORKSPACE_METADATA_KEY,
-        PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery, PrepareGenomeUiStepStatus,
-        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
+        PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
+        PreparedGenomeReinstallRequest, ProjectAction, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
+        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -41302,8 +41465,14 @@ mod tests {
 
     #[test]
     fn rack_help_strip_keycaps_cover_shortcuts() {
-        assert_eq!(GENtleApp::rack_help_strip_keycaps("Samples"), &["Cmd", "Ctrl"]);
-        assert_eq!(GENtleApp::rack_help_strip_keycaps("Blocks"), &["Cmd", "Ctrl"]);
+        assert_eq!(
+            GENtleApp::rack_help_strip_keycaps("Samples"),
+            &["Cmd", "Ctrl"]
+        );
+        assert_eq!(
+            GENtleApp::rack_help_strip_keycaps("Blocks"),
+            &["Cmd", "Ctrl"]
+        );
         assert_eq!(GENtleApp::rack_help_strip_keycaps("Keys"), &["Esc"]);
         assert!(GENtleApp::rack_help_strip_keycaps("Preview").is_empty());
     }

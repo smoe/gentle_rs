@@ -966,10 +966,7 @@ impl GentleEngine {
         remaining.len()
     }
 
-    fn rack_group_insertion_index_within_block(
-        local_to: usize,
-        remaining_len: usize,
-    ) -> usize {
+    fn rack_group_insertion_index_within_block(local_to: usize, remaining_len: usize) -> usize {
         local_to.min(remaining_len)
     }
 
@@ -1068,7 +1065,10 @@ impl GentleEngine {
             .map(|(_, entry)| entry.arrangement_id.clone())
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
-                message: format!("Rack '{}' does not contain requested sample coordinates", rack_id),
+                message: format!(
+                    "Rack '{}' does not contain requested sample coordinates",
+                    rack_id
+                ),
             })?;
         if selected
             .iter()
@@ -1107,7 +1107,10 @@ impl GentleEngine {
             .position(|(index, _)| *index == selected[0].0)
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
-                message: format!("Rack '{}' does not contain requested sample coordinates", rack_id),
+                message: format!(
+                    "Rack '{}' does not contain requested sample coordinates",
+                    rack_id
+                ),
             })?;
         let block_start = *block_positions.first().unwrap_or(&from_pos);
         let block_end = *block_positions.last().unwrap_or(&from_pos);
@@ -1132,7 +1135,10 @@ impl GentleEngine {
                     .position(|(candidate_index, _)| candidate_index == index)
             })
             .collect::<Vec<_>>();
-        let selected_local_set = selected_local_positions.iter().copied().collect::<BTreeSet<_>>();
+        let selected_local_set = selected_local_positions
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
         let selected_entries = block_entries
             .iter()
             .enumerate()
@@ -1440,6 +1446,60 @@ impl GentleEngine {
             .replace('\'', "&apos;")
     }
 
+    fn rack_arrangement_display_name(&self, arrangement_id: &str) -> String {
+        self.state
+            .container_state
+            .arrangements
+            .get(arrangement_id)
+            .and_then(|arrangement| arrangement.name.clone())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| arrangement_id.to_string())
+    }
+
+    fn scoped_rack_entries(
+        &self,
+        rack: &Rack,
+        arrangement_id: Option<&str>,
+    ) -> Result<Vec<RackPlacementEntry>, EngineError> {
+        let arrangement_filter = arrangement_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let rows = self
+            .sorted_rack_placements(rack)?
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .filter(|entry| {
+                arrangement_filter
+                    .map(|arrangement_id| entry.arrangement_id == arrangement_id)
+                    .unwrap_or(true)
+            })
+            .collect::<Vec<_>>();
+        Ok(rows)
+    }
+
+    fn rack_role_summary(role_labels: &[String]) -> String {
+        const MAX_ROLES: usize = 4;
+        if role_labels.is_empty() {
+            return "-".to_string();
+        }
+        let mut labels = role_labels
+            .iter()
+            .map(|label| label.trim())
+            .filter(|label| !label.is_empty())
+            .map(|label| label.to_string())
+            .collect::<Vec<_>>();
+        labels.dedup();
+        if labels.len() <= MAX_ROLES {
+            labels.join(", ")
+        } else {
+            format!(
+                "{}, +{} more",
+                labels[..MAX_ROLES].join(", "),
+                labels.len() - MAX_ROLES
+            )
+        }
+    }
+
     pub(super) fn export_rack_labels_svg(
         &self,
         rack_id: &str,
@@ -1626,6 +1686,205 @@ impl GentleEngine {
         Ok(rows.len())
     }
 
+    pub(super) fn export_rack_carrier_labels_svg(
+        &self,
+        rack_id: &str,
+        arrangement_id: Option<&str>,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<(usize, RackPhysicalTemplateSpec), EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let rows = self.scoped_rack_entries(rack, arrangement_id)?;
+        if rows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Rack '{}' has no placements matching the requested arrangement scope",
+                    rack_id
+                ),
+            });
+        }
+
+        let mut arrangement_ids = Vec::new();
+        let mut seen_arrangements = HashSet::new();
+        for entry in &rows {
+            if seen_arrangements.insert(entry.arrangement_id.clone()) {
+                arrangement_ids.push(entry.arrangement_id.clone());
+            }
+        }
+        let mut arrangement_summaries = Vec::new();
+        for arrangement_id in &arrangement_ids {
+            let arrangement_rows = rows
+                .iter()
+                .filter(|entry| entry.arrangement_id == *arrangement_id)
+                .collect::<Vec<_>>();
+            let start_coordinate = arrangement_rows
+                .first()
+                .map(|entry| entry.coordinate.clone())
+                .unwrap_or_else(|| "-".to_string());
+            let end_coordinate = arrangement_rows
+                .last()
+                .map(|entry| entry.coordinate.clone())
+                .unwrap_or_else(|| "-".to_string());
+            let role_labels = arrangement_rows
+                .iter()
+                .map(|entry| entry.role_label.clone())
+                .collect::<Vec<_>>();
+            let arrangement = self.state.container_state.arrangements.get(arrangement_id);
+            arrangement_summaries.push((
+                arrangement_id.clone(),
+                self.rack_arrangement_display_name(arrangement_id),
+                start_coordinate,
+                end_coordinate,
+                Self::rack_role_summary(&role_labels),
+                arrangement.and_then(|arrangement| arrangement.created_by_op.clone()),
+                arrangement_rows.len(),
+            ));
+        }
+
+        let margin_mm = 4.0;
+        let front_strip_width_mm = spec.overall_width_mm.max(48.0);
+        let front_strip_height_mm = spec.front_label_strip_depth_mm.max(6.0);
+        let module_card_width_mm = front_strip_width_mm.max(72.0);
+        let module_card_height_mm = 22.0;
+        let module_gap_mm = 4.0;
+        let page_width_mm = module_card_width_mm + margin_mm * 2.0;
+        let page_height_mm = margin_mm * 2.0
+            + front_strip_height_mm
+            + 6.0
+            + arrangement_summaries.len() as f32 * (module_card_height_mm + module_gap_mm);
+        let scope_label = if arrangement_summaries.len() == 1 {
+            arrangement_summaries[0].1.clone()
+        } else {
+            format!("{} modules", arrangement_summaries.len())
+        };
+        let rack_title = if rack.name.trim().is_empty() {
+            rack.rack_id.clone()
+        } else {
+            format!("{} ({})", rack.name.trim(), rack.rack_id.trim())
+        };
+
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-carrier-template=\"{}\" data-rack-id=\"{}\">",
+            page_width_mm,
+            page_height_mm,
+            page_width_mm,
+            page_height_mm,
+            spec.kind.as_str(),
+            Self::xml_escape(&rack.rack_id)
+        );
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"3.2\" font-weight=\"700\" fill=\"#173042\">GENtle carrier labels</text>",
+            margin_mm,
+            margin_mm - 0.6 + 3.2
+        ));
+
+        let strip_x = margin_mm;
+        let strip_y = margin_mm + 4.8;
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"1.5\" ry=\"1.5\" fill=\"#f8fafc\" stroke=\"#5d8aa8\" stroke-width=\"0.35\"/>",
+            strip_x,
+            strip_y,
+            front_strip_width_mm,
+            front_strip_height_mm
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.5\" font-weight=\"700\" fill=\"#173042\">{} | {}</text>",
+            strip_x + 1.8,
+            strip_y + front_strip_height_mm * 0.62,
+            Self::xml_escape(&rack_title),
+            Self::xml_escape(&scope_label)
+        ));
+        let total_scope_slots = rows.len().max(1) as f32;
+        let mut chip_x = strip_x + 0.7;
+        let chip_y = strip_y + front_strip_height_mm - 1.6;
+        let chip_height = 1.0;
+        for (arrangement_id, _, _, _, _, _, count) in &arrangement_summaries {
+            let chip_width =
+                ((front_strip_width_mm - 1.4) * (*count as f32 / total_scope_slots)).max(2.0);
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"0.5\" ry=\"0.5\" fill=\"{}\" fill-opacity=\"0.88\"/>",
+                chip_x,
+                chip_y,
+                chip_width,
+                chip_height,
+                Self::rack_arrangement_color(arrangement_id)
+            ));
+            chip_x += chip_width;
+        }
+
+        let mut card_y = strip_y + front_strip_height_mm + 6.0;
+        for (arrangement_id, label, start, end, role_summary, created_by_op, count) in
+            &arrangement_summaries
+        {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"2.0\" ry=\"2.0\" fill=\"#f7fbfd\" stroke=\"{}\" stroke-width=\"0.6\"/>",
+                margin_mm,
+                card_y,
+                module_card_width_mm,
+                module_card_height_mm,
+                Self::rack_arrangement_color(arrangement_id)
+            ));
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"3.4\" height=\"{:.1}\" rx=\"1.1\" ry=\"1.1\" fill=\"{}\" fill-opacity=\"0.92\"/>",
+                margin_mm + 1.2,
+                card_y + 1.2,
+                module_card_height_mm - 2.4,
+                Self::rack_arrangement_color(arrangement_id)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#173042\">{}</text>",
+                margin_mm + 6.0,
+                card_y + 5.2,
+                Self::xml_escape(label)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.35\" fill=\"#334155\">rack={} | span={}..{} | slots={}</text>",
+                margin_mm + 6.0,
+                card_y + 9.6,
+                Self::xml_escape(&rack.rack_id),
+                Self::xml_escape(start),
+                Self::xml_escape(end),
+                count
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.25\" fill=\"#334155\">roles: {}</text>",
+                margin_mm + 6.0,
+                card_y + 13.8,
+                Self::xml_escape(role_summary)
+            ));
+            let origin_text = created_by_op
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("-");
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.15\" fill=\"#475569\">template={} | origin={}</text>",
+                margin_mm + 6.0,
+                card_y + 18.0,
+                spec.kind.as_str(),
+                Self::xml_escape(origin_text)
+            ));
+            card_y += module_card_height_mm + module_gap_mm;
+        }
+        svg.push_str("</svg>");
+        fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack carrier labels SVG '{}': {e}", path),
+        })?;
+        Ok((arrangement_summaries.len() + 1, spec))
+    }
+
     fn rack_physical_template_spec(
         template: RackPhysicalTemplateKind,
         profile: &RackProfileSnapshot,
@@ -1712,8 +1971,7 @@ impl GentleEngine {
 
     fn rack_arrangement_color(arrangement_id: &str) -> &'static str {
         const PALETTE: [&str; 8] = [
-            "#0f766e", "#2563eb", "#9333ea", "#ca8a04", "#c2410c", "#be123c", "#0369a1",
-            "#4d7c0f",
+            "#0f766e", "#2563eb", "#9333ea", "#ca8a04", "#c2410c", "#be123c", "#0369a1", "#4d7c0f",
         ];
         let mut hasher = DefaultHasher::new();
         arrangement_id.hash(&mut hasher);
@@ -1727,9 +1985,7 @@ impl GentleEngine {
         column: usize,
     ) -> (f32, f32) {
         (
-            spec.edge_margin_mm
-                + spec.opening_diameter_mm * 0.5
-                + column as f32 * spec.pitch_x_mm,
+            spec.edge_margin_mm + spec.opening_diameter_mm * 0.5 + column as f32 * spec.pitch_x_mm,
             spec.front_label_strip_depth_mm
                 + spec.edge_margin_mm
                 + spec.opening_diameter_mm * 0.5
@@ -2007,6 +2263,148 @@ impl GentleEngine {
         fs::write(path, scad).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack OpenSCAD '{}': {e}", path),
+        })?;
+        Ok(spec)
+    }
+
+    pub(super) fn export_rack_simulation_json(
+        &self,
+        rack_id: &str,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let placements = self.sorted_rack_placements(rack)?;
+        let blocked = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut placements_by_coordinate = HashMap::new();
+        for (_, entry) in &placements {
+            placements_by_coordinate.insert(entry.coordinate.clone(), entry.clone());
+        }
+
+        let mut arrangement_ids = Vec::new();
+        let mut seen_arrangements = HashSet::new();
+        for (_, entry) in &placements {
+            if seen_arrangements.insert(entry.arrangement_id.clone()) {
+                arrangement_ids.push(entry.arrangement_id.clone());
+            }
+        }
+        let arrangement_blocks = arrangement_ids
+            .into_iter()
+            .filter_map(|arrangement_id| {
+                let entries = placements
+                    .iter()
+                    .filter(|(_, entry)| entry.arrangement_id == arrangement_id)
+                    .map(|(_, entry)| entry)
+                    .collect::<Vec<_>>();
+                let first = entries.first()?;
+                let last = entries.last()?;
+                let arrangement = self.state.container_state.arrangements.get(&arrangement_id);
+                let role_labels = entries
+                    .iter()
+                    .map(|entry| entry.role_label.clone())
+                    .collect::<Vec<_>>();
+                Some(serde_json::json!({
+                    "arrangement_id": arrangement_id,
+                    "arrangement_name": arrangement
+                        .and_then(|arrangement| arrangement.name.clone())
+                        .filter(|name| !name.trim().is_empty())
+                        .unwrap_or_else(|| first.arrangement_id.clone()),
+                    "coordinate_start": first.coordinate,
+                    "coordinate_end": last.coordinate,
+                    "placement_count": entries.len(),
+                    "role_labels": role_labels,
+                    "created_by_op": arrangement.and_then(|arrangement| arrangement.created_by_op.clone()),
+                }))
+            })
+            .collect::<Vec<_>>();
+
+        let mut slots = Vec::with_capacity(spec.rows.saturating_mul(spec.columns));
+        for row in 0..spec.rows {
+            for column in 0..spec.columns {
+                let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;
+                let (center_x_mm, center_y_mm) =
+                    Self::rack_physical_hole_center_mm(&spec, row, column);
+                let entry = placements_by_coordinate.get(&coordinate);
+                let occupant = match entry.and_then(|entry| entry.occupant.as_ref()) {
+                    Some(RackOccupant::Container { container_id }) => {
+                        let container = self.state.container_state.containers.get(container_id);
+                        let sequence_id = container
+                            .and_then(|container| container.members.first())
+                            .cloned();
+                        let sequence = sequence_id
+                            .as_ref()
+                            .and_then(|seq_id| self.state.sequences.get(seq_id));
+                        serde_json::json!({
+                            "kind": "container",
+                            "container_id": container_id,
+                            "container_name": container.and_then(|container| container.name.clone()),
+                            "sequence_id": sequence_id,
+                            "length_bp": sequence.map(|dna| dna.len()),
+                            "topology": sequence.map(|dna| if dna.is_circular() { "circular" } else { "linear" }),
+                            "created_by_op": container.and_then(|container| container.created_by_op.clone()),
+                        })
+                    }
+                    Some(RackOccupant::LadderReference { ladder_name }) => {
+                        serde_json::json!({
+                            "kind": "ladder_reference",
+                            "ladder_name": ladder_name,
+                        })
+                    }
+                    None => serde_json::Value::Null,
+                };
+                slots.push(serde_json::json!({
+                    "coordinate": coordinate,
+                    "row": row,
+                    "column": column,
+                    "fill_ordinal": Self::rack_fill_ordinal(&rack.profile, row, column),
+                    "blocked": blocked.contains(&coordinate),
+                    "center_mm": {
+                        "x": center_x_mm,
+                        "y": center_y_mm,
+                    },
+                    "arrangement_id": entry.map(|entry| entry.arrangement_id.clone()),
+                    "arrangement_name": entry.map(|entry| self.rack_arrangement_display_name(&entry.arrangement_id)),
+                    "order_index": entry.map(|entry| entry.order_index),
+                    "role_label": entry.map(|entry| entry.role_label.clone()),
+                    "occupant": occupant,
+                }));
+            }
+        }
+
+        let payload = serde_json::json!({
+            "schema": "gentle.rack_simulation_export.v1",
+            "rack": {
+                "rack_id": &rack.rack_id,
+                "name": &rack.name,
+                "created_by_op": &rack.created_by_op,
+                "created_at_unix_ms": rack.created_at_unix_ms,
+                "profile": &rack.profile,
+            },
+            "physical_template": &spec,
+            "arrangement_blocks": arrangement_blocks,
+            "slots": slots,
+        });
+        let payload_text = serde_json::to_string_pretty(&payload).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not serialize rack simulation JSON '{}': {e}", path),
+        })?;
+        fs::write(path, payload_text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack simulation JSON '{}': {e}", path),
         })?;
         Ok(spec)
     }

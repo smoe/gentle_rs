@@ -7289,6 +7289,85 @@ fn export_rack_fabrication_svg_and_openscad_include_template_markers() {
 }
 
 #[test]
+fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangements() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), seq(&"ACGT".repeat(10)));
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Vector".to_string()),
+            members: vec!["seq_a".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string()],
+            arrangement_id: Some("arr-rack".to_string()),
+            name: Some("Rack demo".to_string()),
+            ladders: Some(vec!["1 kb Ladder".to_string()]),
+        })
+        .expect("create arrangement");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-rack")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    let temp = tempdir().expect("tempdir");
+    let carrier_path = temp.path().join("rack.carrier.svg");
+    engine
+        .apply(Operation::ExportRackCarrierLabelsSvg {
+            rack_id: rack_id.clone(),
+            path: carrier_path.display().to_string(),
+            arrangement_id: Some("arr-rack".to_string()),
+            template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+        })
+        .expect("carrier labels export");
+    let carrier_svg = fs::read_to_string(&carrier_path).expect("read carrier svg");
+    assert!(carrier_svg.contains("data-rack-carrier-template=\"pipetting_pcr_tube_rack\""));
+    assert!(carrier_svg.contains("GENtle carrier labels"));
+    assert!(carrier_svg.contains("Rack demo"));
+
+    let simulation_path = temp.path().join("rack.simulation.json");
+    engine
+        .apply(Operation::ExportRackSimulationJson {
+            rack_id,
+            path: simulation_path.display().to_string(),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+        })
+        .expect("simulation export");
+    let simulation_text = fs::read_to_string(&simulation_path).expect("read rack simulation json");
+    let simulation_json: serde_json::Value =
+        serde_json::from_str(&simulation_text).expect("parse simulation json");
+    assert_eq!(
+        simulation_json["schema"].as_str(),
+        Some("gentle.rack_simulation_export.v1")
+    );
+    assert_eq!(
+        simulation_json["physical_template"]["kind"].as_str(),
+        Some("storage_pcr_tube_rack")
+    );
+    assert_eq!(
+        simulation_json["arrangement_blocks"][0]["arrangement_name"].as_str(),
+        Some("Rack demo")
+    );
+    assert_eq!(
+        simulation_json["slots"][0]["center_mm"]["x"]
+            .as_f64()
+            .map(|v| v > 0.0),
+        Some(true)
+    );
+}
+
+#[test]
 fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
     let mut state = ProjectState::default();
     state
@@ -15012,10 +15091,7 @@ fn test_inspect_rna_read_gene_support_classifies_rows_and_groups_record_indices(
         fragment.status,
         RnaReadGeneSupportAuditStatus::AcceptedFragment
     );
-    assert_eq!(
-        fragment.status_reason,
-        "requested_gene_below_complete_rule"
-    );
+    assert_eq!(fragment.status_reason, "requested_gene_below_complete_rule");
 
     let other_gene = find_gene_support_audit_row(&audit.rows, 3).expect("row 3");
     assert_eq!(
@@ -15048,14 +15124,15 @@ fn test_inspect_rna_read_gene_support_rejected_cohort_returns_only_nonaccepted_r
     assert_eq!(audit.evaluated_row_count, 5);
     assert_eq!(audit.row_count, 2);
     assert_eq!(
-        audit.rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
+        audit
+            .rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>(),
         vec![3, 4]
     );
     assert_eq!(
-        audit.rows
-            .iter()
-            .map(|row| row.status)
-            .collect::<Vec<_>>(),
+        audit.rows.iter().map(|row| row.status).collect::<Vec<_>>(),
         vec![
             RnaReadGeneSupportAuditStatus::AlignedOtherGene,
             RnaReadGeneSupportAuditStatus::Unaligned
@@ -15146,7 +15223,11 @@ fn test_inspect_rna_read_gene_support_honors_selected_record_indices_before_coho
     assert_eq!(audit.accepted_target_record_indices, vec![2]);
     assert_eq!(audit.complete_record_indices, vec![2]);
     assert_eq!(
-        audit.rows.iter().map(|row| row.record_index).collect::<Vec<_>>(),
+        audit
+            .rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>(),
         vec![2, 3]
     );
 }
@@ -18603,7 +18684,10 @@ fn test_export_rna_read_sample_sheet_includes_target_gene_support_metrics() {
             .unwrap_or_else(|| panic!("missing sample-sheet column '{name}'"))
     };
 
-    assert_eq!(row_cols[column_index("sample_name")], "gene_support_reads.fa");
+    assert_eq!(
+        row_cols[column_index("sample_name")],
+        "gene_support_reads.fa"
+    );
     assert_eq!(
         row_cols[column_index("gene_support_requested_gene_ids_json")],
         "[\"GENE1\"]"

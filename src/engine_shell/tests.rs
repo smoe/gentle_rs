@@ -1290,10 +1290,7 @@ fn parse_racks_move_samples_command() {
             to_coordinate,
         } => {
             assert_eq!(rack_id, "rack-1".to_string());
-            assert_eq!(
-                from_coordinates,
-                vec!["A1".to_string(), "A3".to_string()]
-            );
+            assert_eq!(from_coordinates, vec!["A1".to_string(), "A3".to_string()]);
             assert_eq!(to_coordinate, "B2".to_string());
         }
         other => panic!("unexpected command: {other:?}"),
@@ -1431,9 +1428,8 @@ fn parse_racks_fabrication_svg_command() {
 
 #[test]
 fn parse_racks_openscad_command() {
-    let cmd =
-        parse_shell_line("racks openscad rack-1 rack.scad --template storage_pcr_tube_rack")
-            .expect("parse command");
+    let cmd = parse_shell_line("racks openscad rack-1 rack.scad --template storage_pcr_tube_rack")
+        .expect("parse command");
     match cmd {
         ShellCommand::RacksOpenScad {
             rack_id,
@@ -1442,6 +1438,47 @@ fn parse_racks_openscad_command() {
         } => {
             assert_eq!(rack_id, "rack-1".to_string());
             assert_eq!(output, "rack.scad".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::StoragePcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_carrier_labels_svg_command() {
+    let cmd = parse_shell_line(
+        "racks carrier-labels-svg rack-1 carrier.svg --arrangement arr-x --template pipetting_pcr_tube_rack",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksCarrierLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "carrier.svg".to_string());
+            assert_eq!(arrangement_id, Some("arr-x".to_string()));
+            assert_eq!(template, RackPhysicalTemplateKind::PipettingPcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_simulation_json_command() {
+    let cmd =
+        parse_shell_line("racks simulation-json rack-1 rack.json --template storage_pcr_tube_rack")
+            .expect("parse command");
+    match cmd {
+        ShellCommand::RacksSimulationJson {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "rack.json".to_string());
             assert_eq!(template, RackPhysicalTemplateKind::StoragePcrTubeRack);
         }
         other => panic!("unexpected command: {other:?}"),
@@ -2220,6 +2257,8 @@ fn execute_racks_physical_exports_write_markers() {
             let temp = tempdir().expect("tempdir");
             let svg_path = temp.path().join("rack.fabrication.svg");
             let scad_path = temp.path().join("rack.scad");
+            let carrier_path = temp.path().join("rack.carrier.svg");
+            let simulation_path = temp.path().join("rack.simulation.json");
 
             let svg_result = execute_shell_command(
                 &mut engine,
@@ -2246,6 +2285,34 @@ fn execute_racks_physical_exports_write_markers() {
             assert!(!scad_result.state_changed);
             let scad = fs::read_to_string(&scad_path).expect("rack scad");
             assert!(scad.contains("template=pipetting_pcr_tube_rack"));
+
+            let carrier_result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RacksCarrierLabelsSvg {
+                    rack_id: "rack-1".to_string(),
+                    output: carrier_path.display().to_string(),
+                    arrangement_id: Some("arr-x".to_string()),
+                    template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+                },
+            )
+            .expect("carrier labels export");
+            assert!(!carrier_result.state_changed);
+            let carrier = fs::read_to_string(&carrier_path).expect("carrier svg");
+            assert!(carrier.contains("data-rack-carrier-template=\"storage_pcr_tube_rack\""));
+
+            let simulation_result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RacksSimulationJson {
+                    rack_id: "rack-1".to_string(),
+                    output: simulation_path.display().to_string(),
+                    template: RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                },
+            )
+            .expect("simulation export");
+            assert!(!simulation_result.state_changed);
+            let simulation = fs::read_to_string(&simulation_path).expect("simulation json");
+            assert!(simulation.contains("\"schema\": \"gentle.rack_simulation_export.v1\""));
+            assert!(simulation.contains("\"kind\": \"pipetting_pcr_tube_rack\""));
         })
         .expect("spawn shell test thread")
         .join()
@@ -12076,8 +12143,14 @@ fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
         output.output["accepted_target_record_indices"][0].as_u64(),
         Some(0)
     );
-    assert_eq!(output.output["complete_record_indices"][0].as_u64(), Some(0));
-    assert_eq!(output.output["rows"][0]["status"].as_str(), Some("accepted_complete"));
+    assert_eq!(
+        output.output["complete_record_indices"][0].as_u64(),
+        Some(0)
+    );
+    assert_eq!(
+        output.output["rows"][0]["status"].as_str(),
+        Some("accepted_complete")
+    );
     assert_eq!(
         output.output["rows"][0]["status_reason"].as_str(),
         Some("requested_gene_meets_complete_rule")

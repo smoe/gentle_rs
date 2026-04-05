@@ -848,6 +848,8 @@ Current draft operations:
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `ExportRackFabricationSvg { rack_id, path, template }`
 - `ExportRackOpenScad { rack_id, path, template }`
+- `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template }`
+- `ExportRackSimulationJson { rack_id, path, template }`
 - `RenderProtocolCartoonSvg { protocol, path }`
 - `RenderProtocolCartoonTemplateSvg { template_path, path }`
 - `ValidateProtocolCartoonTemplate { template_path }`
@@ -2008,6 +2010,35 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - front label-strip recess
 - Printable labels/front strips remain separate shared exports rather than
   being baked permanently into the 3D geometry in this first baseline.
+
+`ExportRackCarrierLabelsSvg` semantics:
+
+- Writes one deterministic carrier-matched SVG sheet for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg` and `ExportRackOpenScad`.
+- Supports optional arrangement scoping:
+  - whole-rack export when `arrangement_id` is omitted
+  - one arrangement/module export when `arrangement_id` is provided
+- Current baseline emits:
+  - one front-strip label sized from the selected physical template
+  - one module card per arrangement in scope
+
+`ExportRackSimulationJson` semantics:
+
+- Writes one deterministic machine-readable JSON export for downstream
+  simulation adapters.
+- Uses the same engine-owned physical carrier template family as the physical
+  SVG/OpenSCAD exports.
+- Current baseline includes:
+  - rack/profile metadata
+  - selected physical template geometry
+  - arrangement block summaries
+  - one slot record per physical coordinate with:
+    - row/column/coordinate
+    - fill ordinal
+    - blocked status
+    - physical center in mm
+    - occupant/arrangement metadata when occupied
 
 `RenderDotplotSvg` semantics:
 

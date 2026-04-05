@@ -741,6 +741,17 @@ pub enum ShellCommand {
         output: String,
         template: RackPhysicalTemplateKind,
     },
+    RacksCarrierLabelsSvg {
+        rack_id: String,
+        output: String,
+        arrangement_id: Option<String>,
+        template: RackPhysicalTemplateKind,
+    },
+    RacksSimulationJson {
+        rack_id: String,
+        output: String,
+        template: RackPhysicalTemplateKind,
+    },
     RacksSetProfile {
         rack_id: String,
         profile: RackProfileKind,
@@ -4823,6 +4834,28 @@ impl ShellCommand {
                 template,
             } => format!(
                 "export rack OpenSCAD for '{}' to '{}' (template={})",
+                rack_id.trim(),
+                output,
+                template.as_str()
+            ),
+            Self::RacksCarrierLabelsSvg {
+                rack_id,
+                output,
+                arrangement_id,
+                template,
+            } => format!(
+                "export rack carrier labels SVG for '{}' to '{}' (arrangement={}, template={})",
+                rack_id.trim(),
+                output,
+                arrangement_id.as_deref().unwrap_or("all"),
+                template.as_str()
+            ),
+            Self::RacksSimulationJson {
+                rack_id,
+                output,
+                template,
+            } => format!(
+                "export rack simulation JSON for '{}' to '{}' (template={})",
                 rack_id.trim(),
                 output,
                 template.as_str()
@@ -10794,7 +10827,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, carrier-labels-svg, simulation-json, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -10955,9 +10988,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
-                        return Err(
-                            "racks move-samples requires a non-empty RACK_ID".to_string()
-                        );
+                        return Err("racks move-samples requires a non-empty RACK_ID".to_string());
                     }
                     let mut from_coordinates = Vec::new();
                     let mut to_coordinate = String::new();
@@ -11138,8 +11169,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 if idx + 1 >= tokens.len() {
                                     return Err("Missing value after --template".to_string());
                                 }
-                                template =
-                                    parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
                                 idx += 2;
                             }
                             other => {
@@ -11168,9 +11198,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let output = tokens[3].trim().to_string();
                     if output.is_empty() {
-                        return Err(
-                            "racks openscad requires a non-empty OUTPUT.scad".to_string()
-                        );
+                        return Err("racks openscad requires a non-empty OUTPUT.scad".to_string());
                     }
                     let mut template = RackPhysicalTemplateKind::default();
                     let mut idx = 4usize;
@@ -11180,8 +11208,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 if idx + 1 >= tokens.len() {
                                     return Err("Missing value after --template".to_string());
                                 }
-                                template =
-                                    parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
                                 idx += 2;
                             }
                             other => {
@@ -11192,6 +11219,104 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                     }
                     Ok(ShellCommand::RacksOpenScad {
+                        rack_id,
+                        output,
+                        template,
+                    })
+                }
+                "carrier-labels-svg" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks carrier-labels-svg requires a non-empty RACK_ID".to_string()
+                        );
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks carrier-labels-svg requires a non-empty OUTPUT.svg".to_string()
+                        );
+                    }
+                    let mut arrangement_id: Option<String> = None;
+                    let mut template = RackPhysicalTemplateKind::default();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--arrangement" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --arrangement".to_string());
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if !value.is_empty() {
+                                    arrangement_id = Some(value.to_string());
+                                }
+                                idx += 2;
+                            }
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks carrier-labels-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksCarrierLabelsSvg {
+                        rack_id,
+                        output,
+                        arrangement_id,
+                        template,
+                    })
+                }
+                "simulation-json" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks simulation-json requires RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err(
+                            "racks simulation-json requires a non-empty RACK_ID".to_string()
+                        );
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err(
+                            "racks simulation-json requires a non-empty OUTPUT.json".to_string()
+                        );
+                    }
+                    let mut template = RackPhysicalTemplateKind::default();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks simulation-json"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksSimulationJson {
                         rack_id,
                         output,
                         template,
@@ -11309,7 +11434,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
+                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, carrier-labels-svg, simulation-json, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
                 )),
             }
         }
@@ -13989,6 +14114,42 @@ fn execute_shell_command_with_options_inner(
         } => {
             let op_result = engine
                 .apply(Operation::ExportRackOpenScad {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    template: *template,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksCarrierLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+            template,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackCarrierLabelsSvg {
+                    rack_id: rack_id.clone(),
+                    path: output.clone(),
+                    arrangement_id: arrangement_id.clone(),
+                    template: *template,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RacksSimulationJson {
+            rack_id,
+            output,
+            template,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportRackSimulationJson {
                     rack_id: rack_id.clone(),
                     path: output.clone(),
                     template: *template,

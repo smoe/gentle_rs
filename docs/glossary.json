@@ -1,5 +1,5 @@
 {
-   "command_count": 284,
+   "command_count": 286,
    "commands": [
       {
          "aliases": [
@@ -531,6 +531,34 @@
          "path": "racks openscad",
          "summary": "Export one deterministic parameterized OpenSCAD source file for a saved rack.",
          "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackCarrierLabelsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks carrier-labels-svg",
+         "summary": "Export one carrier-matched front-strip plus module-label SVG sheet for a saved rack.",
+         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackSimulationJson"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks simulation-json",
+         "summary": "Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters.",
+         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
       },
       {
          "aliases": [],
