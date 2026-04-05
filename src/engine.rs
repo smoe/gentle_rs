@@ -2193,20 +2193,6 @@ struct SequencingConfirmationReportStore {
     reports: BTreeMap<String, SequencingConfirmationReport>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Which stored planning profile layer a read/write command refers to.
-///
-/// The effective merge order is `global -> confirmed_agent_overlay ->
-/// project_override`.
-pub enum PlanningProfileScope {
-    #[default]
-    Global,
-    ProjectOverride,
-    ConfirmedAgentOverlay,
-    Effective,
-}
-
 impl PlanningProfileScope {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -2218,16 +2204,6 @@ impl PlanningProfileScope {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Review state for an advisory planning suggestion.
-pub enum PlanningSuggestionStatus {
-    #[default]
-    Pending,
-    Accepted,
-    Rejected,
-}
-
 impl PlanningSuggestionStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -2236,16 +2212,6 @@ impl PlanningSuggestionStatus {
             Self::Rejected => "rejected",
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// Availability/cost note for one inventory item referenced by planning.
-pub struct PlanningInventoryItem {
-    pub available: bool,
-    pub unit_cost: Option<f64>,
-    pub procurement_business_days: Option<f64>,
-    pub note: Option<String>,
 }
 
 impl Default for PlanningInventoryItem {
@@ -2259,16 +2225,6 @@ impl Default for PlanningInventoryItem {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// Availability/queue note for one machine or platform used in planning.
-pub struct PlanningMachineAvailability {
-    pub available: bool,
-    pub queue_business_days: f64,
-    pub run_cost_per_hour: Option<f64>,
-    pub note: Option<String>,
-}
-
 impl Default for PlanningMachineAvailability {
     fn default() -> Self {
         Self {
@@ -2278,23 +2234,6 @@ impl Default for PlanningMachineAvailability {
             note: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// User- or agent-supplied planning profile describing local capabilities.
-///
-/// This is the main durable contract for inventory, procurement latency, and
-/// machine availability. Start here when tracing `planning profile ...`.
-pub struct PlanningProfile {
-    pub schema: String,
-    pub profile_id: Option<String>,
-    pub currency: Option<String>,
-    pub procurement_business_days_default: f64,
-    pub capabilities: Vec<String>,
-    pub inventory: HashMap<String, PlanningInventoryItem>,
-    pub machine_availability: HashMap<String, PlanningMachineAvailability>,
-    pub notes: Option<String>,
 }
 
 impl Default for PlanningProfile {
@@ -2312,20 +2251,6 @@ impl Default for PlanningProfile {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// Optimization weights and hard guardrails used by planning estimates.
-pub struct PlanningObjective {
-    pub schema: String,
-    pub weight_time: f64,
-    pub weight_cost: f64,
-    pub weight_local_fit: f64,
-    pub max_cost: Option<f64>,
-    pub max_time_hours: Option<f64>,
-    pub required_capabilities: Vec<String>,
-    pub enforce_guardrails: bool,
-}
-
 impl Default for PlanningObjective {
     fn default() -> Self {
         Self {
@@ -2341,20 +2266,6 @@ impl Default for PlanningObjective {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// Deterministic estimate payload produced by planning evaluation.
-pub struct PlanningEstimate {
-    pub schema: String,
-    pub estimated_time_hours: f64,
-    pub estimated_cost: f64,
-    pub local_fit_score: f64,
-    pub composite_meta_score: f64,
-    pub passes_guardrails: bool,
-    pub guardrail_failures: Vec<String>,
-    pub explanation: serde_json::Value,
-}
-
 impl Default for PlanningEstimate {
     fn default() -> Self {
         Self {
@@ -2368,26 +2279,6 @@ impl Default for PlanningEstimate {
             explanation: json!({}),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// Advisory pull/push suggestion awaiting explicit user acceptance or rejection.
-pub struct PlanningSuggestion {
-    pub schema: String,
-    pub suggestion_id: String,
-    pub status: PlanningSuggestionStatus,
-    pub direction: String,
-    pub source: String,
-    pub confidence: Option<f64>,
-    pub snapshot_id: Option<String>,
-    pub message: Option<String>,
-    pub profile_patch: Option<PlanningProfile>,
-    pub objective_patch: Option<PlanningObjective>,
-    pub diff: serde_json::Value,
-    pub created_at_unix_ms: u128,
-    pub resolved_at_unix_ms: Option<u128>,
-    pub rejection_reason: Option<String>,
 }
 
 impl Default for PlanningSuggestion {
@@ -2409,19 +2300,6 @@ impl Default for PlanningSuggestion {
             rejection_reason: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
-/// High-level sync status for the planning suggestion channel.
-pub struct PlanningSyncStatus {
-    pub schema: String,
-    pub pending_suggestion_count: usize,
-    pub last_pull_at_unix_ms: Option<u128>,
-    pub last_push_at_unix_ms: Option<u128>,
-    pub last_source: Option<String>,
-    pub last_snapshot_id: Option<String>,
-    pub last_error: Option<String>,
 }
 
 impl Default for PlanningSyncStatus {
@@ -2555,100 +2433,10 @@ struct WorkflowMacroTemplateStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-/// Stored workflow-macro template shared by shell, GUI helpers, and future MCP.
-///
-/// A workflow macro expands to one workflow script plus typed parameters and
-/// declared input/output ports for lineage/protocol reporting.
-pub struct WorkflowMacroTemplate {
-    pub name: String,
-    pub description: Option<String>,
-    pub details_url: Option<String>,
-    pub parameters: Vec<WorkflowMacroTemplateParam>,
-    #[serde(default)]
-    pub input_ports: Vec<WorkflowMacroTemplatePort>,
-    #[serde(default)]
-    pub output_ports: Vec<WorkflowMacroTemplatePort>,
-    #[serde(default = "default_cloning_macro_template_schema")]
-    pub template_schema: String,
-    pub script: String,
-    pub created_at_unix_ms: u128,
-    pub updated_at_unix_ms: u128,
-}
-
-fn default_cloning_macro_template_schema() -> String {
-    CLONING_MACRO_TEMPLATE_SCHEMA.to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// One typed parameter exposed by a workflow macro template.
-pub struct WorkflowMacroTemplateParam {
-    pub name: String,
-    pub default_value: Option<String>,
-    pub required: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// Declared input or output port on a workflow macro template.
-pub struct WorkflowMacroTemplatePort {
-    pub port_id: String,
-    pub kind: String,
-    pub required: bool,
-    pub cardinality: String,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Listing row for one workflow macro template.
-pub struct WorkflowMacroTemplateSummary {
-    pub name: String,
-    pub description: Option<String>,
-    pub details_url: Option<String>,
-    pub parameter_count: usize,
-    pub created_at_unix_ms: u128,
-    pub updated_at_unix_ms: u128,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
 struct CandidateMacroTemplateStore {
     schema: String,
     updated_at_unix_ms: u128,
     templates: HashMap<String, CandidateMacroTemplate>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// Stored candidate-macro template that expands to candidate-shell commands.
-pub struct CandidateMacroTemplate {
-    pub name: String,
-    pub description: Option<String>,
-    pub details_url: Option<String>,
-    pub parameters: Vec<CandidateMacroTemplateParam>,
-    pub script: String,
-    pub created_at_unix_ms: u128,
-    pub updated_at_unix_ms: u128,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// One typed parameter exposed by a candidate macro template.
-pub struct CandidateMacroTemplateParam {
-    pub name: String,
-    pub default_value: Option<String>,
-    pub required: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Listing row for one candidate macro template.
-pub struct CandidateMacroTemplateSummary {
-    pub name: String,
-    pub description: Option<String>,
-    pub details_url: Option<String>,
-    pub parameter_count: usize,
-    pub created_at_unix_ms: u128,
-    pub updated_at_unix_ms: u128,
 }
 
 impl BlastThresholdOptions {
