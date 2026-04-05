@@ -69,6 +69,15 @@ Wet-lab execution (cell model choice, transfection, luciferase readout,
 warfarin dosing, normalization strategy, statistics) is out of scope for this
 page.
 
+Related extension idea:
+
+- if a later assay wants to reuse the warfarin/Factor X connection more
+  directly, the `factor Xa` recognition site can be embedded between other
+  indicator modules so cleavage is read out as a signal ratio rather than as a
+  purification step
+- that extension would belong in a mammalian or adenoviral expression backbone,
+  not in the bacterial `pGEX` context used elsewhere in the repository
+
 ## Default Biological Decision Used Here
 
 To keep the tutorial reproducible and biologically cleaner, this page uses one fixed default fragment:

@@ -1530,6 +1530,10 @@ Controls:
      derived from `definition` plus accession/version when available.
    - `misc_feature` note text can also supply compact circular labels for
      common annotated vector landmarks such as `MCS` or `factor Xa`.
+   - Circular cloning-map exports also add a compact narrative legend when
+     annotation provides enough context, using fuller part names plus a short
+     functional clause beside the figure instead of crowding that prose onto
+     the ring itself.
    - Protein-facing `misc_feature` annotations such as a `factor Xa`
      recognition site now use a host-feature leader so the label reads as part
      of the expressed construct rather than as an unlabeled DNA-side tick.

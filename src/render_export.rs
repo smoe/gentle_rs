@@ -64,6 +64,7 @@ struct FeatureVm {
     from: usize,
     to: usize,
     label: String,
+    legend_line: Option<String>,
     color: &'static str,
     kind_role: FeatureKindRole,
     is_gene: bool,
@@ -295,6 +296,75 @@ fn compact_misc_feature_label_from_note(note: &str) -> Option<String> {
     }
     if lower.contains("factor xa") {
         return Some("factor Xa".to_string());
+    }
+    None
+}
+
+fn clean_note_summary(note: &str) -> String {
+    note.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn feature_legend_line(feature: &Feature, visible_label: &str) -> Option<String> {
+    if visible_label.trim().is_empty() {
+        return None;
+    }
+    let kind = feature.kind.to_string().to_ascii_uppercase();
+    if is_regulatory_feature(feature) {
+        let note = feature_qualifier_text(feature, "note").unwrap_or_default();
+        let note_lower = note.to_ascii_lowercase();
+        let label_lower = visible_label.to_ascii_lowercase();
+        if label_lower == "tac promoter" || note_lower.contains("inducible expression") {
+            return Some(
+                "tac promoter: inducible promoter for the fusion-expression cassette".to_string(),
+            );
+        }
+        if label_lower == "bla promoter" {
+            return Some("bla promoter: promoter for the beta-lactamase cassette".to_string());
+        }
+        if !note.trim().is_empty() {
+            return Some(format!("{visible_label}: {}", clean_note_summary(&note)));
+        }
+    }
+    if matches!(kind.as_str(), "GENE" | "MRNA" | "CDS") {
+        if let Some(product) = feature_qualifier_text(feature, "product") {
+            let lower = product.to_ascii_lowercase();
+            if lower.contains("glutathione s-transferase") {
+                return Some(
+                    "Glutathione S-transferase (GST): fusion partner for tagged expression"
+                        .to_string(),
+                );
+            }
+            if lower.contains("beta-lactamase") {
+                return Some(
+                    "Beta-lactamase (bla): ampicillin resistance cassette".to_string(),
+                );
+            }
+            if lower.contains("lac repressor") {
+                return Some(
+                    "Lac repressor (lacIq): tighter repression of inducible expression"
+                        .to_string(),
+                );
+            }
+            return Some(format!("{product} ({visible_label})"));
+        }
+    }
+    if kind == "MISC_FEATURE" {
+        if let Some(note) = feature_qualifier_text(feature, "note") {
+            let lower = note.to_ascii_lowercase();
+            if lower.contains("multiple cloning site") || lower.contains("(mcs)") {
+                return Some(
+                    "Multiple cloning site (MCS): unique cloning sites for insert design"
+                        .to_string(),
+                );
+            }
+            if lower.contains("factor xa") {
+                return Some(
+                    "Factor Xa recognition site: protease cleavage site between tag and insert"
+                        .to_string(),
+                );
+            }
+            return Some(format!("{visible_label}: {}", clean_note_summary(&note)));
+        }
     }
     None
 }
@@ -851,10 +921,12 @@ fn collect_features(
         };
         let is_variation = is_variation_feature(feature);
         let (label, is_fallback_label) = feature_name(feature);
+        let legend_line = feature_legend_line(feature, &label);
         ret.push(FeatureVm {
             from,
             to,
             label,
+            legend_line,
             color: feature_color(feature),
             kind_role: feature_kind_role(feature),
             is_gene: kind == "GENE",
@@ -888,6 +960,7 @@ fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> Feature
         from: preferred.from,
         to: preferred.to,
         label: preferred.label,
+        legend_line: preferred.legend_line.or_else(|| other.legend_line.clone()),
         color: preferred.color,
         kind_role: preferred.kind_role,
         is_gene: preferred.is_gene || other.is_gene,
@@ -2206,6 +2279,90 @@ fn circular_side_shifted_label_placement(
     placement
 }
 
+fn wrap_svg_text_words(text: &str, max_chars: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let candidate_len = if current.is_empty() {
+            word.len()
+        } else {
+            current.len() + 1 + word.len()
+        };
+        if !current.is_empty() && candidate_len > max_chars {
+            lines.push(current);
+            current = word.to_string();
+        } else {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+fn circular_legend_features<'a>(features: &'a [FeatureVm]) -> Vec<&'a FeatureVm> {
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for feature in features {
+        let Some(line) = &feature.legend_line else {
+            continue;
+        };
+        if seen.insert(line.clone()) {
+            items.push(feature);
+        }
+    }
+    items
+}
+
+fn append_circular_narrative_legend(mut doc: Document, features: &[FeatureVm]) -> Document {
+    let legend_items = circular_legend_features(features);
+    if legend_items.is_empty() {
+        return doc;
+    }
+    let legend_x = 20.0;
+    let text_x = legend_x + 18.0;
+    let mut y = 92.0;
+    doc = doc.add(
+        Text::new("Annotated parts")
+            .set("x", legend_x)
+            .set("y", y)
+            .set("font-family", "monospace")
+            .set("font-size", 13)
+            .set("fill", "#222222"),
+    );
+    y += 18.0;
+    for feature in legend_items {
+        let Some(line) = &feature.legend_line else {
+            continue;
+        };
+        let wrapped = wrap_svg_text_words(line, 34);
+        doc = doc.add(
+            Rectangle::new()
+                .set("x", legend_x)
+                .set("y", y - 9.0)
+                .set("width", 10)
+                .set("height", 10)
+                .set("fill", feature.color),
+        );
+        for (idx, chunk) in wrapped.iter().enumerate() {
+            doc = doc.add(
+                Text::new(chunk.clone())
+                    .set("x", text_x)
+                    .set("y", y + idx as f32 * 14.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 11)
+                    .set("fill", "#222222"),
+            );
+        }
+        y += wrapped.len() as f32 * 14.0 + 8.0;
+    }
+    doc
+}
+
 pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> String {
     let len = dna.len();
     let cx = W * 0.56;
@@ -2246,6 +2403,16 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
 
     let restriction_label_layout = if display.show_restriction_enzymes {
         circular_restriction_label_layout(dna, display, len, cx, cy, r)
+    } else {
+        Vec::new()
+    };
+    let features = if display.show_features {
+        collect_features(
+            dna,
+            display,
+            len,
+            normalize_linear_export_viewport(dna, display),
+        )
     } else {
         Vec::new()
     };
@@ -2294,12 +2461,6 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_features {
-        let features = collect_features(
-            dna,
-            display,
-            len,
-            normalize_linear_export_viewport(dna, display),
-        );
         for f in &features {
             let functional_host = if f.prefers_functional_host_anchor {
                 containing_functional_host(&features, f)
@@ -2522,6 +2683,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
             );
         }
     }
+
+    doc = append_circular_narrative_legend(doc, &features);
 
     doc.to_string()
 }
@@ -3006,6 +3169,44 @@ mod tests {
     }
 
     #[test]
+    fn feature_legend_line_prefers_full_name_and_function_for_common_vector_parts() {
+        let gst = gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 60),
+            qualifiers: vec![(
+                "product".into(),
+                Some("glutathione S-transferase".to_string()),
+            )],
+        };
+        let laciq = gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(80, 140),
+            qualifiers: vec![("product".into(), Some("lac repressor".to_string()))],
+        };
+        let mcs = gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: Location::simple_range(141, 160),
+            qualifiers: vec![(
+                "note".into(),
+                Some("Multiple Cloning Site (MCS); contains BamHI, SmaI and EcoRI".to_string()),
+            )],
+        };
+
+        assert_eq!(
+            feature_legend_line(&gst, "GST").as_deref(),
+            Some("Glutathione S-transferase (GST): fusion partner for tagged expression")
+        );
+        assert_eq!(
+            feature_legend_line(&laciq, "lacIq").as_deref(),
+            Some("Lac repressor (lacIq): tighter repression of inducible expression")
+        );
+        assert_eq!(
+            feature_legend_line(&mcs, "MCS").as_deref(),
+            Some("Multiple cloning site (MCS): unique cloning sites for insert design")
+        );
+    }
+
+    #[test]
     fn circular_title_prefers_definition_and_accession_for_cryptic_names() {
         let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(40)).expect("sequence");
         dna.set_name("XXU13852");
@@ -3136,6 +3337,33 @@ mod tests {
 
         assert!(right_element.contains("text-anchor=\"start\""));
         assert!(left_element.contains("text-anchor=\"end\""));
+    }
+
+    #[test]
+    fn circular_svg_includes_narrative_legend_for_common_vector_parts() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(200)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 80),
+            qualifiers: vec![(
+                "product".into(),
+                Some("glutathione S-transferase".to_string()),
+            )],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: Location::simple_range(81, 92),
+            qualifiers: vec![(
+                "note".into(),
+                Some("encodes factor Xa recognition site".to_string()),
+            )],
+        });
+        dna.set_circular(true);
+
+        let svg = export_circular_svg(&dna, &DisplaySettings::default());
+        assert!(svg.contains("Annotated parts"));
+        assert!(svg.contains("Glutathione S-transferase (GST):"));
+        assert!(svg.contains("Factor Xa recognition site:"));
     }
 
     #[test]

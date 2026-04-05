@@ -827,6 +827,32 @@ order. Durable architecture constraints and decisions remain in
         `rs9923231` VKORC1 alert"
       - GENtle can answer "here are the exact allele-specific promoter
         luciferase constructs we should build to test that alert mechanistically"
+    - planned human-cell reporter follow-up:
+      - a `VKORC1` / `rs9923231` regulatory assay only becomes biologically
+        persuasive once the cloned fragment is moved into a human-compatible
+        reporter or expression context; bacterial `pGEX`-style constructs are
+        still useful for exporter hardening and communication figures, but not
+        the final assay claim
+      - near-term preferred scope:
+        use mammalian plasmid transfection backbones first, then treat
+        adenoviral delivery as a later escalation if delivery efficiency
+        rather than cloning design becomes the bottleneck
+      - GENtle follow-up work still needed before claiming that project end to
+        end:
+        1. first-class reporter-backbone catalog rows for mammalian
+           promoter/enhancer assays and cleavage-sensor constructs, with
+           cloning-relevant annotations that render cleanly in linear/circular
+           exports
+        2. workflow templates that distinguish promoter-fragment reporter
+           assays, enhancer-plus-minimal-promoter assays, and cleavage-site
+           indicator constructs instead of one generic luciferase-vector path
+        3. richer assay-facing interpretation/help links for vector parts,
+           promoters, reporters, protease sites, and cell-system assumptions
+           so bench users can understand why one backbone is appropriate
+        4. explicit assay-context metadata in exported figures/reports
+           (for example bacterial cloning vehicle vs mammalian assay backbone)
+           so communication artifacts do not accidentally overclaim the wet-lab
+           context
 - Deterministic process run-bundle export baseline is now implemented:
   - engine operation `ExportProcessRunBundle { path, run_id? }`
   - shared-shell/CLI command

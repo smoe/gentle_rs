@@ -321,6 +321,14 @@ ClawBio/OpenClaw handoff model:
 - the run yields both explanation figures and a reproducibility bundle
 - the baseline claim is allele-specific promoter activity; any warfarin
   treatment arm is a later extension, not the first assay claim
+- one later extension can borrow the warfarin/Factor X theme more directly:
+  keep a `factor Xa` recognition site in the construct, but place it between
+  reporter/indicator modules rather than in a purification-first GST layout, so
+  cleavage efficiency becomes a ratio readout instead of a protein-extraction
+  problem
+- if that extension is taken into human cells or an adenoviral delivery setup,
+  the same assay logic should move into an appropriate mammalian/viral
+  expression backbone rather than stay in `pGEX`
 - the opening visual should look like a real ClawBio handoff:
   an alert/report card first, then a construct-design explanation
 
