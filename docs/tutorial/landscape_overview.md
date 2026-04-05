@@ -50,7 +50,7 @@ flowchart LR
   end
 
   subgraph Existing["Existing hand-written tutorial pages"]
-    VK["VKORC1 / warfarin GUI"]
+    VK["VKORC1 PGx -> reporter GUI"]
     TP73["TP73 cDNA vs genomic GUI"]
     GS["Gibson specialist testing GUI"]
     GA["Gibson arrangements GUI"]
@@ -72,6 +72,7 @@ flowchart LR
     P1["Planned: dbSNP rs9923231 fetch/extract tutorial"]
     P2["Planned: RNA batch sample-metadata tutorial"]
     P3["Planned: seed-capture workflow tutorial"]
+    P4["Planned: warfarin / Factor X follow-up"]
   end
 
   TH --> GH
@@ -100,13 +101,14 @@ flowchart LR
   AI -. points users back to executable routes .-> GH
 
   P1 -. upstream entry for rs9923231 workflows .-> VK
+  VK -. companion follow-up .-> P4
   RNA -. next cohort layer .-> P2
   RNA -. future abstraction track .-> P3
 
   class GS,SQG,SQC,RNA high;
   class VK,GA,C15,C16 medium;
   class TH,GH,TP73,AI,C12,C13,C14 low;
-  class P1,P2,P3 planned;
+  class P1,P2,P3,P4 planned;
 ```
 
 ## Current Tutorial Bands
