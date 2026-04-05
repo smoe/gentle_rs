@@ -1306,6 +1306,8 @@ Shared shell command:
       - full-length exact / near / strict subsets
     - tutorial reference (TP53 basis + multi-gene sparse mapping):
       `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
+    - batch target-gene cohort tutorial:
+      `docs/tutorial/rna_read_batch_gene_support_cli.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
       (`report_mode`, `origin_mode`, `target_gene_count`,
       `target_gene_ids_json`, `roi_seed_capture_enabled`),

@@ -76,6 +76,11 @@ If you want the matching shell/CLI parity route:
 - Use the sequencing-trace confirmation tutorial:
   [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md)
 
+If you want to batch-compare many cDNA `fasta.gz` samples for one target gene:
+
+- Use the RNA-read batch gene-support tutorial:
+  [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md)
+
 ## Confidence Map
 
 Treat the tutorial catalog as three confidence bands:
@@ -119,6 +124,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
+| [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
 ## Type and Status Labels
@@ -198,6 +204,15 @@ Use the labels above as trust/maintenance signals:
 2. Import the bundled `3100.ab1` trace into a dedicated temporary CLI state
 3. Run `seq-confirm ... --trace-id ...` and inspect the stored report
 4. Export JSON + TSV evidence artifacts for handoff or regression checks
+
+### Path I: Batch RNA-read target-gene cohort comparison
+
+1. Read [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md)
+2. Start from one prepared target locus and identify the seed `mRNA` feature id
+3. Interpret one saved RNA-read report per gzipped cDNA FASTA input
+4. Align each saved report with `rna-reads align-report --selection all`
+5. Export one target-gene sample sheet for abundance, exon-pair co-presence,
+   and mean-length comparison
 
 ## Contributor Notes
 

@@ -121,6 +121,20 @@
         "contributors"
       ],
       "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+    },
+    {
+      "id": "rna_read_batch_gene_support_cli",
+      "title": "Batch-Compare cDNA FASTA.GZ Samples for One Target Gene (CLI Tutorial)",
+      "path": "docs/tutorial/rna_read_batch_gene_support_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet."
     }
   ]
 }
