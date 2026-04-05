@@ -77,9 +77,16 @@ order. Durable architecture constraints and decisions remain in
     - the portable save/render/primer-backend enums now also live there so
       export operations, SVG rendering routes, and primer-design controls share
       one small serialization-friendly contract surface
-    - the portable PCR/primer-request structs now also live there so PCR,
-      mutation-introduction, and primer-design requests share one stable
-      adapter-facing schema layer
+    - the portable PCR/primer request/report structs now also live there so
+      PCR, mutation-introduction, and primer/qPCR design flows share one
+      stable adapter-facing schema layer
+    - the portable guide-design, practical-filter, and oligo/protocol export
+      report structs now also live there so guide candidate sets and CRISPR
+      handoff/export flows share one stable serialization-friendly contract
+      layer
+    - the portable isoform-panel resource and validation report structs now
+      also live there so curated panel import, validation, and renderer-facing
+      adapters share one slower-changing schema surface
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
