@@ -1783,33 +1783,6 @@ impl ProjectState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ExportFormat {
-    GenBank,
-    Fasta,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RenderSvgMode {
-    Linear,
-    Circular,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PrimerLibraryMode {
-    Enumerate,
-    Sample,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PrimerDesignBackend {
-    #[default]
-    Auto,
-    Internal,
-    Primer3,
-}
-
 impl PrimerDesignBackend {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -1818,43 +1791,6 @@ impl PrimerDesignBackend {
             Self::Primer3 => "primer3",
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PcrPrimerSpec {
-    pub sequence: String,
-    pub anneal_len: Option<usize>,
-    pub max_mismatches: Option<usize>,
-    pub require_3prime_exact_bases: Option<usize>,
-    pub library_mode: Option<PrimerLibraryMode>,
-    pub max_variants: Option<usize>,
-    pub sample_seed: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SnpMutationSpec {
-    pub zero_based_position: usize,
-    pub reference: String,
-    pub alternate: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-pub struct PrimerDesignBaseLock {
-    pub offset_0based: usize,
-    pub base: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct PrimerDesignPairConstraint {
-    pub require_roi_flanking: bool,
-    #[serde(default)]
-    pub required_amplicon_motifs: Vec<String>,
-    #[serde(default)]
-    pub forbidden_amplicon_motifs: Vec<String>,
-    pub fixed_amplicon_start_0based: Option<usize>,
-    pub fixed_amplicon_end_0based_exclusive: Option<usize>,
 }
 
 impl Default for PrimerDesignPairConstraint {
@@ -1867,30 +1803,6 @@ impl Default for PrimerDesignPairConstraint {
             fixed_amplicon_end_0based_exclusive: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct PrimerDesignSideConstraint {
-    pub min_length: usize,
-    pub max_length: usize,
-    pub location_0based: Option<usize>,
-    pub start_0based: Option<usize>,
-    pub end_0based: Option<usize>,
-    pub min_tm_c: f64,
-    pub max_tm_c: f64,
-    pub min_gc_fraction: f64,
-    pub max_gc_fraction: f64,
-    pub max_anneal_hits: usize,
-    pub non_annealing_5prime_tail: Option<String>,
-    pub fixed_5prime: Option<String>,
-    pub fixed_3prime: Option<String>,
-    #[serde(default)]
-    pub required_motifs: Vec<String>,
-    #[serde(default)]
-    pub forbidden_motifs: Vec<String>,
-    #[serde(default)]
-    pub locked_positions: Vec<PrimerDesignBaseLock>,
 }
 
 impl Default for PrimerDesignSideConstraint {
@@ -2200,38 +2112,6 @@ pub struct TfThresholdOverride {
     pub tf: String,
     pub min_llr_bits: Option<f64>,
     pub min_llr_quantile: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LigationProtocol {
-    Sticky,
-    Blunt,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AnchorBoundary {
-    Start,
-    End,
-    Middle,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnchorDirection {
-    Upstream,
-    Downstream,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SequenceAnchor {
-    Position {
-        zero_based: usize,
-    },
-    FeatureBoundary {
-        feature_kind: Option<String>,
-        feature_label: Option<String>,
-        boundary: AnchorBoundary,
-        occurrence: Option<usize>,
-    },
 }
 
 // Backward-compatible alias kept while adapter/docs migrate to SequenceAnchor.

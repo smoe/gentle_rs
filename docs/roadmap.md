@@ -71,6 +71,15 @@ order. Durable architecture constraints and decisions remain in
     - the portable genome-track subscription/source/sync records now also live
       there so track import forms and shell/CLI status surfaces share one
       serialization-friendly contract layer
+    - the portable ligation and local sequence-anchor enums now also live
+      there so ligation operations and anchored-region/candidate workflows use
+      one shared adapter-facing contract block
+    - the portable save/render/primer-backend enums now also live there so
+      export operations, SVG rendering routes, and primer-design controls share
+      one small serialization-friendly contract surface
+    - the portable PCR/primer-request structs now also live there so PCR,
+      mutation-introduction, and primer-design requests share one stable
+      adapter-facing schema layer
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
