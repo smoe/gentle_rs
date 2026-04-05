@@ -135,6 +135,20 @@
         "contributors"
       ],
       "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet."
+    },
+    {
+      "id": "tutorial_landscape_overview",
+      "title": "GENtle Tutorial Landscape Overview",
+      "path": "docs/tutorial/landscape_overview.md",
+      "type": "operational_reference",
+      "status": "manual/reference",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "contributors",
+        "cli_first",
+        "gui_first"
+      ],
+      "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
     }
   ]
 }

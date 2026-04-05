@@ -1034,6 +1034,12 @@ order. Durable architecture constraints and decisions remain in
       - `gentle_examples_docs tutorial-manifest-check`
   - tutorial pages now distinguish their role more explicitly:
     `generated+checked`, `manual`, `manual/hybrid`, `manual/reference`
+  - tutorial navigation now also has a dedicated graphical overview page:
+    `docs/tutorial/landscape_overview.md`
+    - maps current tutorial dependencies and strongest onboarding handoffs
+    - overlays roadmap-grounded proposed additions as planned nodes
+    - adds a heuristic human-feedback-loop intensity band for prioritizing
+      tutorial hardening work
   - generated tutorial runtime manifest:
     `docs/tutorial/manifest.json` (`gentle.tutorial_manifest.v1`)
   - tutorial chapters now include explicit narrative learning objectives and

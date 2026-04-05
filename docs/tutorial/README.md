@@ -24,6 +24,11 @@ If you are new to GENtle and want the most reproducible path first:
 - Start with the executable tutorial hub:
   [`docs/tutorial/generated/README.md`](./generated/README.md)
 
+If you want the big-picture map first:
+
+- Use the tutorial landscape overview:
+  [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
+
 If you are GUI-first and want one concrete cloning workflow:
 
 - Use the VKORC1 / warfarin-response promoter/luciferase walkthrough:
@@ -125,6 +130,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |
+| [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) | Operational reference tutorial | `manual/reference` | Tutorial planning, onboarding sequencing, contributor navigation | Graphical map of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
 ## Type and Status Labels
@@ -213,6 +219,14 @@ Use the labels above as trust/maintenance signals:
 4. Align each saved report with `rna-reads align-report --selection all`
 5. Export one target-gene sample sheet for abundance, exon-pair co-presence,
    and mean-length comparison
+
+### Path J: Tutorial planning and dependency triage
+
+1. Read [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
+2. Choose whether you want generated executable depth, GUI walkthrough depth,
+   or contributor/reference material first
+3. Use the dependency map to decide which starter chapter or companion tutorial
+   should come before the page you actually want to follow
 
 ## Contributor Notes
 
