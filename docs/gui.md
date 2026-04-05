@@ -2229,6 +2229,10 @@ Rack view is the first physical-placement layer on top of arrangements.
     with `Hide help` / `Show help`
   - shortcut hints are rendered as small keycap-style labels for `Cmd`,
     `Ctrl`, and `Esc`
+  - the collapsed/expanded state is remembered in project metadata, so a saved
+    project reopens with the same rack-help visibility you last used
+  - when the strip is not pinned open, GENtle auto-minimizes it after a few
+    successful rack moves; `Pin open` keeps it visible
 - Built-in profiles:
   - `Small tube rack (4 x 6)`
   - `Plate 96`

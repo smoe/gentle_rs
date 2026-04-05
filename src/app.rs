@@ -148,6 +148,7 @@ const MAX_BACKGROUND_JOB_EVENTS: usize = 200;
 const MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS: usize = 120;
 const MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES: usize = 240;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
+const RACK_WORKSPACE_METADATA_KEY: &str = "gui.rack.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT: f32 = 180.0;
@@ -160,6 +161,7 @@ const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 const DEFAULT_DBSNP_TUTORIAL_RS_ID: &str = "rs9923231";
+const RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD: u32 = 3;
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
@@ -908,6 +910,9 @@ pub struct GENtleApp {
     rack_view_hover_target_coordinate: Option<String>,
     rack_view_recent_drop_ghost: Option<RackDropGhostState>,
     rack_help_strip_collapsed: bool,
+    rack_help_strip_pinned_open: bool,
+    rack_help_strip_successful_move_count: u32,
+    rack_help_strip_auto_minimized: bool,
     place_arrangement_source_id: String,
     place_arrangement_target_rack_id: String,
     place_arrangement_status: String,
@@ -2140,6 +2145,15 @@ impl Default for PersistedLineageGraphWorkspace {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PersistedRackWorkspace {
+    help_strip_collapsed: bool,
+    help_strip_pinned_open: bool,
+    help_strip_successful_move_count: u32,
+    help_strip_auto_minimized: bool,
+}
+
 impl Default for GENtleApp {
     fn default() -> Self {
         Self {
@@ -2396,6 +2410,9 @@ impl Default for GENtleApp {
             rack_view_hover_target_coordinate: None,
             rack_view_recent_drop_ghost: None,
             rack_help_strip_collapsed: false,
+            rack_help_strip_pinned_open: false,
+            rack_help_strip_successful_move_count: 0,
+            rack_help_strip_auto_minimized: false,
             place_arrangement_source_id: String::new(),
             place_arrangement_target_rack_id: String::new(),
             place_arrangement_status: String::new(),
@@ -5905,6 +5922,7 @@ Error: `{err}`"
         self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
+        self.load_rack_workspace_from_state();
         self.load_background_job_history_from_state();
         self.mark_clean_snapshot();
     }
@@ -7153,6 +7171,33 @@ Error: `{err}`"
         }
     }
 
+    fn rack_help_pin_label(pinned: bool) -> &'static str {
+        if pinned {
+            "Unpin"
+        } else {
+            "Pin open"
+        }
+    }
+
+    fn record_successful_rack_move_and_maybe_autocollapse(&mut self) {
+        if self.rack_help_strip_pinned_open || self.rack_help_strip_auto_minimized {
+            return;
+        }
+        self.rack_help_strip_successful_move_count =
+            self.rack_help_strip_successful_move_count.saturating_add(1);
+        if self.rack_help_strip_successful_move_count >= RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD {
+            self.rack_help_strip_auto_minimized = true;
+            self.rack_help_strip_collapsed = true;
+            self.persist_rack_workspace_to_state();
+            self.rack_view_status = format!(
+                "Rack help auto-minimized after {} successful moves. Use Show help to reopen or Pin open to keep it visible.",
+                RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD
+            );
+        } else {
+            self.persist_rack_workspace_to_state();
+        }
+    }
+
     fn render_rack_help_strip(
         &mut self,
         ui: &mut Ui,
@@ -7170,6 +7215,29 @@ Error: `{err}`"
                         .clicked()
                     {
                         self.rack_help_strip_collapsed = !self.rack_help_strip_collapsed;
+                        self.persist_rack_workspace_to_state();
+                    }
+                    let pin_label = Self::rack_help_pin_label(self.rack_help_strip_pinned_open);
+                    if ui
+                        .small_button(pin_label)
+                        .on_hover_text(
+                            "Keep the rack help strip open instead of auto-minimizing after a few successful rack moves",
+                        )
+                        .clicked()
+                    {
+                        self.rack_help_strip_pinned_open = !self.rack_help_strip_pinned_open;
+                        if self.rack_help_strip_pinned_open {
+                            self.rack_help_strip_collapsed = false;
+                        }
+                        self.persist_rack_workspace_to_state();
+                    }
+                    if !self.rack_help_strip_pinned_open && !self.rack_help_strip_auto_minimized {
+                        ui.small(format!(
+                            "auto-hide after {} moves",
+                            RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD
+                        ));
+                    } else if self.rack_help_strip_pinned_open {
+                        ui.small("pinned open");
                     }
                 });
                 if self.rack_help_strip_collapsed {
@@ -7640,6 +7708,7 @@ Error: `{err}`"
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
                 self.record_rack_drop_ghost(rack_id, before_rack);
+                self.record_successful_rack_move_and_maybe_autocollapse();
             }
             Err(err) => {
                 self.rack_view_status = if move_block {
@@ -7681,6 +7750,7 @@ Error: `{err}`"
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
                 self.record_rack_drop_ghost(rack_id, before_rack);
+                self.record_successful_rack_move_and_maybe_autocollapse();
             }
             Err(err) => {
                 self.rack_view_status =
@@ -7719,6 +7789,7 @@ Error: `{err}`"
                 self.lineage_cache_valid = false;
                 self.refresh_lineage_cache_if_needed();
                 self.record_rack_drop_ghost(rack_id, before_rack);
+                self.record_successful_rack_move_and_maybe_autocollapse();
             }
             Err(err) => {
                 self.rack_view_status = format!("Could not move selected samples: {}", err.message);
@@ -25105,6 +25176,7 @@ Error: `{err}`"
         self.agent_model_discovery_source_key.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
+        self.load_rack_workspace_from_state();
         self.load_background_job_history_from_state();
 
         self.mark_clean_snapshot();
@@ -25266,6 +25338,30 @@ Error: `{err}`"
         self.lineage_node_remove_target_id = None;
     }
 
+    fn load_rack_workspace_from_state(&mut self) {
+        let workspace_serialized = {
+            let engine = self.engine.read().unwrap();
+            engine
+                .state()
+                .metadata
+                .get(RACK_WORKSPACE_METADATA_KEY)
+                .cloned()
+        };
+
+        self.rack_help_strip_collapsed = false;
+        self.rack_help_strip_pinned_open = false;
+        self.rack_help_strip_successful_move_count = 0;
+        self.rack_help_strip_auto_minimized = false;
+        if let Some(serialized) = workspace_serialized
+            && let Ok(workspace) = serde_json::from_value::<PersistedRackWorkspace>(serialized)
+        {
+            self.rack_help_strip_collapsed = workspace.help_strip_collapsed;
+            self.rack_help_strip_pinned_open = workspace.help_strip_pinned_open;
+            self.rack_help_strip_successful_move_count = workspace.help_strip_successful_move_count;
+            self.rack_help_strip_auto_minimized = workspace.help_strip_auto_minimized;
+        }
+    }
+
     fn persist_lineage_graph_workspace_to_state(&mut self) {
         let mut raw: HashMap<String, [f32; 2]> = HashMap::new();
         for (node_id, offset) in &self.lineage_graph_node_offsets {
@@ -25344,6 +25440,30 @@ Error: `{err}`"
                     .metadata
                     .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
             }
+        }
+    }
+
+    fn persist_rack_workspace_to_state(&mut self) {
+        let workspace = PersistedRackWorkspace {
+            help_strip_collapsed: self.rack_help_strip_collapsed,
+            help_strip_pinned_open: self.rack_help_strip_pinned_open,
+            help_strip_successful_move_count: self.rack_help_strip_successful_move_count,
+            help_strip_auto_minimized: self.rack_help_strip_auto_minimized,
+        };
+        let mut engine = self.engine.write().unwrap();
+        let state = engine.state_mut();
+        if !workspace.help_strip_collapsed
+            && !workspace.help_strip_pinned_open
+            && workspace.help_strip_successful_move_count == 0
+            && !workspace.help_strip_auto_minimized
+        {
+            state.metadata.remove(RACK_WORKSPACE_METADATA_KEY);
+        } else if let Ok(value) = serde_json::to_value(&workspace)
+            && state.metadata.get(RACK_WORKSPACE_METADATA_KEY) != Some(&value)
+        {
+            state
+                .metadata
+                .insert(RACK_WORKSPACE_METADATA_KEY.to_string(), value);
         }
     }
 
@@ -36409,6 +36529,8 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        PersistedRackWorkspace, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
+        RACK_WORKSPACE_METADATA_KEY,
         PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery, PrepareGenomeUiStepStatus,
         PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
@@ -40958,6 +41080,80 @@ mod tests {
     fn rack_help_toggle_label_reflects_collapsed_state() {
         assert_eq!(GENtleApp::rack_help_toggle_label(false), "Hide help");
         assert_eq!(GENtleApp::rack_help_toggle_label(true), "Show help");
+    }
+
+    #[test]
+    fn rack_help_pin_label_reflects_pinned_state() {
+        assert_eq!(GENtleApp::rack_help_pin_label(false), "Pin open");
+        assert_eq!(GENtleApp::rack_help_pin_label(true), "Unpin");
+    }
+
+    #[test]
+    fn persist_rack_workspace_to_state_omits_default_and_stores_collapsed_flag() {
+        let mut app = GENtleApp::default();
+        app.persist_rack_workspace_to_state();
+        assert!(
+            app.engine
+                .read()
+                .unwrap()
+                .state()
+                .metadata
+                .get(RACK_WORKSPACE_METADATA_KEY)
+                .is_none()
+        );
+
+        app.rack_help_strip_collapsed = true;
+        app.persist_rack_workspace_to_state();
+        let workspace_value = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(RACK_WORKSPACE_METADATA_KEY)
+            .cloned()
+            .expect("rack workspace metadata");
+        let workspace: PersistedRackWorkspace =
+            serde_json::from_value(workspace_value).expect("deserialize rack workspace");
+        assert!(workspace.help_strip_collapsed);
+    }
+
+    #[test]
+    fn load_rack_workspace_from_state_restores_help_strip_collapsed_flag() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            RACK_WORKSPACE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "help_strip_collapsed": true
+            }),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_rack_workspace_from_state();
+        assert!(app.rack_help_strip_collapsed);
+    }
+
+    #[test]
+    fn rack_help_auto_minimizes_after_success_threshold_unless_pinned() {
+        let mut app = GENtleApp::default();
+        for _ in 0..RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD {
+            app.record_successful_rack_move_and_maybe_autocollapse();
+        }
+        assert!(app.rack_help_strip_collapsed);
+        assert!(app.rack_help_strip_auto_minimized);
+        assert_eq!(
+            app.rack_help_strip_successful_move_count,
+            RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD
+        );
+
+        let mut pinned = GENtleApp::default();
+        pinned.rack_help_strip_pinned_open = true;
+        for _ in 0..RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD {
+            pinned.record_successful_rack_move_and_maybe_autocollapse();
+        }
+        assert!(!pinned.rack_help_strip_collapsed);
+        assert!(!pinned.rack_help_strip_auto_minimized);
+        assert_eq!(pinned.rack_help_strip_successful_move_count, 0);
     }
 
     #[test]
