@@ -2205,7 +2205,7 @@ Serial gel export is available in two places:
     selected label-sheet preset.
   - `Arrangements` table: `Carrier SVG` exports one carrier-matched front-strip
     plus module-label SVG for that arrangement from its linked rack draft,
-    using the currently selected physical template.
+    using the currently selected physical template and carrier-label preset.
   - `Arrangements` table: `Place on Existing Rack...` appends the arrangement
     as one contiguous block onto another saved rack.
 
@@ -2337,7 +2337,11 @@ Exports:
   for the currently shown rack using that same physical template.
 - `Carrier labels SVG...` exports one carrier-matched front-strip plus
   module-label SVG sheet for the currently shown rack using that same physical
-  template.
+  template and the currently selected carrier-label preset.
+- `Carrier preset` in the arrangement table and rack window selects:
+  - `Front strip + cards`
+  - `Front strip only`
+  - `Module cards only`
 - `Simulation JSON...` exports one machine-readable rack geometry/placement
   JSON for downstream simulation adapters using that same physical template.
 - Built-in label-sheet presets:

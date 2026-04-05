@@ -13,8 +13,8 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackAuthoringTemplate,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
 };
 use crate::test_support::{
     decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
@@ -1447,7 +1447,7 @@ fn parse_racks_openscad_command() {
 #[test]
 fn parse_racks_carrier_labels_svg_command() {
     let cmd = parse_shell_line(
-        "racks carrier-labels-svg rack-1 carrier.svg --arrangement arr-x --template pipetting_pcr_tube_rack",
+        "racks carrier-labels-svg rack-1 carrier.svg --arrangement arr-x --template pipetting_pcr_tube_rack --preset front_strip_only",
     )
     .expect("parse command");
     match cmd {
@@ -1456,11 +1456,13 @@ fn parse_racks_carrier_labels_svg_command() {
             output,
             arrangement_id,
             template,
+            preset,
         } => {
             assert_eq!(rack_id, "rack-1".to_string());
             assert_eq!(output, "carrier.svg".to_string());
             assert_eq!(arrangement_id, Some("arr-x".to_string()));
             assert_eq!(template, RackPhysicalTemplateKind::PipettingPcrTubeRack);
+            assert_eq!(preset, RackCarrierLabelPreset::FrontStripOnly);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -2293,12 +2295,14 @@ fn execute_racks_physical_exports_write_markers() {
                     output: carrier_path.display().to_string(),
                     arrangement_id: Some("arr-x".to_string()),
                     template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+                    preset: RackCarrierLabelPreset::ModuleCardsOnly,
                 },
             )
             .expect("carrier labels export");
             assert!(!carrier_result.state_changed);
             let carrier = fs::read_to_string(&carrier_path).expect("carrier svg");
             assert!(carrier.contains("data-rack-carrier-template=\"storage_pcr_tube_rack\""));
+            assert!(carrier.contains("data-rack-carrier-preset=\"module_cards_only\""));
 
             let simulation_result = execute_shell_command(
                 &mut engine,

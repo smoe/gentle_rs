@@ -879,6 +879,26 @@ impl RackLabelSheetPreset {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Deterministic SVG layouts for carrier-matched front-strip/module label export.
+pub enum RackCarrierLabelPreset {
+    #[default]
+    FrontStripAndCards,
+    FrontStripOnly,
+    ModuleCardsOnly,
+}
+
+impl RackCarrierLabelPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FrontStripAndCards => "front_strip_and_cards",
+            Self::FrontStripOnly => "front_strip_only",
+            Self::ModuleCardsOnly => "module_cards_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Built-in printable physical carrier families layered on top of rack placement.
 pub enum RackPhysicalTemplateKind {
     #[default]
@@ -2970,6 +2990,8 @@ pub enum Operation {
         arrangement_id: Option<String>,
         #[serde(default)]
         template: RackPhysicalTemplateKind,
+        #[serde(default)]
+        preset: RackCarrierLabelPreset,
     },
     ExportRackSimulationJson {
         rack_id: String,

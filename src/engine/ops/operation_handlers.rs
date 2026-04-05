@@ -3514,19 +3514,22 @@ impl GentleEngine {
                 path,
                 arrangement_id,
                 template,
+                preset,
             } => {
                 let (label_count, spec) = self.export_rack_carrier_labels_svg(
                     &rack_id,
                     arrangement_id.as_deref(),
                     template,
+                    preset,
                     &path,
                 )?;
                 result.messages.push(format!(
-                    "Wrote {} rack carrier label artifact(s) for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    "Wrote {} rack carrier label artifact(s) for '{}' to '{}' using template '{}' and preset '{}' ({:.1} x {:.1} mm)",
                     label_count,
                     rack_id.trim(),
                     path,
                     template.as_str(),
+                    preset.as_str(),
                     spec.overall_width_mm,
                     spec.overall_depth_mm
                 ));

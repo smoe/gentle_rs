@@ -1237,7 +1237,7 @@ order. Durable architecture constraints and decisions remain in
       - broader physical template catalog beyond the initial PCR-tube storage
         and pipetting families
       - richer carrier-matched label-sheet/front-strip layouts beyond the
-        current front-strip/module-card baseline
+        current multi-preset front-strip/module-card baseline
       - simulations as a first-class downstream consumer of the same
         arrangement/rack-placement/physical-template records beyond the
         current simulator-facing JSON baseline

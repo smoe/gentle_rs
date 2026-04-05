@@ -1691,6 +1691,7 @@ impl GentleEngine {
         rack_id: &str,
         arrangement_id: Option<&str>,
         template: RackPhysicalTemplateKind,
+        preset: RackCarrierLabelPreset,
         path: &str,
     ) -> Result<(usize, RackPhysicalTemplateSpec), EngineError> {
         let rack = self
@@ -1758,10 +1759,19 @@ impl GentleEngine {
         let module_card_height_mm = 22.0;
         let module_gap_mm = 4.0;
         let page_width_mm = module_card_width_mm + margin_mm * 2.0;
-        let page_height_mm = margin_mm * 2.0
-            + front_strip_height_mm
-            + 6.0
-            + arrangement_summaries.len() as f32 * (module_card_height_mm + module_gap_mm);
+        let include_front_strip = !matches!(preset, RackCarrierLabelPreset::ModuleCardsOnly);
+        let include_module_cards = !matches!(preset, RackCarrierLabelPreset::FrontStripOnly);
+        let strip_section_height_mm = if include_front_strip {
+            front_strip_height_mm + 6.0
+        } else {
+            0.0
+        };
+        let cards_section_height_mm = if include_module_cards {
+            arrangement_summaries.len() as f32 * (module_card_height_mm + module_gap_mm)
+        } else {
+            0.0
+        };
+        let page_height_mm = margin_mm * 2.0 + strip_section_height_mm + cards_section_height_mm;
         let scope_label = if arrangement_summaries.len() == 1 {
             arrangement_summaries[0].1.clone()
         } else {
@@ -1774,12 +1784,13 @@ impl GentleEngine {
         };
 
         let mut svg = format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-carrier-template=\"{}\" data-rack-id=\"{}\">",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-carrier-template=\"{}\" data-rack-carrier-preset=\"{}\" data-rack-id=\"{}\">",
             page_width_mm,
             page_height_mm,
             page_width_mm,
             page_height_mm,
             spec.kind.as_str(),
+            preset.as_str(),
             Self::xml_escape(&rack.rack_id)
         );
         svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
@@ -1791,91 +1802,96 @@ impl GentleEngine {
 
         let strip_x = margin_mm;
         let strip_y = margin_mm + 4.8;
-        svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"1.5\" ry=\"1.5\" fill=\"#f8fafc\" stroke=\"#5d8aa8\" stroke-width=\"0.35\"/>",
-            strip_x,
-            strip_y,
-            front_strip_width_mm,
-            front_strip_height_mm
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.5\" font-weight=\"700\" fill=\"#173042\">{} | {}</text>",
-            strip_x + 1.8,
-            strip_y + front_strip_height_mm * 0.62,
-            Self::xml_escape(&rack_title),
-            Self::xml_escape(&scope_label)
-        ));
-        let total_scope_slots = rows.len().max(1) as f32;
-        let mut chip_x = strip_x + 0.7;
-        let chip_y = strip_y + front_strip_height_mm - 1.6;
-        let chip_height = 1.0;
-        for (arrangement_id, _, _, _, _, _, count) in &arrangement_summaries {
-            let chip_width =
-                ((front_strip_width_mm - 1.4) * (*count as f32 / total_scope_slots)).max(2.0);
+        if include_front_strip {
             svg.push_str(&format!(
-                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"0.5\" ry=\"0.5\" fill=\"{}\" fill-opacity=\"0.88\"/>",
-                chip_x,
-                chip_y,
-                chip_width,
-                chip_height,
-                Self::rack_arrangement_color(arrangement_id)
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"1.5\" ry=\"1.5\" fill=\"#f8fafc\" stroke=\"#5d8aa8\" stroke-width=\"0.35\"/>",
+                strip_x,
+                strip_y,
+                front_strip_width_mm,
+                front_strip_height_mm
             ));
-            chip_x += chip_width;
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.5\" font-weight=\"700\" fill=\"#173042\">{} | {}</text>",
+                strip_x + 1.8,
+                strip_y + front_strip_height_mm * 0.62,
+                Self::xml_escape(&rack_title),
+                Self::xml_escape(&scope_label)
+            ));
+            let total_scope_slots = rows.len().max(1) as f32;
+            let mut chip_x = strip_x + 0.7;
+            let chip_y = strip_y + front_strip_height_mm - 1.6;
+            let chip_height = 1.0;
+            for (arrangement_id, _, _, _, _, _, count) in &arrangement_summaries {
+                let chip_width =
+                    ((front_strip_width_mm - 1.4) * (*count as f32 / total_scope_slots)).max(2.0);
+                svg.push_str(&format!(
+                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"0.5\" ry=\"0.5\" fill=\"{}\" fill-opacity=\"0.88\"/>",
+                    chip_x,
+                    chip_y,
+                    chip_width,
+                    chip_height,
+                    Self::rack_arrangement_color(arrangement_id)
+                ));
+                chip_x += chip_width;
+            }
         }
 
-        let mut card_y = strip_y + front_strip_height_mm + 6.0;
-        for (arrangement_id, label, start, end, role_summary, created_by_op, count) in
-            &arrangement_summaries
-        {
-            svg.push_str(&format!(
-                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"2.0\" ry=\"2.0\" fill=\"#f7fbfd\" stroke=\"{}\" stroke-width=\"0.6\"/>",
-                margin_mm,
-                card_y,
-                module_card_width_mm,
-                module_card_height_mm,
-                Self::rack_arrangement_color(arrangement_id)
-            ));
-            svg.push_str(&format!(
-                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"3.4\" height=\"{:.1}\" rx=\"1.1\" ry=\"1.1\" fill=\"{}\" fill-opacity=\"0.92\"/>",
-                margin_mm + 1.2,
-                card_y + 1.2,
-                module_card_height_mm - 2.4,
-                Self::rack_arrangement_color(arrangement_id)
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#173042\">{}</text>",
-                margin_mm + 6.0,
-                card_y + 5.2,
-                Self::xml_escape(label)
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.35\" fill=\"#334155\">rack={} | span={}..{} | slots={}</text>",
-                margin_mm + 6.0,
-                card_y + 9.6,
-                Self::xml_escape(&rack.rack_id),
-                Self::xml_escape(start),
-                Self::xml_escape(end),
-                count
-            ));
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.25\" fill=\"#334155\">roles: {}</text>",
-                margin_mm + 6.0,
-                card_y + 13.8,
-                Self::xml_escape(role_summary)
-            ));
-            let origin_text = created_by_op
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("-");
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.15\" fill=\"#475569\">template={} | origin={}</text>",
-                margin_mm + 6.0,
-                card_y + 18.0,
-                spec.kind.as_str(),
-                Self::xml_escape(origin_text)
-            ));
-            card_y += module_card_height_mm + module_gap_mm;
+        let mut card_y = strip_y + strip_section_height_mm;
+        if include_module_cards {
+            for (arrangement_id, label, start, end, role_summary, created_by_op, count) in
+                &arrangement_summaries
+            {
+                svg.push_str(&format!(
+                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"2.0\" ry=\"2.0\" fill=\"#f7fbfd\" stroke=\"{}\" stroke-width=\"0.6\"/>",
+                    margin_mm,
+                    card_y,
+                    module_card_width_mm,
+                    module_card_height_mm,
+                    Self::rack_arrangement_color(arrangement_id)
+                ));
+                svg.push_str(&format!(
+                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"3.4\" height=\"{:.1}\" rx=\"1.1\" ry=\"1.1\" fill=\"{}\" fill-opacity=\"0.92\"/>",
+                    margin_mm + 1.2,
+                    card_y + 1.2,
+                    module_card_height_mm - 2.4,
+                    Self::rack_arrangement_color(arrangement_id)
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#173042\">{}</text>",
+                    margin_mm + 6.0,
+                    card_y + 5.2,
+                    Self::xml_escape(label)
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.35\" fill=\"#334155\">rack={} | span={}..{} | slots={}</text>",
+                    margin_mm + 6.0,
+                    card_y + 9.6,
+                    Self::xml_escape(&rack.rack_id),
+                    Self::xml_escape(start),
+                    Self::xml_escape(end),
+                    count
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.25\" fill=\"#334155\">roles: {}</text>",
+                    margin_mm + 6.0,
+                    card_y + 13.8,
+                    Self::xml_escape(role_summary)
+                ));
+                let origin_text = created_by_op
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.15\" fill=\"#475569\">template={} | preset={} | origin={}</text>",
+                    margin_mm + 6.0,
+                    card_y + 18.0,
+                    spec.kind.as_str(),
+                    preset.as_str(),
+                    Self::xml_escape(origin_text)
+                ));
+                card_y += module_card_height_mm + module_gap_mm;
+            }
         }
         svg.push_str("</svg>");
         fs::write(path, svg).map_err(|e| EngineError {
