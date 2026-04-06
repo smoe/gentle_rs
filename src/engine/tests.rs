@@ -6773,6 +6773,84 @@ fn move_rack_arrangement_blocks_preserves_block_order_and_shifts_neighbors() {
 }
 
 #[test]
+fn move_rack_single_arrangement_block_shifts_later_neighbor_after_drop_target() {
+    let mut state = ProjectState::default();
+    for (idx, seq_id) in ["a", "b", "c"].iter().enumerate() {
+        state
+            .sequences
+            .insert((*seq_id).to_string(), seq(&"ATGC".repeat(50 + idx)));
+        state.container_state.containers.insert(
+            format!("container-{}", idx + 1),
+            Container {
+                container_id: format!("container-{}", idx + 1),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube {}", idx + 1)),
+                members: vec![(*seq_id).to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+            arrangement_id: Some("arr-a".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr a");
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: vec!["container-3".to_string()],
+            arrangement_id: Some("arr-b".to_string()),
+            name: None,
+            ladders: None,
+        })
+        .expect("arr b");
+    let rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-a")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack");
+    engine
+        .apply(Operation::PlaceArrangementOnRack {
+            arrangement_id: "arr-b".to_string(),
+            rack_id: rack_id.clone(),
+        })
+        .expect("place arr b");
+    engine
+        .apply(Operation::MoveRackPlacement {
+            rack_id: rack_id.clone(),
+            from_coordinate: "A1".to_string(),
+            to_coordinate: "A3".to_string(),
+            move_block: true,
+        })
+        .expect("move single block");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get(&rack_id)
+        .expect("rack");
+    let arrangement_order = rack
+        .placements
+        .iter()
+        .map(|entry| entry.arrangement_id.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        arrangement_order,
+        vec![
+            "arr-b".to_string(),
+            "arr-a".to_string(),
+            "arr-a".to_string()
+        ]
+    );
+}
+
+#[test]
 fn move_rack_samples_preserves_selected_order_within_one_arrangement_block() {
     let mut state = ProjectState::default();
     for (idx, seq_id) in ["a", "b", "c", "d"].iter().enumerate() {

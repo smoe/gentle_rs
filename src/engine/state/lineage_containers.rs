@@ -877,7 +877,36 @@ impl GentleEngine {
             })?;
         if move_block {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
-            return self.move_rack_arrangement_blocks(rack_id, &[arrangement_id], to_coordinate);
+            let selected_entries = ordered
+                .iter()
+                .filter(|(_, entry)| entry.arrangement_id == arrangement_id)
+                .map(|(_, entry)| entry.clone())
+                .collect::<Vec<_>>();
+            let remaining = ordered
+                .iter()
+                .filter(|(_, entry)| entry.arrangement_id != arrangement_id)
+                .map(|(idx, entry)| (*idx, entry.clone()))
+                .collect::<Vec<_>>();
+            let insertion_index =
+                Self::rack_block_insertion_index_after_target(&remaining, to_index);
+            let mut reflowed = Vec::with_capacity(selected_entries.len() + remaining.len());
+            reflowed.extend(
+                remaining[..insertion_index]
+                    .iter()
+                    .map(|(_, entry)| entry.clone()),
+            );
+            reflowed.extend(selected_entries);
+            reflowed.extend(
+                remaining[insertion_index..]
+                    .iter()
+                    .map(|(_, entry)| entry.clone()),
+            );
+            let ordered = reflowed
+                .into_iter()
+                .enumerate()
+                .map(|(index, entry)| (index, entry))
+                .collect::<Vec<_>>();
+            return self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered);
         } else {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
             let target_pos = ordered
@@ -961,6 +990,29 @@ impl GentleEngine {
             let arrangement_id = remaining[idx].1.arrangement_id.clone();
             while idx < remaining.len() && remaining[idx].1.arrangement_id == arrangement_id {
                 idx += 1;
+            }
+        }
+        remaining.len()
+    }
+
+    fn rack_block_insertion_index_after_target(
+        remaining: &[(usize, RackPlacementEntry)],
+        target_index: usize,
+    ) -> usize {
+        let mut idx = 0usize;
+        while idx < remaining.len() {
+            let block_start_index = remaining[idx].0;
+            if target_index < block_start_index {
+                return idx;
+            }
+            let arrangement_id = remaining[idx].1.arrangement_id.clone();
+            let mut block_end_index = block_start_index;
+            while idx < remaining.len() && remaining[idx].1.arrangement_id == arrangement_id {
+                block_end_index = remaining[idx].0;
+                idx += 1;
+            }
+            if target_index <= block_end_index {
+                return idx;
             }
         }
         remaining.len()

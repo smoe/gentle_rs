@@ -7604,6 +7604,29 @@ Error: `{err}`"
         ordered.len()
     }
 
+    fn rack_block_insertion_index_after_target(
+        ordered: &[(usize, crate::engine::RackPlacementEntry)],
+        target_index: usize,
+    ) -> usize {
+        let mut idx = 0usize;
+        while idx < ordered.len() {
+            let block_start_index = ordered[idx].0;
+            if target_index < block_start_index {
+                return idx;
+            }
+            let arrangement_id = ordered[idx].1.arrangement_id.clone();
+            let mut block_end_index = block_start_index;
+            while idx < ordered.len() && ordered[idx].1.arrangement_id == arrangement_id {
+                block_end_index = ordered[idx].0;
+                idx += 1;
+            }
+            if target_index <= block_end_index {
+                return idx;
+            }
+        }
+        ordered.len()
+    }
+
     fn rack_group_insertion_index_within_block(local_to: usize, remaining_len: usize) -> usize {
         local_to.min(remaining_len)
     }
@@ -7690,7 +7713,8 @@ Error: `{err}`"
                 if ordered.len() + block_entries.len() > available_coordinates.len() {
                     return None;
                 }
-                let insertion_index = Self::rack_block_insertion_index(&ordered, to_index);
+                let insertion_index =
+                    Self::rack_block_insertion_index_after_target(&ordered, to_index);
                 for (offset, entry) in block_entries.into_iter().enumerate() {
                     ordered.insert(insertion_index + offset, (insertion_index + offset, entry));
                 }
@@ -24838,42 +24862,46 @@ Error: `{err}`"
         }
 
         let suggested_id = format!("{}_linear", compact_seq);
-        let branch_payload = serde_json::to_string(&Operation::Branch {
-            input: compact_seq.to_string(),
-            output_id: Some(suggested_id.clone()),
-        })
-        .map_err(|e| format!("Could not serialize Branch operation: {e}"))?;
-        let (branch_output, branch_changed) =
-            self.execute_shared_shell_command_json(&ShellCommand::Op {
-                payload: branch_payload,
-            })?;
-        if !branch_changed {
+        let branch_result = {
+            let mut engine = self
+                .engine
+                .write()
+                .map_err(|_| "Engine lock poisoned while branching sequence".to_string())?;
+            engine
+                .apply(Operation::Branch {
+                    input: compact_seq.to_string(),
+                    output_id: Some(suggested_id.clone()),
+                })
+                .map_err(|e| format!("Linearize Vector branch failed: {}", e.message))?
+        };
+        self.lineage_cache_valid = false;
+        if branch_result.created_seq_ids.is_empty() {
             return Err("Linearize Vector branch operation did not change state".to_string());
         }
-        let created_id = branch_output
-            .get("result")
-            .and_then(|value| value.get("created_seq_ids"))
-            .and_then(|value| value.as_array())
-            .and_then(|rows| rows.first())
-            .and_then(|row| row.as_str())
-            .map(|value| value.to_string())
+        let created_id = branch_result
+            .created_seq_ids
+            .first()
+            .cloned()
             .unwrap_or(suggested_id);
 
-        let topo_payload = serde_json::to_string(&Operation::SetTopology {
-            seq_id: created_id.clone(),
-            circular: false,
-        })
-        .map_err(|e| format!("Could not serialize SetTopology operation: {e}"))?;
-        let (_topology_output, topology_changed) =
-            self.execute_shared_shell_command_json(&ShellCommand::Op {
-                payload: topo_payload,
-            })?;
-        if !topology_changed {
-            return Err(format!(
-                "Linearize Vector could not set linear topology for '{}'",
-                created_id
-            ));
+        {
+            let mut engine = self
+                .engine
+                .write()
+                .map_err(|_| "Engine lock poisoned while updating topology".to_string())?;
+            engine
+                .apply(Operation::SetTopology {
+                    seq_id: created_id.clone(),
+                    circular: false,
+                })
+                .map_err(|e| {
+                    format!(
+                        "Linearize Vector could not set linear topology for '{}': {}",
+                        created_id, e.message
+                    )
+                })?;
         }
+        self.lineage_cache_valid = false;
 
         self.routine_assistant_bindings
             .insert(compact_port.to_string(), created_id.clone());
