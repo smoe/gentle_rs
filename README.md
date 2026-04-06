@@ -172,15 +172,15 @@ between overlapping alias names.
 
 ### Rack Placement, Physical Carrier, and 3D Print Path
 
-![GENtle Gibson rack isometric hero](docs/figures/gibson_single_insert_rack_isometric.svg)
+![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg)
 
 The same single-insert Gibson state can now also be projected into one linked
-physical carrier. The figure above is not a screenshot: it is the deterministic
-isometric rack SVG exported from the saved rack draft that the arrangement
-creates automatically. It shows how the semantic lane order becomes one
-physical A1-style carrier with occupied ladder/vector/insert/product positions
-and the same physical template that also drives fabrication SVG, carrier-label,
-and OpenSCAD export.
+physical carrier. The figure above is not a screenshot: it is a README-focused
+hero SVG derived from the deterministic isometric rack export that the saved
+rack draft produces automatically. It keeps the real physical carrier geometry
+and occupied ladder/vector/insert/product positions, but softens the styling so
+the object reads more naturally at a glance. The same shared physical template
+also drives fabrication SVG, carrier-label, and OpenSCAD export.
 
 Regenerate it with:
 
@@ -195,6 +195,10 @@ cargo run --quiet --bin gentle_cli -- \
   rack-1 \
   docs/figures/gibson_single_insert_rack_isometric.svg \
   --template pipetting_pcr_tube_rack
+
+python3 docs/figures/render_rack_isometric_hero.py \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  docs/figures/gibson_single_insert_rack_hero.svg
 ```
 
 The corresponding GUI/CLI tutorial for this export lives in

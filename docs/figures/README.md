@@ -161,6 +161,11 @@ from the saved linked rack draft, not drawn by hand, and shows how the
 arrangement/vector/insert/product story projects into one pseudo-3D wet-lab
 carrier using the shared `pipetting_pcr_tube_rack` physical template.
 
+`gibson_single_insert_rack_hero.svg` is the README-facing presentation variant
+derived from that same technical isometric export. It keeps the real rack
+geometry and occupied positions, but removes most annotation and applies a
+softer, more natural visual treatment for top-level documentation.
+
 Regenerate it from the repository root with:
 
 ```sh
@@ -174,6 +179,10 @@ cargo run --quiet --bin gentle_cli -- \
   rack-1 \
   docs/figures/gibson_single_insert_rack_isometric.svg \
   --template pipetting_pcr_tube_rack
+
+python3 docs/figures/render_rack_isometric_hero.py \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  docs/figures/gibson_single_insert_rack_hero.svg
 ```
 
 `tp53_ensembl116_panel_source.gb` is a synthetic TP53 locus slice whose

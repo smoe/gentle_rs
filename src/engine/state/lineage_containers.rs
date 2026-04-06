@@ -1916,6 +1916,7 @@ impl GentleEngine {
             rack_height_mm,
             edge_margin_mm,
             corner_radius_mm,
+            front_top_clearance_mm,
             front_label_strip_depth_mm,
             front_label_strip_recess_mm,
         ) = match template {
@@ -1930,6 +1931,7 @@ impl GentleEngine {
                 12.0,
                 1.8,
                 1.4,
+                3.0,
                 6.0,
                 0.8,
             ),
@@ -1944,6 +1946,7 @@ impl GentleEngine {
                 18.0,
                 4.0,
                 2.4,
+                5.0,
                 8.0,
                 1.2,
             ),
@@ -1956,10 +1959,10 @@ impl GentleEngine {
                 + profile.columns.saturating_sub(1) as f32 * pitch_x_mm
         };
         let overall_depth_mm = if profile.rows == 0 {
-            front_label_strip_depth_mm
+            front_top_clearance_mm
         } else {
-            front_label_strip_depth_mm
-                + edge_margin_mm * 2.0
+            front_top_clearance_mm
+                + edge_margin_mm
                 + opening_diameter_mm
                 + profile.rows.saturating_sub(1) as f32 * pitch_y_mm
         };
@@ -1978,6 +1981,7 @@ impl GentleEngine {
             rack_height_mm,
             edge_margin_mm,
             corner_radius_mm,
+            front_top_clearance_mm,
             front_label_strip_depth_mm,
             front_label_strip_recess_mm,
             overall_width_mm,
@@ -2002,8 +2006,7 @@ impl GentleEngine {
     ) -> (f32, f32) {
         (
             spec.edge_margin_mm + spec.opening_diameter_mm * 0.5 + column as f32 * spec.pitch_x_mm,
-            spec.front_label_strip_depth_mm
-                + spec.edge_margin_mm
+            spec.front_top_clearance_mm
                 + spec.opening_diameter_mm * 0.5
                 + row as f32 * spec.pitch_y_mm,
         )
@@ -2118,21 +2121,28 @@ impl GentleEngine {
             spec.corner_radius_mm,
             spec.corner_radius_mm
         ));
+        if spec.front_top_clearance_mm > 0.8 {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#e2e8f0\" stroke=\"#94a3b8\" stroke-width=\"0.3\"/>",
+                rack_x + 0.6,
+                rack_y + 0.6,
+                spec.overall_width_mm - 1.2,
+                (spec.front_top_clearance_mm - 1.2).max(0.6),
+            ));
+        }
         svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#e2e8f0\" stroke=\"#94a3b8\" stroke-width=\"0.3\"/><text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"2.7\" fill=\"#334155\">front label strip</text>",
-            rack_x + 0.6,
-            rack_y + 0.6,
-            spec.overall_width_mm - 1.2,
-            spec.front_label_strip_depth_mm - 1.2,
-            rack_x + spec.overall_width_mm * 0.5,
-            rack_y + spec.front_label_strip_depth_mm * 0.65
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"2.6\" fill=\"#334155\">front lip {:.1} mm | front label face {:.1} mm</text>",
+            rack_x + 1.0,
+            rack_y + 3.4,
+            spec.front_top_clearance_mm,
+            spec.front_label_strip_depth_mm
         ));
         for column in 0..spec.columns {
             let (cx, _) = Self::rack_physical_hole_center_mm(spec, 0, column);
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"2.6\" fill=\"#475569\">{}</text>",
                 rack_x + cx,
-                rack_y + spec.front_label_strip_depth_mm + spec.edge_margin_mm - 0.8,
+                rack_y + spec.front_top_clearance_mm - 0.8,
                 column + 1
             ));
         }
@@ -2246,20 +2256,10 @@ impl GentleEngine {
         let (top_fill, front_fill, side_fill, strip_fill, strip_text_fill, edge_stroke) =
             match spec.family {
                 RackPhysicalTemplateFamily::Storage => (
-                    "#f8fafc",
-                    "#e2e8f0",
-                    "#cbd5e1",
-                    "#dbeafe",
-                    "#173042",
-                    "#475569",
+                    "#f8fafc", "#e2e8f0", "#cbd5e1", "#dbeafe", "#173042", "#475569",
                 ),
                 RackPhysicalTemplateFamily::Pipetting => (
-                    "#e7f6f2",
-                    "#b8dfd5",
-                    "#8ecaba",
-                    "#0f766e",
-                    "#f8fafc",
-                    "#115e59",
+                    "#e7f6f2", "#b8dfd5", "#8ecaba", "#0f766e", "#f8fafc", "#115e59",
                 ),
             };
         let skew_x = 0.48;
@@ -2274,10 +2274,7 @@ impl GentleEngine {
             top_left_x + spec.overall_depth_mm * skew_x,
             top_left_y - spec.overall_depth_mm * skew_y,
         );
-        let top_back_right = (
-            top_back_left.0 + spec.overall_width_mm,
-            top_back_left.1,
-        );
+        let top_back_right = (top_back_left.0 + spec.overall_width_mm, top_back_left.1);
         let front_bottom_left = (
             top_front_left.0,
             top_front_left.1 + spec.rack_height_mm * height_scale,
@@ -2290,7 +2287,11 @@ impl GentleEngine {
             top_back_right.0,
             top_back_right.1 + spec.rack_height_mm * height_scale,
         );
-        let legend_width = if arrangement_legend.is_empty() { 0.0 } else { 70.0 };
+        let legend_width = if arrangement_legend.is_empty() {
+            0.0
+        } else {
+            70.0
+        };
         let svg_width = top_back_right.0 + margin + legend_width;
         let svg_height = front_bottom_left.1 + margin + 16.0;
         let occupied_count = placements.len();
@@ -2304,13 +2305,14 @@ impl GentleEngine {
         };
 
         let mut svg = format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-isometric-template=\"{}\" data-rack-id=\"{}\">",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-isometric-template=\"{}\" data-rack-id=\"{}\" data-rack-front-top-clearance-mm=\"{:.1}\">",
             svg_width,
             svg_height,
             svg_width,
             svg_height,
             spec.kind.as_str(),
-            Self::xml_escape(&rack.rack_id)
+            Self::xml_escape(&rack.rack_id),
+            spec.front_top_clearance_mm
         );
         svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
         svg.push_str(&format!(
@@ -2464,6 +2466,10 @@ impl GentleEngine {
                     let cap_rx = hole_rx * 0.84;
                     let cap_ry = hole_ry * 0.92;
                     let cap_top_y = y - cap_height;
+                    let shell_left_x = x - cap_rx;
+                    let shell_right_x = x + cap_rx;
+                    let shell_interface_y = y - cap_ry * 0.06;
+                    let shell_curve_y = y + cap_ry * 0.88;
                     svg.push_str(&format!(
                         "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#0f172a\" fill-opacity=\"0.12\"/>",
                         x,
@@ -2472,12 +2478,28 @@ impl GentleEngine {
                         cap_ry
                     ));
                     svg.push_str(&format!(
-                        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.92\"/>",
-                        x - cap_rx,
+                        "<path data-rack-tube-shell=\"1\" d=\"M {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Z\" fill=\"{}\" fill-opacity=\"0.92\"/>",
+                        shell_left_x,
                         cap_top_y,
-                        cap_rx * 2.0,
-                        cap_height,
+                        shell_left_x,
+                        shell_interface_y,
+                        x,
+                        shell_curve_y,
+                        shell_right_x,
+                        shell_interface_y,
+                        shell_right_x,
+                        cap_top_y,
                         fill
+                    ));
+                    svg.push_str(&format!(
+                        "<path data-rack-tube-interface=\"1\" d=\"M {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2}\" fill=\"none\" stroke=\"{}\" stroke-opacity=\"0.35\" stroke-width=\"0.28\" stroke-linecap=\"round\"/>",
+                        shell_left_x,
+                        shell_interface_y,
+                        x,
+                        shell_curve_y,
+                        shell_right_x,
+                        shell_interface_y,
+                        stroke
                     ));
                     svg.push_str(&format!(
                         "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.25\"/>",
@@ -2626,7 +2648,7 @@ impl GentleEngine {
             .cloned()
             .collect::<HashSet<_>>();
         let mut scad = format!(
-            "// GENtle rack OpenSCAD export\n// rack_id={}\n// template={}\n// family={}\n// format={}\n$fn = 56;\n\nouter_width = {:.3};\nouter_depth = {:.3};\nrack_height = {:.3};\nopening_diameter = {:.3};\nfloor_thickness = {:.3};\nfront_label_strip_depth = {:.3};\nfront_label_strip_recess = {:.3};\ncorner_radius = {:.3};\n\nmodule gentle_rack() {{\n    difference() {{\n        cube([outer_width, outer_depth, rack_height], false);\n",
+            "// GENtle rack OpenSCAD export\n// rack_id={}\n// template={}\n// family={}\n// format={}\n$fn = 56;\n\nouter_width = {:.3};\nouter_depth = {:.3};\nrack_height = {:.3};\nopening_diameter = {:.3};\nfloor_thickness = {:.3};\nfront_top_clearance = {:.3};\nfront_label_strip_depth = {:.3};\nfront_label_strip_recess = {:.3};\ncorner_radius = {:.3};\n\nmodule gentle_rack() {{\n    difference() {{\n        cube([outer_width, outer_depth, rack_height], false);\n",
             rack.rack_id,
             spec.kind.as_str(),
             spec.family.as_str(),
@@ -2636,6 +2658,7 @@ impl GentleEngine {
             spec.rack_height_mm,
             spec.opening_diameter_mm,
             spec.floor_thickness_mm,
+            spec.front_top_clearance_mm,
             spec.front_label_strip_depth_mm,
             spec.front_label_strip_recess_mm,
             spec.corner_radius_mm
@@ -2658,7 +2681,7 @@ impl GentleEngine {
             spec.outer_wall_mm * 0.5,
             0.8,
             (spec.overall_width_mm - spec.outer_wall_mm).max(0.0),
-            (spec.front_label_strip_depth_mm - 1.6).max(0.0)
+            (spec.front_top_clearance_mm - 1.6).max(0.0)
         ));
         scad.push_str("    }\n}\n\ngentle_rack();\n");
         fs::write(path, scad).map_err(|e| EngineError {

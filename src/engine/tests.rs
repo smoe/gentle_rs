@@ -7272,7 +7272,7 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
     let fabrication_svg = fs::read_to_string(&fabrication_path).expect("read fabrication svg");
     assert!(fabrication_svg.contains("data-rack-physical-template=\"storage_pcr_tube_rack\""));
     assert!(fabrication_svg.contains("GENtle rack fabrication sketch"));
-    assert!(fabrication_svg.contains("front label strip"));
+    assert!(fabrication_svg.contains("front lip 3.0 mm | front label face 6.0 mm"));
 
     let isometric_path = temp.path().join("rack.isometric.svg");
     engine
@@ -7284,8 +7284,11 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
         .expect("isometric export");
     let isometric_svg = fs::read_to_string(&isometric_path).expect("read isometric svg");
     assert!(isometric_svg.contains("data-rack-isometric-template=\"pipetting_pcr_tube_rack\""));
+    assert!(isometric_svg.contains("data-rack-front-top-clearance-mm=\"5.0\""));
     assert!(isometric_svg.contains("GENtle rack isometric sketch"));
     assert!(isometric_svg.contains("Occupancy"));
+    assert!(isometric_svg.contains("data-rack-tube-shell=\"1\""));
+    assert!(isometric_svg.contains("data-rack-tube-interface=\"1\""));
 
     let scad_path = temp.path().join("rack.scad");
     engine
@@ -7299,6 +7302,7 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
     assert!(scad.contains("template=pipetting_pcr_tube_rack"));
     assert!(scad.contains("module gentle_rack()"));
     assert!(scad.contains("opening_diameter"));
+    assert!(scad.contains("front_top_clearance = 5.000;"));
 }
 
 #[test]
