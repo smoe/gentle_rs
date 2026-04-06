@@ -13101,6 +13101,142 @@ fn execute_macros_template_run_command(
     }
 }
 
+#[inline(never)]
+fn execute_macros_template_registry_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::MacrosTemplateList => {
+            let templates = engine.list_workflow_macro_templates();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.workflow_macro_templates.v1",
+                    "template_count": templates.len(),
+                    "templates": templates
+                }),
+            })
+        }
+        ShellCommand::MacrosTemplateShow { name } => {
+            let template = engine
+                .get_workflow_macro_template(name)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "template": template
+                }),
+            })
+        }
+        ShellCommand::MacrosTemplateUpsert {
+            name,
+            description,
+            details_url,
+            parameters,
+            input_ports,
+            output_ports,
+            script,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let loaded_script = load_workflow_macro_script(script)?;
+            let op_result = engine
+                .apply(Operation::UpsertWorkflowMacroTemplate {
+                    name: name.clone(),
+                    description: description.clone(),
+                    details_url: details_url.clone(),
+                    parameters: parameters.clone(),
+                    input_ports: input_ports.clone(),
+                    output_ports: output_ports.clone(),
+                    script: loaded_script.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "description": description,
+                    "details_url": details_url,
+                    "parameter_count": parameters.len(),
+                    "input_port_count": input_ports.len(),
+                    "output_port_count": output_ports.len(),
+                    "script_length": loaded_script.len(),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::MacrosTemplateDelete { name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteWorkflowMacroTemplate { name: name.clone() })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::MacrosTemplateImport { path } => {
+            let (templates, source_files) = load_cloning_pattern_templates_from_path(path)?;
+            let before = engine.state().clone();
+            let mut imported_names: Vec<String> = vec![];
+            for template in &templates {
+                let script = load_workflow_macro_script(&template.script)?;
+                let op = Operation::UpsertWorkflowMacroTemplate {
+                    name: template.name.clone(),
+                    description: template.description.clone(),
+                    details_url: template.details_url.clone(),
+                    parameters: template.parameters.clone(),
+                    input_ports: template.input_ports.clone(),
+                    output_ports: template.output_ports.clone(),
+                    script,
+                };
+                if let Err(err) = engine.apply(op) {
+                    *engine.state_mut() = before;
+                    return Err(format!(
+                        "Failed to import template '{}' from '{}': {}",
+                        template.name, path, err.message
+                    ));
+                }
+                imported_names.push(template.name.clone());
+            }
+            imported_names.sort();
+            imported_names.dedup();
+            Ok(ShellRunResult {
+                state_changed: !imported_names.is_empty(),
+                output: json!({
+                    "schema": CLONING_PATTERN_FILE_SCHEMA,
+                    "path": path,
+                    "source_files": source_files,
+                    "imported_count": imported_names.len(),
+                    "templates": imported_names,
+                }),
+            })
+        }
+        _ => unreachable!("non-macro-template command passed to macro-template registry helper"),
+    }
+}
+
 fn execute_candidates_template_run_command(
     engine: &mut GentleEngine,
     name: &str,
@@ -13119,6 +13255,297 @@ fn execute_candidates_template_run_command(
         "run": run.output
     });
     Ok(run)
+}
+
+#[inline(never)]
+fn execute_candidates_template_registry_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::CandidatesTemplateList => {
+            let templates = engine.list_candidate_macro_templates();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.candidate_macro_templates.v1",
+                    "template_count": templates.len(),
+                    "templates": templates
+                }),
+            })
+        }
+        ShellCommand::CandidatesTemplateShow { name } => {
+            let template = engine
+                .get_candidate_macro_template(name)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "template": template
+                }),
+            })
+        }
+        ShellCommand::CandidatesTemplateUpsert {
+            name,
+            description,
+            details_url,
+            parameters,
+            script,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let loaded_script = load_candidates_macro_script(script)?;
+            let op_result = engine
+                .apply(Operation::UpsertCandidateMacroTemplate {
+                    name: name.clone(),
+                    description: description.clone(),
+                    details_url: details_url.clone(),
+                    parameters: parameters.clone(),
+                    script: loaded_script.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "description": description,
+                    "details_url": details_url,
+                    "parameter_count": parameters.len(),
+                    "script_length": loaded_script.len(),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesTemplateDelete { name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteCandidateMacroTemplate { name: name.clone() })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "result": op_result
+                }),
+            })
+        }
+        _ => unreachable!(
+            "non-candidate-template command passed to candidate-template registry helper"
+        ),
+    }
+}
+
+#[inline(never)]
+fn execute_candidates_materialization_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::CandidatesGenerate {
+            set_name,
+            seq_id,
+            length_bp,
+            step_bp,
+            feature_kinds,
+            feature_label_regex,
+            max_distance_bp,
+            feature_geometry_mode,
+            feature_boundary_mode,
+            feature_strand_relation,
+            limit,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::GenerateCandidateSet {
+                    set_name: set_name.clone(),
+                    seq_id: seq_id.clone(),
+                    length_bp: *length_bp,
+                    step_bp: *step_bp,
+                    feature_kinds: feature_kinds.clone(),
+                    feature_label_regex: feature_label_regex.clone(),
+                    max_distance_bp: *max_distance_bp,
+                    feature_geometry_mode: *feature_geometry_mode,
+                    feature_boundary_mode: *feature_boundary_mode,
+                    feature_strand_relation: *feature_strand_relation,
+                    limit: Some(*limit),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "seq_id": seq_id,
+                    "feature_geometry_mode": feature_geometry_mode.map(|mode| mode.as_str()),
+                    "feature_boundary_mode": feature_boundary_mode.map(|mode| mode.as_str()),
+                    "feature_strand_relation": feature_strand_relation.map(|mode| mode.as_str()),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesGenerateBetweenAnchors {
+            set_name,
+            seq_id,
+            anchor_a,
+            anchor_b,
+            length_bp,
+            step_bp,
+            limit,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::GenerateCandidateSetBetweenAnchors {
+                    set_name: set_name.clone(),
+                    seq_id: seq_id.clone(),
+                    anchor_a: anchor_a.clone(),
+                    anchor_b: anchor_b.clone(),
+                    length_bp: *length_bp,
+                    step_bp: *step_bp,
+                    limit: Some(*limit),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "seq_id": seq_id,
+                    "anchor_a": anchor_a,
+                    "anchor_b": anchor_b,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesFilter {
+            input_set,
+            output_set,
+            metric,
+            min,
+            max,
+            min_quantile,
+            max_quantile,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::FilterCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    metric: metric.clone(),
+                    min: *min,
+                    max: *max,
+                    min_quantile: *min_quantile,
+                    max_quantile: *max_quantile,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "metric": metric,
+                    "min_quantile": min_quantile,
+                    "max_quantile": max_quantile,
+                    "result": op_result
+                }),
+            })
+        }
+        _ => unreachable!("non-candidate materialization command passed to candidate helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_op_command(
+    engine: &mut GentleEngine,
+    payload: &str,
+) -> Result<ShellRunResult, String> {
+    let json_text = parse_json_payload(payload)?;
+    let op: Operation =
+        serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
+    let before_state = serde_json::to_value(engine.snapshot()).ok();
+    let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+    let state_changed = if let Some(before) = before_state {
+        serde_json::to_value(engine.snapshot())
+            .map(|after| after != before)
+            .unwrap_or_else(|_| {
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty()
+            })
+    } else {
+        !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty()
+    };
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({ "result": op_result }),
+    })
+}
+
+#[inline(never)]
+fn execute_workflow_command(
+    engine: &mut GentleEngine,
+    payload: &str,
+) -> Result<ShellRunResult, String> {
+    let json_text = parse_json_payload(payload)?;
+    let workflow = parse_workflow_json_payload(&json_text)?;
+    let before_state = serde_json::to_value(engine.snapshot()).ok();
+    let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
+    let state_changed = if let Some(before) = before_state {
+        serde_json::to_value(engine.snapshot())
+            .map(|after| after != before)
+            .unwrap_or_else(|_| {
+                results
+                    .iter()
+                    .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
+            })
+    } else {
+        results
+            .iter()
+            .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
+    };
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({ "results": results }),
+    })
 }
 
 // Keep the prepared-reference query handlers out of the monolithic shell
@@ -13422,6 +13849,39 @@ pub fn execute_shell_command_with_options(
             *transactional,
             options,
         );
+    }
+    if matches!(
+        command,
+        ShellCommand::MacrosTemplateList
+            | ShellCommand::MacrosTemplateShow { .. }
+            | ShellCommand::MacrosTemplateUpsert { .. }
+            | ShellCommand::MacrosTemplateDelete { .. }
+            | ShellCommand::MacrosTemplateImport { .. }
+    ) {
+        return execute_macros_template_registry_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::CandidatesTemplateList
+            | ShellCommand::CandidatesTemplateShow { .. }
+            | ShellCommand::CandidatesTemplateUpsert { .. }
+            | ShellCommand::CandidatesTemplateDelete { .. }
+    ) {
+        return execute_candidates_template_registry_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::CandidatesGenerate { .. }
+            | ShellCommand::CandidatesGenerateBetweenAnchors { .. }
+            | ShellCommand::CandidatesFilter { .. }
+    ) {
+        return execute_candidates_materialization_command(engine, command);
+    }
+    if let ShellCommand::Op { payload } = command {
+        return execute_op_command(engine, payload);
+    }
+    if let ShellCommand::Workflow { payload } = command {
+        return execute_workflow_command(engine, payload);
     }
     if let ShellCommand::UiIntent {
         action,
@@ -18530,50 +18990,8 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::Op { payload } => {
-            let json_text = parse_json_payload(payload)?;
-            let op: Operation = serde_json::from_str(&json_text)
-                .map_err(|e| format!("Invalid operation JSON: {e}"))?;
-            let before_state = serde_json::to_value(engine.snapshot()).ok();
-            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
-            let state_changed = if let Some(before) = before_state {
-                serde_json::to_value(engine.snapshot())
-                    .map(|after| after != before)
-                    .unwrap_or_else(|_| {
-                        !op_result.created_seq_ids.is_empty()
-                            || !op_result.changed_seq_ids.is_empty()
-                    })
-            } else {
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty()
-            };
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::Workflow { payload } => {
-            let json_text = parse_json_payload(payload)?;
-            let workflow = parse_workflow_json_payload(&json_text)?;
-            let before_state = serde_json::to_value(engine.snapshot()).ok();
-            let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
-            let state_changed = if let Some(before) = before_state {
-                serde_json::to_value(engine.snapshot())
-                    .map(|after| after != before)
-                    .unwrap_or_else(|_| {
-                        results
-                            .iter()
-                            .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
-                    })
-            } else {
-                results
-                    .iter()
-                    .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
-            };
-            ShellRunResult {
-                state_changed,
-                output: json!({ "results": results }),
-            }
-        }
+        ShellCommand::Op { payload } => execute_op_command(engine, payload)?,
+        ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
     };
     Ok(result)
 }
