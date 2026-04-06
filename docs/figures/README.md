@@ -285,23 +285,63 @@ cargo run --quiet --bin gentle_cli -- \
 ```
 
 `vkorc1_rs9923231_luciferase_hero.svg` is the complementary community-facing
-hero figure for the same story. It is now a hybrid asset:
+figure for the same story. It is now a hybrid asset:
 
-- the left panel is a hand-authored editorial explainer for the reverse-strand
-  locus logic
+- the left panel is a hand-authored editorial explainer for the upstream
+  promoter-selection logic
 - the right panel is a real circular DNA-window export from
   `vkorc1_rs9923231_luciferase_construct.svg`, now embedded inline so the hero
   SVG stays self-contained in viewers that do not resolve external image refs
 
-Its job is to show, in one panel, that:
+Its honest job is not to claim that the direct molecular effect of
+`rs9923231` is already known. Its job is to show one plausible
+question-to-assay bridge:
 
-- `VKORC1` must be read on the reverse strand
-- the study fragment should be a TSS-centered reverse-strand `VKORC1` promoter
-  window that keeps `rs9923231` inside the insert rather than on its edge
-- matched reporter builds differ only at the SNP allele
-- that fragment is placed upstream of luciferase for the follow-up assay
+- the biological question can be framed as: how do we learn more about the
+  direct molecular effect of the warfarin-response SNP `rs9923231`?
+- because `rs9923231` lies upstream of `VKORC1`, one plausible hypothesis is a
+  direct effect on expression of that gene
+- one plausible ClawBio/agent-suggested answer is therefore to compare matched
+  `VKORC1` promoter->indicator-gene reporters
+- the study fragment should be a TSS-centered `VKORC1` promoter window that
+  keeps `rs9923231` inside the insert rather than on its edge
+- that fragment is then placed upstream of luciferase for the follow-up assay
 
-Use that SVG as the luciferase showcase opener for the ClawBio handoff story.
+ClawBio's role in this story is not to claim that it already knows the direct
+molecular effect. Its value is that it can help answer a complicated question
+with a tractable experimental next step:
+
+- ClawBio carries the pharmacogenomic alert context and helps propose the
+  promoter->luciferase follow-up
+- GENtle provides the explicit deterministic operations, figure exports,
+  tutorials, workflows, and online help that let that assay design be reviewed
+  and executed rather than hidden inside free-form prompting
+- put differently: GENtle describes its own capabilities clearly enough that
+  ClawBio can bridge into them instead of improvising the cloning logic
+
+For slide decks and similar communication assets, prefer the reduced left
+cartoon derived from the hero figure together with the standalone construct
+export:
+
+- left panel: `docs/figures/vkorc1_rs9923231_luciferase_left_cartoon.svg`
+  (and matching `.png` / `.pdf`), extracted from the hand-authored left hero
+  panel so the locus cartoon can stand alone without the surrounding hero-card
+  frame
+- right panel: `docs/figures/vkorc1_rs9923231_luciferase_construct.png`
+  or `.svg` / `.pdf` directly, without any surrounding hero card
+  The standalone construct export now carries larger `Insert` and
+  `Luciferase` callouts so it reads more clearly in slide contexts.
+
+Keep the raw source figures as supporting evidence assets:
+
+- `docs/figures/vkorc1_rs9923231_context_map.png`
+- `docs/figures/vkorc1_rs9923231_luciferase_construct.png`
+
+The raw context export is still useful for documentation and provenance. For
+talks, the extracted left cartoon reads more clearly, while the right
+standalone construct export keeps the biology explicit without the extra
+hero-frame.
+
 Keep the existing TP73 tutorial for GUI/CLI parity walkthroughs and detailed
 stepwise testing.
 
@@ -313,10 +353,10 @@ hero image:
 - raster derivative for slides/docs:
   `docs/figures/vkorc1_rs9923231_luciferase_hero.png`
 - role in the story:
-  show the handoff from a ClawBio pharmacogenomic alert into a GENtle-guided
-  functional-study design, with the left panel explaining the reverse-strand
-  `VKORC1` promoter interval and the right panel showing the luciferase
-  construct context
+  show the bridge from a complicated pharmacogenomic question into a
+  GENtle-guided follow-up assay design, with the left panel explaining the
+  reverse-strand `VKORC1` promoter interval and the right panel showing the
+  luciferase construct context
 
 `vkorc1_rs9923231_luciferase_construct.gb` is the synthetic source used to get
 that real circular export style without requiring a live luciferase-cloning
@@ -342,15 +382,17 @@ markers clearly.
 ## Planned VKORC1/rs9923231 PGx-Alert-to-Construct Showcase
 
 The next README/community-facing showcase should be a
-**VKORC1/rs9923231 pharmacogenomic-alert-to-study-construct** story aligned with the
+**VKORC1/rs9923231 question-to-assay-design** story aligned with the
 ClawBio/OpenClaw handoff model:
 
-- ClawBio identifies the warfarin-associated `rs9923231` alert in one genome
+- ClawBio starts from the complicated warfarin/`rs9923231` question and helps
+  bridge it to one plausible follow-up assay idea
 - GENtle retrieves the relevant `VKORC1` context, derives allele-specific
   upstream regulatory fragments, and plans luciferase reporter constructs
 - the run yields both explanation figures and a reproducibility bundle
-- the baseline claim is allele-specific promoter activity; any warfarin
-  treatment arm is a later extension, not the first assay claim
+- the baseline claim is not that the molecular mechanism is already known, but
+  that allele-specific promoter activity is a reasonable first functional
+  follow-up to test; any warfarin treatment arm is a later extension
 - one later extension can borrow the warfarin/Factor X theme more directly:
   keep a `factor Xa` recognition site in the construct, but place it between
   reporter/indicator modules rather than in a purification-first GST layout, so
@@ -360,7 +402,7 @@ ClawBio/OpenClaw handoff model:
   the same assay logic should move into an appropriate mammalian/viral
   expression backbone rather than stay in `pGEX`
 - the opening visual should look like a real ClawBio handoff:
-  an alert/report card first, then a construct-design explanation
+  a hard question first, then a concrete assay-design explanation
 
 The intended asset set is:
 

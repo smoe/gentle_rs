@@ -94,21 +94,6 @@
       "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export."
     },
     {
-      "id": "agent_interfaces",
-      "title": "GENtle Agent Interfaces Tutorial",
-      "path": "docs/agent_interfaces_tutorial.md",
-      "type": "operational_reference",
-      "status": "manual/reference",
-      "source": "hand_written_markdown",
-      "audiences": [
-        "agent_users",
-        "cli_first",
-        "mcp_users",
-        "contributors"
-      ],
-      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
-    },
-    {
       "id": "sequencing_confirmation_trace_cli",
       "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
       "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
@@ -163,6 +148,21 @@
         "gui_first"
       ],
       "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
+    },
+    {
+      "id": "agent_interfaces",
+      "title": "GENtle Agent Interfaces Tutorial",
+      "path": "docs/agent_interfaces_tutorial.md",
+      "type": "operational_reference",
+      "status": "manual/reference",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "agent_users",
+        "cli_first",
+        "mcp_users",
+        "contributors"
+      ],
+      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
     }
   ]
 }
