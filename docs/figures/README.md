@@ -10,7 +10,7 @@ structure in text-native form.
 `gibson_two_fragment_protocol_cartoon.svg` is a deterministic render of the
 built-in protocol cartoon `gibson.two_fragment`.
 
-Regenerate it from the repository root with:
+Regenerate these rack/gel companion figures from the repository root with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -166,6 +166,22 @@ derived from that same technical isometric export. It keeps the real rack
 geometry and occupied positions, but removes most annotation and applies a
 softer, more natural visual treatment for top-level documentation.
 
+`gibson_single_insert_arrangement_gel.svg` is the matching README gel export
+for the same single-insert Gibson baseline. For presentation, it intentionally
+reorders the same saved samples as `insert -> vector -> product` so the insert
+sits immediately beside the finer ladder and the vector/product comparison
+reads more directly. It also uses an asymmetric ladder pair so the small insert
+is easier to size while the vector/product bands still have a broader
+reference:
+
+- left ladder: `GeneRuler 100bp DNA Ladder Plus`
+- right ladder: `Plasmid Factory 1kb DNA Ladder`
+
+`gibson_single_insert_arrangement_gel_hero.svg` is the README-facing
+presentation variant of that gel. It keeps the real lane/band geometry from the
+shared serial-gel export, but simplifies the header and lane labels so the rack
+and gel story can be read together at a glance.
+
 Regenerate it from the repository root with:
 
 ```sh
@@ -183,6 +199,19 @@ cargo run --quiet --bin gentle_cli -- \
 python3 docs/figures/render_rack_isometric_hero.py \
   docs/figures/gibson_single_insert_rack_isometric.svg \
   docs/figures/gibson_single_insert_rack_hero.svg
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  render-pool-gel-svg \
+  - \
+  docs/figures/gibson_single_insert_arrangement_gel.svg \
+  --containers container-2,container-1,container-5 \
+  --ladders "GeneRuler 100bp DNA Ladder Plus,Plasmid Factory 1kb DNA Ladder"
+
+python3 docs/figures/render_serial_gel_hero.py \
+  docs/figures/gibson_single_insert_arrangement_gel.svg \
+  docs/figures/gibson_single_insert_arrangement_gel_hero.svg \
+  "100 bp ladder" insert vector product "1 kb ladder"
 ```
 
 `tp53_ensembl116_panel_source.gb` is a synthetic TP53 locus slice whose

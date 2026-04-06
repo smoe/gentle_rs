@@ -1,0 +1,142 @@
+<svg height="760" viewBox="0 0 1040 760" width="1040" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#f9fafb" height="760" width="1040" x="0" y="0"/>
+<rect fill="#111315" height="560" rx="10" ry="10" width="680" x="90" y="90"/>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="118.27615" y2="118.27615"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="122.27615">
+10000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="142.32532" y2="142.32532"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="146.32532">
+8000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="173.33008" y2="173.33008"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="177.33008">
+6000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="192.97968" y2="192.97968"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="196.97968">
+5000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="217.02884" y2="217.02884"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="221.02884">
+4000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="248.03363" y2="248.03363"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="252.03363">
+3000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="267.68323" y2="267.68323"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="271.68323">
+2500 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="291.7324" y2="291.7324"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="295.7324">
+2000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="322.73715" y2="322.73715"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="326.73715">
+1500 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="346.78632" y2="346.78632"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="350.78632">
+1200 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="366.4359" y2="366.4359"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="370.4359">
+1000 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="390.48508" y2="390.48508"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="394.48508">
+800 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="421.48984" y2="421.48984"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="425.48984">
+600 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="441.13943" y2="441.13943"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="445.13943">
+500 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="465.1886" y2="465.1886"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="469.1886">
+400 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="496.1934" y2="496.1934"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="500.1934">
+300 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="539.89215" y2="539.89215"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="543.89215">
+200 bp
+</text>
+<line stroke="#2d3238" stroke-width="1" x1="90" x2="770" y1="614.59564" y2="614.59564"/>
+<text fill="#374151" font-family="monospace" font-size="12" x="782" y="618.59564">
+100 bp
+</text>
+<rect fill="#1a2028" height="540" rx="6" ry="6" width="68" x="169.33334" y="100"/>
+<text fill="#0f172a" font-family="monospace" font-size="13" text-anchor="middle" x="203.33334" y="676">
+GeneRuler 100bp DNA Ladder Plus
+</text>
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="252.44444"/>
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="293.95825"/>
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="323.41278"/>
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="178.33334" y="345.44702"/>
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="364.94226"/>
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="375.72964"/>
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="387.78894"/>
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="401.46063"/>
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="178.33334" y="416.41534"/>
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="435.8637"/>
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="458.71042"/>
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="488.16495"/>
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="529.6788"/>
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="185.71335" y="600.89087"/>
+<rect fill="#1f252e" height="540" rx="6" ry="6" width="68" x="282.6667" y="100"/>
+<text fill="#0f172a" font-family="monospace" font-size="13" text-anchor="middle" x="316.6667" y="676">
+Imported sequence
+</text>
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="290.22668" y="482.78387"/>
+<text fill="#111827" font-family="monospace" font-size="11" x="360.6667" y="489.21387">
+314 bp
+</text>
+<rect fill="#1f252e" height="540" rx="6" ry="6" width="68" x="396" y="100"/>
+<text fill="#0f172a" font-family="monospace" font-size="13" text-anchor="middle" x="430" y="676">
+Imported sequence
+</text>
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="403.56" y="200.38837"/>
+<text fill="#111827" font-family="monospace" font-size="11" x="474" y="206.81836">
+4952 bp
+</text>
+<rect fill="#1f252e" height="540" rx="6" ry="6" width="68" x="509.33337" y="100"/>
+<text fill="#0f172a" font-family="monospace" font-size="13" text-anchor="middle" x="543.3334" y="676">
+Gibson assembled product: gibson_destination_pgex + gibson_insert_demo
+</text>
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="516.8934" y="194.09373"/>
+<text fill="#111827" font-family="monospace" font-size="11" x="587.3334" y="200.52373">
+5266 bp
+</text>
+<rect fill="#1a2028" height="540" rx="6" ry="6" width="68" x="622.6667" y="100"/>
+<text fill="#0f172a" font-family="monospace" font-size="13" text-anchor="middle" x="656.6667" y="676">
+Plasmid Factory 1kb DNA Ladder
+</text>
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="631.6667" y="128.36235"/>
+<rect fill="#e5e7eb" height="4.375" opacity="0.855" rx="2" ry="2" width="45.5" x="633.9167" y="151.52156"/>
+<rect fill="#e5e7eb" height="4.048913" opacity="0.7793478" rx="2" ry="2" width="43.152172" x="635.0906" y="181.13911"/>
+<rect fill="#e5e7eb" height="3.75" opacity="0.71" rx="2" ry="2" width="41" x="636.1667" y="199.9557"/>
+<rect fill="#e5e7eb" height="3.451087" opacity="0.6406522" rx="2" ry="2" width="38.847824" x="637.2428" y="222.95186"/>
+<rect fill="#e5e7eb" height="3.2880435" opacity="0.60282606" rx="2" ry="2" width="37.673912" x="637.8297" y="252.48792"/>
+<rect fill="#e5e7eb" height="3.125" opacity="0.565" rx="2" ry="2" width="36.5" x="638.4167" y="271.23657"/>
+<rect fill="#e5e7eb" height="2.9619565" opacity="0.5271739" rx="2" ry="2" width="35.326088" x="639.00366" y="294.16476"/>
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="323.62527"/>
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="365.13913"/>
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="436.10745"/>
+<text fill="#0f172a" font-family="monospace" font-size="16" x="90" y="42">
+Serial Gel Preview (3 sample lane(s), 3 member(s)) | ladders: GeneRuler 100bp DNA Ladder Plus + Plasmid Factory 1kb DNA Ladder
+</text>
+<text fill="#334155" font-family="monospace" font-size="12" x="90" y="62">
+range 72..13000 bp | lanes: 5
+</text>
+<line opacity="0.25" stroke="#f59e0b" stroke-width="1.5" x1="316.6667" x2="316.6667" y1="90" y2="650"/>
+<line opacity="0.25" stroke="#f59e0b" stroke-width="1.5" x1="430" x2="430" y1="90" y2="650"/>
+<line opacity="0.25" stroke="#f59e0b" stroke-width="1.5" x1="543.3334" x2="543.3334" y1="90" y2="650"/>
+</svg>

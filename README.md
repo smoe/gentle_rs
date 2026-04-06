@@ -170,19 +170,34 @@ The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose
 between overlapping alias names.
 
-### Rack Placement, Physical Carrier, and 3D Print Path
+### Rack Placement, Gel Readout, and 3D Print Path
 
-![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg)
+| Linked physical carrier | README gel readout |
+| --- | --- |
+| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
 
 The same single-insert Gibson state can now also be projected into one linked
-physical carrier. The figure above is not a screenshot: it is a README-focused
-hero SVG derived from the deterministic isometric rack export that the saved
-rack draft produces automatically. It keeps the real physical carrier geometry
-and occupied ladder/vector/insert/product positions, but softens the styling so
-the object reads more naturally at a glance. The same shared physical template
-also drives fabrication SVG, carrier-label, and OpenSCAD export.
+physical carrier and one linked analytical readout. The rack hero is not a
+screenshot: it is a README-focused SVG derived from the deterministic isometric
+rack export that the saved rack draft produces automatically. Its restored
+legend keeps the link back to the cloning experiment visible again:
+`Gibson arrangement` plus `DNA ladder`.
 
-Regenerate it with:
+The gel companion is generated from the same saved Gibson state, but the README
+version uses a deliberate analytical lane order: `insert -> vector -> product`.
+That puts the insert directly next to the finer `100 bp` ladder on the left,
+while the heavier vector and assembled-product bands sit next to each other for
+a more immediate before/after size comparison. A broader `1 kb` ladder on the
+right still keeps the larger plasmid-sized bands grounded, and the hero now
+restores side size annotations so the band scale stays legible without bringing
+back the full technical audit view. Taken together, the two figures make it
+much clearer why the rack placement and gel readout belong together even though
+the wet-lab carrier and analytical lane order are not the same thing.
+
+The same shared physical template and arrangement state also drive fabrication
+SVG, carrier-label, and OpenSCAD export.
+
+Regenerate them with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -199,6 +214,19 @@ cargo run --quiet --bin gentle_cli -- \
 python3 docs/figures/render_rack_isometric_hero.py \
   docs/figures/gibson_single_insert_rack_isometric.svg \
   docs/figures/gibson_single_insert_rack_hero.svg
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  render-pool-gel-svg \
+  - \
+  docs/figures/gibson_single_insert_arrangement_gel.svg \
+  --containers container-2,container-1,container-5 \
+  --ladders "GeneRuler 100bp DNA Ladder Plus,Plasmid Factory 1kb DNA Ladder"
+
+python3 docs/figures/render_serial_gel_hero.py \
+  docs/figures/gibson_single_insert_arrangement_gel.svg \
+  docs/figures/gibson_single_insert_arrangement_gel_hero.svg \
+  "100 bp ladder" insert vector product "1 kb ladder"
 ```
 
 The corresponding GUI/CLI tutorial for this export lives in

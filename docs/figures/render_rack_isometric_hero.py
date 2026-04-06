@@ -105,6 +105,7 @@ def main() -> int:
 
     legend_start = None
     legend_end = None
+    legend_items: list[tuple[str, str]] = []
     for idx, child in enumerate(list(root)):
         if child.tag == qname("text") and "".join(child.itertext()).strip() == "Occupancy":
             legend_start = idx
@@ -118,6 +119,18 @@ def main() -> int:
                 if text.startswith("template="):
                     legend_end = idx
                     break
+        block = list(root)[legend_start:legend_end]
+        pending_color: str | None = None
+        for child in block:
+            if child.tag == qname("rect"):
+                fill = child.get("fill")
+                if fill and fill.startswith("#"):
+                    pending_color = fill
+            elif child.tag == qname("text") and pending_color:
+                text = "".join(child.itertext()).strip()
+                if text and text != "Occupancy":
+                    legend_items.append((pending_color, text))
+                    pending_color = None
         for child in list(root)[legend_start:legend_end]:
             root.remove(child)
 
@@ -320,6 +333,51 @@ def main() -> int:
         "stroke-linecap": "round",
     })
     root.insert(2, highlight)
+
+    if legend_items:
+        pill_y = front_bottom_left[1] + 7.8
+        pill_x = top_front_left[0] + 2.0
+        for color, label in legend_items:
+            if label.lower().startswith("gibson"):
+                label = "Gibson arrangement"
+            elif label == "ladder reference":
+                label = "DNA ladder"
+            else:
+                label = label.replace("lane set", "arrangement")
+            pill_w = 10.5 + max(18.0, len(label) * 1.75)
+            pill = ET.Element(qname("rect"), {
+                "x": f"{pill_x:.2f}",
+                "y": f"{pill_y:.2f}",
+                "width": f"{pill_w:.2f}",
+                "height": "6.20",
+                "rx": "3.10",
+                "ry": "3.10",
+                "fill": "#ffffff",
+                "fill-opacity": "0.90",
+                "stroke": "#cbd5e1",
+                "stroke-width": "0.24",
+            })
+            swatch = ET.Element(qname("rect"), {
+                "x": f"{pill_x + 1.3:.2f}",
+                "y": f"{pill_y + 1.35:.2f}",
+                "width": "3.50",
+                "height": "3.50",
+                "rx": "1.2",
+                "ry": "1.2",
+                "fill": color,
+            })
+            text = ET.Element(qname("text"), {
+                "x": f"{pill_x + 6.2:.2f}",
+                "y": f"{pill_y + 4.15:.2f}",
+                "font-family": "monospace",
+                "font-size": "2.55",
+                "fill": "#334155",
+            })
+            text.text = label
+            root.append(pill)
+            root.append(swatch)
+            root.append(text)
+            pill_x += pill_w + 2.0
 
     # Tight crop around the rack object.
     min_x = math.inf
