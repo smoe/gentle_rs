@@ -13496,6 +13496,326 @@ fn execute_candidates_materialization_command(
 }
 
 #[inline(never)]
+fn execute_candidates_analysis_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::CandidatesList => {
+            let sets = engine.list_candidate_sets();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.candidate_sets.v1",
+                    "set_count": sets.len(),
+                    "sets": sets
+                }),
+            })
+        }
+        ShellCommand::CandidatesDelete { set_name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteCandidateSet {
+                    set_name: set_name.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesShow {
+            set_name,
+            limit,
+            offset,
+        } => {
+            let (page, total, clamped_offset) = engine
+                .inspect_candidate_set_page(set_name, *limit, *offset)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "set_name": page.name,
+                    "candidate_count": total,
+                    "offset": clamped_offset,
+                    "limit": limit,
+                    "returned": page.candidates.len(),
+                    "source_seq_ids": page.source_seq_ids,
+                    "created_at_unix_ms": page.created_at_unix_ms,
+                    "rows": page.candidates
+                }),
+            })
+        }
+        ShellCommand::CandidatesMetrics { set_name } => {
+            let metrics = engine
+                .list_candidate_set_metrics(set_name)
+                .map_err(|e| e.to_string())?;
+            let candidate_count = engine
+                .list_candidate_sets()
+                .into_iter()
+                .find(|summary| summary.name == *set_name)
+                .map(|summary| summary.candidate_count)
+                .unwrap_or(0);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "set_name": set_name,
+                    "candidate_count": candidate_count,
+                    "metric_count": metrics.len(),
+                    "metrics": metrics
+                }),
+            })
+        }
+        ShellCommand::CandidatesScoreExpression {
+            set_name,
+            metric,
+            expression,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetExpression {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    expression: expression.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "expression": expression,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesScoreDistance {
+            set_name,
+            metric,
+            feature_kinds,
+            feature_label_regex,
+            feature_geometry_mode,
+            feature_boundary_mode,
+            feature_strand_relation,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetDistance {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    feature_kinds: feature_kinds.clone(),
+                    feature_label_regex: feature_label_regex.clone(),
+                    feature_geometry_mode: *feature_geometry_mode,
+                    feature_boundary_mode: *feature_boundary_mode,
+                    feature_strand_relation: *feature_strand_relation,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "feature_kind_filter": feature_kinds,
+                    "feature_label_regex": feature_label_regex,
+                    "feature_geometry_mode": feature_geometry_mode.map(|mode| mode.as_str()),
+                    "feature_boundary_mode": feature_boundary_mode.map(|mode| mode.as_str()),
+                    "feature_strand_relation": feature_strand_relation.map(|mode| mode.as_str()),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesSetOp {
+            op,
+            left_set,
+            right_set,
+            output_set,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::CandidateSetOp {
+                    op: match op {
+                        CandidateSetOperator::Union => crate::engine::CandidateSetOperator::Union,
+                        CandidateSetOperator::Intersect => {
+                            crate::engine::CandidateSetOperator::Intersect
+                        }
+                        CandidateSetOperator::Subtract => {
+                            crate::engine::CandidateSetOperator::Subtract
+                        }
+                    },
+                    left_set: left_set.clone(),
+                    right_set: right_set.clone(),
+                    output_set: output_set.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "operator": op.as_str(),
+                    "left_set": left_set,
+                    "right_set": right_set,
+                    "output_set": output_set,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesScoreWeightedObjective {
+            set_name,
+            metric,
+            objectives,
+            normalize_metrics,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetWeightedObjective {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    objectives: objectives.clone(),
+                    normalize_metrics: Some(*normalize_metrics),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "normalize_metrics": normalize_metrics,
+                    "objective_count": objectives.len(),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesTopK {
+            input_set,
+            output_set,
+            metric,
+            k,
+            direction,
+            tie_break,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::TopKCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    metric: metric.clone(),
+                    k: *k,
+                    direction: Some(*direction),
+                    tie_break: Some(*tie_break),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "metric": metric,
+                    "k": k,
+                    "direction": direction.as_str(),
+                    "tie_break": tie_break.as_str(),
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::CandidatesParetoFrontier {
+            input_set,
+            output_set,
+            objectives,
+            max_candidates,
+            tie_break,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ParetoFrontierCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    objectives: objectives.clone(),
+                    max_candidates: *max_candidates,
+                    tie_break: Some(*tie_break),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "objective_count": objectives.len(),
+                    "max_candidates": max_candidates,
+                    "tie_break": tie_break.as_str(),
+                    "result": op_result
+                }),
+            })
+        }
+        _ => unreachable!("non-candidate analysis command passed to candidate helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(
     engine: &mut GentleEngine,
     payload: &str,
@@ -13876,6 +14196,21 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::CandidatesFilter { .. }
     ) {
         return execute_candidates_materialization_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::CandidatesList
+            | ShellCommand::CandidatesDelete { .. }
+            | ShellCommand::CandidatesShow { .. }
+            | ShellCommand::CandidatesMetrics { .. }
+            | ShellCommand::CandidatesScoreExpression { .. }
+            | ShellCommand::CandidatesScoreDistance { .. }
+            | ShellCommand::CandidatesSetOp { .. }
+            | ShellCommand::CandidatesScoreWeightedObjective { .. }
+            | ShellCommand::CandidatesTopK { .. }
+            | ShellCommand::CandidatesParetoFrontier { .. }
+    ) {
+        return execute_candidates_analysis_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
