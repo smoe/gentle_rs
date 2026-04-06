@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="668.0" viewBox="-20.00 36.00 1000.00 668.00" width="1000.0">
+<defs><filter id="gel-shadow" x="-15%" y="-15%" width="130%" height="160%"><feDropShadow dx="0.0" dy="8.0" stdDeviation="8.0" flood-color="#0f172a" flood-opacity="0.16" /></filter><linearGradient id="gel-panel-grad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#171a1f" /><stop offset="100%" stop-color="#0f1216" /></linearGradient></defs><rect fill="url(#gel-panel-grad)" height="560" rx="10" ry="10" width="680" x="90" y="90" filter="url(#gel-shadow)" />
+<rect fill="#1d2530" height="540" rx="8" ry="8" width="68" x="169.33334" y="100" />
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="252.44444" />
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="293.95825" />
+<rect fill="#e5e7eb" height="3.375" opacity="0.62299997" rx="2" ry="2" width="38.3" x="184.18335" y="323.41278" />
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="178.33334" y="345.44702" />
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="364.94226" />
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="375.72964" />
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="387.78894" />
+<rect fill="#e5e7eb" height="3.34375" opacity="0.61574996" rx="2" ry="2" width="38.075" x="184.29584" y="401.46063" />
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="178.33334" y="416.41534" />
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="435.8637" />
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="458.71042" />
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="488.16495" />
+<rect fill="#e5e7eb" height="3.4375" opacity="0.6375" rx="2" ry="2" width="38.75" x="183.95834" y="529.6788" />
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="185.71335" y="600.89087" />
+<rect fill="#202835" height="540" rx="8" ry="8" width="68" x="282.6667" y="100" />
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="290.22668" y="482.78387" />
+<rect fill="#202835" height="540" rx="8" ry="8" width="68" x="396" y="100" />
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="403.56" y="200.38837" />
+<rect fill="#202835" height="540" rx="8" ry="8" width="68" x="509.33337" y="100" />
+<rect fill="#f59e0b" height="4.86" opacity="0.77959996" rx="2" ry="2" width="52.88" x="516.8934" y="194.09373" />
+<rect fill="#1d2530" height="540" rx="8" ry="8" width="68" x="622.6667" y="100" />
+<rect fill="#e5e7eb" height="5" opacity="1" rx="2" ry="2" width="50" x="631.6667" y="128.36235" />
+<rect fill="#e5e7eb" height="4.375" opacity="0.855" rx="2" ry="2" width="45.5" x="633.9167" y="151.52156" />
+<rect fill="#e5e7eb" height="4.048913" opacity="0.7793478" rx="2" ry="2" width="43.152172" x="635.0906" y="181.13911" />
+<rect fill="#e5e7eb" height="3.75" opacity="0.71" rx="2" ry="2" width="41" x="636.1667" y="199.9557" />
+<rect fill="#e5e7eb" height="3.451087" opacity="0.6406522" rx="2" ry="2" width="38.847824" x="637.2428" y="222.95186" />
+<rect fill="#e5e7eb" height="3.2880435" opacity="0.60282606" rx="2" ry="2" width="37.673912" x="637.8297" y="252.48792" />
+<rect fill="#e5e7eb" height="3.125" opacity="0.565" rx="2" ry="2" width="36.5" x="638.4167" y="271.23657" />
+<rect fill="#e5e7eb" height="2.9619565" opacity="0.5271739" rx="2" ry="2" width="35.326088" x="639.00366" y="294.16476" />
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="323.62527" />
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="365.13913" />
+<rect fill="#e5e7eb" height="2.95" opacity="0.5244" rx="2" ry="2" width="35.24" x="639.0467" y="436.10745" />
+<text x="90.0" y="72.0" font-family="monospace" font-size="18" font-weight="700" fill="#173042">Gibson gel readout</text><text x="90.0" y="88.0" font-family="monospace" font-size="12" fill="#475569">left ladder: 100 bp | right ladder: 1 kb</text><text x="76.0" y="197.0" text-anchor="end" font-family="monospace" font-size="11" fill="#64748b">5 kb</text><text x="784.0" y="197.0" text-anchor="start" font-family="monospace" font-size="11" fill="#64748b">5 kb</text><text x="76.0" y="252.0" text-anchor="end" font-family="monospace" font-size="11" fill="#64748b">3 kb</text><text x="784.0" y="252.0" text-anchor="start" font-family="monospace" font-size="11" fill="#64748b">3 kb</text><text x="76.0" y="370.4" text-anchor="end" font-family="monospace" font-size="11" fill="#64748b">1 kb</text><text x="784.0" y="370.4" text-anchor="start" font-family="monospace" font-size="11" fill="#64748b">1 kb</text><text x="76.0" y="445.1" text-anchor="end" font-family="monospace" font-size="11" fill="#64748b">500 bp</text><text x="784.0" y="445.1" text-anchor="start" font-family="monospace" font-size="11" fill="#64748b">500 bp</text><text x="76.0" y="618.6" text-anchor="end" font-family="monospace" font-size="11" fill="#64748b">100 bp</text><text x="784.0" y="618.6" text-anchor="start" font-family="monospace" font-size="11" fill="#64748b">100 bp</text><text x="203.3" y="676.0" text-anchor="middle" font-family="monospace" font-size="13" fill="#334155">100 bp ladder</text><text x="316.7" y="676.0" text-anchor="middle" font-family="monospace" font-size="13" fill="#334155">insert</text><text x="430.0" y="676.0" text-anchor="middle" font-family="monospace" font-size="13" fill="#334155">vector</text><text x="543.3" y="676.0" text-anchor="middle" font-family="monospace" font-size="13" fill="#334155">product</text><text x="656.7" y="676.0" text-anchor="middle" font-family="monospace" font-size="13" fill="#334155">1 kb ladder</text></svg>
