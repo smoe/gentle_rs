@@ -478,6 +478,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
   gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]\n  \
   gentle_cli [--state PATH|--project PATH] racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
+  gentle_cli [--state PATH|--project PATH] racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
   gentle_cli [--state PATH|--project PATH] racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
   gentle_cli [--state PATH|--project PATH] racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]\n  \
   gentle_cli [--state PATH|--project PATH] racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \

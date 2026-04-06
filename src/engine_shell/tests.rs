@@ -1427,6 +1427,25 @@ fn parse_racks_fabrication_svg_command() {
 }
 
 #[test]
+fn parse_racks_isometric_svg_command() {
+    let cmd =
+        parse_shell_line("racks isometric-svg rack-1 rack.iso.svg --template storage_pcr_tube_rack")
+            .expect("parse command");
+    match cmd {
+        ShellCommand::RacksIsometricSvg {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "rack.iso.svg".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::StoragePcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_racks_openscad_command() {
     let cmd = parse_shell_line("racks openscad rack-1 rack.scad --template storage_pcr_tube_rack")
         .expect("parse command");
@@ -2258,6 +2277,7 @@ fn execute_racks_physical_exports_write_markers() {
             let mut engine = GentleEngine::from_state(state);
             let temp = tempdir().expect("tempdir");
             let svg_path = temp.path().join("rack.fabrication.svg");
+            let isometric_path = temp.path().join("rack.isometric.svg");
             let scad_path = temp.path().join("rack.scad");
             let carrier_path = temp.path().join("rack.carrier.svg");
             let simulation_path = temp.path().join("rack.simulation.json");
@@ -2274,6 +2294,20 @@ fn execute_racks_physical_exports_write_markers() {
             assert!(!svg_result.state_changed);
             let svg = fs::read_to_string(&svg_path).expect("fabrication svg");
             assert!(svg.contains("data-rack-physical-template=\"storage_pcr_tube_rack\""));
+
+            let isometric_result = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RacksIsometricSvg {
+                    rack_id: "rack-1".to_string(),
+                    output: isometric_path.display().to_string(),
+                    template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+                },
+            )
+            .expect("isometric export");
+            assert!(!isometric_result.state_changed);
+            let isometric = fs::read_to_string(&isometric_path).expect("rack isometric svg");
+            assert!(isometric.contains("data-rack-isometric-template=\"storage_pcr_tube_rack\""));
+            assert!(isometric.contains("GENtle rack isometric sketch"));
 
             let scad_result = execute_shell_command(
                 &mut engine,

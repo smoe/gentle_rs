@@ -9,6 +9,11 @@
 This tutorial shows how GENtle turns one successful Gibson apply step into a
 reusable arrangement.
 
+If you want the next layer after that arrangement, use the physical-rack
+follow-up guide:
+
+- [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md)
+
 In current GENtle terms, an arrangement is a stored serial lane setup. It is
 not yet the future physical rack/plate placement layer. The arrangement is the
 semantic lane order that can be reopened, inspected, and exported as one gel.

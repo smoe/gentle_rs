@@ -83,6 +83,7 @@ Rack-placement rule (target model):
     snapshot, not a second physical-placement model
   - the same linked arrangement/rack-placement records should be consumable by:
     - planning/fabrication SVG
+    - presentation/isometric SVG
     - label/front-strip export
     - parameterized 3D/OpenSCAD export
     - simulation-facing JSON export and future simulation adapters

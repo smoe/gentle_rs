@@ -2333,6 +2333,9 @@ Exports:
   - `Pipetting PCR tube rack`
 - `Fabrication SVG...` exports a top-view planning/fabrication sketch for the
   currently shown rack using the selected physical template.
+- `Isometric SVG...` exports a presentation-grade pseudo-3D rack figure for
+  the currently shown rack using that same physical template. This is the
+  intended README/documentation-facing hero export for the current rack layer.
 - `OpenSCAD...` exports one parameterized 3D-printable OpenSCAD source file
   for the currently shown rack using that same physical template.
 - `Carrier labels SVG...` exports one carrier-matched front-strip plus

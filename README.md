@@ -170,6 +170,40 @@ The protocol-cartoon command surface intentionally stays canonical under
 `protocol-cartoon ...` so scripted and AI-guided use does not need to choose
 between overlapping alias names.
 
+### Rack Placement, Physical Carrier, and 3D Print Path
+
+![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg)
+
+The same single-insert Gibson state can now also be projected into one linked
+physical carrier. The figure above is not a screenshot: it is a README-focused
+hero SVG derived from the deterministic isometric rack export that the saved
+rack draft produces automatically. It keeps the real physical carrier geometry
+and occupied ladder/vector/insert/product positions, but softens the styling so
+the object reads more naturally at a glance. The same shared physical template
+also drives fabrication SVG, carrier-label, and OpenSCAD export.
+
+Regenerate it with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks isometric-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  --template pipetting_pcr_tube_rack
+
+python3 docs/figures/render_rack_isometric_hero.py \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  docs/figures/gibson_single_insert_rack_hero.svg
+```
+
+The corresponding GUI/CLI tutorial for this export lives in
+[`docs/tutorial/gibson_physical_rack_gui.md`](docs/tutorial/gibson_physical_rack_gui.md).
+
 ### Overlap-Extension PCR Substitution Mechanism
 
 ![GENtle overlap-extension substitution PCR mechanism](docs/figures/pcr_overlap_extension_substitution_fig1_style.svg)

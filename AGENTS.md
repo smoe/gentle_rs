@@ -82,6 +82,11 @@ Reference: the test-data provenance rule in
   - communicate over stdio,
   - avoid depending on noVNC/Xvfb when the task is tool-driven rather than
     interactive.
+- On macOS, before suggesting OpenSCAD installation for `.scad` inspection or
+  rendering, first check whether the user already has the direct app binary at:
+  `/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD`
+  - if it exists, prefer using that path
+  - do not default to recommending the deprecated Homebrew `openscad` cask
 
 References:
 

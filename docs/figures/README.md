@@ -155,6 +155,36 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --scale 2
 ```
 
+`gibson_single_insert_rack_isometric.svg` is the physical-rack companion
+figure for the same single-insert Gibson tutorial baseline. It is exported
+from the saved linked rack draft, not drawn by hand, and shows how the
+arrangement/vector/insert/product story projects into one pseudo-3D wet-lab
+carrier using the shared `pipetting_pcr_tube_rack` physical template.
+
+`gibson_single_insert_rack_hero.svg` is the README-facing presentation variant
+derived from that same technical isometric export. It keeps the real rack
+geometry and occupied positions, but removes most annotation and applies a
+softer, more natural visual treatment for top-level documentation.
+
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks isometric-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  --template pipetting_pcr_tube_rack
+
+python3 docs/figures/render_rack_isometric_hero.py \
+  docs/figures/gibson_single_insert_rack_isometric.svg \
+  docs/figures/gibson_single_insert_rack_hero.svg
+```
+
 `tp53_ensembl116_panel_source.gb` is a synthetic TP53 locus slice whose
 feature geometry comes from the Ensembl 116 GRCh38 TP53 annotation. Its
 sequence bases are placeholder `N`s because the isoform-architecture render

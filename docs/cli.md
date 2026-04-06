@@ -1093,6 +1093,7 @@ Shared shell command:
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
     - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+    - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
     - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384`
     - `racks set-custom-profile RACK_ID ROWS COLUMNS`
@@ -1640,6 +1641,12 @@ Rendering export commands:
   - Current built-in physical templates:
     - `storage_pcr_tube_rack`
     - `pipetting_pcr_tube_rack`
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Calls engine operation `ExportRackIsometricSvg`.
+  - Writes one pseudo-3D/isometric SVG for the full saved rack.
+  - Intended for presentation-ready rack review and README/documentation
+    figures while still using the same saved rack/template state as the other
+    physical exports.
 - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
   - Calls engine operation `ExportRackOpenScad`.
   - Writes one parameterized OpenSCAD source file for the full saved rack.
@@ -1937,6 +1944,9 @@ Helper convenience commands:
 - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
   - Exports one deterministic top-view fabrication/planning SVG through the
     same engine path as GUI `Fabrication SVG...`.
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
+  - Exports one deterministic pseudo-3D/isometric rack SVG through the same
+    engine path as GUI `Isometric SVG...`.
 - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]`
   - Exports one deterministic parameterized OpenSCAD file through the same
     engine path as GUI `OpenSCAD...`.

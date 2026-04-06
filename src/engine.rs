@@ -950,6 +950,7 @@ pub struct RackPhysicalTemplateSpec {
     pub rack_height_mm: f32,
     pub edge_margin_mm: f32,
     pub corner_radius_mm: f32,
+    pub front_top_clearance_mm: f32,
     pub front_label_strip_depth_mm: f32,
     pub front_label_strip_recess_mm: f32,
     pub overall_width_mm: f32,
@@ -973,6 +974,7 @@ impl Default for RackPhysicalTemplateSpec {
             rack_height_mm: 0.0,
             edge_margin_mm: 0.0,
             corner_radius_mm: 0.0,
+            front_top_clearance_mm: 0.0,
             front_label_strip_depth_mm: 0.0,
             front_label_strip_recess_mm: 0.0,
             overall_width_mm: 0.0,
@@ -2765,6 +2767,12 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackIsometricSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportRackOpenScad {
         rack_id: String,
         path: String,
@@ -4441,6 +4449,7 @@ impl GentleEngine {
                 "SetRackBlockedCoordinates".to_string(),
                 "ExportRackLabelsSvg".to_string(),
                 "ExportRackFabricationSvg".to_string(),
+                "ExportRackIsometricSvg".to_string(),
                 "ExportRackOpenScad".to_string(),
                 "ExportRackCarrierLabelsSvg".to_string(),
                 "ExportRackSimulationJson".to_string(),
@@ -5754,6 +5763,7 @@ impl GentleEngine {
                 | Operation::ExportProtocolCartoonTemplateJson { .. }
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
+                | Operation::ExportRackIsometricSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
