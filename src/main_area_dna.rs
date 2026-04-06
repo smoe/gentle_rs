@@ -1777,6 +1777,57 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_svg_default_filename_mentions_overlay_owner_and_series_count() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("ref".to_string()), None);
+        let mut view = DotplotView::default();
+        view.dotplot_id = "tp53.overlay".to_string();
+        view.owner_seq_id = "tp53_genomic".to_string();
+        view.seq_id = "tp53_201".to_string();
+        view.reference_seq_id = Some("tp53_genomic".to_string());
+        view.reference_span_start_0based = 7_661_778;
+        view.reference_span_end_0based = 7_687_546;
+        view.mode = DotplotMode::PairForward;
+        view.word_size = 7;
+        view.step_bp = 1;
+        view.max_mismatches = 0;
+        view.series_count = 2;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp53.overlay.series1".to_string(),
+                seq_id: "tp53_201".to_string(),
+                label: "TP53-201".to_string(),
+                color_rgb: [29, 78, 216],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 1_234,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp53.overlay.series2".to_string(),
+                seq_id: "tp53_202".to_string(),
+                label: "TP53-202".to_string(),
+                color_rgb: [220, 38, 38],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 1_118,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+        ];
+        let file_name = area.default_dotplot_svg_file_name(&view, None, 0.20, 1.25);
+        assert!(file_name.ends_with(".svg"));
+        assert!(file_name.contains("owner-tp53_genomic"));
+        assert!(file_name.contains("overlay2_series"));
+        assert!(file_name.contains("pair_forward"));
+    }
+
+    #[test]
     fn dotplot_query_context_prefers_override_sequence() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -1801,6 +1852,44 @@ mod tests {
         assert!(area.dotplot_selection_sync_enabled_for_view(&view));
         area.dotplot_query_override_seq_id = "read_query".to_string();
         view.seq_id = "read_query".to_string();
+        assert!(!area.dotplot_selection_sync_enabled_for_view(&view));
+    }
+
+    #[test]
+    fn dotplot_selection_sync_is_disabled_for_overlay_views() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("ref".to_string()), None);
+        let mut view = DotplotView::default();
+        view.seq_id = "iso_a".to_string();
+        view.series_count = 2;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "overlay.series1".to_string(),
+                seq_id: "iso_a".to_string(),
+                label: "Isoform A".to_string(),
+                color_rgb: [29, 78, 216],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 10,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "overlay.series2".to_string(),
+                seq_id: "iso_b".to_string(),
+                label: "Isoform B".to_string(),
+                color_rgb: [220, 38, 38],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 10,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+        ];
         assert!(!area.dotplot_selection_sync_enabled_for_view(&view));
     }
 
@@ -6092,6 +6181,54 @@ mod tests {
                 x_0based: 40,
                 y_0based: 1_360,
                 mismatches: 1,
+            },
+        ];
+        assert_eq!(
+            MainAreaDna::dotplot_reference_hit_envelope(&view, 50),
+            Some((1_070, 1_411))
+        );
+    }
+
+    #[test]
+    fn dotplot_reference_hit_envelope_uses_all_overlay_series_points() {
+        let mut view = DotplotView::default();
+        view.reference_span_start_0based = 1_000;
+        view.reference_span_end_0based = 2_000;
+        view.series_count = 2;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "overlay.series1".to_string(),
+                seq_id: "iso_a".to_string(),
+                label: "Isoform A".to_string(),
+                color_rgb: [29, 78, 216],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 200,
+                point_count: 1,
+                points: vec![crate::engine::DotplotMatchPoint {
+                    x_0based: 20,
+                    y_0based: 1_120,
+                    mismatches: 0,
+                }],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "overlay.series2".to_string(),
+                seq_id: "iso_b".to_string(),
+                label: "Isoform B".to_string(),
+                color_rgb: [220, 38, 38],
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 200,
+                point_count: 1,
+                points: vec![crate::engine::DotplotMatchPoint {
+                    x_0based: 40,
+                    y_0based: 1_360,
+                    mismatches: 0,
+                }],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
             },
         ];
         assert_eq!(
@@ -23588,7 +23725,20 @@ impl MainAreaDna {
         density_threshold: f32,
         intensity_gain: f32,
     ) -> String {
-        let query_id = Self::sanitize_export_name_component(&view.seq_id, "query");
+        let overlay_mode = Self::dotplot_view_is_overlay(view);
+        let owner_id = Self::sanitize_export_name_component(
+            if view.owner_seq_id.trim().is_empty() {
+                view.seq_id.as_str()
+            } else {
+                view.owner_seq_id.as_str()
+            },
+            "owner",
+        );
+        let query_id = if overlay_mode {
+            format!("overlay{}_series", view.series_count.max(view.query_series.len()))
+        } else {
+            Self::sanitize_export_name_component(&view.seq_id, "query")
+        };
         let reference_id = Self::sanitize_export_name_component(
             view.reference_seq_id
                 .as_deref()
@@ -23601,19 +23751,33 @@ impl MainAreaDna {
             .tile_bp
             .map(|value| value.to_string())
             .unwrap_or_else(|| "auto".to_string());
-        let mut stem = format!(
-            "dotplot_{dotplot_id}_q-{query_id}_r-{reference_id}_{mode}_q{}-{}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
-            view.span_start_0based.saturating_add(1),
-            view.span_end_0based,
-            view.reference_span_start_0based.saturating_add(1),
-            view.reference_span_end_0based,
-            view.word_size,
-            view.step_bp,
-            view.max_mismatches,
-            tile,
-            Self::format_dotplot_filename_float_component(density_threshold, 100.0),
-            Self::format_dotplot_filename_float_component(intensity_gain, 100.0),
-        );
+        let mut stem = if overlay_mode {
+            format!(
+                "dotplot_{dotplot_id}_owner-{owner_id}_q-{query_id}_r-{reference_id}_{mode}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
+                view.reference_span_start_0based.saturating_add(1),
+                view.reference_span_end_0based,
+                view.word_size,
+                view.step_bp,
+                view.max_mismatches,
+                tile,
+                Self::format_dotplot_filename_float_component(density_threshold, 100.0),
+                Self::format_dotplot_filename_float_component(intensity_gain, 100.0),
+            )
+        } else {
+            format!(
+                "dotplot_{dotplot_id}_owner-{owner_id}_q-{query_id}_r-{reference_id}_{mode}_q{}-{}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
+                view.span_start_0based.saturating_add(1),
+                view.span_end_0based,
+                view.reference_span_start_0based.saturating_add(1),
+                view.reference_span_end_0based,
+                view.word_size,
+                view.step_bp,
+                view.max_mismatches,
+                tile,
+                Self::format_dotplot_filename_float_component(density_threshold, 100.0),
+                Self::format_dotplot_filename_float_component(intensity_gain, 100.0),
+            )
+        };
         if let Some(track) = flex_track {
             let track_id = Self::sanitize_export_name_component(&track.track_id, "flex");
             let model = Self::sanitize_export_name_component(track.model.as_str(), "model");
@@ -23987,7 +24151,8 @@ impl MainAreaDna {
             self.op_status = "No loaded dotplot payload to export".to_string();
             return;
         };
-        let selected_flex_track = if self.dotplot_ui.show_flexibility_track {
+        let overlay_mode = Self::dotplot_view_is_overlay(&view);
+        let selected_flex_track = if self.dotplot_ui.show_flexibility_track && !overlay_mode {
             self.dotplot_cached_flex_track.clone()
         } else {
             None
@@ -24013,7 +24178,7 @@ impl MainAreaDna {
             .as_ref()
             .map(|track| track.track_id.clone());
         self.apply_operation_with_feedback(Operation::RenderDotplotSvg {
-            seq_id: view.seq_id.clone(),
+            seq_id: view.owner_seq_id.clone(),
             dotplot_id: view.dotplot_id.clone(),
             path: path_text.clone(),
             flex_track_id,

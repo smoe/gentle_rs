@@ -288,6 +288,18 @@ impl MainAreaDna {
         self.current_dotplot_query_seq_id()
     }
 
+    pub(super) fn dotplot_view_is_overlay(view: &DotplotView) -> bool {
+        view.series_count > 1 || view.query_series.len() > 1
+    }
+
+    pub(super) fn dotplot_view_total_point_count(view: &DotplotView) -> usize {
+        if Self::dotplot_view_is_overlay(view) {
+            view.query_series.iter().map(|series| series.point_count).sum()
+        } else {
+            view.point_count
+        }
+    }
+
     pub(super) fn clear_dotplot_query_override(&mut self) {
         self.dotplot_query_override_seq_id.clear();
         self.dotplot_query_override_source_label.clear();
@@ -295,7 +307,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn dotplot_selection_sync_enabled_for_view(&self, view: &DotplotView) -> bool {
-        if view.series_count > 1 || view.query_series.len() > 1 {
+        if Self::dotplot_view_is_overlay(view) {
             return false;
         }
         self.seq_id.as_deref() == Some(view.seq_id.as_str())
@@ -629,16 +641,23 @@ impl MainAreaDna {
         view: &DotplotView,
         padding_bp: usize,
     ) -> Option<(usize, usize)> {
-        if view.points.is_empty()
-            || view.reference_span_end_0based <= view.reference_span_start_0based
-        {
+        if view.reference_span_end_0based <= view.reference_span_start_0based {
             return None;
         }
         let mut min_hit = usize::MAX;
         let mut max_hit = 0usize;
-        for point in &view.points {
-            min_hit = min_hit.min(point.y_0based);
-            max_hit = max_hit.max(point.y_0based);
+        if Self::dotplot_view_is_overlay(view) {
+            for series in &view.query_series {
+                for point in &series.points {
+                    min_hit = min_hit.min(point.y_0based);
+                    max_hit = max_hit.max(point.y_0based);
+                }
+            }
+        } else {
+            for point in &view.points {
+                min_hit = min_hit.min(point.y_0based);
+                max_hit = max_hit.max(point.y_0based);
+            }
         }
         if min_hit == usize::MAX {
             return None;
@@ -716,13 +735,29 @@ impl MainAreaDna {
     pub(super) fn recommend_dotplot_display_from_view(
         view: &DotplotView,
     ) -> Option<(f32, f32, String)> {
-        if view.point_count == 0 || view.points.is_empty() {
+        let overlay_mode = Self::dotplot_view_is_overlay(view);
+        let total_points = Self::dotplot_view_total_point_count(view);
+        if total_points == 0 {
             return None;
         }
-        let query_span = view
-            .span_end_0based
-            .saturating_sub(view.span_start_0based)
-            .max(1);
+        let query_span = if overlay_mode {
+            view.query_series
+                .iter()
+                .map(|series| {
+                    series
+                        .span_end_0based
+                        .saturating_sub(series.span_start_0based)
+                        .max(1)
+                })
+                .sum::<usize>()
+                .checked_div(view.query_series.len().max(1))
+                .unwrap_or(1)
+                .max(1)
+        } else {
+            view.span_end_0based
+                .saturating_sub(view.span_start_0based)
+                .max(1)
+        };
         let reference_span = view
             .reference_span_end_0based
             .saturating_sub(view.reference_span_start_0based)
@@ -735,23 +770,51 @@ impl MainAreaDna {
         let query_span_max = query_span.saturating_sub(1).max(1);
         let reference_span_max = reference_span.saturating_sub(1).max(1);
         let mut cells: HashMap<(usize, usize), usize> = HashMap::new();
-        for point in &view.points {
-            let x_local = point
-                .x_0based
-                .saturating_sub(view.span_start_0based)
-                .min(query_span_max);
-            let y_local = point
-                .y_0based
-                .saturating_sub(view.reference_span_start_0based)
-                .min(reference_span_max);
-            let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
-            let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
-            let x_cell = ((x_frac * (cols.saturating_sub(1)) as f32).round() as usize)
-                .min(cols.saturating_sub(1));
-            let y_cell = ((y_frac * (rows.saturating_sub(1)) as f32).round() as usize)
-                .min(rows.saturating_sub(1));
-            let entry = cells.entry((x_cell, y_cell)).or_insert(0);
-            *entry = entry.saturating_add(1);
+        if overlay_mode {
+            for series in &view.query_series {
+                let series_span = series
+                    .span_end_0based
+                    .saturating_sub(series.span_start_0based)
+                    .max(1);
+                let series_span_max = series_span.saturating_sub(1).max(1);
+                for point in &series.points {
+                    let x_local = point
+                        .x_0based
+                        .saturating_sub(series.span_start_0based)
+                        .min(series_span_max);
+                    let y_local = point
+                        .y_0based
+                        .saturating_sub(view.reference_span_start_0based)
+                        .min(reference_span_max);
+                    let x_frac = (x_local as f32 / series_span_max as f32).clamp(0.0, 1.0);
+                    let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+                    let x_cell = ((x_frac * (cols.saturating_sub(1)) as f32).round() as usize)
+                        .min(cols.saturating_sub(1));
+                    let y_cell = ((y_frac * (rows.saturating_sub(1)) as f32).round() as usize)
+                        .min(rows.saturating_sub(1));
+                    let entry = cells.entry((x_cell, y_cell)).or_insert(0);
+                    *entry = entry.saturating_add(1);
+                }
+            }
+        } else {
+            for point in &view.points {
+                let x_local = point
+                    .x_0based
+                    .saturating_sub(view.span_start_0based)
+                    .min(query_span_max);
+                let y_local = point
+                    .y_0based
+                    .saturating_sub(view.reference_span_start_0based)
+                    .min(reference_span_max);
+                let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+                let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+                let x_cell = ((x_frac * (cols.saturating_sub(1)) as f32).round() as usize)
+                    .min(cols.saturating_sub(1));
+                let y_cell = ((y_frac * (rows.saturating_sub(1)) as f32).round() as usize)
+                    .min(rows.saturating_sub(1));
+                let entry = cells.entry((x_cell, y_cell)).or_insert(0);
+                *entry = entry.saturating_add(1);
+            }
         }
         if cells.is_empty() {
             return None;
@@ -775,7 +838,7 @@ impl MainAreaDna {
         } else {
             0.15
         };
-        let mut threshold = if view.point_count >= 800 {
+        let mut threshold = if total_points >= 800 {
             Self::dotplot_quantile(&densities, q_target)
         } else {
             0.0
@@ -791,17 +854,23 @@ impl MainAreaDna {
             ((q90 - threshold) / (1.0 - threshold)).clamp(0.05, 1.0)
         };
         let mut gain = (0.85 / q90_post).clamp(0.25, 8.0);
-        if view.point_count < 300 {
+        if total_points < 300 {
             gain = gain.max(1.5);
         }
 
         let summary = format!(
-            "Auto contrast: threshold={:.3}, gain={:.3}, occupancy={:.2}%, q90={:.3}, points={}, cells={}/{}",
+            "Auto contrast: threshold={:.3}, gain={:.3}, occupancy={:.2}%, q90={:.3}, points={}{}{}, cells={}/{}",
             threshold,
             gain,
             occupancy * 100.0,
             q90,
-            view.point_count,
+            total_points,
+            if overlay_mode { ", series=" } else { "" },
+            if overlay_mode {
+                view.query_series.len().to_string()
+            } else {
+                String::new()
+            },
             cells.len(),
             total_cells
         );
@@ -1843,8 +1912,76 @@ impl MainAreaDna {
                 "Deterministic compute diagnostics for current controls and most recently loaded payload",
             );
 
-        match self.build_dotplot_compute_diagnostics() {
-            Ok(diag) => {
+        if self.dotplot_ui.overlay_enabled {
+            let overlay_choices = self.dotplot_overlay_choices();
+            match self.build_dotplot_overlay_estimated_pair_evaluations() {
+                Ok(pair_evals) => {
+                    let reference_label = self.dotplot_ui.reference_seq_id.trim();
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "request mode=overlay reference={} series={} | word={} step={} mismatches={} tile_bp={} | pair_evals≈{}",
+                            if reference_label.is_empty() {
+                                "<unset>"
+                            } else {
+                                reference_label
+                            },
+                            self.dotplot_ui.overlay_transcript_feature_ids.len(),
+                            self.dotplot_ui.word_size.trim(),
+                            self.dotplot_ui.step_bp.trim(),
+                            self.dotplot_ui.max_mismatches.trim(),
+                            if self.dotplot_ui.tile_bp.trim().is_empty() {
+                                "-"
+                            } else {
+                                self.dotplot_ui.tile_bp.trim()
+                            },
+                            pair_evals
+                        ))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                    );
+                    if !overlay_choices.is_empty() {
+                        let labels = overlay_choices
+                            .iter()
+                            .filter(|choice| {
+                                self.dotplot_ui
+                                    .overlay_transcript_feature_ids
+                                    .contains(&choice.transcript_feature_id)
+                            })
+                            .map(|choice| {
+                                format!("{}({} bp)", choice.label, choice.estimated_length_bp)
+                            })
+                            .collect::<Vec<_>>();
+                        if !labels.is_empty() {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "selected isoforms: {}",
+                                    labels.join(", ")
+                                ))
+                                .monospace()
+                                .size(self.feature_details_font_size()),
+                            );
+                        }
+                    }
+                    if pair_evals > MAX_DOTPLOT_PAIR_EVALUATIONS {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            format!(
+                                "Overlay request exceeds the cheap auto-compute budget ({} > {}). The workspace will wait for an explicit compute.",
+                                pair_evals, MAX_DOTPLOT_PAIR_EVALUATIONS
+                            ),
+                        );
+                    }
+                }
+                Err(message) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        format!("Overlay request diagnostics unavailable: {message}"),
+                    );
+                }
+            }
+        } else {
+            match self.build_dotplot_compute_diagnostics() {
+                Ok(diag) => {
                 let reference_label = diag
                     .reference_seq_id
                     .as_deref()
@@ -1912,11 +2049,12 @@ impl MainAreaDna {
                     );
                 }
             }
-            Err(message) => {
-                ui.colored_label(
-                    egui::Color32::from_rgb(180, 83, 9),
-                    format!("Dotplot request diagnostics unavailable: {message}"),
-                );
+                Err(message) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        format!("Dotplot request diagnostics unavailable: {message}"),
+                    );
+                }
             }
         }
 
@@ -1925,58 +2063,107 @@ impl MainAreaDna {
                 .reference_seq_id
                 .as_deref()
                 .unwrap_or(view.seq_id.as_str());
-            let query_span_bp = view.span_end_0based.saturating_sub(view.span_start_0based);
+            let overlay_mode = Self::dotplot_view_is_overlay(view);
             let reference_span_bp = view
                 .reference_span_end_0based
                 .saturating_sub(view.reference_span_start_0based);
-            let query_windows = Self::dotplot_window_count(
-                query_span_bp,
-                view.word_size.max(1),
-                view.step_bp.max(1),
-            );
             let reference_windows = Self::dotplot_window_count(
                 reference_span_bp,
                 view.word_size.max(1),
                 view.step_bp.max(1),
             );
+            let query_windows = if overlay_mode {
+                view.query_series
+                    .iter()
+                    .map(|series| {
+                        let query_span_bp = series
+                            .span_end_0based
+                            .saturating_sub(series.span_start_0based);
+                        Self::dotplot_window_count(
+                            query_span_bp,
+                            view.word_size.max(1),
+                            view.step_bp.max(1),
+                        )
+                    })
+                    .sum()
+            } else {
+                let query_span_bp = view.span_end_0based.saturating_sub(view.span_start_0based);
+                Self::dotplot_window_count(
+                    query_span_bp,
+                    view.word_size.max(1),
+                    view.step_bp.max(1),
+                )
+            };
             let estimated_pair_evaluations = query_windows.saturating_mul(reference_windows);
+            let point_count = Self::dotplot_view_total_point_count(view);
             let estimated_hit_fraction = if estimated_pair_evaluations == 0 {
                 0.0
             } else {
-                (view.point_count as f64 / estimated_pair_evaluations as f64) * 100.0
+                (point_count as f64 / estimated_pair_evaluations as f64) * 100.0
             };
-            let non_empty_box_bins = view
-                .boxplot_bins
-                .iter()
-                .filter(|bin| bin.hit_count > 0)
-                .count();
-            ui.label(
-                egui::RichText::new(format!(
-                    "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} | query={} [{}..{}] reference={} [{}..{}]",
-                    view.dotplot_id,
-                    view.generated_at_unix_ms,
-                    view.mode.as_str(),
-                    view.point_count,
-                    estimated_hit_fraction,
-                    non_empty_box_bins,
-                    view.boxplot_bin_count,
-                    view.seq_id,
-                    view.span_start_0based.saturating_add(1),
-                    view.span_end_0based,
-                    reference_seq_label,
-                    view.reference_span_start_0based.saturating_add(1),
-                    view.reference_span_end_0based
-                ))
-                .monospace()
-                .size(self.feature_details_font_size()),
-            );
+            if overlay_mode {
+                let annotation_count = view
+                    .reference_annotation
+                    .as_ref()
+                    .map(|track| track.interval_count)
+                    .unwrap_or(0);
+                let labels = view
+                    .query_series
+                    .iter()
+                    .map(|series| series.label.clone())
+                    .collect::<Vec<_>>();
+                ui.label(
+                    egui::RichText::new(format!(
+                        "loaded payload '{}' generated_at={} overlay series={} total_points={} hit_fraction≈{:.6}% owner={} reference={} [{}..{}] merged_exons={} | {}",
+                        view.dotplot_id,
+                        view.generated_at_unix_ms,
+                        view.series_count.max(view.query_series.len()),
+                        point_count,
+                        estimated_hit_fraction,
+                        view.owner_seq_id,
+                        reference_seq_label,
+                        view.reference_span_start_0based.saturating_add(1),
+                        view.reference_span_end_0based,
+                        annotation_count,
+                        labels.join(", ")
+                    ))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+                );
+            } else {
+                let non_empty_box_bins = view
+                    .boxplot_bins
+                    .iter()
+                    .filter(|bin| bin.hit_count > 0)
+                    .count();
+                ui.label(
+                    egui::RichText::new(format!(
+                        "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} | query={} [{}..{}] reference={} [{}..{}]",
+                        view.dotplot_id,
+                        view.generated_at_unix_ms,
+                        view.mode.as_str(),
+                        point_count,
+                        estimated_hit_fraction,
+                        non_empty_box_bins,
+                        view.boxplot_bin_count,
+                        view.seq_id,
+                        view.span_start_0based.saturating_add(1),
+                        view.span_end_0based,
+                        reference_seq_label,
+                        view.reference_span_start_0based.saturating_add(1),
+                        view.reference_span_end_0based
+                    ))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+                );
+            }
             let same_reference = reference_seq_label == view.seq_id.as_str();
             if matches!(view.mode, DotplotMode::SelfForward) {
                 ui.small(
                     "Self-forward compares a sequence to itself. A main diagonal is expected identity; off-diagonal signal indicates repeated motifs.",
                 );
             }
-            if view.point_count == 0 {
+            if point_count == 0 {
                 ui.colored_label(
                     egui::Color32::from_rgb(190, 24, 93),
                     "Loaded payload has zero seed hits. Try smaller word size, higher mismatches, or a narrower reference span around the expected locus.",
@@ -1992,8 +2179,9 @@ impl MainAreaDna {
                         "Reverse-complement self-pair mode is an inverted-repeat scan. Zero hits can be valid with sparse sampling/strict seeds; try smaller step and word for sensitivity.",
                     );
                 }
-            } else if Self::dotplot_mode_requires_reference(view.mode)
-                && view.point_count <= DOTPLOT_SPARSE_POINT_HINT_THRESHOLD
+            } else if !overlay_mode
+                && Self::dotplot_mode_requires_reference(view.mode)
+                && point_count <= DOTPLOT_SPARSE_POINT_HINT_THRESHOLD
             {
                 if matches!(view.mode, DotplotMode::PairForward) {
                     ui.colored_label(
@@ -2082,6 +2270,22 @@ impl MainAreaDna {
         density_threshold: f32,
         intensity_gain: f32,
     ) {
+        #[derive(Clone)]
+        struct OverlaySeriesRenderData {
+            label: String,
+            seq_id: String,
+            color: egui::Color32,
+            span_start_0based: usize,
+            span_end_0based: usize,
+            cells: HashMap<(i32, i32), usize>,
+            visible_cells: HashMap<(i32, i32), egui::Color32>,
+        }
+
+        let overlay_mode = Self::dotplot_view_is_overlay(view);
+        let has_reference_annotation = view
+            .reference_annotation
+            .as_ref()
+            .is_some_and(|track| !track.intervals.is_empty());
         let desired_w = ui.available_width().max(740.0);
         let desired_h = if flex_track.is_some() { 470.0 } else { 390.0 };
         let (canvas_rect, response) =
@@ -2095,8 +2299,8 @@ impl MainAreaDna {
             egui::StrokeKind::Inside,
         );
 
-        let top_margin = 26.0;
-        let left_margin = 56.0;
+        let top_margin = if overlay_mode { 48.0 } else { 26.0 };
+        let left_margin = if has_reference_annotation { 78.0 } else { 56.0 };
         let right_margin = 16.0;
         let bottom_margin = 20.0;
         let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
@@ -2137,6 +2341,401 @@ impl MainAreaDna {
                 ],
                 egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
             );
+        }
+        if overlay_mode {
+            let reference_span = view
+                .reference_span_end_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .max(1);
+            let reference_span_max = reference_span.saturating_sub(1).max(1);
+            let reference_seq_label = view
+                .reference_seq_id
+                .as_deref()
+                .unwrap_or(view.seq_id.as_str());
+            let cols = dotplot_rect.width().max(2.0).round() as i32;
+            let rows = dotplot_rect.height().max(2.0).round() as i32;
+            let series_sample_cap =
+                (DOTPLOT_RENDER_MAX_POINTS / view.query_series.len().max(1)).max(1);
+            let density_threshold = density_threshold.clamp(0.0, 0.99);
+            let intensity_gain = intensity_gain.clamp(0.1, 16.0);
+            let mut rendered_series: Vec<OverlaySeriesRenderData> = vec![];
+            let mut total_rendered_cells = 0usize;
+
+            for series in &view.query_series {
+                let query_span = series
+                    .span_end_0based
+                    .saturating_sub(series.span_start_0based)
+                    .max(1);
+                let query_span_max = query_span.saturating_sub(1).max(1);
+                let sample_stride = (series.points.len() / series_sample_cap).max(1);
+                let mut cells: HashMap<(i32, i32), usize> = HashMap::new();
+                for point in series.points.iter().step_by(sample_stride) {
+                    let x_local = point
+                        .x_0based
+                        .saturating_sub(series.span_start_0based)
+                        .min(query_span_max);
+                    let y_local = point
+                        .y_0based
+                        .saturating_sub(view.reference_span_start_0based)
+                        .min(reference_span_max);
+                    let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+                    let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
+                    let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+                    let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+                    let entry = cells.entry((x_cell, y_cell)).or_insert(0);
+                    *entry = entry.saturating_add(1);
+                }
+                let max_cell_count =
+                    cells.values().copied().max().unwrap_or(1).max(1) as f32;
+                let mut visible_cells: HashMap<(i32, i32), egui::Color32> = HashMap::new();
+                for ((x_cell, y_cell), count) in &cells {
+                    let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
+                    if density_raw < density_threshold {
+                        continue;
+                    }
+                    let normalized = if density_threshold <= 0.0 {
+                        density_raw
+                    } else {
+                        ((density_raw - density_threshold) / (1.0 - density_threshold))
+                            .clamp(0.0, 1.0)
+                    };
+                    let density = (normalized * intensity_gain).clamp(0.0, 1.0).sqrt();
+                    let alpha = (72.0 + 178.0 * density).round() as u8;
+                    let color = egui::Color32::from_rgba_unmultiplied(
+                        series.color_rgb[0],
+                        series.color_rgb[1],
+                        series.color_rgb[2],
+                        alpha,
+                    );
+                    let x0 =
+                        dotplot_rect.left() + (*x_cell as f32 / cols as f32) * dotplot_rect.width();
+                    let x1 = dotplot_rect.left()
+                        + ((*x_cell + 1) as f32 / cols as f32) * dotplot_rect.width();
+                    let y0 =
+                        dotplot_rect.top() + (*y_cell as f32 / rows as f32) * dotplot_rect.height();
+                    let y1 = dotplot_rect.top()
+                        + ((*y_cell + 1) as f32 / rows as f32) * dotplot_rect.height();
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1)),
+                        0.0,
+                        color,
+                    );
+                    visible_cells.insert((*x_cell, *y_cell), color);
+                    total_rendered_cells = total_rendered_cells.saturating_add(1);
+                }
+                if !visible_cells.is_empty()
+                    && visible_cells.len()
+                        <= DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS
+                            .checked_div(view.query_series.len().max(1))
+                            .unwrap_or(DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS)
+                            .max(1)
+                {
+                    let cell_w = dotplot_rect.width() / cols as f32;
+                    let cell_h = dotplot_rect.height() / rows as f32;
+                    let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+                    for ((x_cell, y_cell), color) in &visible_cells {
+                        for dy in [-1, 0, 1] {
+                            let neighbor = (*x_cell + 1, *y_cell + dy);
+                            if visible_cells.contains_key(&neighbor) {
+                                let x0 = dotplot_rect.left() + (*x_cell as f32 + 0.5) * cell_w;
+                                let y0 = dotplot_rect.top() + (*y_cell as f32 + 0.5) * cell_h;
+                                let x1 = dotplot_rect.left() + (neighbor.0 as f32 + 0.5) * cell_w;
+                                let y1 = dotplot_rect.top() + (neighbor.1 as f32 + 0.5) * cell_h;
+                                painter.line_segment(
+                                    [egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                                    egui::Stroke::new(stroke_width, color.gamma_multiply(0.5)),
+                                );
+                            }
+                        }
+                    }
+                }
+                rendered_series.push(OverlaySeriesRenderData {
+                    label: series.label.clone(),
+                    seq_id: series.seq_id.clone(),
+                    color: egui::Color32::from_rgb(
+                        series.color_rgb[0],
+                        series.color_rgb[1],
+                        series.color_rgb[2],
+                    ),
+                    span_start_0based: series.span_start_0based,
+                    span_end_0based: series.span_end_0based,
+                    cells,
+                    visible_cells,
+                });
+            }
+
+            if total_rendered_cells == 0 {
+                painter.text(
+                    dotplot_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    format!(
+                        "No visible cells (threshold={:.2}, points={}, series={})",
+                        density_threshold,
+                        Self::dotplot_view_total_point_count(view),
+                        view.query_series.len()
+                    ),
+                    egui::FontId::monospace(11.0),
+                    egui::Color32::from_rgb(100, 116, 139),
+                );
+            }
+
+            if let Some(track) = view
+                .reference_annotation
+                .as_ref()
+                .filter(|track| !track.intervals.is_empty())
+            {
+                let annotation_rect = egui::Rect::from_min_max(
+                    egui::pos2(dotplot_rect.left() - 16.0, dotplot_rect.top()),
+                    egui::pos2(dotplot_rect.left() - 6.0, dotplot_rect.bottom()),
+                );
+                painter.rect_filled(annotation_rect, 2.0, egui::Color32::from_rgb(248, 250, 252));
+                painter.rect_stroke(
+                    annotation_rect,
+                    2.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                    egui::StrokeKind::Inside,
+                );
+                let reference_span_f32 = reference_span.max(1) as f32;
+                for interval in &track.intervals {
+                    let local_start = interval
+                        .start_0based
+                        .saturating_sub(view.reference_span_start_0based)
+                        .min(reference_span);
+                    let local_end = interval
+                        .end_0based_exclusive
+                        .saturating_sub(view.reference_span_start_0based)
+                        .min(reference_span);
+                    let y0 = annotation_rect.top()
+                        + (local_start as f32 / reference_span_f32) * annotation_rect.height();
+                    let y1 = annotation_rect.top()
+                        + (local_end as f32 / reference_span_f32) * annotation_rect.height();
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(
+                            egui::pos2(annotation_rect.left() + 1.0, y0),
+                            egui::pos2(annotation_rect.right() - 1.0, y1.max(y0 + 1.0)),
+                        ),
+                        1.0,
+                        egui::Color32::from_rgb(34, 197, 94),
+                    );
+                }
+                painter.text(
+                    egui::pos2(annotation_rect.center().x, canvas_rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    track.label.as_str(),
+                    egui::FontId::monospace(9.0),
+                    egui::Color32::from_rgb(51, 65, 85),
+                );
+            }
+
+            let mut legend_cursor = egui::pos2(dotplot_rect.left(), canvas_rect.top() + 4.0);
+            for series in &rendered_series {
+                let swatch_rect = egui::Rect::from_min_max(
+                    legend_cursor,
+                    egui::pos2(legend_cursor.x + 10.0, legend_cursor.y + 10.0),
+                );
+                painter.rect_filled(swatch_rect, 1.0, series.color);
+                let text_pos = egui::pos2(swatch_rect.right() + 4.0, legend_cursor.y - 1.0);
+                painter.text(
+                    text_pos,
+                    egui::Align2::LEFT_TOP,
+                    series.label.as_str(),
+                    egui::FontId::monospace(9.5),
+                    egui::Color32::from_rgb(51, 65, 85),
+                );
+                let estimated_width = 22.0 + series.label.len() as f32 * 6.1;
+                if legend_cursor.x + estimated_width > dotplot_rect.right() - 120.0 {
+                    legend_cursor.x = dotplot_rect.left();
+                    legend_cursor.y += 12.0;
+                } else {
+                    legend_cursor.x += estimated_width;
+                }
+            }
+
+            painter.text(
+                egui::pos2(dotplot_rect.left(), canvas_rect.top() + 20.0),
+                egui::Align2::LEFT_TOP,
+                "x: normalized isoform queries",
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(51, 65, 85),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.right(), canvas_rect.top() + 20.0),
+                egui::Align2::RIGHT_TOP,
+                format!("y: {reference_seq_label}"),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(51, 65, 85),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + 2.0),
+                egui::Align2::LEFT_TOP,
+                "0%",
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(71, 85, 105),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.right(), dotplot_rect.bottom() + 2.0),
+                egui::Align2::RIGHT_TOP,
+                "100%",
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(71, 85, 105),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.left() - 4.0, dotplot_rect.top()),
+                egui::Align2::RIGHT_TOP,
+                format!("{}", view.reference_span_start_0based.saturating_add(1)),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(71, 85, 105),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.left() - 4.0, dotplot_rect.bottom()),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("{}", view.reference_span_end_0based),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(71, 85, 105),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.left() + 2.0, dotplot_rect.top() + 2.0),
+                egui::Align2::LEFT_TOP,
+                "y",
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(100, 116, 139),
+            );
+            painter.text(
+                egui::pos2(dotplot_rect.right() - 2.0, dotplot_rect.bottom() - 2.0),
+                egui::Align2::RIGHT_BOTTOM,
+                "x",
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(100, 116, 139),
+            );
+
+            self.dotplot_hover_crosshair_bp = None;
+            if response.hovered()
+                && let Some(pointer) = response.hover_pos()
+                && dotplot_rect.contains(pointer)
+            {
+                let fx =
+                    ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
+                let fy =
+                    ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
+                let y_bp = view.reference_span_start_0based
+                    + (fy * reference_span_max as f32).round() as usize;
+                let x_cell = ((fx * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+                let y_cell = ((fy * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+                let pointer_x = dotplot_rect.left() + fx * dotplot_rect.width();
+                let pointer_y = dotplot_rect.top() + fy * dotplot_rect.height();
+                painter.line_segment(
+                    [
+                        egui::pos2(pointer_x, dotplot_rect.top()),
+                        egui::pos2(pointer_x, dotplot_rect.bottom()),
+                    ],
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(dotplot_rect.left(), pointer_y),
+                        egui::pos2(dotplot_rect.right(), pointer_y),
+                    ],
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                );
+                painter.circle_filled(
+                    egui::pos2(pointer_x, pointer_y),
+                    2.0,
+                    egui::Color32::from_rgb(15, 23, 42),
+                );
+                painter.text(
+                    egui::pos2(dotplot_rect.left() + 4.0, dotplot_rect.top() + 14.0),
+                    egui::Align2::LEFT_TOP,
+                    format!(
+                        "hover reference({})={} | {} isoforms",
+                        reference_seq_label,
+                        y_bp.saturating_add(1),
+                        rendered_series.len()
+                    ),
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::from_rgb(15, 23, 42),
+                );
+                response.clone().on_hover_ui_at_pointer(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "reference({})={}",
+                            reference_seq_label,
+                            y_bp.saturating_add(1)
+                        ))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                    );
+                    for series in &rendered_series {
+                        let query_span = series
+                            .span_end_0based
+                            .saturating_sub(series.span_start_0based)
+                            .max(1);
+                        let query_span_max = query_span.saturating_sub(1).max(1);
+                        let query_bp = series.span_start_0based
+                            + (fx * query_span_max as f32).round() as usize;
+                        let cell_density = series.cells.get(&(x_cell, y_cell)).copied().unwrap_or(0);
+                        let rendered = series.visible_cells.contains_key(&(x_cell, y_cell));
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} ({}) x={} cell={}{}",
+                                series.label,
+                                series.seq_id,
+                                query_bp.saturating_add(1),
+                                cell_density,
+                                if rendered { " visible" } else { "" }
+                            ))
+                            .monospace()
+                            .color(series.color)
+                            .size(self.feature_details_font_size()),
+                        );
+                    }
+                    ui.small(
+                        "Overlay mode normalizes the x-axis independently for each query series; selection sync and locked crosshair are disabled.",
+                    );
+                });
+            }
+            if response.clicked_by(egui::PointerButton::Secondary) {
+                self.dotplot_locked_crosshair_bp = None;
+                self.dotplot_hover_crosshair_bp = None;
+            }
+
+            if let Some(track) = flex_track {
+                let flex_rect = egui::Rect::from_min_max(
+                    egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + gap),
+                    egui::pos2(dotplot_rect.right(), canvas_rect.bottom() - bottom_margin),
+                );
+                painter.rect_filled(flex_rect, 4.0, egui::Color32::from_rgb(255, 255, 255));
+                painter.rect_stroke(
+                    flex_rect,
+                    4.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                    egui::StrokeKind::Inside,
+                );
+                let score_span = (track.max_score - track.min_score).abs().max(1e-12);
+                let span_bp = track
+                    .span_end_0based
+                    .saturating_sub(track.span_start_0based)
+                    .max(1) as f32;
+                let mut points: Vec<egui::Pos2> = vec![];
+                for bin in &track.bins {
+                    let x_frac = (bin.start_0based.saturating_sub(track.span_start_0based) as f32
+                        / span_bp)
+                        .clamp(0.0, 1.0);
+                    let y_frac =
+                        ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
+                    points.push(egui::pos2(
+                        flex_rect.left() + x_frac * flex_rect.width(),
+                        flex_rect.bottom() - y_frac * flex_rect.height(),
+                    ));
+                }
+                for segment in points.windows(2) {
+                    let [left, right] = [segment[0], segment[1]];
+                    painter.line_segment(
+                        [left, right],
+                        egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                    );
+                }
+            }
+            return;
         }
         let is_self_mode = matches!(
             view.mode,
@@ -3771,7 +4370,7 @@ impl MainAreaDna {
                         let overlay_loaded = self
                             .dotplot_cached_view
                             .as_ref()
-                            .map(|view| view.series_count > 1 || view.query_series.len() > 1)
+                            .map(Self::dotplot_view_is_overlay)
                             .unwrap_or(false);
                         if overlay_loaded {
                             ui.small(
@@ -3862,12 +4461,7 @@ impl MainAreaDna {
                         Some(view) => {
                             let reference_seq_label =
                                 view.reference_seq_id.as_deref().unwrap_or(view.seq_id.as_str());
-                            let total_point_count = view
-                                .query_series
-                                .iter()
-                                .map(|series| series.point_count)
-                                .sum::<usize>()
-                                .max(view.point_count);
+                            let total_point_count = Self::dotplot_view_total_point_count(view);
                             ui.label(
                                 egui::RichText::new(format!(
                                     "dotplot '{}' owner={} primary_query={} [{}..{}] reference={} [{}..{}] | series={} | mode={} | word={} step={} mismatches={} | points={}",
@@ -3889,7 +4483,7 @@ impl MainAreaDna {
                                 .monospace()
                                 .size(self.feature_details_font_size()),
                             );
-                            let overlay_mode = view.series_count > 1 || view.query_series.len() > 1;
+                            let overlay_mode = Self::dotplot_view_is_overlay(view);
                             let flex_track = if self.dotplot_ui.show_flexibility_track && !overlay_mode {
                                 cached_track.as_ref()
                             } else {

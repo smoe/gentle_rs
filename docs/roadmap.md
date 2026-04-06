@@ -3122,7 +3122,7 @@ Status (2026-03-19):
     - `ComputeDotplot`
     - `ComputeFlexibilityTrack`
   - persisted metadata schemas:
-    - `gentle.dotplot_view.v2`
+    - `gentle.dotplot_view.v3`
     - `gentle.flexibility_track.v1`
   - shared-shell/CLI commands:
     - `dotplot compute|list|show|render-svg`
@@ -3160,13 +3160,24 @@ Status (2026-03-19):
     - default export filename now encodes active dotplot parameters (`mode`,
       spans, `word`, `step`, `mismatches`, optional `tile`) and display controls
       (`threshold`, `gain`; plus flexibility parameters when enabled)
+  - multi-isoform reference overlay (2026-04-06):
+    - added engine operation `ComputeDotplotOverlay` for multiple query series
+      against one shared reference span
+    - dotplot payloads now carry `owner_seq_id`, `query_series[]`, and optional
+      merged reference-exon annotation in one engine-owned/exportable record
+    - the standalone Dotplot workspace can overlay transcript isoforms from the
+      active splicing/RNA-mapping locus in one canvas with deterministic colors
+    - cheap requests auto-compute after debounce; large requests stay explicit
+    - GUI + SVG export now render multi-series overlays with legend and merged
+      exon side track
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
       between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
-  - additional overlay controls beyond crosshair baseline
   - additional adapter convenience wrappers as new dotplot operations are added
+  - additional overlay controls beyond the current shared-reference multi-series
+    baseline
 
 Latest GUI baseline (2026-03-09):
 

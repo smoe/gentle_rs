@@ -5840,6 +5840,87 @@ fn test_render_dotplot_svg_operation() {
 }
 
 #[test]
+fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
+    let mut reference =
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT").expect("reference");
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(4, 12),
+        qualifiers: vec![("label".into(), Some("exon_1".to_string()))],
+    });
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(20, 28),
+        qualifiers: vec![("label".into(), Some("exon_2".to_string()))],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("ref".to_string(), reference);
+    state.sequences.insert(
+        "iso_a".to_string(),
+        DNAsequence::from_sequence("CCCGGGTTTAAA").expect("iso_a"),
+    );
+    state.sequences.insert(
+        "iso_b".to_string(),
+        DNAsequence::from_sequence("GGGTTTAA").expect("iso_b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "ref".to_string(),
+            reference_seq_id: "ref".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(36),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_a".to_string(),
+                    label: "Isoform A".to_string(),
+                    color_rgb: Some([29, 78, 216]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_b".to_string(),
+                    label: "Isoform B".to_string(),
+                    color_rgb: Some([220, 38, 38]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+            ],
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("overlay_plot".to_string()),
+        })
+        .expect("compute overlay dotplot");
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("overlay.dotplot.svg");
+    let path_text = path.display().to_string();
+    let res = engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "ref".to_string(),
+            dotplot_id: "overlay_plot".to_string(),
+            path: path_text.clone(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+        })
+        .expect("render overlay dotplot svg");
+    assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("<svg"));
+    assert!(text.contains("overlay owner=ref reference=ref"));
+    assert!(text.contains("Isoform A"));
+    assert!(text.contains("Isoform B"));
+    assert!(text.contains("merged exons"));
+    assert!(text.contains("x: normalized isoform queries"));
+}
+
+#[test]
 fn test_render_lineage_svg_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -13119,14 +13200,19 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
         .get_dotplot_view("promoter_dotplot")
         .expect("dotplot view");
     assert_eq!(view.schema, DOTPLOT_VIEW_SCHEMA);
+    assert_eq!(view.owner_seq_id, "s");
     assert_eq!(view.seq_id, "s");
     assert!(view.reference_seq_id.is_none());
     assert_eq!(view.word_size, 4);
     assert!(!view.points.is_empty());
     assert_eq!(view.point_count, view.points.len());
+    assert_eq!(view.series_count, 1);
+    assert_eq!(view.query_series.len(), 1);
+    assert_eq!(view.query_series[0].seq_id, "s");
     assert_eq!(view.boxplot_bin_count, view.boxplot_bins.len());
     assert!(view.boxplot_bin_count > 0);
     assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
+    assert!(view.reference_annotation.is_none());
 }
 
 #[test]
@@ -13166,6 +13252,7 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
     let view = engine
         .get_dotplot_view("pair_dotplot")
         .expect("pair dotplot view");
+    assert_eq!(view.owner_seq_id, "query");
     assert_eq!(view.seq_id, "query");
     assert_eq!(view.reference_seq_id.as_deref(), Some("ref"));
     assert_eq!(view.span_start_0based, 0);
@@ -13174,8 +13261,103 @@ fn test_compute_pair_dotplot_uses_reference_sequence_span() {
     assert_eq!(view.reference_span_end_0based, 15);
     assert_eq!(view.mode, DotplotMode::PairForward);
     assert!(!view.points.is_empty());
+    assert_eq!(view.series_count, 1);
+    assert_eq!(view.query_series.len(), 1);
+    assert_eq!(view.query_series[0].seq_id, "query");
     assert_eq!(view.boxplot_bin_count, view.boxplot_bins.len());
     assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
+}
+
+#[test]
+fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation() {
+    let mut reference =
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT").expect("reference");
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(4, 12),
+        qualifiers: vec![("label".into(), Some("exon_1".to_string()))],
+    });
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(20, 28),
+        qualifiers: vec![("label".into(), Some("exon_2".to_string()))],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("ref".to_string(), reference);
+    state.sequences.insert(
+        "iso_a".to_string(),
+        DNAsequence::from_sequence("CCCGGGTTTAAA").expect("iso_a"),
+    );
+    state.sequences.insert(
+        "iso_b".to_string(),
+        DNAsequence::from_sequence("GGGTTTAA").expect("iso_b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "ref".to_string(),
+            reference_seq_id: "ref".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(36),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_a".to_string(),
+                    label: "Isoform A".to_string(),
+                    color_rgb: Some([29, 78, 216]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_b".to_string(),
+                    label: "Isoform B".to_string(),
+                    color_rgb: Some([220, 38, 38]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+            ],
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("overlay_plot".to_string()),
+        })
+        .expect("compute overlay dotplot");
+    assert!(result.messages.iter().any(|message| message.contains("overlay_plot")));
+
+    let rows = engine.list_dotplot_views(Some("ref"));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].dotplot_id, "overlay_plot");
+    assert_eq!(rows[0].owner_seq_id, "ref");
+    assert_eq!(rows[0].series_count, 2);
+
+    let view = engine
+        .get_dotplot_view("overlay_plot")
+        .expect("overlay dotplot view");
+    assert_eq!(view.schema, DOTPLOT_VIEW_SCHEMA);
+    assert_eq!(view.owner_seq_id, "ref");
+    assert_eq!(view.seq_id, "iso_a");
+    assert_eq!(view.reference_seq_id.as_deref(), Some("ref"));
+    assert_eq!(view.series_count, 2);
+    assert_eq!(view.query_series.len(), 2);
+    assert_eq!(view.query_series[0].label, "Isoform A");
+    assert_eq!(view.query_series[1].label, "Isoform B");
+    assert_eq!(view.query_series[0].color_rgb, [29, 78, 216]);
+    assert_eq!(view.query_series[1].color_rgb, [220, 38, 38]);
+    assert!(view.query_series.iter().all(|series| !series.points.is_empty()));
+    let annotation = view
+        .reference_annotation
+        .as_ref()
+        .expect("merged exon track");
+    assert_eq!(annotation.seq_id, "ref");
+    assert_eq!(annotation.label, "merged exons");
+    assert_eq!(annotation.interval_count, 2);
+    assert_eq!(annotation.intervals[0].start_0based, 4);
+    assert_eq!(annotation.intervals[0].end_0based_exclusive, 12);
+    assert_eq!(annotation.intervals[1].start_0based, 20);
+    assert_eq!(annotation.intervals[1].end_0based_exclusive, 28);
 }
 
 #[test]

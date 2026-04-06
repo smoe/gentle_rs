@@ -11288,69 +11288,77 @@ fn parse_rna_reads_interpret_defaults_to_engine_kmer_len() {
 
 #[test]
 fn execute_dotplot_and_flex_commands_store_payloads() {
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "seq_a".to_string(),
-        DNAsequence::from_sequence("ATGCATGCATGCATGCATGCATGC").expect("sequence"),
-    );
-    let mut engine = GentleEngine::from_state(state);
+    std::thread::Builder::new()
+        .name("execute_dotplot_and_flex_commands_store_payloads".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                DNAsequence::from_sequence("ATGCATGCATGCATGCATGCATGC").expect("sequence"),
+            );
+            let mut engine = GentleEngine::from_state(state);
 
-    let dotplot = execute_shell_command(
-        &mut engine,
-        &ShellCommand::DotplotCompute {
-            seq_id: "seq_a".to_string(),
-            reference_seq_id: None,
-            span_start_0based: Some(0),
-            span_end_0based: Some(24),
-            reference_span_start_0based: None,
-            reference_span_end_0based: None,
-            mode: DotplotMode::SelfForward,
-            word_size: 4,
-            step_bp: 2,
-            max_mismatches: 0,
-            tile_bp: None,
-            dotplot_id: Some("dp_1".to_string()),
-        },
-    )
-    .expect("execute dotplot compute");
-    assert!(dotplot.state_changed);
-    assert_eq!(
-        dotplot.output["dotplot"]["dotplot_id"].as_str(),
-        Some("dp_1")
-    );
+            let dotplot = execute_shell_command(
+                &mut engine,
+                &ShellCommand::DotplotCompute {
+                    seq_id: "seq_a".to_string(),
+                    reference_seq_id: None,
+                    span_start_0based: Some(0),
+                    span_end_0based: Some(24),
+                    reference_span_start_0based: None,
+                    reference_span_end_0based: None,
+                    mode: DotplotMode::SelfForward,
+                    word_size: 4,
+                    step_bp: 2,
+                    max_mismatches: 0,
+                    tile_bp: None,
+                    dotplot_id: Some("dp_1".to_string()),
+                },
+            )
+            .expect("execute dotplot compute");
+            assert!(dotplot.state_changed);
+            assert_eq!(
+                dotplot.output["dotplot"]["dotplot_id"].as_str(),
+                Some("dp_1")
+            );
 
-    let flex = execute_shell_command(
-        &mut engine,
-        &ShellCommand::FlexCompute {
-            seq_id: "seq_a".to_string(),
-            span_start_0based: Some(0),
-            span_end_0based: Some(24),
-            model: FlexibilityModel::AtRichness,
-            bin_bp: 6,
-            smoothing_bp: Some(12),
-            track_id: Some("flex_1".to_string()),
-        },
-    )
-    .expect("execute flex compute");
-    assert!(flex.state_changed);
-    assert_eq!(flex.output["track"]["track_id"].as_str(), Some("flex_1"));
+            let flex = execute_shell_command(
+                &mut engine,
+                &ShellCommand::FlexCompute {
+                    seq_id: "seq_a".to_string(),
+                    span_start_0based: Some(0),
+                    span_end_0based: Some(24),
+                    model: FlexibilityModel::AtRichness,
+                    bin_bp: 6,
+                    smoothing_bp: Some(12),
+                    track_id: Some("flex_1".to_string()),
+                },
+            )
+            .expect("execute flex compute");
+            assert!(flex.state_changed);
+            assert_eq!(flex.output["track"]["track_id"].as_str(), Some("flex_1"));
 
-    let listed = execute_shell_command(
-        &mut engine,
-        &ShellCommand::DotplotList {
-            seq_id: Some("seq_a".to_string()),
-        },
-    )
-    .expect("list dotplots");
-    assert_eq!(listed.output["dotplot_count"].as_u64(), Some(1));
-    let flex_list = execute_shell_command(
-        &mut engine,
-        &ShellCommand::FlexList {
-            seq_id: Some("seq_a".to_string()),
-        },
-    )
-    .expect("list flex tracks");
-    assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
+            let listed = execute_shell_command(
+                &mut engine,
+                &ShellCommand::DotplotList {
+                    seq_id: Some("seq_a".to_string()),
+                },
+            )
+            .expect("list dotplots");
+            assert_eq!(listed.output["dotplot_count"].as_u64(), Some(1));
+            let flex_list = execute_shell_command(
+                &mut engine,
+                &ShellCommand::FlexList {
+                    seq_id: Some("seq_a".to_string()),
+                },
+            )
+            .expect("list flex tracks");
+            assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
+        })
+        .expect("spawn dotplot shell test")
+        .join()
+        .expect("join dotplot shell test");
 }
 
 #[test]

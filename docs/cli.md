@@ -1475,8 +1475,15 @@ Rendering export commands:
 - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
+  - `SEQ_ID` is the owner sequence id of the stored payload; for reference-centered
+    overlay payloads this is the shared reference/locus DNA sequence, not one
+    particular query isoform.
   - `--flex-track` optionally overlays one stored flexibility track in the same SVG.
+    Overlay dotplots suppress that panel because each query series uses its own
+    normalized x-axis.
   - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
+  - Overlay payload exports render all stored query series with a legend and a
+    merged-exon side track when reference exon annotation is available.
   - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`.
 - `render-rna-svg SEQ_ID OUTPUT.svg`
   - Calls engine operation `RenderRnaStructureSvg`.

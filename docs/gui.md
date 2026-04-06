@@ -235,6 +235,8 @@ Primary map modes (linear topology):
         spans, `word`, `step`, `mismatches`, optional `tile`) and display
         controls (`threshold`, `gain`; plus flexibility model/bin/smoothing when
         shown)
+      - overlay exports switch to owner/reference-oriented naming and include
+        the overlaid series count
     - `dotplot_id` / `flex_track_id` selection
   - full parameter editing and plot inspection now live in the standalone window:
     - before a dotplot payload is loaded, the standalone window stays in a
@@ -265,6 +267,14 @@ Primary map modes (linear topology):
         - recompute once on that fitted reference span
       - `Fit ref span to hits` remains available for manual re-fit when explicit
         reference spans are used
+      - `Overlay transcript isoforms` becomes available when the active
+        reference is the current splicing/RNA-mapping locus DNA:
+        - multiple transcript lanes can be selected and overlaid against the
+          same genomic/reference span in one canvas
+        - each isoform gets a deterministic color and its own normalized x-axis
+          span, while the y-axis stays in shared genomic coordinates
+        - merged exon annotation for the reference span is drawn beside the
+          genomic axis when exon features are present on the reference sequence
     - default parameters:
       - `half_window_bp`: defaults to the larger query/reference sequence length
         so the initial view spans the full comparison context
@@ -275,8 +285,13 @@ Primary map modes (linear topology):
       - `display threshold` (cell-density sensitivity)
       - `intensity gain` (contrast amplification for visible cells)
       - `Auto contrast` (estimates threshold/gain from payload density)
+      - display-only controls update immediately; engine recompute is reserved
+        for biological/compute input changes
       - if no cells pass visibility, the canvas shows an explicit message instead
         of a silent white panel
+    - valid cheap requests now auto-compute after a short debounce; requests
+      beyond the pair-evaluation budget stay dirty and wait for explicit
+      `Compute dotplot`
     - optional paired flexibility-track panel (`AT richness` / `AT skew`)
     - boxplot summary panel:
       - rendered below the density map
@@ -289,6 +304,10 @@ Primary map modes (linear topology):
         - self modes: sync selection to x/y interval
         - pair modes: sync selection from x/query axis (y/reference stays informational)
       - right-click to clear the locked crosshair
+      - overlay mode keeps hover-only crosshairs and reports one shared
+        reference coordinate plus one per-isoform query coordinate; query sync
+        and locked crosshair stay disabled there because the x-axis is
+        normalized independently for each isoform
     - status panel:
       - deterministic request diagnostics (mode, spans, seed parameters, estimated
         window counts / pair evaluations)

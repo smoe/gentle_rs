@@ -17715,13 +17715,15 @@ fn execute_shell_command_with_options_inner(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
             {
-                engine.get_dotplot_view(id).ok()
+                engine
+                    .list_dotplot_views(None)
+                    .into_iter()
+                    .find(|row| row.dotplot_id == id)
             } else {
                 engine
                     .list_dotplot_views(Some(seq_id.as_str()))
                     .into_iter()
                     .max_by_key(|row| row.generated_at_unix_ms)
-                    .and_then(|row| engine.get_dotplot_view(row.dotplot_id.as_str()).ok())
             };
             ShellRunResult {
                 state_changed: before != after,

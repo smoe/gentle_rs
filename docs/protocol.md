@@ -2062,8 +2062,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `RenderDotplotSvg` semantics:
 
 - Inputs:
-  - `seq_id` (owner/query sequence id for the stored dotplot payload)
-  - `dotplot_id` (stored payload id from `ComputeDotplot`)
+  - `seq_id` (owner sequence id for the stored dotplot payload)
+  - `dotplot_id` (stored payload id from `ComputeDotplot` or `ComputeDotplotOverlay`)
   - `path` (output SVG)
   - optional `flex_track_id` (adds flexibility panel in same SVG)
   - optional `display_density_threshold` and `display_intensity_gain` (display tuning)
@@ -2071,7 +2071,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - dotplot payload must belong to `seq_id`
   - optional flexibility track must also belong to `seq_id`
 - Output:
-  - deterministic SVG dotplot artifact; operation is non-mutating.
+  - deterministic SVG dotplot artifact; operation is non-mutating
+  - overlay payloads render all stored `query_series` with legend + merged
+    reference-exon side track; flexibility panel is suppressed there because
+    the x-axis is normalized per series.
 
 `RenderProtocolCartoonSvg` semantics:
 
@@ -2750,16 +2753,24 @@ Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:
   - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `ComputeDotplotOverlay { owner_seq_id, reference_seq_id, reference_span_start_0based?, reference_span_end_0based?, queries[], word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
   - `mode`: `self_forward | self_reverse_complement | pair_forward | pair_reverse_complement`
   - pair modes require `reference_seq_id` and use the optional
     `reference_span_start_0based` / `reference_span_end_0based` for the
     y/reference axis.
-  - stores payload schema `gentle.dotplot_view.v2`
+  - `ComputeDotplotOverlay` is reference-centered and requires at least one
+    query spec; each query uses `pair_forward` or `pair_reverse_complement`
+    against the same reference span
+  - stores payload schema `gentle.dotplot_view.v3`
   - payload includes:
+    - `owner_seq_id`
+    - shared reference span + seed parameters
     - sparse match points (`points[]`)
     - per-query-bin reference-distribution boxplot summary
       (`boxplot_bin_count`, `boxplot_bins[]` with
       `min/q1/median/q3/max + hit_count`)
+    - `query_series[]` for multi-query overlays
+    - optional `reference_annotation` with merged reference-side exon intervals
   - guardrails:
     - `word_size >= 1`
     - `step_bp >= 1`
