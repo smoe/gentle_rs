@@ -129,6 +129,9 @@ order. Durable architecture constraints and decisions remain in
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
   - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)
+  - macro/template and `op`/`workflow` execution hot paths are now also split
+    through dedicated helpers so small-stack test threads do not have to enter
+    the full monolithic dispatch frame for common macro/candidate execution
 - The newly extracted engine/GUI/shell modules now carry navigation-oriented
   top-level `//!` docs that explicitly say "look here for ..." so future
   refactors, cargo-doc output, and AI/code-search triage can reach the right
