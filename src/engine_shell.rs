@@ -19,28 +19,24 @@
 
 use crate::{
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        agent_system_availability, invoke_agent_support_with_env_overrides,
+        load_agent_system_catalog, AgentExecutionIntent, AGENT_BASE_URL_ENV,
+        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
+        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     },
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
-        DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DotplotMode, Engine,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, Operation, PairwiseAlignmentMode, PlanningEstimate, PlanningObjective,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
@@ -48,31 +44,35 @@ use crate::{
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
-        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-        SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
-        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        SequenceAnchor, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+        SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
+        TfbsRegionSummaryRequest, Workflow, WorkflowMacroTemplate, WorkflowMacroTemplateParam,
+        WorkflowMacroTemplatePort, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
+        CANDIDATE_SETS_METADATA_KEY, DOTPLOT_ANALYSIS_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
     genomes::{
-        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CACHE_DIR,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
+        PreparedCacheCleanupRequest, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
-    gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
-    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
+    gibson_planning::{GibsonAssemblyPlan, GIBSON_ASSEMBLY_PREVIEW_SCHEMA},
+    protocol_cartoon::{protocol_cartoon_catalog_rows, ProtocolCartoonKind},
     resource_sync,
     shell_docs::{
-        HelpOutputFormat, shell_help_json as render_shell_help_json,
+        shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text,
+        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
     },
     tf_motifs,
 };
@@ -81,8 +81,8 @@ use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{json, Value};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
 #[cfg(test)]
@@ -94,9 +94,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc,
+        mpsc, Arc, LazyLock, Mutex,
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -7865,7 +7864,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.len() < 2 {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -7966,20 +7965,8 @@ fn parse_feature_expert_target_tokens(
             }
             Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
         }
-        "uniprot-projection" | "uniprot_projection" | "uniprot" => {
-            if tokens.len() != 2 {
-                return Err(format!(
-                    "{context} uniprot-projection target expects exactly: uniprot-projection PROJECTION_ID"
-                ));
-            }
-            let projection_id = tokens[1].trim().to_string();
-            if projection_id.is_empty() {
-                return Err("uniprot-projection PROJECTION_ID must not be empty".to_string());
-            }
-            Ok(FeatureExpertTarget::UniprotProjection { projection_id })
-        }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|uniprot-projection)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform)"
         )),
     }
 }
@@ -15174,6 +15161,2279 @@ fn execute_reference_and_track_command(
 }
 
 #[inline(never)]
+fn execute_routines_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::RoutinesList {
+            catalog_path,
+            family,
+            status,
+            tag,
+            query,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+
+            let mut available_families = catalog
+                .routines
+                .iter()
+                .map(|routine| routine.family.trim().to_string())
+                .filter(|family| !family.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            available_families.sort_by_key(|value| value.to_ascii_lowercase());
+
+            let mut available_statuses = catalog
+                .routines
+                .iter()
+                .map(|routine| routine.status.trim().to_string())
+                .filter(|status| !status.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            available_statuses.sort_by_key(|value| value.to_ascii_lowercase());
+
+            let mut routines = catalog
+                .routines
+                .into_iter()
+                .filter(|routine| {
+                    routine_matches_filter(
+                        routine,
+                        family.as_deref(),
+                        status.as_deref(),
+                        tag.as_deref(),
+                        query.as_deref(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let planning_enabled = engine.planning_meta_enabled();
+            let planning_objective = engine.planning_objective();
+            let planning_profile = engine.planning_effective_profile();
+            let mut planning_rows = routines
+                .drain(..)
+                .map(|routine| {
+                    let estimate = estimate_routine_planning(engine, &routine);
+                    let mut payload = serde_json::to_value(&routine).unwrap_or_else(|_| json!({}));
+                    if let Some(obj) = payload.as_object_mut() {
+                        obj.insert(
+                            "estimated_time_hours".to_string(),
+                            json!(estimate.estimated_time_hours),
+                        );
+                        obj.insert("estimated_cost".to_string(), json!(estimate.estimated_cost));
+                        obj.insert(
+                            "local_fit_score".to_string(),
+                            json!(estimate.local_fit_score),
+                        );
+                        obj.insert(
+                            "composite_meta_score".to_string(),
+                            json!(estimate.composite_meta_score),
+                        );
+                        obj.insert(
+                            "planning_estimate".to_string(),
+                            serde_json::to_value(&estimate).unwrap_or_else(|_| json!({})),
+                        );
+                    }
+                    (routine, estimate, payload)
+                })
+                .collect::<Vec<_>>();
+            if planning_enabled {
+                planning_rows.sort_by(
+                    |(left_routine, left_estimate, _), (right_routine, right_estimate, _)| {
+                        right_estimate
+                            .passes_guardrails
+                            .cmp(&left_estimate.passes_guardrails)
+                            .then_with(|| {
+                                right_estimate
+                                    .composite_meta_score
+                                    .total_cmp(&left_estimate.composite_meta_score)
+                            })
+                            .then(
+                                left_routine
+                                    .family
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.family.to_ascii_lowercase()),
+                            )
+                            .then(
+                                left_routine
+                                    .title
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.title.to_ascii_lowercase()),
+                            )
+                            .then(
+                                left_routine
+                                    .routine_id
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.routine_id.to_ascii_lowercase()),
+                            )
+                    },
+                );
+            } else {
+                planning_rows.sort_by(|(left, _, _), (right, _, _)| {
+                    left.family
+                        .to_ascii_lowercase()
+                        .cmp(&right.family.to_ascii_lowercase())
+                        .then(
+                            left.title
+                                .to_ascii_lowercase()
+                                .cmp(&right.title.to_ascii_lowercase()),
+                        )
+                        .then(
+                            left.routine_id
+                                .to_ascii_lowercase()
+                                .cmp(&right.routine_id.to_ascii_lowercase()),
+                        )
+                });
+            }
+            let guardrail_blocked_count = planning_rows
+                .iter()
+                .filter(|(_, estimate, _)| !estimate.passes_guardrails)
+                .count();
+            let routines_payload = planning_rows
+                .into_iter()
+                .map(|(_, _, payload)| payload)
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_LIST_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "filters": {
+                        "family": family,
+                        "status": status,
+                        "tag": tag,
+                        "query": query,
+                    },
+                    "available_families": available_families,
+                    "available_statuses": available_statuses,
+                    "routine_count": routines_payload.len(),
+                    "routines": routines_payload,
+                    "planning": {
+                        "enabled": planning_enabled,
+                        "profile_merge_order": [
+                            "global_profile",
+                            "confirmed_agent_overlay",
+                            "project_override"
+                        ],
+                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
+                        "objective": planning_objective,
+                        "guardrail_blocked_count": guardrail_blocked_count,
+                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
+                    },
+                }),
+            })
+        }
+        ShellCommand::RoutinesExplain {
+            catalog_path,
+            routine_id,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+            let available_routine_ids = catalog
+                .routines
+                .iter()
+                .map(|row| row.routine_id.clone())
+                .collect::<Vec<_>>();
+            let Some(routine) = resolve_catalog_routine(&catalog, routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let routine = routine.clone();
+
+            let mut alternatives = vec![];
+            if routine.confusing_alternatives.is_empty() {
+                for alt in catalog
+                    .routines
+                    .iter()
+                    .filter(|candidate| {
+                        !candidate
+                            .routine_id
+                            .eq_ignore_ascii_case(routine.routine_id.as_str())
+                            && candidate
+                                .family
+                                .eq_ignore_ascii_case(routine.family.as_str())
+                    })
+                    .take(4)
+                {
+                    alternatives.push(routine_summary_row(alt));
+                }
+            } else {
+                for alt_id in &routine.confusing_alternatives {
+                    if let Some(alt) = resolve_catalog_routine(&catalog, alt_id) {
+                        alternatives.push(routine_summary_row(alt));
+                    }
+                }
+            }
+
+            let requires = if routine.requires.is_empty() {
+                build_default_routine_requirements(&routine)
+            } else {
+                routine.requires.clone()
+            };
+
+            let disambiguation_questions = if routine.disambiguation_questions.is_empty() {
+                vec![
+                    "What molecule types and termini are expected for insert and vector?"
+                        .to_string(),
+                    "Do you need directionality constraints or compatible overhang control?"
+                        .to_string(),
+                    "Is this intended as planning-only preflight or as mutating execution?"
+                        .to_string(),
+                ]
+            } else {
+                routine.disambiguation_questions.clone()
+            };
+            let purpose = routine.purpose.clone().or_else(|| routine.summary.clone());
+            let mechanism = routine.mechanism.clone();
+            let contraindications = routine.contraindications.clone();
+            let failure_modes = routine.failure_modes.clone();
+            let routine_payload = routine.clone();
+
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_EXPLAIN_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "routine": routine_payload,
+                    "explanation": {
+                        "purpose": purpose,
+                        "mechanism": mechanism,
+                        "requires": requires,
+                        "contraindications": contraindications,
+                        "disambiguation_questions": disambiguation_questions,
+                        "failure_modes": failure_modes,
+                    },
+                    "alternatives": alternatives,
+                }),
+            })
+        }
+        ShellCommand::RoutinesCompare {
+            catalog_path,
+            left_routine_id,
+            right_routine_id,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+
+            let available_routine_ids = catalog
+                .routines
+                .iter()
+                .map(|row| row.routine_id.clone())
+                .collect::<Vec<_>>();
+            let Some(left) = resolve_catalog_routine(&catalog, left_routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    left_routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let Some(right) = resolve_catalog_routine(&catalog, right_routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    right_routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let left = left.clone();
+            let right = right.clone();
+
+            let left_tag_set = left
+                .vocabulary_tags
+                .iter()
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            let right_tag_set = right
+                .vocabulary_tags
+                .iter()
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            let shared_tags = left
+                .vocabulary_tags
+                .iter()
+                .filter(|value| right_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let left_only_tags = left
+                .vocabulary_tags
+                .iter()
+                .filter(|value| !right_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let right_only_tags = right
+                .vocabulary_tags
+                .iter()
+                .filter(|value| !left_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let left_axis_map = build_routine_axis_map(&left);
+            let right_axis_map = build_routine_axis_map(&right);
+            let mut keys = left_axis_map
+                .keys()
+                .chain(right_axis_map.keys())
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            if keys.is_empty() {
+                keys.insert("core_family".to_string());
+                keys.insert("status".to_string());
+                keys.insert("template".to_string());
+                keys.insert("required_inputs".to_string());
+            }
+            let mut axis_rows = vec![];
+            for key in keys {
+                let row = match key.as_str() {
+                    "core_family" => json!({
+                        "axis": "core_family",
+                        "left": left.family.clone(),
+                        "right": right.family.clone(),
+                        "same": left.family.eq_ignore_ascii_case(right.family.as_str()),
+                    }),
+                    "status" => json!({
+                        "axis": "status",
+                        "left": left.status.clone(),
+                        "right": right.status.clone(),
+                        "same": left.status.eq_ignore_ascii_case(right.status.as_str()),
+                    }),
+                    "template" => json!({
+                        "axis": "template",
+                        "left": left.template_name.clone(),
+                        "right": right.template_name.clone(),
+                        "same": left.template_name.eq_ignore_ascii_case(right.template_name.as_str()),
+                    }),
+                    "required_inputs" => {
+                        let left_inputs = build_default_routine_requirements(&left).join("; ");
+                        let right_inputs = build_default_routine_requirements(&right).join("; ");
+                        json!({
+                            "axis": "required_inputs",
+                            "left": left_inputs,
+                            "right": right_inputs,
+                            "same": left_inputs.eq_ignore_ascii_case(right_inputs.as_str()),
+                        })
+                    }
+                    _ => {
+                        let left_value = left_axis_map
+                            .get(key.as_str())
+                            .map(|(_, value)| value.clone())
+                            .unwrap_or_else(|| "-".to_string());
+                        let right_value = right_axis_map
+                            .get(key.as_str())
+                            .map(|(_, value)| value.clone())
+                            .unwrap_or_else(|| "-".to_string());
+                        let axis_label = left_axis_map
+                            .get(key.as_str())
+                            .map(|(axis, _)| axis.clone())
+                            .or_else(|| {
+                                right_axis_map
+                                    .get(key.as_str())
+                                    .map(|(axis, _)| axis.clone())
+                            })
+                            .unwrap_or_else(|| key.clone());
+                        json!({
+                            "axis": axis_label,
+                            "left": left_value,
+                            "right": right_value,
+                            "same": left_value.eq_ignore_ascii_case(right_value.as_str()),
+                        })
+                    }
+                };
+                axis_rows.push(row);
+            }
+
+            let mut disambiguation_questions = left.disambiguation_questions.clone();
+            for question in &right.disambiguation_questions {
+                if !disambiguation_questions
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(question))
+                {
+                    disambiguation_questions.push(question.clone());
+                }
+            }
+
+            let cross_referenced = left
+                .confusing_alternatives
+                .iter()
+                .any(|entry| entry.eq_ignore_ascii_case(right.routine_id.as_str()))
+                || right
+                    .confusing_alternatives
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(left.routine_id.as_str()));
+            let same_family = left.family.eq_ignore_ascii_case(right.family.as_str());
+            let planning_enabled = engine.planning_meta_enabled();
+            let planning_objective = engine.planning_objective();
+            let planning_profile = engine.planning_effective_profile();
+            let left_estimate = estimate_routine_planning(engine, &left);
+            let right_estimate = estimate_routine_planning(engine, &right);
+            axis_rows.push(json!({
+                "axis": "estimated_time_hours",
+                "left": format!("{:.2}", left_estimate.estimated_time_hours),
+                "right": format!("{:.2}", right_estimate.estimated_time_hours),
+                "same": (left_estimate.estimated_time_hours - right_estimate.estimated_time_hours).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "estimated_cost",
+                "left": format!("{:.2}", left_estimate.estimated_cost),
+                "right": format!("{:.2}", right_estimate.estimated_cost),
+                "same": (left_estimate.estimated_cost - right_estimate.estimated_cost).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "local_fit_score",
+                "left": format!("{:.3}", left_estimate.local_fit_score),
+                "right": format!("{:.3}", right_estimate.local_fit_score),
+                "same": (left_estimate.local_fit_score - right_estimate.local_fit_score).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "composite_meta_score",
+                "left": format!("{:.3}", left_estimate.composite_meta_score),
+                "right": format!("{:.3}", right_estimate.composite_meta_score),
+                "same": (left_estimate.composite_meta_score - right_estimate.composite_meta_score).abs() < 1e-9,
+            }));
+            let preferred_routine_id =
+                if left_estimate.composite_meta_score >= right_estimate.composite_meta_score {
+                    left.routine_id.clone()
+                } else {
+                    right.routine_id.clone()
+                };
+            let left_payload = left.clone();
+            let right_payload = right.clone();
+
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_COMPARE_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "left": left_payload,
+                    "right": right_payload,
+                    "comparison": {
+                        "same_family": same_family,
+                        "cross_referenced_as_alternatives": cross_referenced,
+                        "shared_vocabulary_tags": shared_tags,
+                        "left_only_tags": left_only_tags,
+                        "right_only_tags": right_only_tags,
+                        "difference_matrix": axis_rows,
+                        "disambiguation_questions": disambiguation_questions,
+                    },
+                    "planning": {
+                        "enabled": planning_enabled,
+                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
+                        "objective": planning_objective,
+                        "left_estimate": left_estimate.clone(),
+                        "right_estimate": right_estimate.clone(),
+                        "preferred_routine_id": preferred_routine_id,
+                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
+                    },
+                }),
+            })
+        }
+        _ => unreachable!("non-routines command passed to routines helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_planning_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::PlanningProfileShow { scope } => {
+            let scope_profile = engine.planning_profile(*scope);
+            let effective_profile = engine.planning_effective_profile();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_profile_view.v1",
+                    "profile_schema": PLANNING_PROFILE_SCHEMA,
+                    "scope": scope.as_str(),
+                    "profile": scope_profile,
+                    "effective_profile": effective_profile,
+                    "profile_merge_order": [
+                        "global_profile",
+                        "confirmed_agent_overlay",
+                        "project_override"
+                    ],
+                }),
+            })
+        }
+        ShellCommand::PlanningProfileSet {
+            scope,
+            payload_json,
+        } => {
+            let profile =
+                parse_optional_json_payload::<PlanningProfile>(payload_json, "planning profile")?;
+            engine
+                .set_planning_profile(*scope, profile)
+                .map_err(|e| e.to_string())?;
+            let scope_profile = engine.planning_profile(*scope);
+            let effective_profile = engine.planning_effective_profile();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_profile_update.v1",
+                    "profile_schema": PLANNING_PROFILE_SCHEMA,
+                    "scope": scope.as_str(),
+                    "profile": scope_profile,
+                    "effective_profile": effective_profile,
+                }),
+            })
+        }
+        ShellCommand::PlanningObjectiveShow => {
+            let objective = engine.planning_objective();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_objective_view.v1",
+                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+                    "objective": objective,
+                }),
+            })
+        }
+        ShellCommand::PlanningObjectiveSet { payload_json } => {
+            let objective = parse_optional_json_payload::<PlanningObjective>(
+                payload_json,
+                "planning objective",
+            )?;
+            engine
+                .set_planning_objective(objective)
+                .map_err(|e| e.to_string())?;
+            let current = engine.planning_objective();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_objective_update.v1",
+                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+                    "objective": current,
+                }),
+            })
+        }
+        ShellCommand::PlanningSuggestionsList { status } => {
+            let suggestions = engine.list_planning_suggestions(*status);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_suggestions_list.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "status_filter": status.map(|value| value.as_str()),
+                    "suggestion_count": suggestions.len(),
+                    "suggestions": suggestions,
+                }),
+            })
+        }
+        ShellCommand::PlanningSuggestionAccept { suggestion_id } => {
+            let suggestion = engine
+                .accept_planning_suggestion(suggestion_id)
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_suggestion_resolution.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": "accepted",
+                    "suggestion": suggestion,
+                    "effective_profile": engine.planning_effective_profile(),
+                    "objective": engine.planning_objective(),
+                    "sync_status": sync_status,
+                }),
+            })
+        }
+        ShellCommand::PlanningSuggestionReject {
+            suggestion_id,
+            reason,
+        } => {
+            let suggestion = engine
+                .reject_planning_suggestion(suggestion_id, reason.as_deref())
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_suggestion_resolution.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": "rejected",
+                    "suggestion": suggestion,
+                    "effective_profile": engine.planning_effective_profile(),
+                    "objective": engine.planning_objective(),
+                    "sync_status": sync_status,
+                }),
+            })
+        }
+        ShellCommand::PlanningSyncStatus => {
+            let status = engine.planning_sync_status();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_sync_status_view.v1",
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": status,
+                }),
+            })
+        }
+        ShellCommand::PlanningSyncPull {
+            payload_json,
+            source,
+            confidence,
+            snapshot_id,
+        } => {
+            if let Some(value) = confidence {
+                if !value.is_finite() || !(0.0..=1.0).contains(value) {
+                    return Err(format!(
+                        "Invalid planning sync pull confidence '{}'; expected 0.0..=1.0",
+                        value
+                    ));
+                }
+            }
+            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
+                payload_json,
+                "planning sync pull",
+            )?;
+            let source = source
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("agent_pull");
+            let suggestion = engine
+                .propose_planning_suggestion(
+                    "pull",
+                    source,
+                    *confidence,
+                    snapshot_id.as_deref(),
+                    payload.profile_patch,
+                    payload.objective_patch,
+                    payload.message.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_sync_suggestion.v1",
+                    "direction": "pull",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "suggestion": suggestion,
+                    "sync_status": sync_status,
+                }),
+            })
+        }
+        ShellCommand::PlanningSyncPush {
+            payload_json,
+            source,
+            confidence,
+            snapshot_id,
+        } => {
+            if let Some(value) = confidence {
+                if !value.is_finite() || !(0.0..=1.0).contains(value) {
+                    return Err(format!(
+                        "Invalid planning sync push confidence '{}'; expected 0.0..=1.0",
+                        value
+                    ));
+                }
+            }
+            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
+                payload_json,
+                "planning sync push",
+            )?;
+            let source = source
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("agent_push");
+            let suggestion = engine
+                .propose_planning_suggestion(
+                    "push",
+                    source,
+                    *confidence,
+                    snapshot_id.as_deref(),
+                    payload.profile_patch,
+                    payload.objective_patch,
+                    payload.message.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_sync_suggestion.v1",
+                    "direction": "push",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "suggestion": suggestion,
+                    "sync_status": sync_status,
+                }),
+            })
+        }
+        _ => unreachable!("non-planning command passed to planning helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_guides_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::GuidesList => {
+            let sets = engine.list_guide_sets();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.guide_design.v1",
+                    "set_count": sets.len(),
+                    "sets": sets
+                }),
+            })
+        }
+        ShellCommand::GuidesShow {
+            guide_set_id,
+            limit,
+            offset,
+        } => {
+            let (set, total, clamped_offset) = engine
+                .inspect_guide_set_page(guide_set_id, *limit, *offset)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "guide_set_id": set.guide_set_id,
+                    "guide_count": total,
+                    "limit": limit,
+                    "offset": clamped_offset,
+                    "returned": set.guides.len(),
+                    "created_at_unix_ms": set.created_at_unix_ms,
+                    "updated_at_unix_ms": set.updated_at_unix_ms,
+                    "guides": set.guides,
+                }),
+            })
+        }
+        ShellCommand::GuidesPut {
+            guide_set_id,
+            guides_json,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let raw = parse_json_payload(guides_json)?;
+            let guides: Vec<GuideCandidate> = serde_json::from_str(&raw)
+                .map_err(|e| format!("Invalid guides JSON payload: {e}"))?;
+            let op_result = engine
+                .apply(Operation::UpsertGuideSet {
+                    guide_set_id: guide_set_id.clone(),
+                    guides,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::GuidesDelete { guide_set_id } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteGuideSet {
+                    guide_set_id: guide_set_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::GuidesFilter {
+            guide_set_id,
+            config_json,
+            output_guide_set_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let config = if let Some(raw) = config_json {
+                let loaded = parse_json_payload(raw)?;
+                serde_json::from_str::<GuidePracticalFilterConfig>(&loaded)
+                    .map_err(|e| format!("Invalid practical guide filter config JSON: {e}"))?
+            } else {
+                GuidePracticalFilterConfig::default()
+            };
+            let op_result = engine
+                .apply(Operation::FilterGuidesPractical {
+                    guide_set_id: guide_set_id.clone(),
+                    config,
+                    output_guide_set_id: output_guide_set_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "output_guide_set_id": output_guide_set_id,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::GuidesFilterShow { guide_set_id } => {
+            let report = engine
+                .get_guide_practical_filter_report(guide_set_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report
+                }),
+            })
+        }
+        ShellCommand::GuidesOligosGenerate {
+            guide_set_id,
+            template_id,
+            apply_5prime_g_extension,
+            output_oligo_set_id,
+            passed_only,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::GenerateGuideOligos {
+                    guide_set_id: guide_set_id.clone(),
+                    template_id: template_id.clone(),
+                    apply_5prime_g_extension: Some(*apply_5prime_g_extension),
+                    output_oligo_set_id: output_oligo_set_id.clone(),
+                    passed_only: Some(*passed_only),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "template_id": template_id,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::GuidesOligosList { guide_set_id } => {
+            let sets = engine.list_guide_oligo_sets(guide_set_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.guide_design.v1",
+                    "oligo_set_count": sets.len(),
+                    "oligo_sets": sets
+                }),
+            })
+        }
+        ShellCommand::GuidesOligosShow { oligo_set_id } => {
+            let set = engine
+                .get_guide_oligo_set(oligo_set_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "oligo_set": set
+                }),
+            })
+        }
+        ShellCommand::GuidesOligosExport {
+            guide_set_id,
+            oligo_set_id,
+            format,
+            path,
+            plate_format,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ExportGuideOligos {
+                    guide_set_id: guide_set_id.clone(),
+                    oligo_set_id: oligo_set_id.clone(),
+                    format: *format,
+                    path: path.clone(),
+                    plate_format: *plate_format,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "oligo_set_id": oligo_set_id,
+                    "format": format.as_str(),
+                    "path": path,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::GuidesProtocolExport {
+            guide_set_id,
+            oligo_set_id,
+            path,
+            include_qc_checklist,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ExportGuideProtocolText {
+                    guide_set_id: guide_set_id.clone(),
+                    oligo_set_id: oligo_set_id.clone(),
+                    path: path.clone(),
+                    include_qc_checklist: Some(*include_qc_checklist),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "oligo_set_id": oligo_set_id,
+                    "path": path,
+                    "result": op_result
+                }),
+            })
+        }
+        _ => unreachable!("non-guides command passed to guides helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_primers_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
+            let dna = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
+            let (roi_start_0based, roi_end_0based_exclusive) =
+                sequence_feature_roi_range_0based(dna, *feature_id)?;
+            let primer_pairs = build_seeded_primer_pair_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            );
+            let qpcr =
+                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_seed_request.v1",
+                    "template": seq_id,
+                    "source": {
+                        "kind": "feature",
+                        "feature_id": feature_id,
+                    },
+                    "roi_start_0based": roi_start_0based,
+                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                    "operations": {
+                        "design_primer_pairs": primer_pairs,
+                        "design_qpcr_assays": qpcr,
+                    }
+                }),
+            })
+        }
+        ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id } => {
+            let expert = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::SplicingFeature {
+                        feature_id: *feature_id,
+                        scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            let splicing = match expert {
+                FeatureExpertView::Splicing(view) => view,
+                _ => {
+                    return Err(format!(
+                        "Feature n-{} on '{}' does not resolve to a splicing expert view",
+                        feature_id, seq_id
+                    ));
+                }
+            };
+            if splicing.region_start_1based == 0
+                || splicing.region_end_1based < splicing.region_start_1based
+            {
+                return Err(format!(
+                    "Splicing region bounds are invalid for feature n-{} on '{}'",
+                    feature_id, seq_id
+                ));
+            }
+            let roi_start_0based = splicing.region_start_1based.saturating_sub(1);
+            let roi_end_0based_exclusive = splicing.region_end_1based;
+            let primer_pairs = build_seeded_primer_pair_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            );
+            let qpcr =
+                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_seed_request.v1",
+                    "template": seq_id,
+                    "source": {
+                        "kind": "splicing",
+                        "feature_id": feature_id,
+                        "group_label": splicing.group_label,
+                        "transcript_count": splicing.transcript_count,
+                        "unique_exon_count": splicing.unique_exon_count,
+                    },
+                    "roi_start_0based": roi_start_0based,
+                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                    "operations": {
+                        "design_primer_pairs": primer_pairs,
+                        "design_qpcr_assays": qpcr,
+                    }
+                }),
+            })
+        }
+        ShellCommand::PrimersDesign {
+            request_json,
+            backend,
+            primer3_executable,
+        } => {
+            let json_text = parse_json_payload(request_json)?;
+            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
+                format!(
+                    "Invalid primers design request JSON: {} (expected Operation payload with DesignPrimerPairs)",
+                    e
+                )
+            })?;
+            let (template_id, requested_report_id) = match &op {
+                Operation::DesignPrimerPairs {
+                    template,
+                    report_id,
+                    ..
+                } => (template.clone(), report_id.clone()),
+                _ => {
+                    return Err(
+                        "primers design expects an Operation payload with DesignPrimerPairs"
+                            .to_string(),
+                    );
+                }
+            };
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let previous_backend = engine.state().parameters.primer_design_backend;
+            let previous_executable = engine.state().parameters.primer3_executable.clone();
+            if let Some(override_backend) = backend {
+                engine.state_mut().parameters.primer_design_backend = *override_backend;
+            }
+            if let Some(override_exec) = primer3_executable
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+            }
+            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            engine.state_mut().parameters.primer_design_backend = previous_backend;
+            engine.state_mut().parameters.primer3_executable = previous_executable;
+            let op_result = op_result?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let reports = engine.list_primer_design_reports();
+            let selected_report = if let Some(report_id) = requested_report_id {
+                engine.get_primer_design_report(&report_id).ok()
+            } else {
+                reports
+                    .iter()
+                    .filter(|summary| summary.template == template_id)
+                    .max_by_key(|summary| summary.generated_at_unix_ms)
+                    .and_then(|summary| engine.get_primer_design_report(&summary.report_id).ok())
+            };
+            let effective_backend = selected_report
+                .as_ref()
+                .map(|report| report.backend.clone());
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "report": selected_report,
+                    "effective_backend": effective_backend,
+                }),
+            })
+        }
+        ShellCommand::PrimersDesignQpcr {
+            request_json,
+            backend,
+            primer3_executable,
+        } => {
+            let json_text = parse_json_payload(request_json)?;
+            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
+                format!(
+                    "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays)",
+                    e
+                )
+            })?;
+            let (template_id, requested_report_id) = match &op {
+                Operation::DesignQpcrAssays {
+                    template,
+                    report_id,
+                    ..
+                } => (template.clone(), report_id.clone()),
+                _ => {
+                    return Err(
+                        "primers design-qpcr expects an Operation payload with DesignQpcrAssays"
+                            .to_string(),
+                    );
+                }
+            };
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let previous_backend = engine.state().parameters.primer_design_backend;
+            let previous_executable = engine.state().parameters.primer3_executable.clone();
+            if let Some(override_backend) = backend {
+                engine.state_mut().parameters.primer_design_backend = *override_backend;
+            }
+            if let Some(override_exec) = primer3_executable
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+            }
+            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            engine.state_mut().parameters.primer_design_backend = previous_backend;
+            engine.state_mut().parameters.primer3_executable = previous_executable;
+            let op_result = op_result?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let reports = engine.list_qpcr_design_reports();
+            let selected_report = if let Some(report_id) = requested_report_id {
+                engine.get_qpcr_design_report(&report_id).ok()
+            } else {
+                reports
+                    .iter()
+                    .filter(|summary| summary.template == template_id)
+                    .max_by_key(|summary| summary.generated_at_unix_ms)
+                    .and_then(|summary| engine.get_qpcr_design_report(&summary.report_id).ok())
+            };
+            let effective_backend = selected_report
+                .as_ref()
+                .map(|report| report.backend.clone());
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "report": selected_report,
+                    "effective_backend": effective_backend,
+                }),
+            })
+        }
+        ShellCommand::PrimersPreflight {
+            backend,
+            primer3_executable,
+        } => {
+            let report = engine.primer3_preflight_report(*backend, primer3_executable.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer3_preflight.v1",
+                    "preflight": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersListReports => {
+            let reports = engine.list_primer_design_reports();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_design_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowReport { report_id } => {
+            let report = engine
+                .get_primer_design_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportReport { report_id, path } => {
+            let report = engine
+                .export_primer_design_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_design_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "pair_count": report.pair_count,
+                }),
+            })
+        }
+        ShellCommand::PrimersListQpcrReports => {
+            let reports = engine.list_qpcr_design_reports();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.qpcr_design_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowQpcrReport { report_id } => {
+            let report = engine
+                .get_qpcr_design_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportQpcrReport { report_id, path } => {
+            let report = engine
+                .export_qpcr_design_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.qpcr_design_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "assay_count": report.assay_count,
+                }),
+            })
+        }
+        _ => unreachable!("non-primers command passed to primers helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_sequence_analysis_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::TranscriptsDerive {
+            seq_id,
+            feature_ids,
+            scope,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::DeriveTranscriptSequences {
+                    seq_id: seq_id.clone(),
+                    feature_ids: feature_ids.clone(),
+                    scope: *scope,
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let created_ids = op_result.created_seq_ids.clone();
+            let created = created_ids
+                .iter()
+                .filter_map(|derived_seq_id| {
+                    engine.state().sequences.get(derived_seq_id).map(|dna| {
+                        json!({
+                            "seq_id": derived_seq_id,
+                            "name": dna.name(),
+                            "length_bp": dna.len(),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "transcript_count": created.len(),
+                    "transcripts": created,
+                }),
+            })
+        }
+        ShellCommand::FeaturesQuery { query } => {
+            let result = engine
+                .query_sequence_features(query.clone())
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(result)
+                    .map_err(|e| format!("Could not serialize feature query result: {e}"))?,
+            })
+        }
+        ShellCommand::FeaturesTfbsSummary { request } => {
+            let summary = engine
+                .summarize_tfbs_region(request.clone())
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(summary)
+                    .map_err(|e| format!("Could not serialize TFBS region summary: {e}"))?,
+            })
+        }
+        ShellCommand::DotplotCompute {
+            seq_id,
+            reference_seq_id,
+            span_start_0based,
+            span_end_0based,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            mode,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeDotplot {
+                    seq_id: seq_id.clone(),
+                    reference_seq_id: reference_seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    reference_span_start_0based: *reference_span_start_0based,
+                    reference_span_end_0based: *reference_span_end_0based,
+                    mode: *mode,
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                    store_as: dotplot_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let selected = if let Some(id) = dotplot_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine
+                    .list_dotplot_views(None)
+                    .into_iter()
+                    .find(|row| row.dotplot_id == id)
+            } else {
+                engine
+                    .list_dotplot_views(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+            };
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "dotplot": selected,
+                }),
+            })
+        }
+        ShellCommand::DotplotList { seq_id } => {
+            let rows = engine.list_dotplot_views(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.dotplot_view_list.v1",
+                    "dotplot_count": rows.len(),
+                    "dotplots": rows,
+                }),
+            })
+        }
+        ShellCommand::DotplotShow { dotplot_id } => {
+            let view = engine
+                .get_dotplot_view(dotplot_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "dotplot": view,
+                }),
+            })
+        }
+        ShellCommand::FlexCompute {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            model,
+            bin_bp,
+            smoothing_bp,
+            track_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeFlexibilityTrack {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    model: *model,
+                    bin_bp: *bin_bp,
+                    smoothing_bp: *smoothing_bp,
+                    store_as: track_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let selected = if let Some(id) = track_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_flexibility_track(id).ok()
+            } else {
+                engine
+                    .list_flexibility_tracks(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_flexibility_track(row.track_id.as_str()).ok())
+            };
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "track": selected,
+                }),
+            })
+        }
+        ShellCommand::FlexList { seq_id } => {
+            let rows = engine.list_flexibility_tracks(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.flexibility_track_list.v1",
+                    "track_count": rows.len(),
+                    "tracks": rows,
+                }),
+            })
+        }
+        ShellCommand::FlexShow { track_id } => {
+            let track = engine
+                .get_flexibility_track(track_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "track": track,
+                }),
+            })
+        }
+        ShellCommand::SplicingRefsDerive {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            seed_feature_id,
+            scope,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::DeriveSplicingReferences {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    seed_feature_id: *seed_feature_id,
+                    scope: *scope,
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let derived_sequence_ids = op_result.created_seq_ids.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "derived_sequence_ids": derived_sequence_ids,
+                }),
+            })
+        }
+        ShellCommand::AlignCompute {
+            query_seq_id,
+            target_seq_id,
+            query_span_start_0based,
+            query_span_end_0based,
+            target_span_start_0based,
+            target_span_end_0based,
+            mode,
+            match_score,
+            mismatch_score,
+            gap_open,
+            gap_extend,
+        } => {
+            let op_result = engine
+                .apply(Operation::AlignSequences {
+                    query_seq_id: query_seq_id.clone(),
+                    target_seq_id: target_seq_id.clone(),
+                    query_span_start_0based: *query_span_start_0based,
+                    query_span_end_0based: *query_span_end_0based,
+                    target_span_start_0based: *target_span_start_0based,
+                    target_span_end_0based: *target_span_end_0based,
+                    mode: *mode,
+                    match_score: *match_score,
+                    mismatch_score: *mismatch_score,
+                    gap_open: *gap_open,
+                    gap_extend: *gap_extend,
+                })
+                .map_err(|e| e.to_string())?;
+            let alignment = op_result.sequence_alignment.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "alignment": alignment,
+                }),
+            })
+        }
+        _ => unreachable!("non-sequence-analysis command passed to sequence-analysis helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_sequencing_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::SeqTraceImport {
+            path,
+            trace_id,
+            seq_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportSequencingTrace {
+                    path: path.clone(),
+                    trace_id: trace_id.clone(),
+                    seq_id: seq_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let import_report = op_result.sequencing_trace_import_report.clone();
+            let trace_record = op_result.sequencing_trace_record.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "import_report": import_report,
+                    "trace": trace_record,
+                }),
+            })
+        }
+        ShellCommand::SeqTraceList { seq_id } => {
+            let op_result = engine
+                .apply(Operation::ListSequencingTraces {
+                    seq_id: seq_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let traces = op_result
+                .sequencing_trace_summaries
+                .clone()
+                .unwrap_or_default();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_trace_list.v1",
+                    "trace_count": traces.len(),
+                    "traces": traces,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::SeqTraceShow { trace_id } => {
+            let op_result = engine
+                .apply(Operation::ShowSequencingTrace {
+                    trace_id: trace_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let trace = op_result.sequencing_trace_record.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "trace": trace,
+                    "result": op_result,
+                }),
+            })
+        }
+        ShellCommand::SeqConfirmRun {
+            expected_seq_id,
+            baseline_seq_id,
+            read_seq_ids,
+            trace_ids,
+            targets,
+            alignment_mode,
+            match_score,
+            mismatch_score,
+            gap_open,
+            gap_extend,
+            min_identity_fraction,
+            min_target_coverage_fraction,
+            allow_reverse_complement,
+            report_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ConfirmConstructReads {
+                    expected_seq_id: expected_seq_id.clone(),
+                    baseline_seq_id: baseline_seq_id.clone(),
+                    read_seq_ids: read_seq_ids.clone(),
+                    trace_ids: trace_ids.clone(),
+                    targets: targets.clone(),
+                    alignment_mode: *alignment_mode,
+                    match_score: *match_score,
+                    mismatch_score: *mismatch_score,
+                    gap_open: *gap_open,
+                    gap_extend: *gap_extend,
+                    min_identity_fraction: *min_identity_fraction,
+                    min_target_coverage_fraction: *min_target_coverage_fraction,
+                    allow_reverse_complement: *allow_reverse_complement,
+                    report_id: report_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_sequencing_confirmation_report(id).ok()
+            } else {
+                engine
+                    .list_sequencing_confirmation_reports(Some(expected_seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| {
+                        engine
+                            .get_sequencing_confirmation_report(row.report_id.as_str())
+                            .ok()
+                    })
+            };
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::SeqConfirmListReports { expected_seq_id } => {
+            let rows = engine.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
+            let summary_rows = rows
+                .iter()
+                .map(GentleEngine::format_sequencing_confirmation_report_summary_row)
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_confirmation_report_list.v1",
+                    "report_count": rows.len(),
+                    "reports": rows,
+                    "summary_rows": summary_rows,
+                }),
+            })
+        }
+        ShellCommand::SeqConfirmShowReport { report_id } => {
+            let report = engine
+                .get_sequencing_confirmation_report(report_id)
+                .map_err(|e| e.to_string())?;
+            let summary =
+                GentleEngine::format_sequencing_confirmation_report_detail_summary(&report);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "summary": summary,
+                }),
+            })
+        }
+        ShellCommand::SeqConfirmExportReport { report_id, path } => {
+            let report = engine
+                .export_sequencing_confirmation_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.sequencing_confirmation_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "overall_status": report.overall_status,
+                }),
+            })
+        }
+        ShellCommand::SeqConfirmExportSupportTsv { report_id, path } => {
+            let report = engine
+                .export_sequencing_confirmation_support_tsv(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA,
+                    "report_id": report.report_id,
+                    "path": path,
+                    "target_count": report.targets.len(),
+                }),
+            })
+        }
+        ShellCommand::SeqPrimerSuggest {
+            expected_seq_id,
+            primer_seq_ids,
+            confirmation_report_id,
+            min_3prime_anneal_bp,
+            predicted_read_length_bp,
+        } => {
+            let op_result = engine
+                .apply(Operation::SuggestSequencingPrimers {
+                    expected_seq_id: expected_seq_id.clone(),
+                    primer_seq_ids: primer_seq_ids.clone(),
+                    confirmation_report_id: confirmation_report_id.clone(),
+                    min_3prime_anneal_bp: *min_3prime_anneal_bp,
+                    predicted_read_length_bp: *predicted_read_length_bp,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.sequencing_primer_overlay_report.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                    "suggestion_count": report.as_ref().map(|value| value.suggestion_count).unwrap_or(0),
+                    "proposal_count": report.as_ref().map(|value| value.proposal_count).unwrap_or(0),
+                }),
+            })
+        }
+        _ => unreachable!("non-sequencing command passed to sequencing helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_rna_reads_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::RnaReadsInterpret {
+            seq_id,
+            seed_feature_id,
+            input_path,
+            profile,
+            input_format,
+            scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
+            seed_filter,
+            align_config,
+            report_id,
+            report_mode,
+            checkpoint_path,
+            checkpoint_every_reads,
+            resume_from_checkpoint,
+        } => {
+            let op_result = engine
+                .apply(Operation::InterpretRnaReads {
+                    seq_id: seq_id.clone(),
+                    seed_feature_id: *seed_feature_id,
+                    profile: *profile,
+                    input_path: input_path.clone(),
+                    input_format: *input_format,
+                    scope: *scope,
+                    origin_mode: *origin_mode,
+                    target_gene_ids: target_gene_ids.clone(),
+                    roi_seed_capture_enabled: *roi_seed_capture_enabled,
+                    seed_filter: seed_filter.clone(),
+                    align_config: align_config.clone(),
+                    report_id: report_id.clone(),
+                    report_mode: *report_mode,
+                    checkpoint_path: checkpoint_path.clone(),
+                    checkpoint_every_reads: *checkpoint_every_reads,
+                    resume_from_checkpoint: *resume_from_checkpoint,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_rna_read_report(id).ok()
+            } else {
+                engine
+                    .list_rna_read_reports(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_rna_read_report(row.report_id.as_str()).ok())
+            };
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsAlignReport {
+            report_id,
+            selection,
+            align_config_override,
+            selected_record_indices,
+        } => {
+            let op_result = engine
+                .apply(Operation::AlignRnaReadReport {
+                    report_id: report_id.clone(),
+                    selection: *selection,
+                    align_config_override: align_config_override.clone(),
+                    selected_record_indices: selected_record_indices.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = engine
+                .get_rna_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsListReports { seq_id } => {
+            let rows = engine.list_rna_read_reports(seq_id.as_deref());
+            let summary_rows = rows
+                .iter()
+                .map(GentleEngine::format_rna_read_report_summary_row)
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_report_list.v1",
+                    "report_count": rows.len(),
+                    "reports": rows,
+                    "summary_rows": summary_rows,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsShowReport { report_id } => {
+            let report = engine
+                .get_rna_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            let summary = GentleEngine::format_rna_read_report_detail_summary(&report);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "summary": summary,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsSummarizeGeneSupport {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            output_path,
+        } => {
+            let summary = engine
+                .summarize_rna_read_gene_support(
+                    report_id,
+                    gene_ids,
+                    selected_record_indices,
+                    *complete_rule,
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output_path.as_deref() {
+                engine
+                    .write_rna_read_gene_support_summary_json(&summary, path)
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&summary)
+                    .map_err(|e| format!("Could not serialize gene-support summary: {e}"))?,
+            })
+        }
+        ShellCommand::RnaReadsInspectGeneSupport {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            cohort_filter,
+            output_path,
+        } => {
+            let audit = engine
+                .inspect_rna_read_gene_support(
+                    report_id,
+                    gene_ids,
+                    selected_record_indices,
+                    *complete_rule,
+                    *cohort_filter,
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output_path.as_deref() {
+                engine
+                    .write_rna_read_gene_support_audit_json(&audit, path)
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&audit)
+                    .map_err(|e| format!("Could not serialize gene-support audit: {e}"))?,
+            })
+        }
+        ShellCommand::RnaReadsInspectAlignments {
+            report_id,
+            selection,
+            limit,
+            effect_filter,
+            sort_key,
+            search,
+            selected_record_indices,
+            score_density_variant,
+            score_bin_index,
+            score_bin_count,
+        } => {
+            let inspection = engine
+                .inspect_rna_read_alignments_with_subset(
+                    report_id,
+                    *selection,
+                    *limit,
+                    Some(RnaReadAlignmentInspectionSubsetSpec {
+                        effect_filter: *effect_filter,
+                        sort_key: *sort_key,
+                        search: search.clone(),
+                        selected_record_indices: selected_record_indices.clone(),
+                        score_density_variant: *score_density_variant,
+                        score_density_seed_filter_override: None,
+                        score_bin_index: *score_bin_index,
+                        score_bin_count: *score_bin_count,
+                    }),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "inspection": inspection,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportReport { report_id, path } => {
+            let report = engine
+                .export_rna_read_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "read_count_total": report.read_count_total,
+                    "read_count_seed_passed": report.read_count_seed_passed,
+                    "read_count_aligned": report.read_count_aligned,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportHitsFasta {
+            report_id,
+            path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let written = engine
+                .export_rna_read_hits_fasta(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_hits_fasta_export.v1",
+                    "report_id": report_id,
+                    "path": path,
+                    "selection": selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
+                    "written_records": written,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportSampleSheet {
+            path,
+            seq_id,
+            report_ids,
+            gene_ids,
+            complete_rule,
+            append,
+        } => {
+            let export = engine
+                .export_rna_read_sample_sheet(
+                    path,
+                    seq_id.as_deref(),
+                    report_ids,
+                    gene_ids,
+                    *complete_rule,
+                    *append,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "path": export.path,
+                    "report_count": export.report_count,
+                    "append": export.appended,
+                    "seq_id": seq_id,
+                    "report_ids": report_ids,
+                    "gene_ids": export.gene_ids,
+                    "complete_rule": export.complete_rule.as_str(),
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportExonPathsTsv {
+            report_id,
+            path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let export = engine
+                .export_rna_read_exon_paths_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
+                    "row_count": export.row_count,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportExonAbundanceTsv {
+            report_id,
+            path,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let export = engine
+                .export_rna_read_exon_abundance_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
+                    "selected_read_count": export.selected_read_count,
+                    "exon_row_count": export.exon_row_count,
+                    "transition_row_count": export.transition_row_count,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportScoreDensitySvg {
+            report_id,
+            path,
+            scale,
+            variant,
+        } => {
+            let export = engine
+                .export_rna_read_score_density_svg(report_id, path, *scale, *variant, None)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "scale": export.scale.as_str(),
+                    "variant": export.variant.as_str(),
+                    "bin_count": export.bin_count,
+                    "max_bin_count": export.max_bin_count,
+                    "total_scored_reads": export.total_scored_reads,
+                    "derived_from_report_hits_only": export.derived_from_report_hits_only,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportAlignmentsTsv {
+            report_id,
+            path,
+            selection,
+            limit,
+            selected_record_indices,
+            subset_spec,
+        } => {
+            let export = engine
+                .export_rna_read_alignments_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    *limit,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
+                    "row_count": export.row_count,
+                    "aligned_count": export.aligned_count,
+                    "limit": export.limit,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsExportAlignmentDotplotSvg {
+            report_id,
+            path,
+            selection,
+            max_points,
+        } => {
+            let export = engine
+                .export_rna_read_alignment_dotplot_svg(report_id, path, *selection, *max_points)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "point_count": export.point_count,
+                    "rendered_point_count": export.rendered_point_count,
+                    "max_points": export.max_points,
+                    "min_score": export.min_score,
+                    "max_score": export.max_score,
+                }),
+            })
+        }
+        _ => unreachable!("non-rna-reads command passed to rna-reads helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
@@ -15635,6 +17895,111 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::TracksTrackedApply { .. }
     ) {
         return execute_reference_and_track_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RoutinesList { .. }
+            | ShellCommand::RoutinesExplain { .. }
+            | ShellCommand::RoutinesCompare { .. }
+    ) {
+        return execute_routines_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::PlanningProfileShow { .. }
+            | ShellCommand::PlanningProfileSet { .. }
+            | ShellCommand::PlanningObjectiveShow
+            | ShellCommand::PlanningObjectiveSet { .. }
+            | ShellCommand::PlanningSuggestionsList { .. }
+            | ShellCommand::PlanningSuggestionAccept { .. }
+            | ShellCommand::PlanningSuggestionReject { .. }
+            | ShellCommand::PlanningSyncStatus
+            | ShellCommand::PlanningSyncPull { .. }
+            | ShellCommand::PlanningSyncPush { .. }
+    ) {
+        return execute_planning_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::GuidesList
+            | ShellCommand::GuidesShow { .. }
+            | ShellCommand::GuidesPut { .. }
+            | ShellCommand::GuidesDelete { .. }
+            | ShellCommand::GuidesFilter { .. }
+            | ShellCommand::GuidesFilterShow { .. }
+            | ShellCommand::GuidesOligosGenerate { .. }
+            | ShellCommand::GuidesOligosList { .. }
+            | ShellCommand::GuidesOligosShow { .. }
+            | ShellCommand::GuidesOligosExport { .. }
+            | ShellCommand::GuidesProtocolExport { .. }
+    ) {
+        return execute_guides_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::PrimersSeedFromFeature { .. }
+            | ShellCommand::PrimersSeedFromSplicing { .. }
+            | ShellCommand::PrimersDesign { .. }
+            | ShellCommand::PrimersDesignQpcr { .. }
+            | ShellCommand::PrimersPreflight { .. }
+            | ShellCommand::PrimersListReports
+            | ShellCommand::PrimersShowReport { .. }
+            | ShellCommand::PrimersExportReport { .. }
+            | ShellCommand::PrimersListQpcrReports
+            | ShellCommand::PrimersShowQpcrReport { .. }
+            | ShellCommand::PrimersExportQpcrReport { .. }
+    ) {
+        return execute_primers_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::TranscriptsDerive { .. }
+            | ShellCommand::FeaturesQuery { .. }
+            | ShellCommand::FeaturesTfbsSummary { .. }
+            | ShellCommand::DotplotCompute { .. }
+            | ShellCommand::DotplotList { .. }
+            | ShellCommand::DotplotShow { .. }
+            | ShellCommand::FlexCompute { .. }
+            | ShellCommand::FlexList { .. }
+            | ShellCommand::FlexShow { .. }
+            | ShellCommand::SplicingRefsDerive { .. }
+            | ShellCommand::AlignCompute { .. }
+    ) {
+        return execute_sequence_analysis_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::SeqTraceImport { .. }
+            | ShellCommand::SeqTraceList { .. }
+            | ShellCommand::SeqTraceShow { .. }
+            | ShellCommand::SeqConfirmRun { .. }
+            | ShellCommand::SeqConfirmListReports { .. }
+            | ShellCommand::SeqConfirmShowReport { .. }
+            | ShellCommand::SeqConfirmExportReport { .. }
+            | ShellCommand::SeqConfirmExportSupportTsv { .. }
+            | ShellCommand::SeqPrimerSuggest { .. }
+    ) {
+        return execute_sequencing_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RnaReadsInterpret { .. }
+            | ShellCommand::RnaReadsAlignReport { .. }
+            | ShellCommand::RnaReadsListReports { .. }
+            | ShellCommand::RnaReadsShowReport { .. }
+            | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
+            | ShellCommand::RnaReadsInspectGeneSupport { .. }
+            | ShellCommand::RnaReadsInspectAlignments { .. }
+            | ShellCommand::RnaReadsExportReport { .. }
+            | ShellCommand::RnaReadsExportHitsFasta { .. }
+            | ShellCommand::RnaReadsExportSampleSheet { .. }
+            | ShellCommand::RnaReadsExportExonPathsTsv { .. }
+            | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+            | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
+            | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
+            | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. }
+    ) {
+        return execute_rna_reads_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
@@ -16601,722 +18966,19 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncJaspar { .. } => {
             execute_export_import_and_resource_command(engine, command)?
         }
-        ShellCommand::RoutinesList {
-            catalog_path,
-            family,
-            status,
-            tag,
-            query,
-        } => {
-            let resolved_catalog = catalog_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
-                .to_string();
-            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
-            let catalog_schema = catalog.schema.clone();
-
-            let mut available_families = catalog
-                .routines
-                .iter()
-                .map(|routine| routine.family.trim().to_string())
-                .filter(|family| !family.is_empty())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            available_families.sort_by_key(|value| value.to_ascii_lowercase());
-
-            let mut available_statuses = catalog
-                .routines
-                .iter()
-                .map(|routine| routine.status.trim().to_string())
-                .filter(|status| !status.is_empty())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            available_statuses.sort_by_key(|value| value.to_ascii_lowercase());
-
-            let mut routines = catalog
-                .routines
-                .into_iter()
-                .filter(|routine| {
-                    routine_matches_filter(
-                        routine,
-                        family.as_deref(),
-                        status.as_deref(),
-                        tag.as_deref(),
-                        query.as_deref(),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let planning_enabled = engine.planning_meta_enabled();
-            let planning_objective = engine.planning_objective();
-            let planning_profile = engine.planning_effective_profile();
-            let mut planning_rows = routines
-                .drain(..)
-                .map(|routine| {
-                    let estimate = estimate_routine_planning(engine, &routine);
-                    let mut payload = serde_json::to_value(&routine).unwrap_or_else(|_| json!({}));
-                    if let Some(obj) = payload.as_object_mut() {
-                        obj.insert(
-                            "estimated_time_hours".to_string(),
-                            json!(estimate.estimated_time_hours),
-                        );
-                        obj.insert("estimated_cost".to_string(), json!(estimate.estimated_cost));
-                        obj.insert(
-                            "local_fit_score".to_string(),
-                            json!(estimate.local_fit_score),
-                        );
-                        obj.insert(
-                            "composite_meta_score".to_string(),
-                            json!(estimate.composite_meta_score),
-                        );
-                        obj.insert(
-                            "planning_estimate".to_string(),
-                            serde_json::to_value(&estimate).unwrap_or_else(|_| json!({})),
-                        );
-                    }
-                    (routine, estimate, payload)
-                })
-                .collect::<Vec<_>>();
-            if planning_enabled {
-                planning_rows.sort_by(
-                    |(left_routine, left_estimate, _), (right_routine, right_estimate, _)| {
-                        right_estimate
-                            .passes_guardrails
-                            .cmp(&left_estimate.passes_guardrails)
-                            .then_with(|| {
-                                right_estimate
-                                    .composite_meta_score
-                                    .total_cmp(&left_estimate.composite_meta_score)
-                            })
-                            .then(
-                                left_routine
-                                    .family
-                                    .to_ascii_lowercase()
-                                    .cmp(&right_routine.family.to_ascii_lowercase()),
-                            )
-                            .then(
-                                left_routine
-                                    .title
-                                    .to_ascii_lowercase()
-                                    .cmp(&right_routine.title.to_ascii_lowercase()),
-                            )
-                            .then(
-                                left_routine
-                                    .routine_id
-                                    .to_ascii_lowercase()
-                                    .cmp(&right_routine.routine_id.to_ascii_lowercase()),
-                            )
-                    },
-                );
-            } else {
-                planning_rows.sort_by(|(left, _, _), (right, _, _)| {
-                    left.family
-                        .to_ascii_lowercase()
-                        .cmp(&right.family.to_ascii_lowercase())
-                        .then(
-                            left.title
-                                .to_ascii_lowercase()
-                                .cmp(&right.title.to_ascii_lowercase()),
-                        )
-                        .then(
-                            left.routine_id
-                                .to_ascii_lowercase()
-                                .cmp(&right.routine_id.to_ascii_lowercase()),
-                        )
-                });
-            }
-            let guardrail_blocked_count = planning_rows
-                .iter()
-                .filter(|(_, estimate, _)| !estimate.passes_guardrails)
-                .count();
-            let routines_payload = planning_rows
-                .into_iter()
-                .map(|(_, _, payload)| payload)
-                .collect::<Vec<_>>();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": CLONING_ROUTINE_LIST_SCHEMA,
-                    "catalog_path": resolved_catalog,
-                    "catalog_schema": catalog_schema,
-                    "filters": {
-                        "family": family,
-                        "status": status,
-                        "tag": tag,
-                        "query": query,
-                    },
-                    "available_families": available_families,
-                    "available_statuses": available_statuses,
-                    "routine_count": routines_payload.len(),
-                    "routines": routines_payload,
-                    "planning": {
-                        "enabled": planning_enabled,
-                        "profile_merge_order": [
-                            "global_profile",
-                            "confirmed_agent_overlay",
-                            "project_override"
-                        ],
-                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
-                        "objective": planning_objective,
-                        "guardrail_blocked_count": guardrail_blocked_count,
-                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
-                    },
-                }),
-            }
-        }
-        ShellCommand::RoutinesExplain {
-            catalog_path,
-            routine_id,
-        } => {
-            let resolved_catalog = catalog_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
-                .to_string();
-            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
-            let catalog_schema = catalog.schema.clone();
-            let available_routine_ids = catalog
-                .routines
-                .iter()
-                .map(|row| row.routine_id.clone())
-                .collect::<Vec<_>>();
-            let Some(routine) = resolve_catalog_routine(&catalog, routine_id) else {
-                return Err(format!(
-                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
-                    routine_id.trim(),
-                    resolved_catalog,
-                    available_routine_ids.join(", ")
-                ));
-            };
-            let routine = routine.clone();
-
-            let mut alternatives = vec![];
-            if routine.confusing_alternatives.is_empty() {
-                for alt in catalog
-                    .routines
-                    .iter()
-                    .filter(|candidate| {
-                        !candidate
-                            .routine_id
-                            .eq_ignore_ascii_case(routine.routine_id.as_str())
-                            && candidate
-                                .family
-                                .eq_ignore_ascii_case(routine.family.as_str())
-                    })
-                    .take(4)
-                {
-                    alternatives.push(routine_summary_row(alt));
-                }
-            } else {
-                for alt_id in &routine.confusing_alternatives {
-                    if let Some(alt) = resolve_catalog_routine(&catalog, alt_id) {
-                        alternatives.push(routine_summary_row(alt));
-                    }
-                }
-            }
-
-            let requires = if routine.requires.is_empty() {
-                build_default_routine_requirements(&routine)
-            } else {
-                routine.requires.clone()
-            };
-
-            let disambiguation_questions = if routine.disambiguation_questions.is_empty() {
-                vec![
-                    "What molecule types and termini are expected for insert and vector?"
-                        .to_string(),
-                    "Do you need directionality constraints or compatible overhang control?"
-                        .to_string(),
-                    "Is this intended as planning-only preflight or as mutating execution?"
-                        .to_string(),
-                ]
-            } else {
-                routine.disambiguation_questions.clone()
-            };
-            let purpose = routine.purpose.clone().or_else(|| routine.summary.clone());
-            let mechanism = routine.mechanism.clone();
-            let contraindications = routine.contraindications.clone();
-            let failure_modes = routine.failure_modes.clone();
-            let routine_payload = routine.clone();
-
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": CLONING_ROUTINE_EXPLAIN_SCHEMA,
-                    "catalog_path": resolved_catalog,
-                    "catalog_schema": catalog_schema,
-                    "routine": routine_payload,
-                    "explanation": {
-                        "purpose": purpose,
-                        "mechanism": mechanism,
-                        "requires": requires,
-                        "contraindications": contraindications,
-                        "disambiguation_questions": disambiguation_questions,
-                        "failure_modes": failure_modes,
-                    },
-                    "alternatives": alternatives,
-                }),
-            }
-        }
-        ShellCommand::RoutinesCompare {
-            catalog_path,
-            left_routine_id,
-            right_routine_id,
-        } => {
-            let resolved_catalog = catalog_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
-                .to_string();
-            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
-            let catalog_schema = catalog.schema.clone();
-
-            let available_routine_ids = catalog
-                .routines
-                .iter()
-                .map(|row| row.routine_id.clone())
-                .collect::<Vec<_>>();
-            let Some(left) = resolve_catalog_routine(&catalog, left_routine_id) else {
-                return Err(format!(
-                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
-                    left_routine_id.trim(),
-                    resolved_catalog,
-                    available_routine_ids.join(", ")
-                ));
-            };
-            let Some(right) = resolve_catalog_routine(&catalog, right_routine_id) else {
-                return Err(format!(
-                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
-                    right_routine_id.trim(),
-                    resolved_catalog,
-                    available_routine_ids.join(", ")
-                ));
-            };
-            let left = left.clone();
-            let right = right.clone();
-
-            let left_tag_set = left
-                .vocabulary_tags
-                .iter()
-                .map(|value| value.to_ascii_lowercase())
-                .collect::<BTreeSet<_>>();
-            let right_tag_set = right
-                .vocabulary_tags
-                .iter()
-                .map(|value| value.to_ascii_lowercase())
-                .collect::<BTreeSet<_>>();
-            let shared_tags = left
-                .vocabulary_tags
-                .iter()
-                .filter(|value| right_tag_set.contains(&value.to_ascii_lowercase()))
-                .cloned()
-                .collect::<Vec<_>>();
-            let left_only_tags = left
-                .vocabulary_tags
-                .iter()
-                .filter(|value| !right_tag_set.contains(&value.to_ascii_lowercase()))
-                .cloned()
-                .collect::<Vec<_>>();
-            let right_only_tags = right
-                .vocabulary_tags
-                .iter()
-                .filter(|value| !left_tag_set.contains(&value.to_ascii_lowercase()))
-                .cloned()
-                .collect::<Vec<_>>();
-
-            let left_axis_map = build_routine_axis_map(&left);
-            let right_axis_map = build_routine_axis_map(&right);
-            let mut keys = left_axis_map
-                .keys()
-                .chain(right_axis_map.keys())
-                .cloned()
-                .collect::<BTreeSet<_>>();
-            if keys.is_empty() {
-                keys.insert("core_family".to_string());
-                keys.insert("status".to_string());
-                keys.insert("template".to_string());
-                keys.insert("required_inputs".to_string());
-            }
-            let mut axis_rows = vec![];
-            for key in keys {
-                let row = match key.as_str() {
-                    "core_family" => json!({
-                        "axis": "core_family",
-                        "left": left.family.clone(),
-                        "right": right.family.clone(),
-                        "same": left.family.eq_ignore_ascii_case(right.family.as_str()),
-                    }),
-                    "status" => json!({
-                        "axis": "status",
-                        "left": left.status.clone(),
-                        "right": right.status.clone(),
-                        "same": left.status.eq_ignore_ascii_case(right.status.as_str()),
-                    }),
-                    "template" => json!({
-                        "axis": "template",
-                        "left": left.template_name.clone(),
-                        "right": right.template_name.clone(),
-                        "same": left.template_name.eq_ignore_ascii_case(right.template_name.as_str()),
-                    }),
-                    "required_inputs" => {
-                        let left_inputs = build_default_routine_requirements(&left).join("; ");
-                        let right_inputs = build_default_routine_requirements(&right).join("; ");
-                        json!({
-                            "axis": "required_inputs",
-                            "left": left_inputs,
-                            "right": right_inputs,
-                            "same": left_inputs.eq_ignore_ascii_case(right_inputs.as_str()),
-                        })
-                    }
-                    _ => {
-                        let left_value = left_axis_map
-                            .get(key.as_str())
-                            .map(|(_, value)| value.clone())
-                            .unwrap_or_else(|| "-".to_string());
-                        let right_value = right_axis_map
-                            .get(key.as_str())
-                            .map(|(_, value)| value.clone())
-                            .unwrap_or_else(|| "-".to_string());
-                        let axis_label = left_axis_map
-                            .get(key.as_str())
-                            .map(|(axis, _)| axis.clone())
-                            .or_else(|| {
-                                right_axis_map
-                                    .get(key.as_str())
-                                    .map(|(axis, _)| axis.clone())
-                            })
-                            .unwrap_or_else(|| key.clone());
-                        json!({
-                            "axis": axis_label,
-                            "left": left_value,
-                            "right": right_value,
-                            "same": left_value.eq_ignore_ascii_case(right_value.as_str()),
-                        })
-                    }
-                };
-                axis_rows.push(row);
-            }
-
-            let mut disambiguation_questions = left.disambiguation_questions.clone();
-            for question in &right.disambiguation_questions {
-                if !disambiguation_questions
-                    .iter()
-                    .any(|entry| entry.eq_ignore_ascii_case(question))
-                {
-                    disambiguation_questions.push(question.clone());
-                }
-            }
-
-            let cross_referenced = left
-                .confusing_alternatives
-                .iter()
-                .any(|entry| entry.eq_ignore_ascii_case(right.routine_id.as_str()))
-                || right
-                    .confusing_alternatives
-                    .iter()
-                    .any(|entry| entry.eq_ignore_ascii_case(left.routine_id.as_str()));
-            let same_family = left.family.eq_ignore_ascii_case(right.family.as_str());
-            let planning_enabled = engine.planning_meta_enabled();
-            let planning_objective = engine.planning_objective();
-            let planning_profile = engine.planning_effective_profile();
-            let left_estimate = estimate_routine_planning(engine, &left);
-            let right_estimate = estimate_routine_planning(engine, &right);
-            axis_rows.push(json!({
-                "axis": "estimated_time_hours",
-                "left": format!("{:.2}", left_estimate.estimated_time_hours),
-                "right": format!("{:.2}", right_estimate.estimated_time_hours),
-                "same": (left_estimate.estimated_time_hours - right_estimate.estimated_time_hours).abs() < 1e-9,
-            }));
-            axis_rows.push(json!({
-                "axis": "estimated_cost",
-                "left": format!("{:.2}", left_estimate.estimated_cost),
-                "right": format!("{:.2}", right_estimate.estimated_cost),
-                "same": (left_estimate.estimated_cost - right_estimate.estimated_cost).abs() < 1e-9,
-            }));
-            axis_rows.push(json!({
-                "axis": "local_fit_score",
-                "left": format!("{:.3}", left_estimate.local_fit_score),
-                "right": format!("{:.3}", right_estimate.local_fit_score),
-                "same": (left_estimate.local_fit_score - right_estimate.local_fit_score).abs() < 1e-9,
-            }));
-            axis_rows.push(json!({
-                "axis": "composite_meta_score",
-                "left": format!("{:.3}", left_estimate.composite_meta_score),
-                "right": format!("{:.3}", right_estimate.composite_meta_score),
-                "same": (left_estimate.composite_meta_score - right_estimate.composite_meta_score).abs() < 1e-9,
-            }));
-            let preferred_routine_id =
-                if left_estimate.composite_meta_score >= right_estimate.composite_meta_score {
-                    left.routine_id.clone()
-                } else {
-                    right.routine_id.clone()
-                };
-            let left_payload = left.clone();
-            let right_payload = right.clone();
-
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": CLONING_ROUTINE_COMPARE_SCHEMA,
-                    "catalog_path": resolved_catalog,
-                    "catalog_schema": catalog_schema,
-                    "left": left_payload,
-                    "right": right_payload,
-                    "comparison": {
-                        "same_family": same_family,
-                        "cross_referenced_as_alternatives": cross_referenced,
-                        "shared_vocabulary_tags": shared_tags,
-                        "left_only_tags": left_only_tags,
-                        "right_only_tags": right_only_tags,
-                        "difference_matrix": axis_rows,
-                        "disambiguation_questions": disambiguation_questions,
-                    },
-                    "planning": {
-                        "enabled": planning_enabled,
-                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
-                        "objective": planning_objective,
-                        "left_estimate": left_estimate.clone(),
-                        "right_estimate": right_estimate.clone(),
-                        "preferred_routine_id": preferred_routine_id,
-                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
-                    },
-                }),
-            }
-        }
-        ShellCommand::PlanningProfileShow { scope } => {
-            let scope_profile = engine.planning_profile(*scope);
-            let effective_profile = engine.planning_effective_profile();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.planning_profile_view.v1",
-                    "profile_schema": PLANNING_PROFILE_SCHEMA,
-                    "scope": scope.as_str(),
-                    "profile": scope_profile,
-                    "effective_profile": effective_profile,
-                    "profile_merge_order": [
-                        "global_profile",
-                        "confirmed_agent_overlay",
-                        "project_override"
-                    ],
-                }),
-            }
-        }
-        ShellCommand::PlanningProfileSet {
-            scope,
-            payload_json,
-        } => {
-            let profile =
-                parse_optional_json_payload::<PlanningProfile>(payload_json, "planning profile")?;
-            engine
-                .set_planning_profile(*scope, profile)
-                .map_err(|e| e.to_string())?;
-            let scope_profile = engine.planning_profile(*scope);
-            let effective_profile = engine.planning_effective_profile();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_profile_update.v1",
-                    "profile_schema": PLANNING_PROFILE_SCHEMA,
-                    "scope": scope.as_str(),
-                    "profile": scope_profile,
-                    "effective_profile": effective_profile,
-                }),
-            }
-        }
-        ShellCommand::PlanningObjectiveShow => {
-            let objective = engine.planning_objective();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.planning_objective_view.v1",
-                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
-                    "objective": objective,
-                }),
-            }
-        }
-        ShellCommand::PlanningObjectiveSet { payload_json } => {
-            let objective = parse_optional_json_payload::<PlanningObjective>(
-                payload_json,
-                "planning objective",
-            )?;
-            engine
-                .set_planning_objective(objective)
-                .map_err(|e| e.to_string())?;
-            let current = engine.planning_objective();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_objective_update.v1",
-                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
-                    "objective": current,
-                }),
-            }
-        }
-        ShellCommand::PlanningSuggestionsList { status } => {
-            let suggestions = engine.list_planning_suggestions(*status);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.planning_suggestions_list.v1",
-                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
-                    "status_filter": status.map(|value| value.as_str()),
-                    "suggestion_count": suggestions.len(),
-                    "suggestions": suggestions,
-                }),
-            }
-        }
-        ShellCommand::PlanningSuggestionAccept { suggestion_id } => {
-            let suggestion = engine
-                .accept_planning_suggestion(suggestion_id)
-                .map_err(|e| e.to_string())?;
-            let sync_status = engine.planning_sync_status();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_suggestion_resolution.v1",
-                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
-                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
-                    "status": "accepted",
-                    "suggestion": suggestion,
-                    "effective_profile": engine.planning_effective_profile(),
-                    "objective": engine.planning_objective(),
-                    "sync_status": sync_status,
-                }),
-            }
-        }
-        ShellCommand::PlanningSuggestionReject {
-            suggestion_id,
-            reason,
-        } => {
-            let suggestion = engine
-                .reject_planning_suggestion(suggestion_id, reason.as_deref())
-                .map_err(|e| e.to_string())?;
-            let sync_status = engine.planning_sync_status();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_suggestion_resolution.v1",
-                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
-                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
-                    "status": "rejected",
-                    "suggestion": suggestion,
-                    "effective_profile": engine.planning_effective_profile(),
-                    "objective": engine.planning_objective(),
-                    "sync_status": sync_status,
-                }),
-            }
-        }
-        ShellCommand::PlanningSyncStatus => {
-            let status = engine.planning_sync_status();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.planning_sync_status_view.v1",
-                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
-                    "status": status,
-                }),
-            }
-        }
-        ShellCommand::PlanningSyncPull {
-            payload_json,
-            source,
-            confidence,
-            snapshot_id,
-        } => {
-            if let Some(value) = confidence {
-                if !value.is_finite() || !(0.0..=1.0).contains(value) {
-                    return Err(format!(
-                        "Invalid planning sync pull confidence '{}'; expected 0.0..=1.0",
-                        value
-                    ));
-                }
-            }
-            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
-                payload_json,
-                "planning sync pull",
-            )?;
-            let source = source
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("agent_pull");
-            let suggestion = engine
-                .propose_planning_suggestion(
-                    "pull",
-                    source,
-                    *confidence,
-                    snapshot_id.as_deref(),
-                    payload.profile_patch,
-                    payload.objective_patch,
-                    payload.message.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            let sync_status = engine.planning_sync_status();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_sync_suggestion.v1",
-                    "direction": "pull",
-                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
-                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
-                    "suggestion": suggestion,
-                    "sync_status": sync_status,
-                }),
-            }
-        }
-        ShellCommand::PlanningSyncPush {
-            payload_json,
-            source,
-            confidence,
-            snapshot_id,
-        } => {
-            if let Some(value) = confidence {
-                if !value.is_finite() || !(0.0..=1.0).contains(value) {
-                    return Err(format!(
-                        "Invalid planning sync push confidence '{}'; expected 0.0..=1.0",
-                        value
-                    ));
-                }
-            }
-            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
-                payload_json,
-                "planning sync push",
-            )?;
-            let source = source
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("agent_push");
-            let suggestion = engine
-                .propose_planning_suggestion(
-                    "push",
-                    source,
-                    *confidence,
-                    snapshot_id.as_deref(),
-                    payload.profile_patch,
-                    payload.objective_patch,
-                    payload.message.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            let sync_status = engine.planning_sync_status();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "schema": "gentle.planning_sync_suggestion.v1",
-                    "direction": "push",
-                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
-                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
-                    "suggestion": suggestion,
-                    "sync_status": sync_status,
-                }),
-            }
-        }
+        ShellCommand::RoutinesList { .. }
+        | ShellCommand::RoutinesExplain { .. }
+        | ShellCommand::RoutinesCompare { .. } => execute_routines_command(engine, command)?,
+        ShellCommand::PlanningProfileShow { .. }
+        | ShellCommand::PlanningProfileSet { .. }
+        | ShellCommand::PlanningObjectiveShow
+        | ShellCommand::PlanningObjectiveSet { .. }
+        | ShellCommand::PlanningSuggestionsList { .. }
+        | ShellCommand::PlanningSuggestionAccept { .. }
+        | ShellCommand::PlanningSuggestionReject { .. }
+        | ShellCommand::PlanningSyncStatus
+        | ShellCommand::PlanningSyncPull { .. }
+        | ShellCommand::PlanningSyncPush { .. } => execute_planning_command(engine, command)?,
         ShellCommand::AgentsList { catalog_path } => {
             let (resolved_catalog_path, catalog) =
                 load_agent_system_catalog(catalog_path.as_deref())?;
@@ -18436,1492 +20098,64 @@ fn execute_shell_command_with_options_inner(
             });
             run
         }
-        ShellCommand::GuidesList => {
-            let sets = engine.list_guide_sets();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.guide_design.v1",
-                    "set_count": sets.len(),
-                    "sets": sets
-                }),
-            }
-        }
-        ShellCommand::GuidesShow {
-            guide_set_id,
-            limit,
-            offset,
-        } => {
-            let (set, total, clamped_offset) = engine
-                .inspect_guide_set_page(guide_set_id, *limit, *offset)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "guide_set_id": set.guide_set_id,
-                    "guide_count": total,
-                    "limit": limit,
-                    "offset": clamped_offset,
-                    "returned": set.guides.len(),
-                    "created_at_unix_ms": set.created_at_unix_ms,
-                    "updated_at_unix_ms": set.updated_at_unix_ms,
-                    "guides": set.guides,
-                }),
-            }
-        }
-        ShellCommand::GuidesPut {
-            guide_set_id,
-            guides_json,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let raw = parse_json_payload(guides_json)?;
-            let guides: Vec<GuideCandidate> = serde_json::from_str(&raw)
-                .map_err(|e| format!("Invalid guides JSON payload: {e}"))?;
-            let op_result = engine
-                .apply(Operation::UpsertGuideSet {
-                    guide_set_id: guide_set_id.clone(),
-                    guides,
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::GuidesDelete { guide_set_id } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::DeleteGuideSet {
-                    guide_set_id: guide_set_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::GuidesFilter {
-            guide_set_id,
-            config_json,
-            output_guide_set_id,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let config = if let Some(raw) = config_json {
-                let loaded = parse_json_payload(raw)?;
-                serde_json::from_str::<GuidePracticalFilterConfig>(&loaded)
-                    .map_err(|e| format!("Invalid practical guide filter config JSON: {e}"))?
-            } else {
-                GuidePracticalFilterConfig::default()
-            };
-            let op_result = engine
-                .apply(Operation::FilterGuidesPractical {
-                    guide_set_id: guide_set_id.clone(),
-                    config,
-                    output_guide_set_id: output_guide_set_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "output_guide_set_id": output_guide_set_id,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::GuidesFilterShow { guide_set_id } => {
-            let report = engine
-                .get_guide_practical_filter_report(guide_set_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report
-                }),
-            }
-        }
-        ShellCommand::GuidesOligosGenerate {
-            guide_set_id,
-            template_id,
-            apply_5prime_g_extension,
-            output_oligo_set_id,
-            passed_only,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::GenerateGuideOligos {
-                    guide_set_id: guide_set_id.clone(),
-                    template_id: template_id.clone(),
-                    apply_5prime_g_extension: Some(*apply_5prime_g_extension),
-                    output_oligo_set_id: output_oligo_set_id.clone(),
-                    passed_only: Some(*passed_only),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "template_id": template_id,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::GuidesOligosList { guide_set_id } => {
-            let sets = engine.list_guide_oligo_sets(guide_set_id.as_deref());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.guide_design.v1",
-                    "oligo_set_count": sets.len(),
-                    "oligo_sets": sets
-                }),
-            }
-        }
-        ShellCommand::GuidesOligosShow { oligo_set_id } => {
-            let set = engine
-                .get_guide_oligo_set(oligo_set_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "oligo_set": set
-                }),
-            }
-        }
-        ShellCommand::GuidesOligosExport {
-            guide_set_id,
-            oligo_set_id,
-            format,
-            path,
-            plate_format,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::ExportGuideOligos {
-                    guide_set_id: guide_set_id.clone(),
-                    oligo_set_id: oligo_set_id.clone(),
-                    format: *format,
-                    path: path.clone(),
-                    plate_format: *plate_format,
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "oligo_set_id": oligo_set_id,
-                    "format": format.as_str(),
-                    "path": path,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::GuidesProtocolExport {
-            guide_set_id,
-            oligo_set_id,
-            path,
-            include_qc_checklist,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::ExportGuideProtocolText {
-                    guide_set_id: guide_set_id.clone(),
-                    oligo_set_id: oligo_set_id.clone(),
-                    path: path.clone(),
-                    include_qc_checklist: Some(*include_qc_checklist),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(GUIDE_DESIGN_METADATA_KEY)
-                .cloned();
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "guide_set_id": guide_set_id,
-                    "oligo_set_id": oligo_set_id,
-                    "path": path,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
-            let dna = engine
-                .state()
-                .sequences
-                .get(seq_id)
-                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
-            let (roi_start_0based, roi_end_0based_exclusive) =
-                sequence_feature_roi_range_0based(dna, *feature_id)?;
-            let primer_pairs = build_seeded_primer_pair_operation(
-                seq_id,
-                roi_start_0based,
-                roi_end_0based_exclusive,
-            );
-            let qpcr =
-                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_seed_request.v1",
-                    "template": seq_id,
-                    "source": {
-                        "kind": "feature",
-                        "feature_id": feature_id,
-                    },
-                    "roi_start_0based": roi_start_0based,
-                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
-                    "operations": {
-                        "design_primer_pairs": primer_pairs,
-                        "design_qpcr_assays": qpcr,
-                    }
-                }),
-            }
-        }
-        ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id } => {
-            let expert = engine
-                .inspect_feature_expert(
-                    seq_id,
-                    &FeatureExpertTarget::SplicingFeature {
-                        feature_id: *feature_id,
-                        scope: SplicingScopePreset::AllOverlappingBothStrands,
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            let splicing = match expert {
-                FeatureExpertView::Splicing(view) => view,
-                _ => {
-                    return Err(format!(
-                        "Feature n-{} on '{}' does not resolve to a splicing expert view",
-                        feature_id, seq_id
-                    ));
-                }
-            };
-            if splicing.region_start_1based == 0
-                || splicing.region_end_1based < splicing.region_start_1based
-            {
-                return Err(format!(
-                    "Splicing region bounds are invalid for feature n-{} on '{}'",
-                    feature_id, seq_id
-                ));
-            }
-            let roi_start_0based = splicing.region_start_1based.saturating_sub(1);
-            let roi_end_0based_exclusive = splicing.region_end_1based;
-            let primer_pairs = build_seeded_primer_pair_operation(
-                seq_id,
-                roi_start_0based,
-                roi_end_0based_exclusive,
-            );
-            let qpcr =
-                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_seed_request.v1",
-                    "template": seq_id,
-                    "source": {
-                        "kind": "splicing",
-                        "feature_id": feature_id,
-                        "group_label": splicing.group_label,
-                        "transcript_count": splicing.transcript_count,
-                        "unique_exon_count": splicing.unique_exon_count,
-                    },
-                    "roi_start_0based": roi_start_0based,
-                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
-                    "operations": {
-                        "design_primer_pairs": primer_pairs,
-                        "design_qpcr_assays": qpcr,
-                    }
-                }),
-            }
-        }
-        ShellCommand::TranscriptsDerive {
-            seq_id,
-            feature_ids,
-            scope,
-            output_prefix,
-        } => {
-            let op_result = engine
-                .apply(Operation::DeriveTranscriptSequences {
-                    seq_id: seq_id.clone(),
-                    feature_ids: feature_ids.clone(),
-                    scope: *scope,
-                    output_prefix: output_prefix.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let created_ids = op_result.created_seq_ids.clone();
-            let created = created_ids
-                .iter()
-                .filter_map(|derived_seq_id| {
-                    engine.state().sequences.get(derived_seq_id).map(|dna| {
-                        json!({
-                            "seq_id": derived_seq_id,
-                            "name": dna.name(),
-                            "length_bp": dna.len(),
-                        })
-                    })
-                })
-                .collect::<Vec<_>>();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "transcript_count": created.len(),
-                    "transcripts": created,
-                }),
-            }
-        }
-        ShellCommand::FeaturesQuery { query } => {
-            let result = engine
-                .query_sequence_features(query.clone())
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(result)
-                    .map_err(|e| format!("Could not serialize feature query result: {e}"))?,
-            }
-        }
-        ShellCommand::FeaturesTfbsSummary { request } => {
-            let summary = engine
-                .summarize_tfbs_region(request.clone())
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(summary)
-                    .map_err(|e| format!("Could not serialize TFBS region summary: {e}"))?,
-            }
-        }
-        ShellCommand::PrimersDesign {
-            request_json,
-            backend,
-            primer3_executable,
-        } => {
-            let json_text = parse_json_payload(request_json)?;
-            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
-                format!(
-                    "Invalid primers design request JSON: {} (expected Operation payload with DesignPrimerPairs)",
-                    e
-                )
-            })?;
-            let (template_id, requested_report_id) = match &op {
-                Operation::DesignPrimerPairs {
-                    template,
-                    report_id,
-                    ..
-                } => (template.clone(), report_id.clone()),
-                _ => {
-                    return Err(
-                        "primers design expects an Operation payload with DesignPrimerPairs"
-                            .to_string(),
-                    );
-                }
-            };
-            let before = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
-            let previous_backend = engine.state().parameters.primer_design_backend;
-            let previous_executable = engine.state().parameters.primer3_executable.clone();
-            if let Some(override_backend) = backend {
-                engine.state_mut().parameters.primer_design_backend = *override_backend;
-            }
-            if let Some(override_exec) = primer3_executable
-                .as_deref()
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-            {
-                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
-            }
-            let op_result = engine.apply(op).map_err(|e| e.to_string());
-            engine.state_mut().parameters.primer_design_backend = previous_backend;
-            engine.state_mut().parameters.primer3_executable = previous_executable;
-            let op_result = op_result?;
-            let after = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
-            let reports = engine.list_primer_design_reports();
-            let selected_report = if let Some(report_id) = requested_report_id {
-                engine.get_primer_design_report(&report_id).ok()
-            } else {
-                reports
-                    .iter()
-                    .filter(|summary| summary.template == template_id)
-                    .max_by_key(|summary| summary.generated_at_unix_ms)
-                    .and_then(|summary| engine.get_primer_design_report(&summary.report_id).ok())
-            };
-            let effective_backend = selected_report
-                .as_ref()
-                .map(|report| report.backend.clone());
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "result": op_result,
-                    "report": selected_report,
-                    "effective_backend": effective_backend,
-                }),
-            }
-        }
-        ShellCommand::PrimersDesignQpcr {
-            request_json,
-            backend,
-            primer3_executable,
-        } => {
-            let json_text = parse_json_payload(request_json)?;
-            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
-                format!(
-                    "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays)",
-                    e
-                )
-            })?;
-            let (template_id, requested_report_id) = match &op {
-                Operation::DesignQpcrAssays {
-                    template,
-                    report_id,
-                    ..
-                } => (template.clone(), report_id.clone()),
-                _ => {
-                    return Err(
-                        "primers design-qpcr expects an Operation payload with DesignQpcrAssays"
-                            .to_string(),
-                    );
-                }
-            };
-            let before = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
-            let previous_backend = engine.state().parameters.primer_design_backend;
-            let previous_executable = engine.state().parameters.primer3_executable.clone();
-            if let Some(override_backend) = backend {
-                engine.state_mut().parameters.primer_design_backend = *override_backend;
-            }
-            if let Some(override_exec) = primer3_executable
-                .as_deref()
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-            {
-                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
-            }
-            let op_result = engine.apply(op).map_err(|e| e.to_string());
-            engine.state_mut().parameters.primer_design_backend = previous_backend;
-            engine.state_mut().parameters.primer3_executable = previous_executable;
-            let op_result = op_result?;
-            let after = engine
-                .state()
-                .metadata
-                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
-                .cloned();
-            let reports = engine.list_qpcr_design_reports();
-            let selected_report = if let Some(report_id) = requested_report_id {
-                engine.get_qpcr_design_report(&report_id).ok()
-            } else {
-                reports
-                    .iter()
-                    .filter(|summary| summary.template == template_id)
-                    .max_by_key(|summary| summary.generated_at_unix_ms)
-                    .and_then(|summary| engine.get_qpcr_design_report(&summary.report_id).ok())
-            };
-            let effective_backend = selected_report
-                .as_ref()
-                .map(|report| report.backend.clone());
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "result": op_result,
-                    "report": selected_report,
-                    "effective_backend": effective_backend,
-                }),
-            }
-        }
-        ShellCommand::PrimersPreflight {
-            backend,
-            primer3_executable,
-        } => {
-            let report = engine.primer3_preflight_report(*backend, primer3_executable.as_deref());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer3_preflight.v1",
-                    "preflight": report,
-                }),
-            }
-        }
-        ShellCommand::PrimersListReports => {
-            let reports = engine.list_primer_design_reports();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_design_report_list.v1",
-                    "report_count": reports.len(),
-                    "reports": reports,
-                }),
-            }
-        }
-        ShellCommand::PrimersShowReport { report_id } => {
-            let report = engine
-                .get_primer_design_report(report_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::PrimersExportReport { report_id, path } => {
-            let report = engine
-                .export_primer_design_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.primer_design_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "pair_count": report.pair_count,
-                }),
-            }
-        }
-        ShellCommand::PrimersListQpcrReports => {
-            let reports = engine.list_qpcr_design_reports();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.qpcr_design_report_list.v1",
-                    "report_count": reports.len(),
-                    "reports": reports,
-                }),
-            }
-        }
-        ShellCommand::PrimersShowQpcrReport { report_id } => {
-            let report = engine
-                .get_qpcr_design_report(report_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::PrimersExportQpcrReport { report_id, path } => {
-            let report = engine
-                .export_qpcr_design_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.qpcr_design_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "assay_count": report.assay_count,
-                }),
-            }
-        }
-        ShellCommand::DotplotCompute {
-            seq_id,
-            reference_seq_id,
-            span_start_0based,
-            span_end_0based,
-            reference_span_start_0based,
-            reference_span_end_0based,
-            mode,
-            word_size,
-            step_bp,
-            max_mismatches,
-            tile_bp,
-            dotplot_id,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::ComputeDotplot {
-                    seq_id: seq_id.clone(),
-                    reference_seq_id: reference_seq_id.clone(),
-                    span_start_0based: *span_start_0based,
-                    span_end_0based: *span_end_0based,
-                    reference_span_start_0based: *reference_span_start_0based,
-                    reference_span_end_0based: *reference_span_end_0based,
-                    mode: *mode,
-                    word_size: *word_size,
-                    step_bp: *step_bp,
-                    max_mismatches: *max_mismatches,
-                    tile_bp: *tile_bp,
-                    store_as: dotplot_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
-                .cloned();
-            let selected = if let Some(id) = dotplot_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine
-                    .list_dotplot_views(None)
-                    .into_iter()
-                    .find(|row| row.dotplot_id == id)
-            } else {
-                engine
-                    .list_dotplot_views(Some(seq_id.as_str()))
-                    .into_iter()
-                    .max_by_key(|row| row.generated_at_unix_ms)
-            };
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "result": op_result,
-                    "dotplot": selected,
-                }),
-            }
-        }
-        ShellCommand::DotplotList { seq_id } => {
-            let rows = engine.list_dotplot_views(seq_id.as_deref());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.dotplot_view_list.v1",
-                    "dotplot_count": rows.len(),
-                    "dotplots": rows,
-                }),
-            }
-        }
-        ShellCommand::DotplotShow { dotplot_id } => {
-            let view = engine
-                .get_dotplot_view(dotplot_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "dotplot": view,
-                }),
-            }
-        }
-        ShellCommand::FlexCompute {
-            seq_id,
-            span_start_0based,
-            span_end_0based,
-            model,
-            bin_bp,
-            smoothing_bp,
-            track_id,
-        } => {
-            let before = engine
-                .state()
-                .metadata
-                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
-                .cloned();
-            let op_result = engine
-                .apply(Operation::ComputeFlexibilityTrack {
-                    seq_id: seq_id.clone(),
-                    span_start_0based: *span_start_0based,
-                    span_end_0based: *span_end_0based,
-                    model: *model,
-                    bin_bp: *bin_bp,
-                    smoothing_bp: *smoothing_bp,
-                    store_as: track_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let after = engine
-                .state()
-                .metadata
-                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
-                .cloned();
-            let selected = if let Some(id) = track_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine.get_flexibility_track(id).ok()
-            } else {
-                engine
-                    .list_flexibility_tracks(Some(seq_id.as_str()))
-                    .into_iter()
-                    .max_by_key(|row| row.generated_at_unix_ms)
-                    .and_then(|row| engine.get_flexibility_track(row.track_id.as_str()).ok())
-            };
-            ShellRunResult {
-                state_changed: before != after,
-                output: json!({
-                    "result": op_result,
-                    "track": selected,
-                }),
-            }
-        }
-        ShellCommand::FlexList { seq_id } => {
-            let rows = engine.list_flexibility_tracks(seq_id.as_deref());
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.flexibility_track_list.v1",
-                    "track_count": rows.len(),
-                    "tracks": rows,
-                }),
-            }
-        }
-        ShellCommand::FlexShow { track_id } => {
-            let track = engine
-                .get_flexibility_track(track_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "track": track,
-                }),
-            }
-        }
-        ShellCommand::SplicingRefsDerive {
-            seq_id,
-            span_start_0based,
-            span_end_0based,
-            seed_feature_id,
-            scope,
-            output_prefix,
-        } => {
-            let op_result = engine
-                .apply(Operation::DeriveSplicingReferences {
-                    seq_id: seq_id.clone(),
-                    span_start_0based: *span_start_0based,
-                    span_end_0based: *span_end_0based,
-                    seed_feature_id: *seed_feature_id,
-                    scope: *scope,
-                    output_prefix: output_prefix.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let derived_sequence_ids = op_result.created_seq_ids.clone();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "derived_sequence_ids": derived_sequence_ids,
-                }),
-            }
-        }
-        ShellCommand::AlignCompute {
-            query_seq_id,
-            target_seq_id,
-            query_span_start_0based,
-            query_span_end_0based,
-            target_span_start_0based,
-            target_span_end_0based,
-            mode,
-            match_score,
-            mismatch_score,
-            gap_open,
-            gap_extend,
-        } => {
-            let op_result = engine
-                .apply(Operation::AlignSequences {
-                    query_seq_id: query_seq_id.clone(),
-                    target_seq_id: target_seq_id.clone(),
-                    query_span_start_0based: *query_span_start_0based,
-                    query_span_end_0based: *query_span_end_0based,
-                    target_span_start_0based: *target_span_start_0based,
-                    target_span_end_0based: *target_span_end_0based,
-                    mode: *mode,
-                    match_score: *match_score,
-                    mismatch_score: *mismatch_score,
-                    gap_open: *gap_open,
-                    gap_extend: *gap_extend,
-                })
-                .map_err(|e| e.to_string())?;
-            let alignment = op_result.sequence_alignment.clone();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "result": op_result,
-                    "alignment": alignment,
-                }),
-            }
-        }
-        ShellCommand::SeqTraceImport {
-            path,
-            trace_id,
-            seq_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportSequencingTrace {
-                    path: path.clone(),
-                    trace_id: trace_id.clone(),
-                    seq_id: seq_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let import_report = op_result.sequencing_trace_import_report.clone();
-            let trace_record = op_result.sequencing_trace_record.clone();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "import_report": import_report,
-                    "trace": trace_record,
-                }),
-            }
-        }
-        ShellCommand::SeqTraceList { seq_id } => {
-            let op_result = engine
-                .apply(Operation::ListSequencingTraces {
-                    seq_id: seq_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let traces = op_result
-                .sequencing_trace_summaries
-                .clone()
-                .unwrap_or_default();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.sequencing_trace_list.v1",
-                    "trace_count": traces.len(),
-                    "traces": traces,
-                    "result": op_result,
-                }),
-            }
-        }
-        ShellCommand::SeqTraceShow { trace_id } => {
-            let op_result = engine
-                .apply(Operation::ShowSequencingTrace {
-                    trace_id: trace_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let trace = op_result.sequencing_trace_record.clone();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "trace": trace,
-                    "result": op_result,
-                }),
-            }
-        }
-        ShellCommand::SeqConfirmRun {
-            expected_seq_id,
-            baseline_seq_id,
-            read_seq_ids,
-            trace_ids,
-            targets,
-            alignment_mode,
-            match_score,
-            mismatch_score,
-            gap_open,
-            gap_extend,
-            min_identity_fraction,
-            min_target_coverage_fraction,
-            allow_reverse_complement,
-            report_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ConfirmConstructReads {
-                    expected_seq_id: expected_seq_id.clone(),
-                    baseline_seq_id: baseline_seq_id.clone(),
-                    read_seq_ids: read_seq_ids.clone(),
-                    trace_ids: trace_ids.clone(),
-                    targets: targets.clone(),
-                    alignment_mode: *alignment_mode,
-                    match_score: *match_score,
-                    mismatch_score: *mismatch_score,
-                    gap_open: *gap_open,
-                    gap_extend: *gap_extend,
-                    min_identity_fraction: *min_identity_fraction,
-                    min_target_coverage_fraction: *min_target_coverage_fraction,
-                    allow_reverse_complement: *allow_reverse_complement,
-                    report_id: report_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let report = if let Some(id) = report_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine.get_sequencing_confirmation_report(id).ok()
-            } else {
-                engine
-                    .list_sequencing_confirmation_reports(Some(expected_seq_id.as_str()))
-                    .into_iter()
-                    .max_by_key(|row| row.generated_at_unix_ms)
-                    .and_then(|row| {
-                        engine
-                            .get_sequencing_confirmation_report(row.report_id.as_str())
-                            .ok()
-                    })
-            };
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::SeqConfirmListReports { expected_seq_id } => {
-            let rows = engine.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
-            let summary_rows = rows
-                .iter()
-                .map(GentleEngine::format_sequencing_confirmation_report_summary_row)
-                .collect::<Vec<_>>();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.sequencing_confirmation_report_list.v1",
-                    "report_count": rows.len(),
-                    "reports": rows,
-                    "summary_rows": summary_rows,
-                }),
-            }
-        }
-        ShellCommand::SeqConfirmShowReport { report_id } => {
-            let report = engine
-                .get_sequencing_confirmation_report(report_id)
-                .map_err(|e| e.to_string())?;
-            let summary =
-                GentleEngine::format_sequencing_confirmation_report_detail_summary(&report);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                    "summary": summary,
-                }),
-            }
-        }
-        ShellCommand::SeqConfirmExportReport { report_id, path } => {
-            let report = engine
-                .export_sequencing_confirmation_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.sequencing_confirmation_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "overall_status": report.overall_status,
-                }),
-            }
-        }
-        ShellCommand::SeqConfirmExportSupportTsv { report_id, path } => {
-            let report = engine
-                .export_sequencing_confirmation_support_tsv(report_id, path)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA,
-                    "report_id": report.report_id,
-                    "path": path,
-                    "target_count": report.targets.len(),
-                }),
-            }
-        }
-        ShellCommand::SeqPrimerSuggest {
-            expected_seq_id,
-            primer_seq_ids,
-            confirmation_report_id,
-            min_3prime_anneal_bp,
-            predicted_read_length_bp,
-        } => {
-            let op_result = engine
-                .apply(Operation::SuggestSequencingPrimers {
-                    expected_seq_id: expected_seq_id.clone(),
-                    primer_seq_ids: primer_seq_ids.clone(),
-                    confirmation_report_id: confirmation_report_id.clone(),
-                    min_3prime_anneal_bp: *min_3prime_anneal_bp,
-                    predicted_read_length_bp: *predicted_read_length_bp,
-                })
-                .map_err(|e| e.to_string())?;
-            let report = op_result.sequencing_primer_overlay_report.clone();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                    "suggestion_count": report.as_ref().map(|value| value.suggestion_count).unwrap_or(0),
-                    "proposal_count": report.as_ref().map(|value| value.proposal_count).unwrap_or(0),
-                }),
-            }
-        }
-        ShellCommand::RnaReadsInterpret {
-            seq_id,
-            seed_feature_id,
-            input_path,
-            profile,
-            input_format,
-            scope,
-            origin_mode,
-            target_gene_ids,
-            roi_seed_capture_enabled,
-            seed_filter,
-            align_config,
-            report_id,
-            report_mode,
-            checkpoint_path,
-            checkpoint_every_reads,
-            resume_from_checkpoint,
-        } => {
-            let op_result = engine
-                .apply(Operation::InterpretRnaReads {
-                    seq_id: seq_id.clone(),
-                    seed_feature_id: *seed_feature_id,
-                    profile: *profile,
-                    input_path: input_path.clone(),
-                    input_format: *input_format,
-                    scope: *scope,
-                    origin_mode: *origin_mode,
-                    target_gene_ids: target_gene_ids.clone(),
-                    roi_seed_capture_enabled: *roi_seed_capture_enabled,
-                    seed_filter: seed_filter.clone(),
-                    align_config: align_config.clone(),
-                    report_id: report_id.clone(),
-                    report_mode: *report_mode,
-                    checkpoint_path: checkpoint_path.clone(),
-                    checkpoint_every_reads: *checkpoint_every_reads,
-                    resume_from_checkpoint: *resume_from_checkpoint,
-                })
-                .map_err(|e| e.to_string())?;
-            let report = if let Some(id) = report_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine.get_rna_read_report(id).ok()
-            } else {
-                engine
-                    .list_rna_read_reports(Some(seq_id.as_str()))
-                    .into_iter()
-                    .max_by_key(|row| row.generated_at_unix_ms)
-                    .and_then(|row| engine.get_rna_read_report(row.report_id.as_str()).ok())
-            };
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsAlignReport {
-            report_id,
-            selection,
-            align_config_override,
-            selected_record_indices,
-        } => {
-            let op_result = engine
-                .apply(Operation::AlignRnaReadReport {
-                    report_id: report_id.clone(),
-                    selection: *selection,
-                    align_config_override: align_config_override.clone(),
-                    selected_record_indices: selected_record_indices.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let report = engine
-                .get_rna_read_report(report_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsListReports { seq_id } => {
-            let rows = engine.list_rna_read_reports(seq_id.as_deref());
-            let summary_rows = rows
-                .iter()
-                .map(GentleEngine::format_rna_read_report_summary_row)
-                .collect::<Vec<_>>();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.rna_read_report_list.v1",
-                    "report_count": rows.len(),
-                    "reports": rows,
-                    "summary_rows": summary_rows,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsShowReport { report_id } => {
-            let report = engine
-                .get_rna_read_report(report_id)
-                .map_err(|e| e.to_string())?;
-            let summary = GentleEngine::format_rna_read_report_detail_summary(&report);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                    "summary": summary,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsSummarizeGeneSupport {
-            report_id,
-            gene_ids,
-            selected_record_indices,
-            complete_rule,
-            output_path,
-        } => {
-            let summary = engine
-                .summarize_rna_read_gene_support(
-                    report_id,
-                    gene_ids,
-                    selected_record_indices,
-                    *complete_rule,
-                )
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = output_path.as_deref() {
-                engine
-                    .write_rna_read_gene_support_summary_json(&summary, path)
-                    .map_err(|e| e.to_string())?;
-            }
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&summary)
-                    .map_err(|e| format!("Could not serialize gene-support summary: {e}"))?,
-            }
-        }
-        ShellCommand::RnaReadsInspectGeneSupport {
-            report_id,
-            gene_ids,
-            selected_record_indices,
-            complete_rule,
-            cohort_filter,
-            output_path,
-        } => {
-            let audit = engine
-                .inspect_rna_read_gene_support(
-                    report_id,
-                    gene_ids,
-                    selected_record_indices,
-                    *complete_rule,
-                    *cohort_filter,
-                )
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = output_path.as_deref() {
-                engine
-                    .write_rna_read_gene_support_audit_json(&audit, path)
-                    .map_err(|e| e.to_string())?;
-            }
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&audit)
-                    .map_err(|e| format!("Could not serialize gene-support audit: {e}"))?,
-            }
-        }
-        ShellCommand::RnaReadsInspectAlignments {
-            report_id,
-            selection,
-            limit,
-            effect_filter,
-            sort_key,
-            search,
-            selected_record_indices,
-            score_density_variant,
-            score_bin_index,
-            score_bin_count,
-        } => {
-            let inspection = engine
-                .inspect_rna_read_alignments_with_subset(
-                    report_id,
-                    *selection,
-                    *limit,
-                    Some(RnaReadAlignmentInspectionSubsetSpec {
-                        effect_filter: *effect_filter,
-                        sort_key: *sort_key,
-                        search: search.clone(),
-                        selected_record_indices: selected_record_indices.clone(),
-                        score_density_variant: *score_density_variant,
-                        score_density_seed_filter_override: None,
-                        score_bin_index: *score_bin_index,
-                        score_bin_count: *score_bin_count,
-                    }),
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "inspection": inspection,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportReport { report_id, path } => {
-            let report = engine
-                .export_rna_read_report(report_id, path)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.rna_read_report_export.v1",
-                    "report_id": report.report_id,
-                    "path": path,
-                    "read_count_total": report.read_count_total,
-                    "read_count_seed_passed": report.read_count_seed_passed,
-                    "read_count_aligned": report.read_count_aligned,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportHitsFasta {
-            report_id,
-            path,
-            selection,
-            selected_record_indices,
-            subset_spec,
-        } => {
-            let written = engine
-                .export_rna_read_hits_fasta(
-                    report_id,
-                    path,
-                    *selection,
-                    selected_record_indices,
-                    subset_spec.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.rna_read_hits_fasta_export.v1",
-                    "report_id": report_id,
-                    "path": path,
-                    "selection": selection.as_str(),
-                    "selected_record_indices": selected_record_indices,
-                    "subset_spec": subset_spec,
-                    "written_records": written,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportSampleSheet {
-            path,
-            seq_id,
-            report_ids,
-            gene_ids,
-            complete_rule,
-            append,
-        } => {
-            let export = engine
-                .export_rna_read_sample_sheet(
-                    path,
-                    seq_id.as_deref(),
-                    report_ids,
-                    gene_ids,
-                    *complete_rule,
-                    *append,
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "path": export.path,
-                    "report_count": export.report_count,
-                    "append": export.appended,
-                    "seq_id": seq_id,
-                    "report_ids": report_ids,
-                    "gene_ids": export.gene_ids,
-                    "complete_rule": export.complete_rule.as_str(),
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportExonPathsTsv {
-            report_id,
-            path,
-            selection,
-            selected_record_indices,
-            subset_spec,
-        } => {
-            let export = engine
-                .export_rna_read_exon_paths_tsv(
-                    report_id,
-                    path,
-                    *selection,
-                    selected_record_indices,
-                    subset_spec.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "report_id": export.report_id,
-                    "path": export.path,
-                    "selection": export.selection.as_str(),
-                    "selected_record_indices": selected_record_indices,
-                    "subset_spec": subset_spec,
-                    "row_count": export.row_count,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportExonAbundanceTsv {
-            report_id,
-            path,
-            selection,
-            selected_record_indices,
-            subset_spec,
-        } => {
-            let export = engine
-                .export_rna_read_exon_abundance_tsv(
-                    report_id,
-                    path,
-                    *selection,
-                    selected_record_indices,
-                    subset_spec.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "report_id": export.report_id,
-                    "path": export.path,
-                    "selection": export.selection.as_str(),
-                    "selected_record_indices": selected_record_indices,
-                    "subset_spec": subset_spec,
-                    "selected_read_count": export.selected_read_count,
-                    "exon_row_count": export.exon_row_count,
-                    "transition_row_count": export.transition_row_count,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportScoreDensitySvg {
-            report_id,
-            path,
-            scale,
-            variant,
-        } => {
-            let export = engine
-                .export_rna_read_score_density_svg(report_id, path, *scale, *variant, None)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "report_id": export.report_id,
-                    "path": export.path,
-                    "scale": export.scale.as_str(),
-                    "variant": export.variant.as_str(),
-                    "bin_count": export.bin_count,
-                    "max_bin_count": export.max_bin_count,
-                    "total_scored_reads": export.total_scored_reads,
-                    "derived_from_report_hits_only": export.derived_from_report_hits_only,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportAlignmentsTsv {
-            report_id,
-            path,
-            selection,
-            limit,
-            selected_record_indices,
-            subset_spec,
-        } => {
-            let export = engine
-                .export_rna_read_alignments_tsv(
-                    report_id,
-                    path,
-                    *selection,
-                    *limit,
-                    selected_record_indices,
-                    subset_spec.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "report_id": export.report_id,
-                    "path": export.path,
-                    "selection": export.selection.as_str(),
-                    "selected_record_indices": selected_record_indices,
-                    "subset_spec": subset_spec,
-                    "row_count": export.row_count,
-                    "aligned_count": export.aligned_count,
-                    "limit": export.limit,
-                }),
-            }
-        }
-        ShellCommand::RnaReadsExportAlignmentDotplotSvg {
-            report_id,
-            path,
-            selection,
-            max_points,
-        } => {
-            let export = engine
-                .export_rna_read_alignment_dotplot_svg(report_id, path, *selection, *max_points)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": export.schema,
-                    "report_id": export.report_id,
-                    "path": export.path,
-                    "selection": export.selection.as_str(),
-                    "point_count": export.point_count,
-                    "rendered_point_count": export.rendered_point_count,
-                    "max_points": export.max_points,
-                    "min_score": export.min_score,
-                    "max_score": export.max_score,
-                }),
-            }
+        ShellCommand::GuidesList
+        | ShellCommand::GuidesShow { .. }
+        | ShellCommand::GuidesPut { .. }
+        | ShellCommand::GuidesDelete { .. }
+        | ShellCommand::GuidesFilter { .. }
+        | ShellCommand::GuidesFilterShow { .. }
+        | ShellCommand::GuidesOligosGenerate { .. }
+        | ShellCommand::GuidesOligosList { .. }
+        | ShellCommand::GuidesOligosShow { .. }
+        | ShellCommand::GuidesOligosExport { .. }
+        | ShellCommand::GuidesProtocolExport { .. } => execute_guides_command(engine, command)?,
+        ShellCommand::PrimersSeedFromFeature { .. }
+        | ShellCommand::PrimersSeedFromSplicing { .. }
+        | ShellCommand::PrimersDesign { .. }
+        | ShellCommand::PrimersDesignQpcr { .. }
+        | ShellCommand::PrimersPreflight { .. }
+        | ShellCommand::PrimersListReports
+        | ShellCommand::PrimersShowReport { .. }
+        | ShellCommand::PrimersExportReport { .. }
+        | ShellCommand::PrimersListQpcrReports
+        | ShellCommand::PrimersShowQpcrReport { .. }
+        | ShellCommand::PrimersExportQpcrReport { .. } => execute_primers_command(engine, command)?,
+        ShellCommand::TranscriptsDerive { .. }
+        | ShellCommand::FeaturesQuery { .. }
+        | ShellCommand::FeaturesTfbsSummary { .. }
+        | ShellCommand::DotplotCompute { .. }
+        | ShellCommand::DotplotList { .. }
+        | ShellCommand::DotplotShow { .. }
+        | ShellCommand::FlexCompute { .. }
+        | ShellCommand::FlexList { .. }
+        | ShellCommand::FlexShow { .. }
+        | ShellCommand::SplicingRefsDerive { .. }
+        | ShellCommand::AlignCompute { .. } => execute_sequence_analysis_command(engine, command)?,
+        ShellCommand::SeqTraceImport { .. }
+        | ShellCommand::SeqTraceList { .. }
+        | ShellCommand::SeqTraceShow { .. }
+        | ShellCommand::SeqConfirmRun { .. }
+        | ShellCommand::SeqConfirmListReports { .. }
+        | ShellCommand::SeqConfirmShowReport { .. }
+        | ShellCommand::SeqConfirmExportReport { .. }
+        | ShellCommand::SeqConfirmExportSupportTsv { .. }
+        | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
+        ShellCommand::RnaReadsInterpret { .. }
+        | ShellCommand::RnaReadsAlignReport { .. }
+        | ShellCommand::RnaReadsListReports { .. }
+        | ShellCommand::RnaReadsShowReport { .. }
+        | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
+        | ShellCommand::RnaReadsInspectGeneSupport { .. }
+        | ShellCommand::RnaReadsInspectAlignments { .. }
+        | ShellCommand::RnaReadsExportReport { .. }
+        | ShellCommand::RnaReadsExportHitsFasta { .. }
+        | ShellCommand::RnaReadsExportSampleSheet { .. }
+        | ShellCommand::RnaReadsExportExonPathsTsv { .. }
+        | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
+        | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
+        | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
+        | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. } => {
+            execute_rna_reads_command(engine, command)?
         }
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;

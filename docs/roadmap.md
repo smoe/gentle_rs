@@ -132,6 +132,16 @@ order. Durable architecture constraints and decisions remain in
   - macro/template and `op`/`workflow` execution hot paths are now also split
     through dedicated helpers so small-stack test threads do not have to enter
     the full monolithic dispatch frame for common macro/candidate execution
+  - `execute_shell_command_with_options(...)` now also early-dispatches the
+    `routines`, `planning`, `guides`, `primers`, `transcripts/features/dotplot`
+    analysis, `sequencing`, and `rna-reads` command families through dedicated
+    `#[inline(never)]` helpers before the monolithic inner matcher
+  - the inner exhaustive matcher still owns the same implementation path by
+    delegating those variants back into the same helpers, so stack-hardening
+    did not fork shell behavior or create adapter-only command logic
+  - remaining follow-up families worth peeling out next are the still-dense
+    reference/track and export/import/resource/catalog blocks, which continue
+    to keep large contiguous regions inside the monolithic matcher
 - The newly extracted engine/GUI/shell modules now carry navigation-oriented
   top-level `//!` docs that explicitly say "look here for ..." so future
   refactors, cargo-doc output, and AI/code-search triage can reach the right
