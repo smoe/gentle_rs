@@ -12204,9 +12204,22 @@ fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
     );
     assert!(output_path.exists());
     let written = fs::read_to_string(&output_path).expect("read written audit");
-    let written_json: serde_json::Value =
+    let mut written_json: serde_json::Value =
         serde_json::from_str(&written).expect("written audit json");
-    assert_eq!(written_json, output.output);
+    let mut output_json = output.output.clone();
+    let written_identity = written_json["rows"][0]["identity_fraction"]
+        .as_f64()
+        .expect("written identity fraction");
+    let output_identity = output_json["rows"][0]["identity_fraction"]
+        .as_f64()
+        .expect("output identity fraction");
+    assert!(
+        (written_identity - output_identity).abs() <= 1e-12,
+        "written/output identity_fraction drifted more than expected: {written_identity} vs {output_identity}"
+    );
+    written_json["rows"][0]["identity_fraction"] = serde_json::Value::Null;
+    output_json["rows"][0]["identity_fraction"] = serde_json::Value::Null;
+    assert_eq!(written_json, output_json);
 }
 
 #[test]

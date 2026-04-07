@@ -14329,6 +14329,760 @@ fn execute_export_import_and_resource_command(
 }
 
 #[inline(never)]
+fn execute_reference_and_track_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::ReferenceList {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "genome_count": genomes.len(),
+                    "genomes": genomes,
+                }),
+            })
+        }
+        ShellCommand::ReferenceValidateCatalog {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            for genome_id in &genomes {
+                GentleEngine::describe_reference_genome_sources(resolved_catalog, genome_id, None)
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "valid": true,
+                    "genome_count": genomes.len(),
+                    "validated_sources": genomes.len(),
+                    "genomes": genomes,
+                }),
+            })
+        }
+        ShellCommand::ReferencePreviewEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let preview =
+                GentleEngine::preview_reference_genome_ensembl_catalog_updates(resolved_catalog)
+                    .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "preview": preview,
+                }),
+            })
+        }
+        ShellCommand::ReferenceUpdateEnsemblSpecs {
+            helper_mode,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+                resolved_catalog,
+                output_catalog_path.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "output_catalog_path": report.output_catalog_path,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceStatus {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let prepared = GentleEngine::is_reference_genome_prepared(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let source_plan = GentleEngine::describe_reference_genome_sources(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "genome_id": genome_id,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "prepared": prepared,
+                    "sequence_source_type": source_plan.sequence_source_type,
+                    "annotation_source_type": source_plan.annotation_source_type,
+                    "sequence_source": source_plan.sequence_source,
+                    "annotation_source": source_plan.annotation_source,
+                    "nucleotide_length_bp": source_plan.nucleotide_length_bp,
+                    "molecular_mass_da": source_plan.molecular_mass_da,
+                    "molecular_mass_source": source_plan.molecular_mass_source,
+                }),
+            })
+        }
+        ShellCommand::ReferenceGenes {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+            filter,
+            biotypes,
+            limit,
+            offset,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let genes = GentleEngine::list_reference_genome_genes(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let filter_regex = compile_gene_filter_regex(filter)?;
+            let biotype_filter: Vec<String> = biotypes
+                .iter()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect();
+            let available_biotypes = collect_biotypes(&genes);
+            let filtered: Vec<GenomeGeneRecord> = genes
+                .into_iter()
+                .filter(|g| genome_gene_matches_filter(g, filter_regex.as_ref(), &biotype_filter))
+                .collect();
+            let total = filtered.len();
+            let clamped_offset = (*offset).min(total);
+            let returned: Vec<GenomeGeneRecord> = filtered
+                .into_iter()
+                .skip(clamped_offset)
+                .take(*limit)
+                .collect();
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "genome_id": genome_id,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "filter": filter,
+                    "biotype_filter": biotypes,
+                    "available_biotypes": available_biotypes,
+                    "offset": clamped_offset,
+                    "limit": limit,
+                    "total_matches": total,
+                    "returned": returned.len(),
+                    "genes": returned,
+                }),
+            })
+        }
+        ShellCommand::ReferencePrepare {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+            timeout_seconds,
+        } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
+            let op = Operation::PrepareGenome {
+                genome_id: genome_id.clone(),
+                catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                cache_dir: cache_dir.clone(),
+                timeout_seconds: *timeout_seconds,
+            };
+            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "binary_preflight": binary_preflight,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::ReferenceRemovePrepared {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::remove_prepared_reference_genome(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceRemoveCatalogEntry {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            output_catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = GentleEngine::remove_reference_genome_catalog_entry(
+                resolved_catalog,
+                genome_id,
+                output_catalog_path.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "output_catalog_path": report.output_catalog_path,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlast {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            max_hits,
+            max_hits_explicit,
+            task,
+            request_options_json,
+            catalog_path,
+            cache_dir,
+        } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = if *helper_mode {
+                engine.blast_helper_genome_with_project_and_request_options(
+                    genome_id,
+                    query_sequence,
+                    request_options_json.as_ref(),
+                    task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                engine.blast_reference_genome_with_project_and_request_options(
+                    resolved_catalog,
+                    genome_id,
+                    query_sequence,
+                    request_options_json.as_ref(),
+                    task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "binary_preflight": binary_preflight,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlastAsyncStart {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            max_hits,
+            max_hits_explicit,
+            task,
+            request_options_json,
+            catalog_path,
+            cache_dir,
+        } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
+            let engine_snapshot = engine.clone();
+            let (status, state_changed) = with_blast_async_registry(engine, true, |jobs| {
+                start_blast_async_job(
+                    jobs,
+                    engine_snapshot,
+                    *helper_mode,
+                    genome_id,
+                    query_sequence,
+                    *max_hits,
+                    *max_hits_explicit,
+                    task.clone(),
+                    request_options_json.clone(),
+                    catalog_path.clone(),
+                    cache_dir.clone(),
+                )
+            })?;
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.blast_async_start.v1",
+                    "binary_preflight": binary_preflight,
+                    "job": status,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlastAsyncStatus {
+            helper_mode: _,
+            job_id,
+            include_report,
+        } => {
+            let (status_and_report, state_changed) =
+                with_blast_async_registry(engine, true, |jobs| {
+                    get_blast_async_job_snapshot(jobs, job_id, *include_report)
+                })?;
+            let (status, report) = status_and_report;
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.blast_async_status.v1",
+                    "job": status,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlastAsyncCancel {
+            helper_mode: _,
+            job_id,
+        } => {
+            let (status, state_changed) = with_blast_async_registry(engine, false, |jobs| {
+                cancel_blast_async_job(jobs, job_id)
+            })?;
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.blast_async_cancel.v1",
+                    "job": status,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
+            let (jobs, state_changed) = with_blast_async_registry(engine, true, |jobs| {
+                Ok(collect_blast_async_job_snapshots(jobs, Some(*helper_mode)))
+            })?;
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.blast_async_list.v1",
+                    "helper_mode": helper_mode,
+                    "job_count": jobs.len(),
+                    "jobs": jobs,
+                }),
+            })
+        }
+        ShellCommand::ReferenceBlastTrack {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            target_seq_id,
+            max_hits,
+            max_hits_explicit,
+            task,
+            request_options_json,
+            track_name,
+            clear_existing,
+            catalog_path,
+            cache_dir,
+        } => {
+            let binary_preflight = engine.blast_external_binary_preflight_report();
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = if *helper_mode {
+                engine.blast_helper_genome_with_project_and_request_options(
+                    genome_id,
+                    query_sequence,
+                    request_options_json.as_ref(),
+                    task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                engine.blast_reference_genome_with_project_and_request_options(
+                    resolved_catalog,
+                    genome_id,
+                    query_sequence,
+                    request_options_json.as_ref(),
+                    task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let hit_inputs = report
+                .hits
+                .iter()
+                .map(|hit| crate::engine::BlastHitFeatureInput {
+                    subject_id: hit.subject_id.clone(),
+                    query_start_1based: hit.query_start,
+                    query_end_1based: hit.query_end,
+                    subject_start_1based: hit.subject_start,
+                    subject_end_1based: hit.subject_end,
+                    identity_percent: hit.identity_percent,
+                    bit_score: hit.bit_score,
+                    evalue: hit.evalue,
+                    query_coverage_percent: hit.query_coverage_percent,
+                })
+                .collect::<Vec<_>>();
+            let command_line = if report.command.is_empty() {
+                report.blastn_executable.clone()
+            } else {
+                format!("{} {}", report.blastn_executable, report.command.join(" "))
+            };
+            let op_result = engine
+                .apply(Operation::ImportBlastHitsTrack {
+                    seq_id: target_seq_id.clone(),
+                    hits: hit_inputs,
+                    track_name: track_name.clone(),
+                    clear_existing: Some(*clear_existing),
+                    blast_provenance: Some(crate::engine::BlastInvocationProvenance {
+                        genome_id: report.genome_id.clone(),
+                        query_label: target_seq_id.clone(),
+                        query_length: report.query_length,
+                        max_hits: report.max_hits,
+                        task: report.task.clone(),
+                        blastn_executable: report.blastn_executable.clone(),
+                        blast_db_prefix: report.blast_db_prefix.clone(),
+                        command: report.command.clone(),
+                        command_line,
+                        catalog_path: resolved_catalog.map(str::to_string),
+                        cache_dir: cache_dir.clone(),
+                        options_override_json: report.options_override_json.clone(),
+                        effective_options_json: report.effective_options_json.clone(),
+                    }),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "binary_preflight": binary_preflight,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                    "result": op_result
+                }),
+            })
+        }
+        ShellCommand::ReferenceExtractRegion {
+            helper_mode,
+            genome_id,
+            chromosome,
+            start_1based,
+            end_1based,
+            output_id,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtractGenomeRegion {
+                    genome_id: genome_id.clone(),
+                    chromosome: chromosome.clone(),
+                    start_1based: *start_1based,
+                    end_1based: *end_1based,
+                    output_id: output_id.clone(),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    include_genomic_annotation: *include_genomic_annotation,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReferenceExtractGene {
+            helper_mode,
+            genome_id,
+            gene_query,
+            occurrence,
+            output_id,
+            extract_mode,
+            promoter_upstream_bp,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtractGenomeGene {
+                    genome_id: genome_id.clone(),
+                    gene_query: gene_query.clone(),
+                    occurrence: *occurrence,
+                    output_id: output_id.clone(),
+                    extract_mode: *extract_mode,
+                    promoter_upstream_bp: *promoter_upstream_bp,
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    include_genomic_annotation: *include_genomic_annotation,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReferenceExtendAnchor {
+            helper_mode,
+            seq_id,
+            side,
+            length_bp,
+            output_id,
+            catalog_path,
+            cache_dir,
+            prepared_genome_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtendGenomeAnchor {
+                    seq_id: seq_id.clone(),
+                    side: *side,
+                    length_bp: *length_bp,
+                    output_id: output_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    prepared_genome_id: prepared_genome_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReferenceVerifyAnchor {
+            helper_mode,
+            seq_id,
+            catalog_path,
+            cache_dir,
+            prepared_genome_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::VerifyGenomeAnchor {
+                    seq_id: seq_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    prepared_genome_id: prepared_genome_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::TracksImportBed {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeBedTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::TracksImportBigWig {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeBigWigTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::TracksImportVcf {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeVcfTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::TracksTrackedList => {
+            let subscriptions = engine.list_genome_track_subscriptions();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            })
+        }
+        ShellCommand::TracksTrackedAdd { subscription } => {
+            let inserted = engine
+                .add_genome_track_subscription(subscription.clone())
+                .map_err(|e| e.to_string())?;
+            let subscriptions = engine.list_genome_track_subscriptions();
+            Ok(ShellRunResult {
+                state_changed: inserted,
+                output: json!({
+                    "inserted": inserted,
+                    "subscription": subscription,
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            })
+        }
+        ShellCommand::TracksTrackedRemove { index } => {
+            let removed = engine
+                .remove_genome_track_subscription(*index)
+                .map_err(|e| e.to_string())?;
+            let subscriptions = engine.list_genome_track_subscriptions();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "removed": removed,
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            })
+        }
+        ShellCommand::TracksTrackedClear => {
+            engine.clear_genome_track_subscriptions();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "cleared": true,
+                    "subscriptions": [],
+                    "count": 0
+                }),
+            })
+        }
+        ShellCommand::TracksTrackedApply {
+            index,
+            only_new_anchors,
+        } => {
+            let report = match index {
+                Some(idx) => engine
+                    .apply_tracked_genome_track_subscription(*idx)
+                    .map_err(|e| e.to_string())?,
+                None => engine
+                    .sync_tracked_genome_track_subscriptions(*only_new_anchors)
+                    .map_err(|e| e.to_string())?,
+            };
+            let state_changed = report.applied_imports > 0;
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "report": report
+                }),
+            })
+        }
+        _ => unreachable!("non-reference/track command passed to helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
@@ -14758,6 +15512,38 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncJaspar { .. }
     ) {
         return execute_export_import_and_resource_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::ReferenceList { .. }
+            | ShellCommand::ReferenceValidateCatalog { .. }
+            | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
+            | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
+            | ShellCommand::ReferenceStatus { .. }
+            | ShellCommand::ReferenceGenes { .. }
+            | ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferenceRemovePrepared { .. }
+            | ShellCommand::ReferenceRemoveCatalogEntry { .. }
+            | ShellCommand::ReferenceBlast { .. }
+            | ShellCommand::ReferenceBlastAsyncStart { .. }
+            | ShellCommand::ReferenceBlastAsyncStatus { .. }
+            | ShellCommand::ReferenceBlastAsyncCancel { .. }
+            | ShellCommand::ReferenceBlastAsyncList { .. }
+            | ShellCommand::ReferenceBlastTrack { .. }
+            | ShellCommand::ReferenceExtractRegion { .. }
+            | ShellCommand::ReferenceExtractGene { .. }
+            | ShellCommand::ReferenceExtendAnchor { .. }
+            | ShellCommand::ReferenceVerifyAnchor { .. }
+            | ShellCommand::TracksImportBed { .. }
+            | ShellCommand::TracksImportBigWig { .. }
+            | ShellCommand::TracksImportVcf { .. }
+            | ShellCommand::TracksTrackedList
+            | ShellCommand::TracksTrackedAdd { .. }
+            | ShellCommand::TracksTrackedRemove { .. }
+            | ShellCommand::TracksTrackedClear
+            | ShellCommand::TracksTrackedApply { .. }
+    ) {
+        return execute_reference_and_track_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
@@ -16699,749 +17485,34 @@ fn execute_shell_command_with_options_inner(
                 species.clone(),
             );
         }
-        ShellCommand::ReferenceList {
-            helper_mode,
-            catalog_path,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
-                .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "genome_count": genomes.len(),
-                    "genomes": genomes,
-                }),
-            }
-        }
-        ShellCommand::ReferenceValidateCatalog {
-            helper_mode,
-            catalog_path,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
-                .map_err(|e| e.to_string())?;
-            for genome_id in &genomes {
-                GentleEngine::describe_reference_genome_sources(resolved_catalog, genome_id, None)
-                    .map_err(|e| e.to_string())?;
-            }
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "valid": true,
-                    "genome_count": genomes.len(),
-                    "validated_sources": genomes.len(),
-                    "genomes": genomes,
-                }),
-            }
-        }
-        ShellCommand::ReferencePreviewEnsemblSpecs {
-            helper_mode,
-            catalog_path,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let preview =
-                GentleEngine::preview_reference_genome_ensembl_catalog_updates(resolved_catalog)
-                    .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "preview": preview,
-                }),
-            }
-        }
-        ShellCommand::ReferenceUpdateEnsemblSpecs {
-            helper_mode,
-            catalog_path,
-            output_catalog_path,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
-                resolved_catalog,
-                output_catalog_path.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "output_catalog_path": report.output_catalog_path,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ReferenceStatus {
-            helper_mode,
-            genome_id,
-            catalog_path,
-            cache_dir,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let prepared = GentleEngine::is_reference_genome_prepared(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let source_plan = GentleEngine::describe_reference_genome_sources(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "genome_id": genome_id,
-                    "catalog_path": effective_catalog,
-                    "cache_dir": cache_dir,
-                    "prepared": prepared,
-                    "sequence_source_type": source_plan.sequence_source_type,
-                    "annotation_source_type": source_plan.annotation_source_type,
-                    "sequence_source": source_plan.sequence_source,
-                    "annotation_source": source_plan.annotation_source,
-                    "nucleotide_length_bp": source_plan.nucleotide_length_bp,
-                    "molecular_mass_da": source_plan.molecular_mass_da,
-                    "molecular_mass_source": source_plan.molecular_mass_source,
-                }),
-            }
-        }
-        ShellCommand::ReferenceGenes {
-            helper_mode,
-            genome_id,
-            catalog_path,
-            cache_dir,
-            filter,
-            biotypes,
-            limit,
-            offset,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let genes = GentleEngine::list_reference_genome_genes(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let filter_regex = compile_gene_filter_regex(filter)?;
-            let biotype_filter: Vec<String> = biotypes
-                .iter()
-                .map(|v| v.trim().to_ascii_lowercase())
-                .filter(|v| !v.is_empty())
-                .collect();
-            let available_biotypes = collect_biotypes(&genes);
-            let filtered: Vec<GenomeGeneRecord> = genes
-                .into_iter()
-                .filter(|g| genome_gene_matches_filter(g, filter_regex.as_ref(), &biotype_filter))
-                .collect();
-            let total = filtered.len();
-            let clamped_offset = (*offset).min(total);
-            let returned: Vec<GenomeGeneRecord> = filtered
-                .into_iter()
-                .skip(clamped_offset)
-                .take(*limit)
-                .collect();
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "genome_id": genome_id,
-                    "catalog_path": effective_catalog,
-                    "cache_dir": cache_dir,
-                    "filter": filter,
-                    "biotype_filter": biotypes,
-                    "available_biotypes": available_biotypes,
-                    "offset": clamped_offset,
-                    "limit": limit,
-                    "total_matches": total,
-                    "returned": returned.len(),
-                    "genes": returned,
-                }),
-            }
-        }
-        ShellCommand::ReferencePrepare {
-            helper_mode,
-            genome_id,
-            catalog_path,
-            cache_dir,
-            timeout_seconds,
-        } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let op = Operation::PrepareGenome {
-                genome_id: genome_id.clone(),
-                catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                cache_dir: cache_dir.clone(),
-                timeout_seconds: *timeout_seconds,
-            };
-            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "binary_preflight": binary_preflight,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::ReferenceRemovePrepared {
-            helper_mode,
-            genome_id,
-            catalog_path,
-            cache_dir,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::remove_prepared_reference_genome(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "cache_dir": cache_dir,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ReferenceRemoveCatalogEntry {
-            helper_mode,
-            genome_id,
-            catalog_path,
-            output_catalog_path,
-        } => {
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::remove_reference_genome_catalog_entry(
-                resolved_catalog,
-                genome_id,
-                output_catalog_path.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "catalog_path": effective_catalog,
-                    "output_catalog_path": report.output_catalog_path,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlast {
-            helper_mode,
-            genome_id,
-            query_sequence,
-            max_hits,
-            max_hits_explicit,
-            task,
-            request_options_json,
-            catalog_path,
-            cache_dir,
-        } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = if *helper_mode {
-                engine.blast_helper_genome_with_project_and_request_options(
-                    genome_id,
-                    query_sequence,
-                    request_options_json.as_ref(),
-                    task.as_deref(),
-                    if *max_hits_explicit {
-                        Some(*max_hits)
-                    } else {
-                        None
-                    },
-                    resolved_catalog,
-                    cache_dir.as_deref(),
-                )
-            } else {
-                engine.blast_reference_genome_with_project_and_request_options(
-                    resolved_catalog,
-                    genome_id,
-                    query_sequence,
-                    request_options_json.as_ref(),
-                    task.as_deref(),
-                    if *max_hits_explicit {
-                        Some(*max_hits)
-                    } else {
-                        None
-                    },
-                    cache_dir.as_deref(),
-                )
-            }
-            .map_err(|e| e.to_string())?;
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "binary_preflight": binary_preflight,
-                    "catalog_path": effective_catalog,
-                    "cache_dir": cache_dir,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlastAsyncStart {
-            helper_mode,
-            genome_id,
-            query_sequence,
-            max_hits,
-            max_hits_explicit,
-            task,
-            request_options_json,
-            catalog_path,
-            cache_dir,
-        } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let engine_snapshot = engine.clone();
-            let (status, state_changed) = with_blast_async_registry(engine, true, |jobs| {
-                start_blast_async_job(
-                    jobs,
-                    engine_snapshot,
-                    *helper_mode,
-                    genome_id,
-                    query_sequence,
-                    *max_hits,
-                    *max_hits_explicit,
-                    task.clone(),
-                    request_options_json.clone(),
-                    catalog_path.clone(),
-                    cache_dir.clone(),
-                )
-            })?;
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "schema": "gentle.blast_async_start.v1",
-                    "binary_preflight": binary_preflight,
-                    "job": status,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlastAsyncStatus {
-            helper_mode: _,
-            job_id,
-            include_report,
-        } => {
-            let (status_and_report, state_changed) =
-                with_blast_async_registry(engine, true, |jobs| {
-                    get_blast_async_job_snapshot(jobs, job_id, *include_report)
-                })?;
-            let (status, report) = status_and_report;
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "schema": "gentle.blast_async_status.v1",
-                    "job": status,
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlastAsyncCancel {
-            helper_mode: _,
-            job_id,
-        } => {
-            let (status, state_changed) = with_blast_async_registry(engine, false, |jobs| {
-                cancel_blast_async_job(jobs, job_id)
-            })?;
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "schema": "gentle.blast_async_cancel.v1",
-                    "job": status,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
-            let (jobs, state_changed) = with_blast_async_registry(engine, true, |jobs| {
-                Ok(collect_blast_async_job_snapshots(jobs, Some(*helper_mode)))
-            })?;
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "schema": "gentle.blast_async_list.v1",
-                    "helper_mode": helper_mode,
-                    "job_count": jobs.len(),
-                    "jobs": jobs,
-                }),
-            }
-        }
-        ShellCommand::ReferenceBlastTrack {
-            helper_mode,
-            genome_id,
-            query_sequence,
-            target_seq_id,
-            max_hits,
-            max_hits_explicit,
-            task,
-            request_options_json,
-            track_name,
-            clear_existing,
-            catalog_path,
-            cache_dir,
-        } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = if *helper_mode {
-                engine.blast_helper_genome_with_project_and_request_options(
-                    genome_id,
-                    query_sequence,
-                    request_options_json.as_ref(),
-                    task.as_deref(),
-                    if *max_hits_explicit {
-                        Some(*max_hits)
-                    } else {
-                        None
-                    },
-                    resolved_catalog,
-                    cache_dir.as_deref(),
-                )
-            } else {
-                engine.blast_reference_genome_with_project_and_request_options(
-                    resolved_catalog,
-                    genome_id,
-                    query_sequence,
-                    request_options_json.as_ref(),
-                    task.as_deref(),
-                    if *max_hits_explicit {
-                        Some(*max_hits)
-                    } else {
-                        None
-                    },
-                    cache_dir.as_deref(),
-                )
-            }
-            .map_err(|e| e.to_string())?;
-            let hit_inputs = report
-                .hits
-                .iter()
-                .map(|hit| crate::engine::BlastHitFeatureInput {
-                    subject_id: hit.subject_id.clone(),
-                    query_start_1based: hit.query_start,
-                    query_end_1based: hit.query_end,
-                    subject_start_1based: hit.subject_start,
-                    subject_end_1based: hit.subject_end,
-                    identity_percent: hit.identity_percent,
-                    bit_score: hit.bit_score,
-                    evalue: hit.evalue,
-                    query_coverage_percent: hit.query_coverage_percent,
-                })
-                .collect::<Vec<_>>();
-            let command_line = if report.command.is_empty() {
-                report.blastn_executable.clone()
-            } else {
-                format!("{} {}", report.blastn_executable, report.command.join(" "))
-            };
-            let op_result = engine
-                .apply(Operation::ImportBlastHitsTrack {
-                    seq_id: target_seq_id.clone(),
-                    hits: hit_inputs,
-                    track_name: track_name.clone(),
-                    clear_existing: Some(*clear_existing),
-                    blast_provenance: Some(crate::engine::BlastInvocationProvenance {
-                        genome_id: report.genome_id.clone(),
-                        query_label: target_seq_id.clone(),
-                        query_length: report.query_length,
-                        max_hits: report.max_hits,
-                        task: report.task.clone(),
-                        blastn_executable: report.blastn_executable.clone(),
-                        blast_db_prefix: report.blast_db_prefix.clone(),
-                        command: report.command.clone(),
-                        command_line,
-                        catalog_path: resolved_catalog.map(str::to_string),
-                        cache_dir: cache_dir.clone(),
-                        options_override_json: report.options_override_json.clone(),
-                        effective_options_json: report.effective_options_json.clone(),
-                    }),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "binary_preflight": binary_preflight,
-                    "catalog_path": effective_catalog,
-                    "cache_dir": cache_dir,
-                    "report": report,
-                    "result": op_result
-                }),
-            }
-        }
-        ShellCommand::ReferenceExtractRegion {
-            helper_mode,
-            genome_id,
-            chromosome,
-            start_1based,
-            end_1based,
-            output_id,
-            annotation_scope,
-            max_annotation_features,
-            include_genomic_annotation,
-            catalog_path,
-            cache_dir,
-        } => {
-            let op_result = engine
-                .apply(Operation::ExtractGenomeRegion {
-                    genome_id: genome_id.clone(),
-                    chromosome: chromosome.clone(),
-                    start_1based: *start_1based,
-                    end_1based: *end_1based,
-                    output_id: output_id.clone(),
-                    annotation_scope: *annotation_scope,
-                    max_annotation_features: *max_annotation_features,
-                    include_genomic_annotation: *include_genomic_annotation,
-                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ReferenceExtractGene {
-            helper_mode,
-            genome_id,
-            gene_query,
-            occurrence,
-            output_id,
-            extract_mode,
-            promoter_upstream_bp,
-            annotation_scope,
-            max_annotation_features,
-            include_genomic_annotation,
-            catalog_path,
-            cache_dir,
-        } => {
-            let op_result = engine
-                .apply(Operation::ExtractGenomeGene {
-                    genome_id: genome_id.clone(),
-                    gene_query: gene_query.clone(),
-                    occurrence: *occurrence,
-                    output_id: output_id.clone(),
-                    extract_mode: *extract_mode,
-                    promoter_upstream_bp: *promoter_upstream_bp,
-                    annotation_scope: *annotation_scope,
-                    max_annotation_features: *max_annotation_features,
-                    include_genomic_annotation: *include_genomic_annotation,
-                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ReferenceExtendAnchor {
-            helper_mode,
-            seq_id,
-            side,
-            length_bp,
-            output_id,
-            catalog_path,
-            cache_dir,
-            prepared_genome_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ExtendGenomeAnchor {
-                    seq_id: seq_id.clone(),
-                    side: *side,
-                    length_bp: *length_bp,
-                    output_id: output_id.clone(),
-                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                    cache_dir: cache_dir.clone(),
-                    prepared_genome_id: prepared_genome_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ReferenceVerifyAnchor {
-            helper_mode,
-            seq_id,
-            catalog_path,
-            cache_dir,
-            prepared_genome_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::VerifyGenomeAnchor {
-                    seq_id: seq_id.clone(),
-                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                    cache_dir: cache_dir.clone(),
-                    prepared_genome_id: prepared_genome_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::TracksImportBed {
-            seq_id,
-            path,
-            track_name,
-            min_score,
-            max_score,
-            clear_existing,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportGenomeBedTrack {
-                    seq_id: seq_id.clone(),
-                    path: path.clone(),
-                    track_name: track_name.clone(),
-                    min_score: *min_score,
-                    max_score: *max_score,
-                    clear_existing: Some(*clear_existing),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::TracksImportBigWig {
-            seq_id,
-            path,
-            track_name,
-            min_score,
-            max_score,
-            clear_existing,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportGenomeBigWigTrack {
-                    seq_id: seq_id.clone(),
-                    path: path.clone(),
-                    track_name: track_name.clone(),
-                    min_score: *min_score,
-                    max_score: *max_score,
-                    clear_existing: Some(*clear_existing),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::TracksImportVcf {
-            seq_id,
-            path,
-            track_name,
-            min_score,
-            max_score,
-            clear_existing,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportGenomeVcfTrack {
-                    seq_id: seq_id.clone(),
-                    path: path.clone(),
-                    track_name: track_name.clone(),
-                    min_score: *min_score,
-                    max_score: *max_score,
-                    clear_existing: Some(*clear_existing),
-                })
-                .map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
-            ShellRunResult {
-                state_changed,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::TracksTrackedList => {
-            let subscriptions = engine.list_genome_track_subscriptions();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "subscriptions": subscriptions,
-                    "count": subscriptions.len()
-                }),
-            }
-        }
-        ShellCommand::TracksTrackedAdd { subscription } => {
-            let inserted = engine
-                .add_genome_track_subscription(subscription.clone())
-                .map_err(|e| e.to_string())?;
-            let subscriptions = engine.list_genome_track_subscriptions();
-            ShellRunResult {
-                state_changed: inserted,
-                output: json!({
-                    "inserted": inserted,
-                    "subscription": subscription,
-                    "subscriptions": subscriptions,
-                    "count": subscriptions.len()
-                }),
-            }
-        }
-        ShellCommand::TracksTrackedRemove { index } => {
-            let removed = engine
-                .remove_genome_track_subscription(*index)
-                .map_err(|e| e.to_string())?;
-            let subscriptions = engine.list_genome_track_subscriptions();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "removed": removed,
-                    "subscriptions": subscriptions,
-                    "count": subscriptions.len()
-                }),
-            }
-        }
-        ShellCommand::TracksTrackedClear => {
-            engine.clear_genome_track_subscriptions();
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "cleared": true,
-                    "subscriptions": [],
-                    "count": 0
-                }),
-            }
-        }
-        ShellCommand::TracksTrackedApply {
-            index,
-            only_new_anchors,
-        } => {
-            let report = match index {
-                Some(idx) => engine
-                    .apply_tracked_genome_track_subscription(*idx)
-                    .map_err(|e| e.to_string())?,
-                None => engine
-                    .sync_tracked_genome_track_subscriptions(*only_new_anchors)
-                    .map_err(|e| e.to_string())?,
-            };
-            let state_changed = report.applied_imports > 0;
-            ShellRunResult {
-                state_changed,
-                output: json!({
-                    "report": report
-                }),
-            }
+        ShellCommand::ReferenceList { .. }
+        | ShellCommand::ReferenceValidateCatalog { .. }
+        | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
+        | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
+        | ShellCommand::ReferenceStatus { .. }
+        | ShellCommand::ReferenceGenes { .. }
+        | ShellCommand::ReferencePrepare { .. }
+        | ShellCommand::ReferenceRemovePrepared { .. }
+        | ShellCommand::ReferenceRemoveCatalogEntry { .. }
+        | ShellCommand::ReferenceBlast { .. }
+        | ShellCommand::ReferenceBlastAsyncStart { .. }
+        | ShellCommand::ReferenceBlastAsyncStatus { .. }
+        | ShellCommand::ReferenceBlastAsyncCancel { .. }
+        | ShellCommand::ReferenceBlastAsyncList { .. }
+        | ShellCommand::ReferenceBlastTrack { .. }
+        | ShellCommand::ReferenceExtractRegion { .. }
+        | ShellCommand::ReferenceExtractGene { .. }
+        | ShellCommand::ReferenceExtendAnchor { .. }
+        | ShellCommand::ReferenceVerifyAnchor { .. }
+        | ShellCommand::TracksImportBed { .. }
+        | ShellCommand::TracksImportBigWig { .. }
+        | ShellCommand::TracksImportVcf { .. }
+        | ShellCommand::TracksTrackedList
+        | ShellCommand::TracksTrackedAdd { .. }
+        | ShellCommand::TracksTrackedRemove { .. }
+        | ShellCommand::TracksTrackedClear
+        | ShellCommand::TracksTrackedApply { .. } => {
+            execute_reference_and_track_command(engine, command)?
         }
         ShellCommand::MacrosRun {
             script,

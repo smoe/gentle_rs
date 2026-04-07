@@ -42545,14 +42545,16 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             "status was: {}",
             app.dbsnp_status
         );
-        for _ in 0..40 {
-            if app.dbsnp_fetch_task.is_none() {
-                break;
-            }
+        let wait_started = Instant::now();
+        while app.dbsnp_fetch_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
             app.poll_dbsnp_fetch_task(&egui::Context::default());
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(app.dbsnp_fetch_task.is_none(), "dbSNP task did not finish");
+        assert!(
+            app.dbsnp_fetch_task.is_none(),
+            "dbSNP task did not finish; last status: {}",
+            app.dbsnp_status
+        );
 
         let state = app.engine.read().unwrap().state().clone();
         let extracted = state

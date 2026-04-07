@@ -169,6 +169,14 @@ order. Durable architecture constraints and decisions remain in
   - `ExportPool`, `ExportRunBundle`, `ImportPool`, and resource-sync commands
     now dispatch through one dedicated `#[inline(never)]` helper before the
     large routines/planning shell branch
+- Engine-shell reference-genome and track commands now also use a dedicated
+  helper dispatch before the monolithic matcher:
+  - `ReferenceExtendAnchor` still overflowed CI/local smaller-stack test
+    threads while living inside the deep reference/tracks section
+  - the full reference/tracks command family
+    (catalog/prepare/blast/extract/verify plus track import/subscription paths)
+    now dispatches through one `#[inline(never)]` helper instead of the deep
+    inline match block
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
