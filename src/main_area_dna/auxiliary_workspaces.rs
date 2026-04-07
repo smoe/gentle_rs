@@ -5157,11 +5157,16 @@ impl MainAreaDna {
                 .size(font_size),
         );
         egui::Grid::new("isoform_protein_grid")
-            .num_columns(4)
+            .num_columns(5)
             .striped(true)
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("isoform").strong().size(font_size));
                 ui.label(egui::RichText::new("expected aa").strong().size(font_size));
+                ui.label(
+                    egui::RichText::new("reference span")
+                        .strong()
+                        .size(font_size),
+                );
                 ui.label(egui::RichText::new("TA class").strong().size(font_size));
                 ui.label(egui::RichText::new("domains").strong().size(font_size));
                 ui.end_row();
@@ -5172,6 +5177,18 @@ impl MainAreaDna {
                             lane.expected_length_aa
                                 .map(|v| v.to_string())
                                 .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            match (lane.reference_start_aa, lane.reference_end_aa) {
+                                (Some(start), Some(end)) => format!("{start}..{end}"),
+                                (Some(start), None) => format!("{start}.."),
+                                (None, Some(end)) => format!("..{end}"),
+                                (None, None) => "-".to_string(),
+                            },
                         )
                         .monospace()
                         .size(font_size),
@@ -5390,8 +5407,55 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn isoform_expert_window_title(panel_id: &str, seq_id: &str) -> String {
-        format!("Isoform Expert - {panel_id} ({seq_id})")
+    pub(super) fn open_isoform_expert_window_for_view(
+        &mut self,
+        panel_id: &str,
+        view: &IsoformArchitectureExpertView,
+    ) {
+        self.isoform_expert_window_panel_id = Some(panel_id.to_string());
+        self.isoform_expert_window_view = Some(Arc::new(view.clone()));
+        self.show_isoform_expert_window = true;
+    }
+
+    pub(super) fn open_uniprot_projection_expert(
+        &mut self,
+        projection_id: &str,
+    ) -> Result<IsoformArchitectureExpertView, String> {
+        let projection_id = projection_id.trim();
+        if projection_id.is_empty() {
+            return Err("UniProt projection_id must not be empty".to_string());
+        }
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::UniprotProjection {
+            projection_id: projection_id.to_string(),
+        }) {
+            Ok(FeatureExpertView::IsoformArchitecture(view)) => {
+                self.open_isoform_expert_window_for_view(&view.panel_id, &view);
+                self.op_status = format!("Opened UniProt protein expert for '{projection_id}'");
+                Ok(view)
+            }
+            Ok(other) => Err(format!(
+                "Unexpected expert-view payload for UniProt projection: {other:?}"
+            )),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub(super) fn isoform_expert_window_title(
+        panel_id: &str,
+        seq_id: &str,
+        view: &IsoformArchitectureExpertView,
+    ) -> String {
+        if view
+            .panel_source
+            .as_deref()
+            .map(str::trim)
+            .map(|value| value.starts_with("UniProt projection "))
+            .unwrap_or(false)
+        {
+            format!("UniProt Protein Expert - {} ({seq_id})", view.gene_symbol)
+        } else {
+            format!("Isoform Expert - {panel_id} ({seq_id})")
+        }
     }
 
     pub(super) fn dotplot_viewport_id(seq_id: &str) -> egui::ViewportId {
@@ -5463,11 +5527,24 @@ impl MainAreaDna {
                     .unwrap_or(view.panel_id.as_str());
                 entries.push((
                     Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
-                    Self::isoform_expert_window_title(panel_id, &view.seq_id),
-                    format!(
-                        "Isoform architecture panel '{panel_id}' on '{}'",
-                        view.seq_id
-                    ),
+                    Self::isoform_expert_window_title(panel_id, &view.seq_id, view),
+                    if view
+                        .panel_source
+                        .as_deref()
+                        .map(str::trim)
+                        .map(|value| value.starts_with("UniProt projection "))
+                        .unwrap_or(false)
+                    {
+                        format!(
+                            "UniProt protein reference mapping '{}' on '{}'",
+                            panel_id, view.seq_id
+                        )
+                    } else {
+                        format!(
+                            "Isoform architecture panel '{panel_id}' on '{}'",
+                            view.seq_id
+                        )
+                    },
                 ));
             }
         }

@@ -398,6 +398,10 @@ UniProt mapping capability status:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+- shared feature-expert route: supported for stored UniProt genome projections
+  via the same expert command family used by splicing/isoform inspection
+  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
+  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
 - shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
   - `genbank fetch ACCESSION [--as-id ID]`
 - shared shell (`gentle_cli shell`, GUI shell): dbSNP-guided annotated region extraction
@@ -1430,6 +1434,9 @@ Isoform architecture panel workflow:
   - same command family for splicing:
     - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
     - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
+  - same command family for persisted UniProt protein mappings:
+    - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
+    - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
 
 Pool exchange commands:
 

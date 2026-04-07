@@ -33,6 +33,7 @@ enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
     SequencingConfirmation(String),
+    UniprotProjection(String),
 }
 
 #[derive(Clone, Debug)]
@@ -112,6 +113,10 @@ impl WindowDna {
             DeferredAnalysisFocus::SequencingConfirmation(report_id) => {
                 self.main_area
                     .focus_sequencing_confirmation_report(&report_id);
+            }
+            DeferredAnalysisFocus::UniprotProjection(projection_id) => {
+                self.main_area
+                    .focus_uniprot_projection_expert(&projection_id);
             }
         }
     }
@@ -412,6 +417,17 @@ impl WindowDna {
         }
         self.main_area
             .focus_sequencing_confirmation_report(report_id);
+    }
+
+    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::UniprotProjection(
+                projection_id.to_string(),
+            ));
+            return;
+        }
+        self.main_area
+            .focus_uniprot_projection_expert(projection_id);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

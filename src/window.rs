@@ -66,6 +66,12 @@ impl Window {
         }
     }
 
+    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_uniprot_projection_expert(projection_id),
+        }
+    }
+
     pub fn sequence_id(&self) -> Option<String> {
         match self {
             Self::Dna(window) => window.sequence_id(),

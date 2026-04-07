@@ -4662,6 +4662,47 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .iter()
             .any(|row| !row.feature_projections.is_empty())
     );
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_seq",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PTEST1@toy_seq".to_string(),
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    assert_eq!(view.seq_id, "toy_seq");
+    assert_eq!(view.panel_id, "PTEST1@toy_seq");
+    assert_eq!(view.gene_symbol, "TOY1");
+    assert_eq!(view.transcript_geometry_mode, "cds");
+    assert_eq!(
+        view.panel_source.as_deref(),
+        Some("UniProt projection PTEST1 (PTEST1)")
+    );
+    assert_eq!(view.transcript_lanes.len(), 1);
+    assert_eq!(view.protein_lanes.len(), 1);
+    assert_eq!(
+        view.protein_lanes[0].expected_length_aa,
+        Some(entries[0].sequence_length)
+    );
+    assert_eq!(view.protein_lanes[0].reference_start_aa, Some(1));
+    assert_eq!(
+        view.protein_lanes[0].reference_end_aa,
+        Some(entries[0].sequence_length)
+    );
+    assert!(
+        view.protein_lanes[0]
+            .domains
+            .iter()
+            .any(|domain| domain.name.contains("toy domain"))
+    );
+    assert!(
+        !view.transcript_lanes[0].cds_to_protein_segments.is_empty(),
+        "UniProt projection expert should expose transcript/CDS-to-protein guide segments"
+    );
 }
 
 #[test]

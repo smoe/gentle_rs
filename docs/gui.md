@@ -3295,6 +3295,21 @@ UniProt mapping behavior:
 - The dialog shows a compact table of recent imported UniProt entries
   (entry/accession/source/import timestamp) and `Select` buttons to fill the
   active `entry_id`/query in the form.
+- The dialog now also shows recent stored UniProt genome projections for the
+  active `entry_id` / `seq_id` context and offers:
+  - `Use`
+    - fill the form with the persisted projection id/sequence pairing
+  - `Open Protein Expert`
+    - open a TP53-style isoform/protein architecture view for the stored
+      projection without re-running the mapping step
+- `Open Protein Expert` reuses the shared isoform-architecture canvas rather
+  than opening a first-class protein sequence window:
+  - transcript lanes come from the stored transcript/CDS projection
+  - the top protein lane uses the UniProt reference protein coordinate axis
+  - mapped UniProt interval annotations are rendered as protein-domain blocks
+    on that axis
+  - this keeps the GUI as a thin view over persisted
+    `gentle.uniprot_genome_projections.v1` state
 - Protein sequence windows are intentionally not enabled yet. UniProt entries
   currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.

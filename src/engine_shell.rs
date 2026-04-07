@@ -7830,7 +7830,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.len() < 2 {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -7931,8 +7931,20 @@ fn parse_feature_expert_target_tokens(
             }
             Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
         }
+        "uniprot-projection" | "uniprot_projection" | "uniprot" => {
+            if tokens.len() != 2 {
+                return Err(format!(
+                    "{context} uniprot-projection target expects exactly: uniprot-projection PROJECTION_ID"
+                ));
+            }
+            let projection_id = tokens[1].trim().to_string();
+            if projection_id.is_empty() {
+                return Err("uniprot-projection PROJECTION_ID must not be empty".to_string());
+            }
+            Ok(FeatureExpertTarget::UniprotProjection { projection_id })
+        }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|uniprot-projection)"
         )),
     }
 }

@@ -1097,6 +1097,16 @@ external coding agent runtime, see:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+- shared feature-expert route now also accepts persisted UniProt projections as
+  a target:
+  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
+  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
+  - semantics:
+    - resolve one persisted `gentle.uniprot_genome_projections.v1` record
+    - build a shared `IsoformArchitectureView`
+    - transcript lanes come from the stored transcript/CDS-to-genome projection
+    - the protein lane uses the UniProt reference-protein coordinate system and
+      projected UniProt interval features
 - shared-shell GenBank route:
   - `genbank fetch ACCESSION [--as-id ID]`
 - shared-shell dbSNP route:

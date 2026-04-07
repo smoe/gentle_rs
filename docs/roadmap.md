@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-05
+Last updated: 2026-04-07
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1090,12 +1090,16 @@ order. Durable architecture constraints and decisions remain in
     - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
       `uniprot projection-show`
-  - next UI follow-up:
-    - add a dedicated projection viewer for protein -> transcript -> genome
-      mapping results (for example TP53/p53), reusing the persisted
-      `gentle.uniprot_genome_projections.v1` payload and keeping the GUI as a
-      thin presentation layer over shared projection state rather than adding
-      first-class protein sequence windows
+  - GUI follow-up now implemented:
+    - `UniProt Mapping...` offers `Open Protein Expert` for the active
+      projection and recent stored projections
+    - the viewer reuses the shared isoform-architecture canvas rather than
+      opening first-class protein sequence windows
+    - shared expert routes now also accept
+      `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID` and
+      `render-feature-expert-svg ... uniprot-projection ...`, keeping the GUI
+      as a thin presentation layer over persisted
+      `gentle.uniprot_genome_projections.v1` state
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`

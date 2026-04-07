@@ -7665,6 +7665,15 @@ impl MainAreaDna {
         self.show_sequencing_confirmation_report(normalized_id);
     }
 
+    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
+        if let Err(err) = self.open_uniprot_projection_expert(projection_id) {
+            self.op_status = format!(
+                "Could not open UniProt protein expert for '{}': {err}",
+                projection_id.trim()
+            );
+        }
+    }
+
     pub fn opened_from_pool_context(&self) -> bool {
         self.opened_from_pool_context
     }
@@ -11531,10 +11540,9 @@ impl MainAreaDna {
                                         },
                                     ) {
                                         Ok(FeatureExpertView::IsoformArchitecture(view)) => {
-                                            self.isoform_expert_window_panel_id =
-                                                Some(panel_id.clone());
-                                            self.isoform_expert_window_view = Some(Arc::new(view));
-                                            self.show_isoform_expert_window = true;
+                                            self.open_isoform_expert_window_for_view(
+                                                &panel_id, &view,
+                                            );
                                             let viewport_id =
                                                 Self::isoform_expert_viewport_id(&seq_id, &panel_id);
                                             ui.ctx().send_viewport_cmd_to(
@@ -22818,7 +22826,7 @@ impl MainAreaDna {
             .isoform_expert_window_panel_id
             .clone()
             .unwrap_or_else(|| view.panel_id.clone());
-        let title = Self::isoform_expert_window_title(&panel_id, &view.seq_id);
+        let title = Self::isoform_expert_window_title(&panel_id, &view.seq_id, &view);
         let viewport_id = Self::isoform_expert_viewport_id(&view.seq_id, &panel_id);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())

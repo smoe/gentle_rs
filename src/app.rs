@@ -116,7 +116,7 @@ use crate::{
         shell_help_markdown_from_glossary_json as render_shell_help_markdown_from_glossary_json,
     },
     tf_motifs, tool_overrides,
-    uniprot::UniprotEntrySummary,
+    uniprot::{UniprotEntrySummary, UniprotGenomeProjectionSummary},
     window::Window,
     window_backdrop::{
         self, WindowBackdropKind, WindowBackdropSettings, with_window_content_inset,
@@ -15508,6 +15508,130 @@ Error: `{err}`"
         rows
     }
 
+    fn sort_uniprot_projections_recent(
+        mut rows: Vec<UniprotGenomeProjectionSummary>,
+    ) -> Vec<UniprotGenomeProjectionSummary> {
+        rows.sort_by(|left, right| {
+            right
+                .created_at_unix_ms
+                .cmp(&left.created_at_unix_ms)
+                .then_with(|| left.projection_id.cmp(&right.projection_id))
+        });
+        rows
+    }
+
+    fn resolve_uniprot_projection_id_from_dialog_fields(&self) -> Option<String> {
+        let seq_id = self.uniprot_map_seq_id.trim();
+        let entry_id = self.uniprot_entry_id.trim();
+        if seq_id.is_empty() || entry_id.is_empty() {
+            return None;
+        }
+        Some(
+            Self::uniprot_optional_trimmed(&self.uniprot_map_projection_id)
+                .unwrap_or_else(|| format!("{entry_id}@{seq_id}")),
+        )
+    }
+
+    fn recent_uniprot_projections_for_dialog(
+        &self,
+        limit: usize,
+    ) -> Vec<UniprotGenomeProjectionSummary> {
+        let seq_filter = Self::uniprot_optional_trimmed(&self.uniprot_map_seq_id);
+        let entry_filter = Self::uniprot_optional_trimmed(&self.uniprot_entry_id);
+        let mut rows = self
+            .engine
+            .read()
+            .unwrap()
+            .list_uniprot_genome_projections(seq_filter.as_deref());
+        if let Some(entry_id) = entry_filter.as_deref() {
+            rows.retain(|row| row.entry_id == entry_id);
+        }
+        let mut rows = Self::sort_uniprot_projections_recent(rows);
+        let cap = limit.max(1);
+        if rows.len() > cap {
+            rows.truncate(cap);
+        }
+        rows
+    }
+
+    fn open_sequence_window_for_uniprot_projection_expert(
+        &mut self,
+        seq_id: &str,
+        projection_id: &str,
+    ) {
+        if projection_id.trim().is_empty() {
+            self.open_sequence_window(seq_id);
+            return;
+        }
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.focus_uniprot_projection_expert(projection_id);
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_uniprot_projection_expert(projection_id);
+            return;
+        }
+        let exists = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if exists {
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            window.focus_uniprot_projection_expert(projection_id);
+            self.new_windows.push(window);
+        }
+    }
+
+    fn open_uniprot_projection_expert_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
+        let seq_id = seq_id.trim();
+        let projection_id = projection_id.trim();
+        if seq_id.is_empty() {
+            self.uniprot_status = "seq_id is required for UniProt protein expert".to_string();
+            return;
+        }
+        if projection_id.is_empty() {
+            self.uniprot_status =
+                "projection_id is required for UniProt protein expert".to_string();
+            return;
+        }
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .get_uniprot_genome_projection(projection_id)
+        {
+            Ok(projection) => {
+                if projection.seq_id != seq_id {
+                    self.uniprot_status = format!(
+                        "Projection '{}' belongs to '{}' rather than '{}'",
+                        projection_id, projection.seq_id, seq_id
+                    );
+                    return;
+                }
+            }
+            Err(err) => {
+                self.uniprot_status =
+                    format!("Could not open UniProt protein expert: {}", err.message);
+                return;
+            }
+        }
+        self.open_sequence_window_for_uniprot_projection_expert(seq_id, projection_id);
+        self.uniprot_map_seq_id = seq_id.to_string();
+        self.uniprot_map_projection_id = projection_id.to_string();
+        self.uniprot_status = format!(
+            "Opening UniProt protein expert for projection '{}' on '{}'",
+            projection_id, seq_id
+        );
+    }
+
     fn fetch_uniprot_entry_from_dialog(&mut self) {
         let query = self.uniprot_query.trim().to_string();
         if query.is_empty() {
@@ -15620,14 +15744,18 @@ Error: `{err}`"
             return;
         }
         self.uniprot_map_seq_id = seq_id.clone();
+        let resolved_projection_id =
+            Self::uniprot_optional_trimmed(&self.uniprot_map_projection_id)
+                .unwrap_or_else(|| format!("{entry_id}@{seq_id}"));
         let op = Operation::ProjectUniprotToGenome {
             seq_id,
             entry_id,
-            projection_id: Self::uniprot_optional_trimmed(&self.uniprot_map_projection_id),
+            projection_id: Some(resolved_projection_id.clone()),
             transcript_id: Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id),
         };
         match self.engine.write().unwrap().apply(op) {
             Ok(result) => {
+                self.uniprot_map_projection_id = resolved_projection_id;
                 self.uniprot_status = Self::format_op_result_status(
                     "UniProt projection: ok",
                     &result.created_seq_ids,
@@ -15871,15 +15999,37 @@ Error: `{err}`"
             ui.text_edit_singleline(&mut self.uniprot_map_transcript_id)
                 .on_hover_text("Optional transcript filter (for example ENST... )");
         });
-        if ui
-            .button("Project To Sequence")
-            .on_hover_text(
-                "Map UniProt feature intervals through transcript/CDS onto genomic coordinates",
-            )
-            .clicked()
-        {
-            self.project_uniprot_entry_from_dialog();
-        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Project To Sequence")
+                .on_hover_text(
+                    "Map UniProt feature intervals through transcript/CDS onto genomic coordinates",
+                )
+                .clicked()
+            {
+                self.project_uniprot_entry_from_dialog();
+            }
+            if ui
+                .button("Open Protein Expert")
+                .on_hover_text(
+                    "Open a TP53-style transcript/CDS -> UniProt reference protein mapping view for the current projection",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                if let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields()
+                {
+                    self.open_uniprot_projection_expert_from_dialog(&seq_id, &projection_id);
+                } else {
+                    self.uniprot_status =
+                        "Project an entry first or provide seq_id + entry_id to resolve a projection"
+                            .to_string();
+                }
+            }
+        });
+        ui.small(
+            "Open Protein Expert reuses the shared isoform-architecture canvas, but sources transcript/CDS-to-protein geometry from the stored UniProt projection rather than a curated panel JSON.",
+        );
         ui.separator();
         ui.label("Linked nucleotide retrieval (EMBL/GenBank crossref)");
         ui.horizontal(|ui| {
@@ -15947,6 +16097,70 @@ Error: `{err}`"
                                         self.uniprot_query = row.accession.clone();
                                     }
                                 }
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+        ui.separator();
+        let recent_projections = self.recent_uniprot_projections_for_dialog(12);
+        ui.label(format!(
+            "Recent projections for current context ({})",
+            recent_projections.len()
+        ));
+        if recent_projections.is_empty() {
+            ui.small(
+                "No stored projections match the current seq_id/entry_id filter yet. Project an entry to unlock the protein expert view.",
+            );
+        } else {
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    egui::Grid::new("uniprot_recent_projection_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("projection_id");
+                            ui.strong("entry_id");
+                            ui.strong("seq_id");
+                            ui.strong("transcripts");
+                            ui.strong("created_ms");
+                            ui.strong("actions");
+                            ui.end_row();
+                            for row in &recent_projections {
+                                ui.monospace(&row.projection_id);
+                                ui.monospace(&row.entry_id);
+                                ui.monospace(&row.seq_id);
+                                ui.label(row.transcript_projection_count.to_string());
+                                ui.label(row.created_at_unix_ms.to_string());
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .small_button("Use")
+                                        .on_hover_text(
+                                            "Use this stored projection as the active projection_id and seq_id",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.uniprot_entry_id = row.entry_id.clone();
+                                        self.uniprot_map_seq_id = row.seq_id.clone();
+                                        self.uniprot_map_projection_id = row.projection_id.clone();
+                                    }
+                                    if ui
+                                        .small_button("Open Protein Expert")
+                                        .on_hover_text(
+                                            "Open the dedicated UniProt protein mapping expert for this stored projection",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.open_uniprot_projection_expert_from_dialog(
+                                            &row.seq_id,
+                                            &row.projection_id,
+                                        );
+                                    }
+                                });
                                 ui.end_row();
                             }
                         });
@@ -42383,6 +42597,87 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(!state.sequences.contains_key("TOY_USE"));
         assert_eq!(app.uniprot_entry_id, "TOY_USE");
         assert_eq!(app.uniprot_query, "PUSE1");
+    }
+
+    #[test]
+    fn resolve_uniprot_projection_id_from_dialog_fields_uses_entry_and_seq_default() {
+        let mut app = GENtleApp::default();
+        app.uniprot_entry_id = "PTEST1".to_string();
+        app.uniprot_map_seq_id = "toy_seq".to_string();
+        assert_eq!(
+            app.resolve_uniprot_projection_id_from_dialog_fields()
+                .as_deref(),
+            Some("PTEST1@toy_seq")
+        );
+
+        app.uniprot_map_projection_id = "custom_projection".to_string();
+        assert_eq!(
+            app.resolve_uniprot_projection_id_from_dialog_fields()
+                .as_deref(),
+            Some("custom_projection")
+        );
+    }
+
+    #[test]
+    fn recent_uniprot_projections_for_dialog_filters_selected_entry_and_seq() {
+        let temp = tempdir().expect("tempdir");
+        let swiss_path = temp.path().join("toy_uniprot_projection_dialog.txt");
+        let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   DOMAIN          2..8
+FT                   /note="toy domain"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPEN
+//
+"#;
+        fs::write(&swiss_path, swiss_text).expect("write swiss toy");
+
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(99, 360),
+            qualifiers: vec![
+                ("gene".into(), Some("TOY1".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+                ("label".into(), Some("TX1".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("100-180,300-360".to_string()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        state.sequences.insert("toy_seq".to_string(), dna);
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.uniprot_swiss_path = swiss_path.display().to_string();
+        app.import_uniprot_swiss_prot_from_dialog();
+        {
+            let mut engine = app.engine.write().expect("engine lock");
+            engine
+                .apply(Operation::ProjectUniprotToGenome {
+                    seq_id: "toy_seq".to_string(),
+                    entry_id: "PTEST1".to_string(),
+                    projection_id: Some("toy_projection".to_string()),
+                    transcript_id: None,
+                })
+                .expect("project uniprot");
+        }
+
+        app.uniprot_entry_id = "PTEST1".to_string();
+        app.uniprot_map_seq_id = "toy_seq".to_string();
+        let rows = app.recent_uniprot_projections_for_dialog(5);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].projection_id, "toy_projection");
+        assert_eq!(rows[0].entry_id, "PTEST1");
+        assert_eq!(rows[0].seq_id, "toy_seq");
     }
 
     #[test]

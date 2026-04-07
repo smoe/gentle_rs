@@ -10238,6 +10238,21 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let uniprot = parse_shell_line("inspect-feature-expert s uniprot-projection PTEST1@seq_u")
+        .expect("parse uniprot projection feature target");
+    match uniprot {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::UniprotProjection {
+                    projection_id: "PTEST1@seq_u".to_string()
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let render = parse_shell_line(
         "render-feature-expert-svg s restriction 123 --enzyme EcoRI --start 100 --end 106 out.svg",
     )
@@ -10568,6 +10583,33 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         projection.output["transcript_projections"]
             .as_array()
             .map(|v| !v.is_empty())
+            .unwrap_or(false)
+    );
+
+    let inspect = execute_shell_command(
+        &mut engine,
+        &ShellCommand::InspectFeatureExpert {
+            seq_id: "seq_u".to_string(),
+            target: FeatureExpertTarget::UniprotProjection {
+                projection_id: projection_id.clone(),
+            },
+        },
+    )
+    .expect("inspect uniprot projection expert");
+    assert!(!inspect.state_changed);
+    assert_eq!(
+        inspect.output["panel_id"].as_str(),
+        Some(projection_id.as_str())
+    );
+    assert_eq!(inspect.output["gene_symbol"].as_str(), Some("TOY1"));
+    assert_eq!(
+        inspect.output["panel_source"].as_str(),
+        Some("UniProt projection PTEST1 (PTEST1)")
+    );
+    assert!(
+        inspect.output["protein_lanes"]
+            .as_array()
+            .map(|rows| !rows.is_empty())
             .unwrap_or(false)
     );
 }

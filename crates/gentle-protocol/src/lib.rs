@@ -151,6 +151,9 @@ pub enum FeatureExpertTarget {
     IsoformArchitecture {
         panel_id: String,
     },
+    UniprotProjection {
+        projection_id: String,
+    },
 }
 
 impl FeatureExpertTarget {
@@ -180,6 +183,9 @@ impl FeatureExpertTarget {
             }
             Self::IsoformArchitecture { panel_id } => {
                 format!("isoform architecture panel '{panel_id}'")
+            }
+            Self::UniprotProjection { projection_id } => {
+                format!("UniProt projection '{projection_id}'")
             }
         }
     }
