@@ -99,7 +99,7 @@ use crate::{
         decide_linear_base_routing, mode_setting_label,
     },
     open_reading_frame::OpenReadingFrame,
-    pool_gel::{GelSampleMember, build_pool_gel_layout},
+    pool_gel::build_pool_gel_layout,
     protocol_cartoon::{
         ProtocolCartoonKind, pcr_assay_pair_geometry_bindings, pcr_assay_pair_spec_with_geometry,
         protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
@@ -31436,11 +31436,7 @@ impl MainAreaDna {
     }
 
     fn render_pool_gel_preview(&self, ui: &mut egui::Ui) {
-        let members = self
-            .current_pool_members()
-            .into_iter()
-            .map(|(id, bp)| GelSampleMember::new(id, bp))
-            .collect::<Vec<_>>();
+        let members = self.current_pool_members();
         if members.is_empty() {
             return;
         }

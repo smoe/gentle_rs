@@ -43,7 +43,7 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{GelSampleInput, GelSampleMember, export_pool_gel_svg},
+    pool_gel::{GelSampleInput, export_pool_gel_svg},
     protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,

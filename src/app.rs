@@ -16039,7 +16039,7 @@ Error: `{err}`"
             ui.label("query");
             ui.text_edit_singleline(&mut self.uniprot_query)
                 .on_hover_text(
-                    "UniProt accession or entry ID to fetch (for example P04637 or TP53_HUMAN)",
+                    "UniProt accession or entry ID to fetch (for example P04637 or P53_HUMAN)",
                 );
             if ui
                 .button("Fetch")
@@ -16049,7 +16049,7 @@ Error: `{err}`"
                 self.fetch_uniprot_entry_from_dialog();
             }
         });
-        ui.small("Examples: P04637, TP53_HUMAN");
+        ui.small("Examples: P04637, P53_HUMAN");
         ui.separator();
         ui.label("Offline import (SWISS-PROT text)");
         ui.horizontal(|ui| {
