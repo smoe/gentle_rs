@@ -13403,7 +13403,12 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
             store_as: Some("overlay_plot".to_string()),
         })
         .expect("compute overlay dotplot");
-    assert!(result.messages.iter().any(|message| message.contains("overlay_plot")));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("overlay_plot"))
+    );
 
     let rows = engine.list_dotplot_views(Some("ref"));
     assert_eq!(rows.len(), 1);
@@ -13424,7 +13429,11 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
     assert_eq!(view.query_series[1].label, "Isoform B");
     assert_eq!(view.query_series[0].color_rgb, [29, 78, 216]);
     assert_eq!(view.query_series[1].color_rgb, [220, 38, 38]);
-    assert!(view.query_series.iter().all(|series| !series.points.is_empty()));
+    assert!(
+        view.query_series
+            .iter()
+            .all(|series| !series.points.is_empty())
+    );
     let annotation = view
         .reference_annotation
         .as_ref()

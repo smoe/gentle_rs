@@ -1428,9 +1428,10 @@ fn parse_racks_fabrication_svg_command() {
 
 #[test]
 fn parse_racks_isometric_svg_command() {
-    let cmd =
-        parse_shell_line("racks isometric-svg rack-1 rack.iso.svg --template storage_pcr_tube_rack")
-            .expect("parse command");
+    let cmd = parse_shell_line(
+        "racks isometric-svg rack-1 rack.iso.svg --template storage_pcr_tube_rack",
+    )
+    .expect("parse command");
     match cmd {
         ShellCommand::RacksIsometricSvg {
             rack_id,

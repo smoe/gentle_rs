@@ -3876,7 +3876,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let report_id = tokens[2].trim().to_string();
             if report_id.is_empty() {
                 return Err(
-                    "rna-reads inspect-gene-support REPORT_ID must not be empty".to_string(),
+                    "rna-reads inspect-gene-support REPORT_ID must not be empty".to_string()
                 );
             }
             let mut gene_ids = Vec::<String>::new();
@@ -3941,8 +3941,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             if gene_ids.is_empty() {
                 return Err(
-                    "rna-reads inspect-gene-support requires at least one --gene GENE"
-                        .to_string(),
+                    "rna-reads inspect-gene-support requires at least one --gene GENE".to_string(),
                 );
             }
             Ok(ShellCommand::RnaReadsInspectGeneSupport {

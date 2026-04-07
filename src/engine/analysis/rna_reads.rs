@@ -116,9 +116,9 @@ impl RnaReadGeneSupportAccumulator {
                 .or_insert(0) += 1;
         }
 
-        for (from, to) in
-            GentleEngine::normalize_rna_read_gene_support_direct_transition_pairs(direct_transitions)
-        {
+        for (from, to) in GentleEngine::normalize_rna_read_gene_support_direct_transition_pairs(
+            direct_transitions,
+        ) {
             *self
                 .direct_transition_counts
                 .entry((gene_id.to_string(), from, to))
@@ -468,8 +468,7 @@ impl GentleEngine {
         if normalized.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "RNA-read gene-support commands require at least one gene id"
-                    .to_string(),
+                message: "RNA-read gene-support commands require at least one gene id".to_string(),
             });
         }
         Ok(normalized)
@@ -914,8 +913,7 @@ impl GentleEngine {
                 {
                     let (exon_ordinals, direct_transitions) =
                         Self::collect_rna_read_gene_support_for_mapping(mapping, context);
-                    let exon_pairs =
-                        Self::collect_rna_read_gene_support_exon_pairs(&exon_ordinals);
+                    let exon_pairs = Self::collect_rna_read_gene_support_exon_pairs(&exon_ordinals);
                     let direct_transition_pairs =
                         Self::normalize_rna_read_gene_support_direct_transition_pairs(
                             &direct_transitions,
@@ -923,11 +921,10 @@ impl GentleEngine {
                     row.mapped_exon_ordinals = exon_ordinals;
                     row.exon_pairs =
                         Self::build_rna_read_gene_support_audit_pairs(context, &exon_pairs);
-                    row.direct_transition_pairs =
-                        Self::build_rna_read_gene_support_audit_pairs(
-                            context,
-                            &direct_transition_pairs,
-                        );
+                    row.direct_transition_pairs = Self::build_rna_read_gene_support_audit_pairs(
+                        context,
+                        &direct_transition_pairs,
+                    );
                 }
 
                 if let Some(gene_id) = resolved_gene_id.as_ref() {
@@ -3367,8 +3364,10 @@ impl GentleEngine {
                     &[],
                     complete_rule,
                 )?;
-                let summary =
-                    Self::build_rna_read_gene_support_summary_from_evaluation(&evaluation, complete_rule);
+                let summary = Self::build_rna_read_gene_support_summary_from_evaluation(
+                    &evaluation,
+                    complete_rule,
+                );
                 let hit_lengths_by_record_index = evaluation
                     .prepared
                     .report

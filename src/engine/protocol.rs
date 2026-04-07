@@ -47,8 +47,8 @@ use std::collections::BTreeMap;
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
-    OpId, Operation, PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
-    CLONING_MACRO_TEMPLATE_SCHEMA,
+    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
+    ProtocolCartoonTemplateBindings, RunId, SeqId,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

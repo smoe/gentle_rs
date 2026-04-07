@@ -65,9 +65,8 @@ use crate::{
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport,
-        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
+        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
@@ -23735,7 +23734,10 @@ impl MainAreaDna {
             "owner",
         );
         let query_id = if overlay_mode {
-            format!("overlay{}_series", view.series_count.max(view.query_series.len()))
+            format!(
+                "overlay{}_series",
+                view.series_count.max(view.query_series.len())
+            )
         } else {
             Self::sanitize_export_name_component(&view.seq_id, "query")
         };

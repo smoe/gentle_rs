@@ -432,7 +432,11 @@ impl GentleEngine {
             .unwrap_or(view.seq_id.as_str());
 
         if overlay_mode {
-            let total_points: usize = view.query_series.iter().map(|series| series.point_count).sum();
+            let total_points: usize = view
+                .query_series
+                .iter()
+                .map(|series| series.point_count)
+                .sum();
             let average_query_span = view
                 .query_series
                 .iter()
@@ -461,7 +465,8 @@ impl GentleEngine {
             let top_margin = 48.0_f32;
             let bottom_margin = 24.0_f32;
             let dotplot_width = 1600.0_f32;
-            let dotplot_height = (dotplot_width * (reference_span as f32 / average_query_span as f32))
+            let dotplot_height = (dotplot_width
+                * (reference_span as f32 / average_query_span as f32))
                 .clamp(420.0, 1280.0);
             let canvas_width =
                 outer_margin + left_margin + dotplot_width + right_margin + outer_margin;
@@ -502,8 +507,7 @@ impl GentleEngine {
                     let entry = cells.entry((x_cell, y_cell)).or_insert(0);
                     *entry = entry.saturating_add(1);
                 }
-                let max_cell_count =
-                    cells.values().copied().max().unwrap_or(1).max(1) as f32;
+                let max_cell_count = cells.values().copied().max().unwrap_or(1).max(1) as f32;
                 let mut visible_cells: Vec<((i32, i32), f32)> = vec![];
                 for ((x_cell, y_cell), count) in &cells {
                     let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
@@ -657,7 +661,8 @@ impl GentleEngine {
                         .end_0based_exclusive
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span);
-                    let y0 = dotplot_top + (local_start as f32 / reference_span_f32) * dotplot_height;
+                    let y0 =
+                        dotplot_top + (local_start as f32 / reference_span_f32) * dotplot_height;
                     let y1 = dotplot_top + (local_end as f32 / reference_span_f32) * dotplot_height;
                     svg.push_str(&format!(
                         "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"#22c55e\" rx=\"1\" ry=\"1\"/>",
@@ -694,7 +699,9 @@ impl GentleEngine {
                 "{} | rendered_cells={} | merged_exons={}",
                 Self::dotplot_sampling_overlap_summary(view.word_size.max(1), view.step_bp.max(1)),
                 total_visible_cells,
-                reference_annotation.map(|track| track.interval_count).unwrap_or(0)
+                reference_annotation
+                    .map(|track| track.interval_count)
+                    .unwrap_or(0)
             );
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",

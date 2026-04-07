@@ -155,6 +155,13 @@ order. Durable architecture constraints and decisions remain in
   - remaining follow-up if policy needs to become stricter:
     inspect deeper generic `op` / `workflow` JSON payload wrappers for hidden
     agent invocations rather than only shell/macro routes
+- Engine-shell arrangement/rack/ladder commands now also use a dedicated
+  helper dispatch before the monolithic matcher:
+  - `SetArrangementLadders` previously still entered the full inner match and
+    could overflow CI’s smaller-stack test threads
+  - the contiguous arrangement/rack/ladder command family is now split out via
+    `#[inline(never)]` helper dispatch, matching the existing small-stack
+    mitigation pattern already used for candidate-analysis commands
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).

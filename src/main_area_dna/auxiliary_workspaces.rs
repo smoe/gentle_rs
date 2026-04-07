@@ -294,7 +294,10 @@ impl MainAreaDna {
 
     pub(super) fn dotplot_view_total_point_count(view: &DotplotView) -> usize {
         if Self::dotplot_view_is_overlay(view) {
-            view.query_series.iter().map(|series| series.point_count).sum()
+            view.query_series
+                .iter()
+                .map(|series| series.point_count)
+                .sum()
         } else {
             view.point_count
         }
@@ -1982,11 +1985,11 @@ impl MainAreaDna {
         } else {
             match self.build_dotplot_compute_diagnostics() {
                 Ok(diag) => {
-                let reference_label = diag
-                    .reference_seq_id
-                    .as_deref()
-                    .unwrap_or(diag.seq_id.as_str());
-                ui.label(
+                    let reference_label = diag
+                        .reference_seq_id
+                        .as_deref()
+                        .unwrap_or(diag.seq_id.as_str());
+                    ui.label(
                     egui::RichText::new(format!(
                         "request mode={} query={} [{}..{}] reference={} [{}..{}] | word={} step={} mismatches={} tile_bp={}",
                         diag.mode.as_str(),
@@ -2006,49 +2009,51 @@ impl MainAreaDna {
                     .monospace()
                     .size(self.feature_details_font_size()),
                 );
-                ui.label(
-                    egui::RichText::new(format!(
-                        "estimated windows query={} reference={} => pair_evals≈{}",
-                        diag.query_windows, diag.reference_windows, diag.estimated_pair_evaluations
-                    ))
-                    .monospace()
-                    .size(self.feature_details_font_size()),
-                );
-                if diag.estimated_pair_evaluations == 0 {
-                    ui.colored_label(
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "estimated windows query={} reference={} => pair_evals≈{}",
+                            diag.query_windows,
+                            diag.reference_windows,
+                            diag.estimated_pair_evaluations
+                        ))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                    );
+                    if diag.estimated_pair_evaluations == 0 {
+                        ui.colored_label(
                         egui::Color32::from_rgb(180, 83, 9),
                         "Estimated pair evaluations are zero; reduce word size or increase span.",
                     );
-                } else if diag.max_mismatches > 0
-                    && diag.estimated_pair_evaluations
-                        > MAX_DOTPLOT_PAIR_EVALUATIONS.saturating_mul(9) / 10
-                {
-                    ui.colored_label(
+                    } else if diag.max_mismatches > 0
+                        && diag.estimated_pair_evaluations
+                            > MAX_DOTPLOT_PAIR_EVALUATIONS.saturating_mul(9) / 10
+                    {
+                        ui.colored_label(
                         egui::Color32::from_rgb(180, 83, 9),
                         format!(
                             "Request is near compute guardrail ({} of {} pair evaluations). If this fails, increase step_bp or reduce query/reference span.",
                             diag.estimated_pair_evaluations, MAX_DOTPLOT_PAIR_EVALUATIONS
                         ),
                     );
-                } else if diag.max_mismatches == 0
-                    && diag.estimated_pair_evaluations > MAX_DOTPLOT_PAIR_EVALUATIONS
-                {
-                    ui.small(
+                    } else if diag.max_mismatches == 0
+                        && diag.estimated_pair_evaluations > MAX_DOTPLOT_PAIR_EVALUATIONS
+                    {
+                        ui.small(
                         "Large exact-seed request detected. Engine uses indexed exact matching for mismatches=0, so this can still complete without brute-force pair loops.",
                     );
-                }
-                if Self::dotplot_mode_requires_reference(diag.mode)
-                    && diag.reference_span_bp > diag.query_span_bp.saturating_mul(6)
-                    && diag.word_size >= 10
-                    && diag.step_bp >= 10
-                    && diag.max_mismatches == 0
-                {
-                    ui.colored_label(
+                    }
+                    if Self::dotplot_mode_requires_reference(diag.mode)
+                        && diag.reference_span_bp > diag.query_span_bp.saturating_mul(6)
+                        && diag.word_size >= 10
+                        && diag.step_bp >= 10
+                        && diag.max_mismatches == 0
+                    {
+                        ui.colored_label(
                         egui::Color32::from_rgb(180, 83, 9),
                         "Current settings are very strict for a wide reference span. For cDNA-vs-genomic controls, try smaller word/step or allow mismatches.",
                     );
+                    }
                 }
-            }
                 Err(message) => {
                     ui.colored_label(
                         egui::Color32::from_rgb(180, 83, 9),
@@ -2385,8 +2390,7 @@ impl MainAreaDna {
                     let entry = cells.entry((x_cell, y_cell)).or_insert(0);
                     *entry = entry.saturating_add(1);
                 }
-                let max_cell_count =
-                    cells.values().copied().max().unwrap_or(1).max(1) as f32;
+                let max_cell_count = cells.values().copied().max().unwrap_or(1).max(1) as f32;
                 let mut visible_cells: HashMap<(i32, i32), egui::Color32> = HashMap::new();
                 for ((x_cell, y_cell), count) in &cells {
                     let density_raw = (*count as f32 / max_cell_count).clamp(0.0, 1.0);
@@ -2613,10 +2617,8 @@ impl MainAreaDna {
                 && let Some(pointer) = response.hover_pos()
                 && dotplot_rect.contains(pointer)
             {
-                let fx =
-                    ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
-                let fy =
-                    ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
+                let fx = ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
+                let fy = ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
                 let y_bp = view.reference_span_start_0based
                     + (fy * reference_span_max as f32).round() as usize;
                 let x_cell = ((fx * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);

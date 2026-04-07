@@ -335,14 +335,11 @@ fn feature_legend_line(feature: &Feature, visible_label: &str) -> Option<String>
                 );
             }
             if lower.contains("beta-lactamase") {
-                return Some(
-                    "Beta-lactamase (bla): ampicillin resistance cassette".to_string(),
-                );
+                return Some("Beta-lactamase (bla): ampicillin resistance cassette".to_string());
             }
             if lower.contains("lac repressor") {
                 return Some(
-                    "Lac repressor (lacIq): tighter repression of inducible expression"
-                        .to_string(),
+                    "Lac repressor (lacIq): tighter repression of inducible expression".to_string(),
                 );
             }
             return Some(format!("{product} ({visible_label})"));
@@ -981,7 +978,8 @@ fn dedupe_equivalent_features(features: Vec<FeatureVm>) -> Vec<FeatureVm> {
     let mut deduped: Vec<FeatureVm> = Vec::with_capacity(features.len());
     for feature in features {
         if let Some(existing) = deduped.last_mut() {
-            let same_label = existing.label == feature.label && existing.is_reverse == feature.is_reverse;
+            let same_label =
+                existing.label == feature.label && existing.is_reverse == feature.is_reverse;
             let exact_match = existing.from == feature.from && existing.to == feature.to;
             let gene_cds_pair = same_label
                 && matches!(
@@ -1908,13 +1906,11 @@ fn containing_functional_host<'a>(
         .min_by(|a, b| {
             let a_span = a.to.saturating_sub(a.from);
             let b_span = b.to.saturating_sub(b.from);
-            a_span
-                .cmp(&b_span)
-                .then(
-                    b.kind_role
-                        .functional_host_priority()
-                        .cmp(&a.kind_role.functional_host_priority()),
-                )
+            a_span.cmp(&b_span).then(
+                b.kind_role
+                    .functional_host_priority()
+                    .cmp(&a.kind_role.functional_host_priority()),
+            )
         })
 }
 
@@ -1923,7 +1919,11 @@ fn circular_feature_tss_pos(feature: &FeatureVm, len: usize) -> usize {
         return 0;
     }
     let pos = if feature.is_promoter {
-        if feature.is_reverse { feature.from } else { feature.to }
+        if feature.is_reverse {
+            feature.from
+        } else {
+            feature.to
+        }
     } else if feature.is_reverse {
         feature.to
     } else {
@@ -2151,10 +2151,14 @@ fn circular_feature_label_candidate_radii(base_radius: f32, is_reverse: bool) ->
     let direction = if is_reverse { -1.0 } else { 1.0 };
     let mut radii = vec![base_radius.max(0.0)];
     for step in 1..=CIRCULAR_FEATURE_LABEL_SHIFT_ATTEMPTS {
-        radii.push((base_radius + direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0));
+        radii.push(
+            (base_radius + direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0),
+        );
     }
     for step in 1..=2 {
-        radii.push((base_radius - direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0));
+        radii.push(
+            (base_radius - direction * CIRCULAR_FEATURE_LABEL_SHIFT_STEP * step as f32).max(0.0),
+        );
     }
     radii
 }
@@ -2246,16 +2250,20 @@ fn circular_side_shifted_label_placement(
             break;
         }
         let target_x = match placement.text_anchor {
-            "start" => colliding
-                .iter()
-                .map(|occupied| occupied.right)
-                .fold(placement.x, f32::max)
-                + SVG_LABEL_COLLISION_PADDING,
-            "end" => colliding
-                .iter()
-                .map(|occupied| occupied.left)
-                .fold(placement.x, f32::min)
-                - SVG_LABEL_COLLISION_PADDING,
+            "start" => {
+                colliding
+                    .iter()
+                    .map(|occupied| occupied.right)
+                    .fold(placement.x, f32::max)
+                    + SVG_LABEL_COLLISION_PADDING
+            }
+            "end" => {
+                colliding
+                    .iter()
+                    .map(|occupied| occupied.left)
+                    .fold(placement.x, f32::min)
+                    - SVG_LABEL_COLLISION_PADDING
+            }
             _ => placement.x,
         };
         if (target_x - placement.x).abs() <= 0.5 {
@@ -2376,11 +2384,11 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
 
     doc = doc.add(
         Text::new(circular_title_text(dna))
-        .set("x", 20)
-        .set("y", 34)
-        .set("font-family", "monospace")
-        .set("font-size", CIRCULAR_TITLE_FONT_SIZE)
-        .set("fill", "#111111"),
+            .set("x", 20)
+            .set("y", 34)
+            .set("font-family", "monospace")
+            .set("font-size", CIRCULAR_TITLE_FONT_SIZE)
+            .set("fill", "#111111"),
     );
     doc = doc.add(
         Text::new(format!("{} bp", len))
@@ -2583,8 +2591,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     } else {
                         (label_radius - 2.0).max(0.0)
                     };
-                    let (leader_end_x, leader_end_y) =
-                        pos2xy(mid, len, cx, cy, leader_end_radius);
+                    let (leader_end_x, leader_end_y) = pos2xy(mid, len, cx, cy, leader_end_radius);
                     doc = doc.add(
                         Line::new()
                             .set("x1", leader_start_x)
@@ -3143,7 +3150,10 @@ mod tests {
             location: Location::simple_range(20, 60),
             qualifiers: vec![
                 ("protein_id".into(), Some("AAA57095.1".to_string())),
-                ("product".into(), Some("glutathione S-transferase".to_string())),
+                (
+                    "product".into(),
+                    Some("glutathione S-transferase".to_string()),
+                ),
             ],
         };
         let factor_xa = gb_io::seq::Feature {
@@ -3211,7 +3221,8 @@ mod tests {
         let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(40)).expect("sequence");
         dna.set_name("XXU13852");
         let mut seq_value = serde_json::to_value(&dna).expect("serialize dna");
-        seq_value["seq"]["definition"] = serde_json::json!("pGEX-3X cloning vector, complete sequence.");
+        seq_value["seq"]["definition"] =
+            serde_json::json!("pGEX-3X cloning vector, complete sequence.");
         seq_value["seq"]["accession"] = serde_json::json!("U13852");
         seq_value["seq"]["version"] = serde_json::json!("U13852.1");
         let dna: DNAsequence = serde_json::from_value(seq_value).expect("deserialize dna");
@@ -3250,7 +3261,10 @@ mod tests {
             dna.len(),
             normalize_linear_export_viewport(&dna, &display),
         );
-        let laciq: Vec<_> = features.iter().filter(|feature| feature.label == "lacIq").collect();
+        let laciq: Vec<_> = features
+            .iter()
+            .filter(|feature| feature.label == "lacIq")
+            .collect();
 
         assert_eq!(laciq.len(), 1);
         assert_eq!(laciq[0].kind_role, FeatureKindRole::Cds);
@@ -3258,7 +3272,10 @@ mod tests {
         assert_eq!(laciq[0].from, 40);
         assert_eq!(laciq[0].to, 120);
 
-        let bla: Vec<_> = features.iter().filter(|feature| feature.label == "bla").collect();
+        let bla: Vec<_> = features
+            .iter()
+            .filter(|feature| feature.label == "bla")
+            .collect();
         assert_eq!(bla.len(), 1);
         assert_eq!(bla[0].kind_role, FeatureKindRole::Cds);
         assert_eq!(bla[0].from, 200);
@@ -3271,7 +3288,10 @@ mod tests {
         dna.features_mut().push(gb_io::seq::Feature {
             kind: "CDS".into(),
             location: Location::simple_range(20, 120),
-            qualifiers: vec![("product".into(), Some("glutathione S-transferase".to_string()))],
+            qualifiers: vec![(
+                "product".into(),
+                Some("glutathione S-transferase".to_string()),
+            )],
         });
         dna.features_mut().push(gb_io::seq::Feature {
             kind: "misc_feature".into(),
@@ -3297,7 +3317,8 @@ mod tests {
         let base_radius = H.min(W) * 0.33 * 1.1;
         let label = "lacIq";
 
-        let base = circular_feature_label_placement(pos, len, cx, cy, base_radius, false, label, &[]);
+        let base =
+            circular_feature_label_placement(pos, len, cx, cy, base_radius, false, label, &[]);
         let nudged = circular_feature_label_placement(
             pos,
             len,

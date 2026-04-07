@@ -11225,9 +11225,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let rack_id = tokens[2].trim().to_string();
                     if rack_id.is_empty() {
-                        return Err(
-                            "racks isometric-svg requires a non-empty RACK_ID".to_string()
-                        );
+                        return Err("racks isometric-svg requires a non-empty RACK_ID".to_string());
                     }
                     let output = tokens[3].trim().to_string();
                     if output.is_empty() {
@@ -13816,10 +13814,407 @@ fn execute_candidates_analysis_command(
 }
 
 #[inline(never)]
-fn execute_op_command(
+fn execute_arrangement_rack_and_ladder_command(
     engine: &mut GentleEngine,
-    payload: &str,
+    command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::RenderPoolGelSvg {
+            inputs,
+            output,
+            ladders,
+            container_ids,
+            arrangement_id,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::RenderPoolGelSvg {
+                        inputs: inputs.clone(),
+                        path: output.clone(),
+                        ladders: ladders.clone(),
+                        container_ids: container_ids.clone(),
+                        arrangement_id: arrangement_id.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::CreateArrangementSerial {
+            container_ids,
+            arrangement_id,
+            name,
+            ladders,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::CreateArrangementSerial {
+                        container_ids: container_ids.clone(),
+                        arrangement_id: arrangement_id.clone(),
+                        name: name.clone(),
+                        ladders: ladders.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::SetArrangementLadders {
+            arrangement_id,
+            ladders,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetArrangementLadders {
+                        arrangement_id: arrangement_id.clone(),
+                        ladders: ladders.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksCreateFromArrangement {
+            arrangement_id,
+            rack_id,
+            name,
+            profile,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::CreateRackFromArrangement {
+                        arrangement_id: arrangement_id.clone(),
+                        rack_id: rack_id.clone(),
+                        name: name.clone(),
+                        profile: *profile,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksPlaceArrangement {
+            arrangement_id,
+            rack_id,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::PlaceArrangementOnRack {
+                        arrangement_id: arrangement_id.clone(),
+                        rack_id: rack_id.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksMove {
+            rack_id,
+            from_coordinate,
+            to_coordinate,
+            move_block,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::MoveRackPlacement {
+                        rack_id: rack_id.clone(),
+                        from_coordinate: from_coordinate.clone(),
+                        to_coordinate: to_coordinate.clone(),
+                        move_block: *move_block,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksMoveSamples {
+            rack_id,
+            from_coordinates,
+            to_coordinate,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::MoveRackSamples {
+                        rack_id: rack_id.clone(),
+                        from_coordinates: from_coordinates.clone(),
+                        to_coordinate: to_coordinate.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksMoveBlocks {
+            rack_id,
+            arrangement_ids,
+            to_coordinate,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::MoveRackArrangementBlocks {
+                        rack_id: rack_id.clone(),
+                        arrangement_ids: arrangement_ids.clone(),
+                        to_coordinate: to_coordinate.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksShow { rack_id } => {
+            let rack = engine
+                .state()
+                .container_state
+                .racks
+                .get(rack_id.trim())
+                .cloned()
+                .ok_or_else(|| format!("Rack '{}' not found", rack_id.trim()))?;
+            let placements = rack
+                .placements
+                .iter()
+                .map(|entry| {
+                    let occupant = match entry.occupant.as_ref() {
+                        Some(RackOccupant::Container { container_id }) => {
+                            let container =
+                                engine.state().container_state.containers.get(container_id);
+                            let seq_id = container.and_then(|row| row.members.first()).cloned();
+                            json!({
+                                "kind": "container",
+                                "container_id": container_id,
+                                "container_name": container.and_then(|row| row.name.clone()),
+                                "seq_id": seq_id,
+                            })
+                        }
+                        Some(RackOccupant::LadderReference { ladder_name }) => json!({
+                            "kind": "ladder_reference",
+                            "ladder_name": ladder_name,
+                        }),
+                        None => json!({ "kind": "empty" }),
+                    };
+                    json!({
+                        "coordinate": entry.coordinate,
+                        "arrangement_id": entry.arrangement_id,
+                        "order_index": entry.order_index,
+                        "role_label": entry.role_label,
+                        "occupant": occupant,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rack_state.v1",
+                    "rack": rack,
+                    "placements": placements,
+                }),
+            })
+        }
+        ShellCommand::RacksLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+            preset,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackLabelsSvg {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        arrangement_id: arrangement_id.clone(),
+                        preset: *preset,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksFabricationSvg {
+            rack_id,
+            output,
+            template,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackFabricationSvg {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksIsometricSvg {
+            rack_id,
+            output,
+            template,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackIsometricSvg {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksOpenScad {
+            rack_id,
+            output,
+            template,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackOpenScad {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksCarrierLabelsSvg {
+            rack_id,
+            output,
+            arrangement_id,
+            template,
+            preset,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackCarrierLabelsSvg {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        arrangement_id: arrangement_id.clone(),
+                        template: *template,
+                        preset: *preset,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSimulationJson {
+            rack_id,
+            output,
+            template,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackSimulationJson {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetProfile { rack_id, profile } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackProfile {
+                        rack_id: rack_id.clone(),
+                        profile: *profile,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksApplyTemplate { rack_id, template } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ApplyRackTemplate {
+                        rack_id: rack_id.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetFillDirection {
+            rack_id,
+            fill_direction,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackFillDirection {
+                        rack_id: rack_id.clone(),
+                        fill_direction: *fill_direction,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetCustomProfile {
+            rack_id,
+            rows,
+            columns,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackProfileCustom {
+                        rack_id: rack_id.clone(),
+                        rows: *rows,
+                        columns: *columns,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetBlocked {
+            rack_id,
+            blocked_coordinates,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackBlockedCoordinates {
+                        rack_id: rack_id.clone(),
+                        blocked_coordinates: blocked_coordinates.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::LaddersList {
+            molecule,
+            name_filter,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: match molecule {
+                LadderMolecule::Dna => {
+                    serde_json::to_value(GentleEngine::inspect_dna_ladders(name_filter.as_deref()))
+                        .map_err(|e| format!("Could not serialize DNA ladders catalog: {e}"))?
+                }
+                LadderMolecule::Rna => {
+                    serde_json::to_value(GentleEngine::inspect_rna_ladders(name_filter.as_deref()))
+                        .map_err(|e| format!("Could not serialize RNA ladders catalog: {e}"))?
+                }
+            },
+        }),
+        ShellCommand::LaddersExport {
+            molecule,
+            output,
+            name_filter,
+        } => {
+            let op_result = match molecule {
+                LadderMolecule::Dna => engine
+                    .apply(Operation::ExportDnaLadders {
+                        path: output.clone(),
+                        name_filter: name_filter.clone(),
+                    })
+                    .map_err(|e| e.to_string())?,
+                LadderMolecule::Rna => engine
+                    .apply(Operation::ExportRnaLadders {
+                        path: output.clone(),
+                        name_filter: name_filter.clone(),
+                    })
+                    .map_err(|e| e.to_string())?,
+            };
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        _ => unreachable!("non-arrangement/rack/ladder command passed to helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
         serde_json::from_str(&json_text).map_err(|e| format!("Invalid operation JSON: {e}"))?;
@@ -14211,6 +14606,33 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::CandidatesParetoFrontier { .. }
     ) {
         return execute_candidates_analysis_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RenderPoolGelSvg { .. }
+            | ShellCommand::CreateArrangementSerial { .. }
+            | ShellCommand::SetArrangementLadders { .. }
+            | ShellCommand::RacksCreateFromArrangement { .. }
+            | ShellCommand::RacksPlaceArrangement { .. }
+            | ShellCommand::RacksMove { .. }
+            | ShellCommand::RacksMoveSamples { .. }
+            | ShellCommand::RacksMoveBlocks { .. }
+            | ShellCommand::RacksShow { .. }
+            | ShellCommand::RacksLabelsSvg { .. }
+            | ShellCommand::RacksFabricationSvg { .. }
+            | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksOpenScad { .. }
+            | ShellCommand::RacksCarrierLabelsSvg { .. }
+            | ShellCommand::RacksSimulationJson { .. }
+            | ShellCommand::RacksSetProfile { .. }
+            | ShellCommand::RacksApplyTemplate { .. }
+            | ShellCommand::RacksSetFillDirection { .. }
+            | ShellCommand::RacksSetCustomProfile { .. }
+            | ShellCommand::RacksSetBlocked { .. }
+            | ShellCommand::LaddersList { .. }
+            | ShellCommand::LaddersExport { .. }
+    ) {
+        return execute_arrangement_rack_and_ladder_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
