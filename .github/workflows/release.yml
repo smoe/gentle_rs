@@ -68,14 +68,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
-      - name: Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-
-
       - name: Install ImageMagick (Windows only)
         if: runner.os == 'Windows'
         shell: powershell
@@ -98,9 +90,36 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo bundle --release --features script-interfaces --bin gentle --format ${{ matrix.bundle_format }}
 
+      - name: Inspect macOS bundle outputs
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "target/release contents:"
+          ls -la target/release
+          echo "target/release/bundle tree:"
+          find target/release/bundle -maxdepth 4 -print || true
+          if [[ ! -d "target/release/bundle/osx" ]]; then
+            echo "Expected bundle directory target/release/bundle/osx after cargo bundle"
+            exit 1
+          fi
+
       - name: Build Windows binary
         if: runner.os == 'Windows'
         run: cargo build --release --features script-interfaces --bin gentle
+
+      - name: Inspect Windows build outputs
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          if (!(Test-Path "target/release")) {
+            throw "target/release directory was not created"
+          }
+          Write-Host "target/release contents:"
+          Get-ChildItem -Force "target/release"
+          if (!(Test-Path "target/release/gentle.exe")) {
+            throw "Expected Windows binary target/release/gentle.exe after cargo build"
+          }
 
       - name: Collect installer path
         id: collect

@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -15,6 +15,14 @@ order. Durable architecture constraints and decisions remain in
   directory (`.cargo/config.toml` -> `../../.gentle_target_shared`) so sibling
   worktrees reuse dependency build artifacts instead of duplicating large
   per-worktree `target/` trees.
+- Release-installer CI now intentionally avoids caching the `target/`
+  directory on tag/manual release builds:
+  - the workflow still caches the Cargo registry, but desktop installer jobs
+    now rebuild fresh per run so stale or partially restored `target/` trees
+    cannot hide missing macOS bundle / Windows binary outputs
+  - per-platform post-build diagnostics now print the immediate
+    `target/release` layout so release-artifact failures point at the build
+    stage rather than only the later packaging collector
 - Engine module decomposition is now underway:
   - `src/engine/protocol.rs` (stable public analysis/report/dotplot + workflow/progress/error/state-summary contracts extracted from monolithic engine file)
   - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)
