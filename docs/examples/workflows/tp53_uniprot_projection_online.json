@@ -1,0 +1,65 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp53_uniprot_projection_online",
+  "title": "TP53 UniProt protein mapping expert view (online)",
+  "summary": "Prepare GRCh38, extract TP53, fetch UniProt P04637, project it onto the locus, and render the shared protein-mapping expert SVG.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "genome",
+    "uniprot",
+    "expert-view",
+    "online",
+    "tp53",
+    "protein-mapping"
+  ],
+  "workflow": {
+    "run_id": "example_tp53_uniprot_projection_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP53",
+          "occurrence": 1,
+          "output_id": "grch38_tp53",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "FetchUniprotSwissProt": {
+          "query": "P04637",
+          "entry_id": "P04637"
+        }
+      },
+      {
+        "ProjectUniprotToGenome": {
+          "seq_id": "grch38_tp53",
+          "entry_id": "P04637",
+          "projection_id": "tp53_uniprot_p04637",
+          "transcript_id": null
+        }
+      },
+      {
+        "RenderFeatureExpertSvg": {
+          "seq_id": "grch38_tp53",
+          "target": {
+            "uniprot_projection": {
+              "projection_id": "tp53_uniprot_p04637"
+            }
+          },
+          "path": "exports/tp53_uniprot_projection.svg"
+        }
+      }
+    ]
+  }
+}

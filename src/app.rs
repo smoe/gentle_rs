@@ -65,7 +65,7 @@ use crate::{
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
         DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
-        DisplayTarget, Engine, EngineError, ErrorCode, GenomeAnnotationScope,
+        DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget, GenomeAnnotationScope,
         GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
@@ -15824,6 +15824,60 @@ Error: `{err}`"
         }
     }
 
+    fn default_uniprot_projection_svg_file_name(seq_id: &str, projection_id: &str) -> String {
+        let stem = Self::sanitize_file_stem(
+            &format!("{}_{}", seq_id.trim(), projection_id.trim()),
+            "uniprot_projection",
+        );
+        format!("{stem}.protein_mapping.svg")
+    }
+
+    fn export_uniprot_projection_svg_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
+        let seq_id = seq_id.trim();
+        let projection_id = projection_id.trim();
+        if seq_id.is_empty() || projection_id.is_empty() {
+            self.uniprot_status =
+                "Project an entry first or provide seq_id + projection_id before exporting SVG"
+                    .to_string();
+            return;
+        }
+        let default_file_name =
+            Self::default_uniprot_projection_svg_file_name(seq_id, projection_id);
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            self.uniprot_status = "UniProt protein mapping SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: seq_id.to_string(),
+                target: FeatureExpertTarget::UniprotProjection {
+                    projection_id: projection_id.to_string(),
+                },
+                path: path_text.clone(),
+            });
+        match result {
+            Ok(op_result) => {
+                self.uniprot_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    format!("Wrote UniProt protein mapping SVG to '{path_text}'")
+                });
+            }
+            Err(err) => {
+                self.uniprot_status = format!(
+                    "Could not export UniProt protein mapping SVG: {}",
+                    err.message
+                );
+            }
+        }
+    }
+
     fn render_genbank_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_genbank_dialog {
             return;
@@ -16081,9 +16135,26 @@ Error: `{err}`"
                             .to_string();
                 }
             }
+            if ui
+                .button("Render Protein Mapping SVG...")
+                .on_hover_text(
+                    "Export the current stored UniProt projection directly as an SVG from the shared protein-mapping expert route",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                if let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields()
+                {
+                    self.export_uniprot_projection_svg_from_dialog(&seq_id, &projection_id);
+                } else {
+                    self.uniprot_status =
+                        "Project an entry first or provide seq_id + entry_id to resolve a projection"
+                            .to_string();
+                }
+            }
         });
         ui.small(
-            "Open Protein Expert reuses the shared isoform-architecture canvas, but sources transcript/CDS-to-protein geometry from the stored UniProt projection rather than a curated panel JSON.",
+            "Open Protein Expert and Render Protein Mapping SVG... both reuse the shared isoform-architecture canvas, but source transcript/CDS-to-protein geometry from the stored UniProt projection rather than a curated panel JSON.",
         );
         ui.separator();
         ui.label("Linked nucleotide retrieval (EMBL/GenBank crossref)");
@@ -16211,6 +16282,18 @@ Error: `{err}`"
                                         .clicked()
                                     {
                                         self.open_uniprot_projection_expert_from_dialog(
+                                            &row.seq_id,
+                                            &row.projection_id,
+                                        );
+                                    }
+                                    if ui
+                                        .small_button("Render SVG...")
+                                        .on_hover_text(
+                                            "Export this stored UniProt projection directly as an SVG expert-view artifact",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.export_uniprot_projection_svg_from_dialog(
                                             &row.seq_id,
                                             &row.projection_id,
                                         );
@@ -42745,6 +42828,17 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             app.resolve_uniprot_projection_id_from_dialog_fields()
                 .as_deref(),
             Some("custom_projection")
+        );
+    }
+
+    #[test]
+    fn default_uniprot_projection_svg_file_name_uses_seq_and_projection_id() {
+        assert_eq!(
+            GENtleApp::default_uniprot_projection_svg_file_name(
+                "grch38_tp53",
+                "tp53_uniprot_p04637"
+            ),
+            "grch38_tp53_tp53_uniprot_p04637.protein_mapping.svg"
         );
     }
 

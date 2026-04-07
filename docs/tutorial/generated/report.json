@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 16,
+  "chapter_count": 17,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -24,28 +24,30 @@
     "chapters/14_tp73_cdna_genomic_dotplot_online.md",
     "chapters/15_gibson_specialist_testing_baseline.md",
     "chapters/16_gibson_arrangements_baseline.md",
+    "chapters/17_tp53_uniprot_projection_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "1b1f9bcc07850f6c68f84176b57210cc450d55b1",
+    "README.md": "037e71329eb0b2d64775719bc6fe91a00659bd2d",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "a132f8a459b640a3ebdbf99683bf2d67cd9438e8",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "494da2ff94a0e3b68fe65e53cc68d63e7e6db14b",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "7ec4b8286f48c0eaffc185caded4464bb42f98b9",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "116571e593d78b20c9dc946a39f7206e4a4a737b",
     "chapters/03_load_and_digest_pgex.md": "ab06b7588d64d3f616d79e286b19ac5b80339f0e",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "f46a1b4dce80c2132029db962c17ef38a2aa1c41",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "4a310f6dab4781d8e29602470e75e72e0a06bb9a",
     "chapters/05_guides_filter_and_generate_oligos.md": "67daa98164e6d6cece8c305c1f1ebe03204036ea",
     "chapters/06_digest_ligation_extract_region_minimal.md": "e1bc39f0c1f27ad42f3f1739ca4cee5c306247da",
-    "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
-    "chapters/08_contribute_to_gentle_development.md": "e89d87b8b4f1c6a0e1b667bbe863616b59d77086",
-    "chapters/09_prepare_reference_genome_online.md": "50df07dbb25f36868cc3f84885e4ced3aa319750",
-    "chapters/10_tp53_isoform_architecture_online.md": "71fd73bd01d78693d6176edfd6af5c407ba448d6",
-    "chapters/11_tp63_anchor_extension_online.md": "77b1c1135c0921258ba455c855c2f7a89be9b0c0",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "982d378f0380b87935cad638e96887dd5e195056",
-    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "1b7aae6abfd48c2dfe0ebf2a39cff291229466be",
-    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "45c8777fc3bb816c62d31525b87171d5046137cd",
-    "chapters/15_gibson_specialist_testing_baseline.md": "254902be0c1acfc5da725da2deb7b0ca7c685993",
-    "chapters/16_gibson_arrangements_baseline.md": "6a63f704c3cf244e601443d376393ef2661015ba"
+    "chapters/07_guides_export_csv_and_protocol.md": "0ea263c5d580de9e8a47a7892e78f8541e2bc88c",
+    "chapters/08_contribute_to_gentle_development.md": "124249ac1dc11ec6e17dc36d4615cb5436498199",
+    "chapters/09_prepare_reference_genome_online.md": "e552c0c2e7455cdb523dcf9bc64671a28a212baf",
+    "chapters/10_tp53_isoform_architecture_online.md": "5b9ef373e6199f05909dc2c319b09ed0604413ab",
+    "chapters/11_tp63_anchor_extension_online.md": "822d76db0d2ea186cbd6a34bc631588fb82cef9c",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "be31bf106fa0d9ab42d2ababded886a83bce2dbd",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "ff7f4ad3c48ebde1f0c1c07ead673bf49c1dd4eb",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "19876b6a9fa1be7da5c2f241709e484b4e07d137",
+    "chapters/15_gibson_specialist_testing_baseline.md": "6822f2ba7f0255296a987a174a93682e471090f0",
+    "chapters/16_gibson_arrangements_baseline.md": "d94e71d62ff4c3f61467e6a79ec8b602ae8daefe",
+    "chapters/17_tp53_uniprot_projection_online.md": "2ec3212fb66396968ed098173dc96f3ea1ad7ffa"
   },
   "chapters": [
     {
@@ -292,6 +294,24 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_uniprot_projection_online",
+      "order": 17,
+      "title": "TP53 UniProt protein mapping expert view (online)",
+      "tier": "online",
+      "example_id": "tp53_uniprot_projection_online",
+      "example_source": "docs/examples/workflows/tp53_uniprot_projection_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "uniprot_projection_mapping",
+        "expert_view_parity",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "executed": false,
       "retained_artifacts": []
     }
   ]

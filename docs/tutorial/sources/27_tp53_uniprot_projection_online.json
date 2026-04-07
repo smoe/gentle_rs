@@ -1,0 +1,68 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "tp53_uniprot_projection_online",
+  "title": "TP53 UniProt protein mapping expert view (online)",
+  "generated_chapter": {
+    "order": 17,
+    "example_id": "tp53_uniprot_projection_online",
+    "tier": "online",
+    "summary": "Build a TP53 locus project, fetch UniProt P04637, and open/export the shared protein-mapping expert view from one persisted projection route.",
+    "narrative": "This chapter demonstrates the new UniProt projection UX. Instead of importing a curated panel JSON, you fetch the reviewed UniProt TP53 entry, project its reference-protein intervals onto one extracted TP53 locus, and inspect the result through the same shared isoform/protein expert canvas used by GUI and CLI. The emphasis is on one persisted projection record that can be reopened, rendered, and audited later.",
+    "use_cases": [
+      "You want to compare one gene locus against the reviewed UniProt reference protein without opening a first-class protein sequence window.",
+      "You want a deterministic TP53 example that maps transcript/CDS geometry onto UniProt protein coordinates.",
+      "You want a replayable expert-view SVG export that comes from stored projection state rather than manual figure editing."
+    ],
+    "gui_steps": [
+      "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
+      "Open `File -> UniProt Mapping...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.",
+      "Use `Render Protein Mapping SVG...` to export the stored projection directly, or press `Open Protein Expert` first if you want to inspect the transcript/protein geometry before exporting."
+    ],
+    "learning_objectives": [
+      "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry.",
+      "Understand that the GUI protein expert is a thin presentation layer over `gentle.uniprot_genome_projections.v1`, not a separate GUI-only mapping model.",
+      "Export the exact same UniProt protein-mapping view through the same shared engine route from either the GUI specialist or CLI."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "genome_catalog_targeting",
+      "uniprot_projection_mapping",
+      "expert_view_parity",
+      "online_opt_in",
+      "artifact_exports"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "FetchUniprotSwissProt.query / entry_id",
+        "where_used": "operation 3",
+        "why_it_matters": "Pins the reviewed UniProt entry that will contribute the protein coordinate system and interval annotations.",
+        "how_to_derive": "Use a stable accession or reviewed UniProt id. For the canonical TP53 example, `P04637` is the expected reviewed entry."
+      },
+      {
+        "parameter": "ProjectUniprotToGenome.projection_id / transcript_id",
+        "where_used": "operation 4",
+        "why_it_matters": "The projection id becomes the durable handle reused by the GUI recent-projection list and the shared expert-render route. Leaving `transcript_id=null` lets the UniProt Ensembl transcript xrefs drive the full TP53 projection set.",
+        "how_to_derive": "Use a stable project-specific id such as `tp53_uniprot_p04637`. Supply `transcript_id` later only when you intentionally want a single-transcript projection."
+      },
+      {
+        "parameter": "RenderFeatureExpertSvg.target / path",
+        "where_used": "operation 5",
+        "why_it_matters": "Confirms that the projection can be reopened through the shared feature-expert route and exported reproducibly.",
+        "how_to_derive": "Use `UniprotProjection` with the stored projection id and a stable project-relative output path such as `exports/tp53_uniprot_projection.svg`."
+      }
+    ],
+    "follow_up_commands": [
+      "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'",
+      "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637",
+      "cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg"
+    ],
+    "retain_outputs": [
+      "exports/tp53_uniprot_projection.svg"
+    ],
+    "checkpoints": [
+      "UniProt fetch/import reports the reviewed TP53 entry and the projection operation stores `tp53_uniprot_p04637` in project metadata.",
+      "Open Protein Expert shows one protein reference axis with projected transcript/CDS lanes from the TP53 locus.",
+      "Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window."
+    ]
+  }
+}

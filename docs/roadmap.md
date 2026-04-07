@@ -1103,6 +1103,9 @@ order. Durable architecture constraints and decisions remain in
   - GUI follow-up now implemented:
     - `UniProt Mapping...` offers `Open Protein Expert` for the active
       projection and recent stored projections
+    - the same specialist now also offers direct `Render Protein Mapping SVG...`
+      affordances for the active/stored projection so inspection and export use
+      one persisted projection handle
     - the viewer reuses the shared isoform-architecture canvas rather than
       opening first-class protein sequence windows
     - shared expert routes now also accept
@@ -1185,6 +1188,11 @@ order. Durable architecture constraints and decisions remain in
     `tp53_isoform_architecture_online` (backed by canonical
     `tp53_isoform_architecture_online` workflow example and curated panel
     resource `assets/panels/tp53_isoforms_v1.json`)
+  - dedicated online TP53 UniProt protein-mapping chapter added:
+    `tp53_uniprot_projection_online` (backed by canonical
+    `tp53_uniprot_projection_online` workflow example and the shared
+    `FetchUniprotSwissProt -> ProjectUniprotToGenome -> RenderFeatureExpertSvg`
+    route rather than a GUI-only protein window)
   - dedicated online TP63 anchor-extension chapter added:
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +

@@ -3321,6 +3321,9 @@ UniProt mapping behavior:
   - `Open Protein Expert`
     - open a TP53-style isoform/protein architecture view for the stored
       projection without re-running the mapping step
+  - `Render Protein Mapping SVG...` / `Render SVG...`
+    - export the same stored projection directly through the shared
+      `RenderFeatureExpertSvg` route without first opening the expert window
 - `Open Protein Expert` reuses the shared isoform-architecture canvas rather
   than opening a first-class protein sequence window:
   - transcript lanes come from the stored transcript/CDS projection
@@ -3329,6 +3332,9 @@ UniProt mapping behavior:
     on that axis
   - this keeps the GUI as a thin view over persisted
     `gentle.uniprot_genome_projections.v1` state
+- The direct SVG-export affordance uses the same persisted projection state and
+  target syntax as CLI/shell `render-feature-expert-svg ... uniprot-projection ...`,
+  so GUI and non-GUI exports stay on one deterministic rendering path.
 - Protein sequence windows are intentionally not enabled yet. UniProt entries
   currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.

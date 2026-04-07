@@ -58,6 +58,16 @@
       "id": "isoform_architecture_panels",
       "name": "Isoform Architecture Panels",
       "description": "Curated transcript/protein architecture overlays can be imported and rendered as deterministic expert-view SVG outputs."
+    },
+    {
+      "id": "uniprot_projection_mapping",
+      "name": "UniProt Projection Mapping",
+      "description": "Reviewed UniProt protein annotations can be projected onto transcript/CDS geometry and reopened as one persisted expert-view artifact."
+    },
+    {
+      "id": "expert_view_parity",
+      "name": "Expert View Parity",
+      "description": "The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic."
     }
   ]
 }
