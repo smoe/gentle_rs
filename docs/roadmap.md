@@ -162,6 +162,13 @@ order. Durable architecture constraints and decisions remain in
   - the contiguous arrangement/rack/ladder command family is now split out via
     `#[inline(never)]` helper dispatch, matching the existing small-stack
     mitigation pattern already used for candidate-analysis commands
+- Engine-shell export/import/resource commands now use the same split-helper
+  pattern:
+  - `ExportRunBundle` previously still entered the monolithic inner matcher and
+    could overflow CI’s smaller-stack test threads during decision-trace export
+  - `ExportPool`, `ExportRunBundle`, `ImportPool`, and resource-sync commands
+    now dispatch through one dedicated `#[inline(never)]` helper before the
+    large routines/planning shell branch
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).

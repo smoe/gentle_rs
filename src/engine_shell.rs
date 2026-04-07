@@ -14214,6 +14214,121 @@ fn execute_arrangement_rack_and_ladder_command(
 }
 
 #[inline(never)]
+fn execute_export_import_and_resource_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::ExportPool {
+            inputs,
+            output,
+            human_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportPool {
+                    inputs: inputs.clone(),
+                    path: output.clone(),
+                    pool_id: Some("pool_export".to_string()),
+                    human_id: human_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ExportRunBundle { output, run_id } => {
+            let op_result = engine
+                .apply(Operation::ExportProcessRunBundle {
+                    path: output.clone(),
+                    run_id: run_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ImportPool { input, prefix } => {
+            let text = fs::read_to_string(input)
+                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
+            let pool: PoolExport = serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
+            if pool.schema != "gentle.pool.v1" {
+                return Err(format!(
+                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
+                    pool.schema
+                ));
+            }
+
+            let mut state = engine.state().clone();
+            let mut imported_ids = Vec::new();
+            for (idx, member) in pool.members.iter().enumerate() {
+                let mut dna = DNAsequence::from_sequence(&member.sequence)
+                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
+                if let Some(name) = &member.name {
+                    let mut value = serde_json::to_value(&dna)
+                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
+                    if let Some(obj) = value.as_object_mut() {
+                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
+                            seq_obj.insert("name".to_string(), json!(name));
+                        }
+                    }
+                    dna = serde_json::from_value(value)
+                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
+                }
+                if member.topology.eq_ignore_ascii_case("circular") {
+                    dna.set_circular(true);
+                }
+                apply_member_overhang(member, &mut dna)?;
+                dna.update_computed_features();
+                let base = format!("{prefix}_{}", idx + 1);
+                let id = unique_id(&state.sequences, &base);
+                state.sequences.insert(id.clone(), dna);
+                imported_ids.push(id);
+            }
+            *engine = GentleEngine::from_state(state);
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "message": format!("Imported pool '{}' ({} members)", pool.pool_id, pool.member_count),
+                    "input": input,
+                    "pool_id": pool.pool_id,
+                    "member_count": pool.member_count,
+                    "imported_ids": imported_ids,
+                }),
+            })
+        }
+        ShellCommand::ResourcesSyncRebase {
+            input,
+            output,
+            commercial_only,
+        } => {
+            let report = resource_sync::sync_rebase(input, output.as_deref(), *commercial_only)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesSyncJaspar { input, output } => {
+            let report = resource_sync::sync_jaspar(input, output.as_deref())?;
+            tf_motifs::reload_from_path(Some(report.output.as_str()));
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            })
+        }
+        _ => unreachable!("non-export/import/resource command passed to helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
@@ -14633,6 +14748,16 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::LaddersExport { .. }
     ) {
         return execute_arrangement_rack_and_ladder_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::ExportPool { .. }
+            | ShellCommand::ExportRunBundle { .. }
+            | ShellCommand::ImportPool { .. }
+            | ShellCommand::ResourcesSyncRebase { .. }
+            | ShellCommand::ResourcesSyncJaspar { .. }
+    ) {
+        return execute_export_import_and_resource_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
@@ -15590,110 +15715,12 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::ExportPool {
-            inputs,
-            output,
-            human_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ExportPool {
-                    inputs: inputs.clone(),
-                    path: output.clone(),
-                    pool_id: Some("pool_export".to_string()),
-                    human_id: human_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ExportRunBundle { output, run_id } => {
-            let op_result = engine
-                .apply(Operation::ExportProcessRunBundle {
-                    path: output.clone(),
-                    run_id: run_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ImportPool { input, prefix } => {
-            let text = fs::read_to_string(input)
-                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
-            let pool: PoolExport = serde_json::from_str(&text)
-                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
-            if pool.schema != "gentle.pool.v1" {
-                return Err(format!(
-                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
-                    pool.schema
-                ));
-            }
-
-            let mut state = engine.state().clone();
-            let mut imported_ids = Vec::new();
-            for (idx, member) in pool.members.iter().enumerate() {
-                let mut dna = DNAsequence::from_sequence(&member.sequence)
-                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
-                if let Some(name) = &member.name {
-                    let mut value = serde_json::to_value(&dna)
-                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                            seq_obj.insert("name".to_string(), json!(name));
-                        }
-                    }
-                    dna = serde_json::from_value(value)
-                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
-                }
-                if member.topology.eq_ignore_ascii_case("circular") {
-                    dna.set_circular(true);
-                }
-                apply_member_overhang(member, &mut dna)?;
-                dna.update_computed_features();
-                let base = format!("{prefix}_{}", idx + 1);
-                let id = unique_id(&state.sequences, &base);
-                state.sequences.insert(id.clone(), dna);
-                imported_ids.push(id);
-            }
-            *engine = GentleEngine::from_state(state);
-            ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "message": format!("Imported pool '{}' ({} members)", pool.pool_id, pool.member_count),
-                    "input": input,
-                    "pool_id": pool.pool_id,
-                    "member_count": pool.member_count,
-                    "imported_ids": imported_ids,
-                }),
-            }
-        }
-        ShellCommand::ResourcesSyncRebase {
-            input,
-            output,
-            commercial_only,
-        } => {
-            let report = resource_sync::sync_rebase(input, output.as_deref(), *commercial_only)?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
-                    "report": report,
-                }),
-            }
-        }
-        ShellCommand::ResourcesSyncJaspar { input, output } => {
-            let report = resource_sync::sync_jaspar(input, output.as_deref())?;
-            tf_motifs::reload_from_path(Some(report.output.as_str()));
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
-                    "report": report,
-                }),
-            }
+        ShellCommand::ExportPool { .. }
+        | ShellCommand::ExportRunBundle { .. }
+        | ShellCommand::ImportPool { .. }
+        | ShellCommand::ResourcesSyncRebase { .. }
+        | ShellCommand::ResourcesSyncJaspar { .. } => {
+            execute_export_import_and_resource_command(engine, command)?
         }
         ShellCommand::RoutinesList {
             catalog_path,
