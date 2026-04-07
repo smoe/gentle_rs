@@ -42,6 +42,7 @@ pub struct PoolGelBand {
 #[derive(Clone, Debug)]
 pub struct PoolGelLane {
     pub name: String,
+    pub role_label: Option<String>,
     pub is_ladder: bool,
     pub bands: Vec<PoolGelBand>,
 }
@@ -60,6 +61,7 @@ pub struct PoolGelLayout {
 #[derive(Clone, Debug)]
 pub struct GelSampleInput {
     pub name: String,
+    pub role_label: Option<String>,
     pub members: Vec<GelSampleMember>,
 }
 
@@ -312,6 +314,7 @@ pub fn build_serial_gel_layout(
         };
         normalized_samples.push(GelSampleInput {
             name: lane_name,
+            role_label: sample.role_label.clone(),
             members: valid_members,
         });
     }
@@ -377,6 +380,7 @@ pub fn build_serial_gel_layout(
             .collect::<Vec<_>>();
         lanes.push(PoolGelLane {
             name: ladder.name().to_string(),
+            role_label: None,
             is_ladder: true,
             bands,
         });
@@ -389,6 +393,7 @@ pub fn build_serial_gel_layout(
     for sample in &normalized_samples {
         lanes.push(PoolGelLane {
             name: sample.name.clone(),
+            role_label: sample.role_label.clone(),
             is_ladder: false,
             bands: sample_bands(&sample.members, &conditions),
         });
@@ -427,6 +432,7 @@ pub fn build_serial_gel_layout(
             .collect::<Vec<_>>();
         lanes.push(PoolGelLane {
             name: ladder.name().to_string(),
+            role_label: None,
             is_ladder: true,
             bands,
         });
@@ -466,6 +472,7 @@ pub fn build_pool_gel_layout(
     }
     let sample = GelSampleInput {
         name: format!("Pool (n={})", members.len()),
+        role_label: None,
         members,
     };
     build_serial_gel_layout(&[sample], requested_ladders, conditions)
@@ -501,6 +508,127 @@ fn merged_band_note_lines(layout: &PoolGelLayout) -> Vec<String> {
             ));
         }
     }
+    lines
+}
+
+fn normalized_lane_role(lane: &PoolGelLane) -> String {
+    let role = lane
+        .role_label
+        .as_deref()
+        .unwrap_or(lane.name.as_str())
+        .trim()
+        .to_ascii_lowercase();
+    if role.starts_with("insert") {
+        "insert".to_string()
+    } else if role.starts_with("vector") || role.starts_with("destination") {
+        "vector".to_string()
+    } else if role.starts_with("product") || role.starts_with("assembled") {
+        "product".to_string()
+    } else {
+        role
+    }
+}
+
+fn singleton_actual_bp(lane: &PoolGelLane) -> Option<usize> {
+    if lane.is_ladder || lane.bands.len() != 1 {
+        return None;
+    }
+    let band = lane.bands.first()?;
+    (band.count == 1).then_some(band.bp)
+}
+
+fn comparison_hint_lines(layout: &PoolGelLayout) -> Vec<String> {
+    let sample_lanes = layout
+        .lanes
+        .iter()
+        .filter(|lane| !lane.is_ladder)
+        .collect::<Vec<_>>();
+    let insert_lanes = sample_lanes
+        .iter()
+        .copied()
+        .filter(|lane| normalized_lane_role(lane) == "insert")
+        .collect::<Vec<_>>();
+    let vector_lane = sample_lanes
+        .iter()
+        .copied()
+        .find(|lane| normalized_lane_role(lane) == "vector");
+    let product_lane = sample_lanes
+        .iter()
+        .copied()
+        .find(|lane| normalized_lane_role(lane) == "product");
+
+    let mut lines = vec![];
+    if !insert_lanes.is_empty() {
+        if insert_lanes.len() == 1 {
+            if let Some(insert_bp) = singleton_actual_bp(insert_lanes[0]) {
+                lines.push(format!(
+                    "Insert lane: compare against the fine ladder and confirm the expected {} insert band.",
+                    format_bp_label(insert_bp)
+                ));
+            } else {
+                lines.push(
+                    "Insert lane: compare against the fine ladder and confirm the small-fragment insert readout."
+                        .to_string(),
+                );
+            }
+        } else {
+            let insert_total_bp = insert_lanes.iter().filter_map(|lane| singleton_actual_bp(lane)).sum::<usize>();
+            if insert_total_bp > 0 {
+                lines.push(format!(
+                    "Insert lanes: compare each insert to the fine ladder; combined expected added payload is {}.",
+                    format_bp_label(insert_total_bp)
+                ));
+            } else {
+                lines.push(
+                    "Insert lanes: compare each insert to the fine ladder before reading the product shift."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    if let (Some(vector_lane), Some(product_lane)) = (vector_lane, product_lane) {
+        if let (Some(vector_bp), Some(product_bp)) =
+            (singleton_actual_bp(vector_lane), singleton_actual_bp(product_lane))
+        {
+            let delta_bp = product_bp.saturating_sub(vector_bp);
+            if delta_bp > 0 {
+                lines.push(format!(
+                    "Vector vs product: product should run as the larger construct, about {} above the vector backbone.",
+                    format_bp_label(delta_bp)
+                ));
+            } else if delta_bp == 0 {
+                lines.push(
+                    "Vector vs product: backbone-sized lanes match closely, so rely on topology label and insert lane confirmation."
+                        .to_string(),
+                );
+            }
+            let insert_total_bp = insert_lanes
+                .iter()
+                .filter_map(|lane| singleton_actual_bp(lane))
+                .sum::<usize>();
+            if insert_total_bp > 0 {
+                if delta_bp == insert_total_bp {
+                    lines.push(format!(
+                        "Consistency check: product-vector delta matches the summed insert payload ({}).",
+                        format_bp_label(insert_total_bp)
+                    ));
+                } else if delta_bp > 0 {
+                    lines.push(format!(
+                        "Consistency check: product-vector delta is {} while the summed insert payload is {}.",
+                        format_bp_label(delta_bp),
+                        format_bp_label(insert_total_bp)
+                    ));
+                }
+            }
+        } else {
+            lines.push(
+                "Vector vs product: compare the large-fragment lanes directly; the product should remain the larger assembly."
+                    .to_string(),
+            );
+        }
+    }
+
     lines
 }
 
@@ -716,8 +844,56 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         );
     }
 
+    let comparison_hints = comparison_hint_lines(layout);
     let merged_notes = merged_band_note_lines(layout);
     let mut header_y = DETAIL_PANEL_TOP + 24.0;
+    if !comparison_hints.is_empty() {
+        doc = doc
+            .add(
+                Text::new("Comparison hints")
+                    .set("x", DETAIL_PANEL_LEFT)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("font-weight", 700)
+                    .set("fill", "#0f172a"),
+            )
+            .add(
+                Text::new(
+                    "read these lanes together: insert vs fine ladder, then vector vs product",
+                )
+                .set("x", DETAIL_PANEL_LEFT + 4.0)
+                .set("y", header_y + 16.0)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#475569"),
+            );
+        header_y += 32.0;
+        for hint in comparison_hints.iter().take(4) {
+            doc = doc.add(
+                Text::new(hint.clone())
+                    .set("x", DETAIL_PANEL_LEFT + 8.0)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#334155"),
+            );
+            header_y += 12.0;
+        }
+        if comparison_hints.len() > 4 {
+            doc = doc.add(
+                Text::new(format!("+{} more comparison hint(s)", comparison_hints.len() - 4))
+                    .set("x", DETAIL_PANEL_LEFT + 8.0)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#64748b"),
+            );
+            header_y += 12.0;
+        }
+        header_y += 10.0;
+    }
+
     if !merged_notes.is_empty() {
         doc = doc
             .add(
@@ -935,6 +1111,7 @@ mod tests {
         let samples = vec![
             GelSampleInput {
                 name: "Vector".to_string(),
+                role_label: Some("vector".to_string()),
                 members: vec![GelSampleMember {
                     seq_id: "vector".to_string(),
                     bp: 4952,
@@ -943,6 +1120,7 @@ mod tests {
             },
             GelSampleInput {
                 name: "Insert".to_string(),
+                role_label: Some("insert_1".to_string()),
                 members: vec![GelSampleMember {
                     seq_id: "insert".to_string(),
                     bp: 314,
@@ -951,6 +1129,7 @@ mod tests {
             },
             GelSampleInput {
                 name: "Product".to_string(),
+                role_label: Some("product".to_string()),
                 members: vec![GelSampleMember {
                     seq_id: "product".to_string(),
                     bp: 5266,
@@ -982,6 +1161,51 @@ mod tests {
                 "Product".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn test_export_pool_gel_svg_adds_comparison_hints_for_vector_insert_product() {
+        let layout = build_serial_gel_layout(
+            &[GelSampleInput {
+                name: "Vector".to_string(),
+                role_label: Some("vector".to_string()),
+                members: vec![GelSampleMember {
+                    seq_id: "vector".to_string(),
+                    bp: 4952,
+                    topology_form: GelTopologyForm::Circular,
+                }],
+            },
+            GelSampleInput {
+                name: "Insert".to_string(),
+                role_label: Some("insert_1".to_string()),
+                members: vec![GelSampleMember {
+                    seq_id: "insert".to_string(),
+                    bp: 314,
+                    topology_form: GelTopologyForm::Linear,
+                }],
+            },
+            GelSampleInput {
+                name: "Product".to_string(),
+                role_label: Some("product".to_string()),
+                members: vec![GelSampleMember {
+                    seq_id: "product".to_string(),
+                    bp: 5266,
+                    topology_form: GelTopologyForm::Circular,
+                }],
+            }],
+            &[
+                "NEB 100bp DNA Ladder".to_string(),
+                "NEB 1kb DNA Ladder".to_string(),
+            ],
+            None,
+        )
+        .expect("layout");
+        let svg = export_pool_gel_svg(&layout);
+        assert!(svg.contains("Comparison hints"));
+        assert!(svg.contains("Insert lane: compare against the fine ladder"));
+        assert!(svg.contains("Vector vs product: product should run as the larger construct"));
+        assert!(svg.contains("Consistency check: product-vector delta matches the summed insert payload"));
+        assert!(svg.contains("314 bp"));
     }
 
     #[test]
@@ -1145,10 +1369,12 @@ mod tests {
             &[
                 GelSampleInput {
                     name: "Small".to_string(),
+                    role_label: None,
                     members: vec![members[0].clone()],
                 },
                 GelSampleInput {
                     name: "Large".to_string(),
+                    role_label: None,
                     members: vec![members[1].clone()],
                 },
             ],

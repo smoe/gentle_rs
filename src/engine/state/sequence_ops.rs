@@ -248,6 +248,7 @@ impl GentleEngine {
                 .unwrap_or_else(|| container.container_id.clone());
             samples.push(GelSampleInput {
                 name: lane_name,
+                role_label: None,
                 members,
             });
         }
@@ -276,7 +277,15 @@ impl GentleEngine {
                 ),
             });
         }
-        let samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
+        let mut samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
+        for (idx, sample) in samples.iter_mut().enumerate() {
+            sample.role_label = arrangement
+                .lane_role_labels
+                .get(idx)
+                .map(|label| label.trim())
+                .filter(|label| !label.is_empty())
+                .map(ToString::to_string);
+        }
         Ok((samples, arrangement.ladders.clone()))
     }
 
@@ -343,6 +352,7 @@ impl GentleEngine {
                 }
                 vec![GelSampleInput {
                     name: format!("Input tube (n={})", members.len()),
+                    role_label: None,
                     members,
                 }]
             };

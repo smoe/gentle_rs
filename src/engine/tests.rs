@@ -7802,6 +7802,96 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
 }
 
 #[test]
+fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
+    let mut state = ProjectState::default();
+    let mut vector = seq(&"ATGC".repeat(1238));
+    vector.set_circular(true);
+    let insert = seq(&"ATGC".repeat(78) + "AT");
+    let mut product = seq(&"ATGC".repeat(1316) + "AT");
+    product.set_circular(true);
+    state.sequences.insert("vector".to_string(), vector);
+    state.sequences.insert("insert".to_string(), insert);
+    state.sequences.insert("product".to_string(), product);
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Vector".to_string()),
+            members: vec!["vector".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.containers.insert(
+        "container-2".to_string(),
+        Container {
+            container_id: "container-2".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Insert".to_string()),
+            members: vec!["insert".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.containers.insert(
+        "container-3".to_string(),
+        Container {
+            container_id: "container-3".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Product".to_string()),
+            members: vec!["product".to_string()],
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.arrangements.insert(
+        "arr-gibson".to_string(),
+        Arrangement {
+            arrangement_id: "arr-gibson".to_string(),
+            mode: ArrangementMode::Serial,
+            name: Some("Gibson".to_string()),
+            lane_container_ids: vec![
+                "container-1".to_string(),
+                "container-2".to_string(),
+                "container-3".to_string(),
+            ],
+            ladders: vec![
+                "NEB 100bp DNA Ladder".to_string(),
+                "NEB 1kb DNA Ladder".to_string(),
+            ],
+            lane_role_labels: vec![
+                "vector".to_string(),
+                "insert_1".to_string(),
+                "product".to_string(),
+            ],
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("arrangement.gel.svg");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::RenderPoolGelSvg {
+            inputs: vec![],
+            path: path_text.clone(),
+            ladders: None,
+            container_ids: None,
+            arrangement_id: Some("arr-gibson".to_string()),
+            conditions: None,
+        })
+        .unwrap();
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("Comparison hints"));
+    assert!(text.contains("Insert lane: compare against the fine ladder"));
+    assert!(text.contains("product-vector delta matches the summed insert payload"));
+    assert!(text.contains("314 bp"));
+}
+
+#[test]
 fn test_render_pool_gel_svg_operation_infers_explicit_circular_forms_from_sequence_names() {
     let mut state = ProjectState::default();
     let mut supercoiled = seq(&"ATGC".repeat(1250));

@@ -3119,6 +3119,9 @@ Planned upgrades:
   still open).
 - Lane-side fragment table with bp, estimated mass, source fragments, and
   cut-site context (compact baseline implemented).
+- Lane-side comparison hints for common analytical reads such as
+  insert-vs-ladder and vector-vs-product interpretation (baseline implemented
+  for role-labeled serial gels).
 - Optional gel-conditions parameters (agarose %, buffer/model preset) with a
   deterministic default profile (baseline implemented in shared engine/CLI/GUI).
 

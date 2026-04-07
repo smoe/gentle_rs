@@ -1871,6 +1871,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - estimated mass proxy
   - merged-band annotation when several fragments co-migrate
   - source fragment labels
+- When serial lanes carry interpretable roles such as `vector`, `insert_*`, and
+  `product`, the right-hand detail panel also adds `Comparison hints` for:
+  - insert vs fine ladder sizing
+  - vector vs product size-shift reading
+  - simple product-minus-vector vs summed-insert consistency checks
 - When merged bands are present, the right-hand detail panel also adds a short
   `Merged-band notes` block that explains observed band position vs the
   underlying actual source-size span.

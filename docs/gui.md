@@ -2267,6 +2267,9 @@ Controls:
     stays on the generic circular heuristic
   - nearby fragments that co-migrate now collapse into one merged-band
     annotation instead of drawing several indistinguishable bars
+  - when the lane roles look like `vector` / `insert` / `product`, the
+    right-hand detail panel adds `Comparison hints` for insert sizing and
+    vector-vs-product interpretation
   - the right-hand detail panel adds `Merged-band notes` so grouped bands are
     explained as observed-vs-actual lane readouts
   - `Save to Arrangement` persists the currently selected ladder pair for later
