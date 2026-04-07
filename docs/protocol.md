@@ -1848,6 +1848,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     linear DNA of the same bp count
 - Computes sample-band brightness from estimated DNA mass proxy, not only
   multiplicity.
+- Applies one deterministic co-migration grouping threshold so nearby fragments
+  that would plausibly collapse into one readout are exported as one merged
+  band annotation instead of several visually indistinguishable bars.
 - Chooses one or two ladders to span pool range:
   - from explicit `ladders` list when provided
   - otherwise from saved arrangement ladders when `arrangement_id` is present
@@ -1859,7 +1862,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - actual bp
   - topology hint
   - estimated mass proxy
+  - merged-band annotation when several fragments co-migrate
   - source fragment labels
+- When merged bands are present, the right-hand detail panel also adds a short
+  `Merged-band notes` block that explains observed band position vs the
+  underlying actual source-size span.
 
 `CreateArrangementSerial` semantics:
 

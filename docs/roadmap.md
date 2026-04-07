@@ -3113,7 +3113,9 @@ Planned upgrades:
   richer supercoiled/nicked/linearized modeling still open).
 - Band intensity based on estimated DNA mass per band, not only multiplicity
   (baseline implemented).
-- Co-migration grouping thresholds and explicit merged-band annotation.
+- Co-migration grouping thresholds, explicit merged-band annotation, and a
+  lane-side merged-band explanation block (baseline implemented; richer tuning
+  still open).
 - Lane-side fragment table with bp, estimated mass, source fragments, and
   cut-site context (compact baseline implemented).
 - Optional gel-conditions parameters (agarose %, buffer/model preset) with a

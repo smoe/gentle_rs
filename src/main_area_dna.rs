@@ -31555,12 +31555,16 @@ impl MainAreaDna {
                     },
                 );
                 if !lane.is_ladder {
-                    let mut label = format!("{} bp", band.bp);
+                    let mut label = if band.min_bp == band.bp {
+                        format!("{} bp", band.bp)
+                    } else {
+                        format!("{}..{} bp", band.min_bp, band.bp)
+                    };
                     if band.apparent_bp != band.bp {
                         label.push_str(&format!(" -> {} bp", band.apparent_bp));
                     }
                     if band.count > 1 {
-                        label.push_str(&format!(" (x{})", band.count));
+                        label.push_str(&format!(" | merged x{}", band.count));
                     }
                     painter.text(
                         egui::pos2(gel_rect.right() + 72.0, y),

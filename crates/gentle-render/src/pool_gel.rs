@@ -1,7 +1,7 @@
 //! Virtual pool gel model and rendering primitives.
 
 use gentle_protocol::{GelBufferModel, GelRunConditions, LadderCatalog, default_dna_ladders};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 use svg::Document;
 use svg::node::element::{Line, Rectangle, Text};
@@ -28,6 +28,7 @@ pub struct GelSampleMember {
 #[derive(Clone, Debug)]
 pub struct PoolGelBand {
     pub bp: usize,
+    pub min_bp: usize,
     pub apparent_bp: usize,
     pub intensity: f32,
     pub count: usize,
@@ -140,6 +141,15 @@ fn estimate_member_mass_units(member: &GelSampleMember) -> f32 {
     member.bp.max(1) as f32
 }
 
+fn co_migration_log_tolerance(conditions: &GelRunConditions) -> f32 {
+    let normalized = conditions.normalized();
+    let mut tolerance = 0.022 - (normalized.agarose_percent - 1.0) * 0.004;
+    if matches!(normalized.buffer_model, GelBufferModel::Tbe) {
+        tolerance -= 0.002;
+    }
+    tolerance.clamp(0.012, 0.028)
+}
+
 fn normalize_sample_lane_intensities(lanes: &mut [PoolGelLane]) {
     let max_mass = lanes
         .iter()
@@ -157,32 +167,59 @@ fn normalize_sample_lane_intensities(lanes: &mut [PoolGelLane]) {
 }
 
 fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> Vec<PoolGelBand> {
-    let mut by_apparent_bp: BTreeMap<usize, Vec<&GelSampleMember>> = BTreeMap::new();
-    for member in members {
-        by_apparent_bp
-            .entry(apparent_bp_for_member(member, conditions))
-            .or_default()
-            .push(member);
-    }
-    by_apparent_bp
+    let mut projected = members
         .iter()
-        .rev()
-        .map(|(apparent_bp, grouped)| {
+        .map(|member| (member, apparent_bp_for_member(member, conditions)))
+        .collect::<Vec<_>>();
+    projected.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.bp.cmp(&a.0.bp)).then(a.0.seq_id.cmp(&b.0.seq_id)));
+
+    let tolerance = co_migration_log_tolerance(conditions);
+    let mut groups: Vec<Vec<(&GelSampleMember, usize)>> = vec![];
+    for (member, apparent_bp) in projected {
+        let apparent_bp_f = apparent_bp.max(1) as f32;
+        let apparent_log = apparent_bp_f.log10();
+        let can_merge = groups.last().is_some_and(|group| {
+            let representative_log = group
+                .iter()
+                .map(|(_, bp)| (*bp).max(1) as f32)
+                .map(f32::log10)
+                .sum::<f32>()
+                / group.len() as f32;
+            (representative_log - apparent_log).abs() <= tolerance
+        });
+        if can_merge {
+            groups.last_mut().unwrap().push((member, apparent_bp));
+        } else {
+            groups.push(vec![(member, apparent_bp)]);
+        }
+    }
+
+    groups
+        .into_iter()
+        .map(|grouped| {
             let count = grouped.len();
-            let bp = grouped.iter().map(|member| member.bp).max().unwrap_or(*apparent_bp);
+            let bp = grouped.iter().map(|(member, _)| member.bp).max().unwrap_or(1);
+            let min_bp = grouped.iter().map(|(member, _)| member.bp).min().unwrap_or(bp);
             let estimated_mass_units = grouped
                 .iter()
-                .map(|member| estimate_member_mass_units(member))
+                .map(|(member, _)| estimate_member_mass_units(member))
                 .sum::<f32>();
-            let circular_count = grouped.iter().filter(|member| member.circular).count();
+            let apparent_bp = (grouped
+                .iter()
+                .map(|(member, apparent_bp)| *apparent_bp as f32 * estimate_member_mass_units(member))
+                .sum::<f32>()
+                / estimated_mass_units.max(1.0))
+                .round()
+                .max(1.0) as usize;
+            let circular_count = grouped.iter().filter(|(member, _)| member.circular).count();
             let topology_label = match (circular_count, grouped.len()) {
                 (0, _) => "linear".to_string(),
                 (c, g) if c == g => "circular".to_string(),
                 _ => "mixed".to_string(),
             };
-            let labels = grouped
+            let mut labels = grouped
                 .iter()
-                .map(|member| {
+                .map(|(member, _)| {
                     if member.circular {
                         format!("{} ({} bp, circular)", member.seq_id, member.bp)
                     } else {
@@ -190,9 +227,11 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
                     }
                 })
                 .collect::<Vec<_>>();
+            labels.sort();
             PoolGelBand {
                 bp,
-                apparent_bp: *apparent_bp,
+                min_bp,
+                apparent_bp,
                 intensity: 0.5,
                 count,
                 estimated_mass_units,
@@ -303,6 +342,7 @@ pub fn build_serial_gel_layout(
                 let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;
                 PoolGelBand {
                     bp,
+                    min_bp: bp,
                     apparent_bp: bp,
                     intensity,
                     count: 1,
@@ -352,6 +392,7 @@ pub fn build_serial_gel_layout(
                 let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;
                 PoolGelBand {
                     bp,
+                    min_bp: bp,
                     apparent_bp: bp,
                     intensity,
                     count: 1,
@@ -417,6 +458,27 @@ fn format_bp_label(bp: usize) -> String {
     } else {
         format!("{bp} bp")
     }
+}
+
+fn merged_band_note_lines(layout: &PoolGelLayout) -> Vec<String> {
+    let mut lines = vec![];
+    for lane in layout.lanes.iter().filter(|lane| !lane.is_ladder) {
+        for band in lane.bands.iter().filter(|band| band.count > 1) {
+            let actual_label = if band.min_bp == band.bp {
+                format_bp_label(band.bp)
+            } else {
+                format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+            };
+            lines.push(format!(
+                "{}: {} fragments -> one observed {} band from {}",
+                lane.name,
+                band.count,
+                format_bp_label(band.apparent_bp),
+                actual_label
+            ));
+        }
+    }
+    lines
 }
 
 pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
@@ -558,12 +620,16 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             );
 
             if !lane.is_ladder && band.count > 0 {
-                let mut label = format_bp_label(band.bp);
+                let mut label = if band.min_bp == band.bp {
+                    format_bp_label(band.bp)
+                } else {
+                    format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+                };
                 if band.apparent_bp != band.bp {
                     label.push_str(&format!(" -> {}", format_bp_label(band.apparent_bp)));
                 }
                 if band.count > 1 {
-                    label.push_str(&format!(" (x{})", band.count));
+                    label.push_str(&format!(" | merged x{}", band.count));
                 }
                 if !band.topology_label.trim().is_empty() {
                     label.push_str(&format!(" | {}", band.topology_label));
@@ -627,11 +693,68 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         );
     }
 
+    let merged_notes = merged_band_note_lines(layout);
+    let mut header_y = DETAIL_PANEL_TOP + 24.0;
+    if !merged_notes.is_empty() {
+        doc = doc
+            .add(
+                Text::new("Merged-band notes")
+                    .set("x", DETAIL_PANEL_LEFT)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("font-weight", 700)
+                    .set("fill", "#0f172a"),
+            )
+            .add(
+                Text::new(
+                    "merged xN means nearby fragments co-migrate under current gel conditions",
+                )
+                .set("x", DETAIL_PANEL_LEFT + 4.0)
+                .set("y", header_y + 16.0)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#475569"),
+            )
+            .add(
+                Text::new("observed = apparent band position | actual = source-size span")
+                    .set("x", DETAIL_PANEL_LEFT + 4.0)
+                    .set("y", header_y + 30.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#64748b"),
+            );
+        header_y += 46.0;
+        for note in merged_notes.iter().take(4) {
+            doc = doc.add(
+                Text::new(note.clone())
+                    .set("x", DETAIL_PANEL_LEFT + 8.0)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#334155"),
+            );
+            header_y += 12.0;
+        }
+        if merged_notes.len() > 4 {
+            doc = doc.add(
+                Text::new(format!("+{} more merged-band note(s)", merged_notes.len() - 4))
+                    .set("x", DETAIL_PANEL_LEFT + 8.0)
+                    .set("y", header_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#64748b"),
+            );
+            header_y += 12.0;
+        }
+        header_y += 10.0;
+    }
+
     doc = doc
         .add(
             Text::new("Fragment table")
                 .set("x", DETAIL_PANEL_LEFT)
-                .set("y", DETAIL_PANEL_TOP + 4.0)
+                .set("y", header_y + 4.0)
                 .set("font-family", "monospace")
                 .set("font-size", 14)
                 .set("font-weight", 700)
@@ -640,13 +763,13 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         .add(
             Text::new("lane | observed | actual | topology | mass")
                 .set("x", DETAIL_PANEL_LEFT)
-                .set("y", DETAIL_PANEL_TOP + 24.0)
+                .set("y", header_y + 24.0)
                 .set("font-family", "monospace")
                 .set("font-size", 11)
                 .set("fill", "#64748b"),
         );
 
-    let mut detail_y = DETAIL_PANEL_TOP + 44.0;
+    let mut detail_y = header_y + 44.0;
     for lane in layout.lanes.iter().filter(|lane| !lane.is_ladder) {
         doc = doc.add(
             Text::new(lane.name.clone())
@@ -659,13 +782,21 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         );
         detail_y += 16.0;
         for band in &lane.bands {
-            let row = format!(
+            let actual_label = if band.min_bp == band.bp {
+                format_bp_label(band.bp)
+            } else {
+                format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+            };
+            let mut row = format!(
                 "{} | {} | {} | {:.0} au",
                 format_bp_label(band.apparent_bp),
-                format_bp_label(band.bp),
+                actual_label,
                 band.topology_label,
                 band.estimated_mass_units
             );
+            if band.count > 1 {
+                row.push_str(&format!(" | merged x{}", band.count));
+            }
             doc = doc.add(
                 Text::new(row)
                     .set("x", DETAIL_PANEL_LEFT + 4.0)
@@ -960,5 +1091,70 @@ mod tests {
             .filter(|lane| !lane.is_ladder)
             .collect::<Vec<_>>();
         assert!(sample_lanes[1].bands[0].intensity > sample_lanes[0].bands[0].intensity);
+    }
+
+    #[test]
+    fn test_co_migration_groups_nearby_fragments_into_one_band() {
+        let members = vec![
+            GelSampleMember {
+                seq_id: "frag_a".to_string(),
+                bp: 1000,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_b".to_string(),
+                bp: 1035,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_c".to_string(),
+                bp: 1400,
+                circular: false,
+            },
+        ];
+        let layout = build_pool_gel_layout(&members, &[], None).expect("layout");
+        let sample_lane = layout
+            .lanes
+            .iter()
+            .find(|lane| !lane.is_ladder)
+            .expect("sample lane");
+        assert_eq!(sample_lane.bands.len(), 2);
+        let merged_band = sample_lane
+            .bands
+            .iter()
+            .find(|band| band.count == 2)
+            .expect("merged band");
+        assert_eq!(merged_band.min_bp, 1000);
+        assert_eq!(merged_band.bp, 1035);
+        assert_eq!(merged_band.topology_label, "linear");
+    }
+
+    #[test]
+    fn test_export_pool_gel_svg_marks_merged_band_annotation() {
+        let layout = build_pool_gel_layout(
+            &[
+                GelSampleMember {
+                    seq_id: "frag_a".to_string(),
+                    bp: 1000,
+                    circular: false,
+                },
+                GelSampleMember {
+                    seq_id: "frag_b".to_string(),
+                    bp: 1035,
+                    circular: false,
+                },
+            ],
+            &[],
+            None,
+        )
+        .expect("layout");
+        let svg = export_pool_gel_svg(&layout);
+        assert!(svg.contains("merged x2"));
+        assert!(svg.contains("frag_a (1000 bp)"));
+        assert!(svg.contains("frag_b (1035 bp)"));
+        assert!(svg.contains("Merged-band notes"));
+        assert!(svg.contains(
+            "merged xN means nearby fragments co-migrate under current gel conditions"
+        ));
     }
 }

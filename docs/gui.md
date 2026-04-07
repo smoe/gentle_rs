@@ -2261,6 +2261,10 @@ Controls:
     - agarose %
     - buffer (`TAE` / `TBE`)
     - topology-aware circular migration on/off
+  - nearby fragments that co-migrate now collapse into one merged-band
+    annotation instead of drawing several indistinguishable bars
+  - the right-hand detail panel adds `Merged-band notes` so grouped bands are
+    explained as observed-vs-actual lane readouts
   - `Save to Arrangement` persists the currently selected ladder pair for later
     `Export Gel` reuse
   - condition changes refresh the preview immediately and are reused by
