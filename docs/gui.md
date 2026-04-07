@@ -2261,6 +2261,10 @@ Controls:
     - agarose %
     - buffer (`TAE` / `TBE`)
     - topology-aware circular migration on/off
+  - topology-aware mode now distinguishes explicit circular-form hints like
+    `supercoiled`, `relaxed circular`, and `nicked/open circular` when those
+    terms appear in sequence names/definitions/comments; otherwise circular DNA
+    stays on the generic circular heuristic
   - nearby fragments that co-migrate now collapse into one merged-band
     annotation instead of drawing several indistinguishable bars
   - the right-hand detail panel adds `Merged-band notes` so grouped bands are

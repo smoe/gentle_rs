@@ -80,7 +80,9 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
-pub use gentle_protocol::{ContainerId, GelBufferModel, GelRunConditions, NodeId, OpId, RunId, SeqId};
+pub use gentle_protocol::{
+    ContainerId, GelBufferModel, GelRunConditions, GelTopologyForm, NodeId, OpId, RunId, SeqId,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {

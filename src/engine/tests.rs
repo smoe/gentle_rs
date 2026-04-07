@@ -7802,6 +7802,40 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
 }
 
 #[test]
+fn test_render_pool_gel_svg_operation_infers_explicit_circular_forms_from_sequence_names() {
+    let mut state = ProjectState::default();
+    let mut supercoiled = seq(&"ATGC".repeat(1250));
+    supercoiled.set_circular(true);
+    supercoiled.set_name("vector supercoiled");
+    let mut nicked = seq(&"ATGC".repeat(1250));
+    nicked.set_circular(true);
+    nicked.set_name("vector nicked");
+    state
+        .sequences
+        .insert("supercoiled".to_string(), supercoiled);
+    state.sequences.insert("nicked".to_string(), nicked);
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("pool.gel.svg");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::RenderPoolGelSvg {
+            inputs: vec!["supercoiled".to_string(), "nicked".to_string()],
+            path: path_text.clone(),
+            ladders: Some(vec!["NEB 1kb DNA Ladder".to_string()]),
+            container_ids: None,
+            arrangement_id: None,
+            conditions: Some(GelRunConditions::default()),
+        })
+        .unwrap();
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("supercoiled"));
+    assert!(text.contains("nicked circular"));
+    assert!(text.contains("supercoiled (5000 bp, supercoiled)"));
+    assert!(text.contains("nicked (5000 bp, nicked circular)"));
+}
+
+#[test]
 fn test_export_pool_operation() {
     let mut state = ProjectState::default();
     state.sequences.insert("a".to_string(), seq("ATGC"));
@@ -7825,6 +7859,30 @@ fn test_export_pool_operation() {
     assert_eq!(v["pool_id"], "pool_1");
     assert_eq!(v["human_id"], "test pool");
     assert_eq!(v["member_count"], 2);
+}
+
+#[test]
+fn test_export_pool_operation_preserves_supercoiled_topology_hint() {
+    let mut state = ProjectState::default();
+    let mut plasmid = seq(&"ATGC".repeat(10));
+    plasmid.set_circular(true);
+    plasmid.set_name("demo supercoiled plasmid");
+    state.sequences.insert("p".to_string(), plasmid);
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("pool.gentle.json");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::ExportPool {
+            inputs: vec!["p".to_string()],
+            path: path_text.clone(),
+            pool_id: Some("pool_sc".to_string()),
+            human_id: None,
+        })
+        .unwrap();
+    let text = std::fs::read_to_string(path_text).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["members"][0]["topology"], "supercoiled");
 }
 
 #[test]

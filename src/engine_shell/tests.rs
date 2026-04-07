@@ -9017,6 +9017,60 @@ fn execute_import_pool_loads_members_into_engine_state() {
 }
 
 #[test]
+fn execute_import_pool_preserves_supercoiled_topology_hint() {
+    let td = tempdir().expect("tempdir");
+    let pool_path = td.path().join("supercoiled.pool.gentle.json");
+    let pool_json = serde_json::json!({
+        "schema": "gentle.pool.v1",
+        "pool_id": "supercoiled_pool",
+        "human_id": "demo",
+        "member_count": 1,
+        "members": [
+            {
+                "seq_id": "member_1",
+                "human_id": "member_1",
+                "name": "Vector supercoiled",
+                "sequence": "ATGCATGC",
+                "length_bp": 8,
+                "topology": "supercoiled",
+                "ends": {
+                    "end_type": "blunt",
+                    "forward_5": "",
+                    "forward_3": "",
+                    "reverse_5": "",
+                    "reverse_3": ""
+                }
+            }
+        ]
+    });
+    fs::write(&pool_path, serde_json::to_string_pretty(&pool_json).unwrap()).unwrap();
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ImportPool {
+            input: pool_path.to_string_lossy().to_string(),
+            prefix: "imported".to_string(),
+        },
+    )
+    .expect("execute import-pool");
+
+    let imported_id = out.output["imported_ids"][0].as_str().expect("imported id");
+    let imported = engine
+        .state()
+        .sequences
+        .get(imported_id)
+        .expect("imported sequence");
+    assert!(imported.is_circular());
+    assert!(
+        imported
+            .description()
+            .iter()
+            .any(|line| line.contains("gel_topology=supercoiled"))
+    );
+}
+
+#[test]
 fn parse_helpers_extract_gene() {
     let cmd = parse_shell_line(
         "helpers extract-gene pUC19 bla --occurrence 2 --output-id out --cache-dir cache",

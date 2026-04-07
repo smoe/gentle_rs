@@ -31383,7 +31383,7 @@ impl MainAreaDna {
                     .map(|dna| crate::pool_gel::GelSampleMember {
                         seq_id: id.clone(),
                         bp: dna.len(),
-                        circular: dna.is_circular(),
+                        topology_form: crate::engine::GentleEngine::infer_gel_topology_form_from_dna(dna),
                     })
             })
             .collect()

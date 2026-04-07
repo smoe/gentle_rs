@@ -12,6 +12,50 @@
 use super::*;
 
 impl GentleEngine {
+    pub(crate) fn infer_gel_topology_form_from_dna(dna: &DNAsequence) -> gentle_protocol::GelTopologyForm {
+        if !dna.is_circular() {
+            return gentle_protocol::GelTopologyForm::Linear;
+        }
+
+        let mut text = String::new();
+        if let Some(name) = dna.name() {
+            text.push_str(name);
+            text.push(' ');
+        }
+        if let Some(definition) = dna.definition() {
+            text.push_str(definition);
+            text.push(' ');
+        }
+        for comment in dna.description() {
+            text.push_str(comment);
+            text.push(' ');
+        }
+        let lowered = text.to_ascii_lowercase();
+
+        for token in lowered
+            .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '[' | ']'))
+        {
+            let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '=' && c != '-');
+            if let Some(value) = trimmed.strip_prefix("gel_topology=") {
+                if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value) {
+                    return form;
+                }
+            }
+            if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(trimmed) {
+                if form.is_circular() {
+                    return form;
+                }
+            }
+        }
+        if lowered.contains("open circular")
+            || lowered.contains("open-circle")
+            || lowered.contains("nicked circular")
+        {
+            return gentle_protocol::GelTopologyForm::NickedCircular;
+        }
+        gentle_protocol::GelTopologyForm::Circular
+    }
+
     pub(super) fn digest_with_guard(
         dna: &DNAsequence,
         enzymes: Vec<RestrictionEnzyme>,
@@ -192,7 +236,7 @@ impl GentleEngine {
                 members.push(crate::pool_gel::GelSampleMember {
                     seq_id: seq_id.clone(),
                     bp: dna.len(),
-                    circular: dna.is_circular(),
+                    topology_form: Self::infer_gel_topology_form_from_dna(dna),
                 });
             }
             let lane_name = container
@@ -294,7 +338,7 @@ impl GentleEngine {
                     members.push(crate::pool_gel::GelSampleMember {
                         seq_id: seq_id.clone(),
                         bp: dna.len(),
-                        circular: dna.is_circular(),
+                        topology_form: Self::infer_gel_topology_form_from_dna(dna),
                     });
                 }
                 vec![GelSampleInput {
@@ -600,11 +644,9 @@ impl GentleEngine {
                 name: dna.name().clone(),
                 sequence: dna.get_forward_string(),
                 length_bp: dna.len(),
-                topology: if dna.is_circular() {
-                    "circular".to_string()
-                } else {
-                    "linear".to_string()
-                },
+                topology: Self::infer_gel_topology_form_from_dna(dna)
+                    .as_str()
+                    .to_string(),
                 ends: end,
             });
         }

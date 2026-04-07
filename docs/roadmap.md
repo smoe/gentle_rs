@@ -3109,8 +3109,9 @@ Planned upgrades:
 - Multi-lane digest conditions with per-lane enzyme sets and batch
   "apply-to-all" behavior.
 - Optional uncut/topology-aware migration model for circular DNA
-  (baseline heuristic now implemented for circular-vs-linear apparent mobility;
-  richer supercoiled/nicked/linearized modeling still open).
+  (baseline heuristic now implemented for circular-vs-linear apparent mobility
+  plus explicit supercoiled/relaxed/nicked hint handling; richer
+  user-settable provenance and broader linearized-form modeling still open).
 - Band intensity based on estimated DNA mass per band, not only multiplicity
   (baseline implemented).
 - Co-migration grouping thresholds, explicit merged-band annotation, and a

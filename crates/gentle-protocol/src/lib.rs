@@ -110,6 +110,67 @@ impl GelBufferModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Shared gel-topology form hint for electrophoresis rendering.
+///
+/// This is deliberately narrower than the full sequence topology model. It
+/// exists so gel previews/exports can distinguish common circular DNA forms
+/// when that information is explicitly known or inferable, while older code
+/// paths can still degrade to plain `linear` / generic `circular`.
+pub enum GelTopologyForm {
+    #[default]
+    Linear,
+    Circular,
+    Supercoiled,
+    RelaxedCircular,
+    NickedCircular,
+}
+
+impl GelTopologyForm {
+    pub fn from_hint(raw: &str) -> Option<Self> {
+        let lowered = raw.trim().to_ascii_lowercase();
+        match lowered.as_str() {
+            "" => None,
+            "linear" | "linearized" | "linearised" => Some(Self::Linear),
+            "circular" => Some(Self::Circular),
+            "supercoiled" | "superhelical" | "ccc" | "ccc dna" => Some(Self::Supercoiled),
+            "relaxed" | "relaxed_circular" | "relaxed circular" => Some(Self::RelaxedCircular),
+            "nicked"
+            | "nicked_circular"
+            | "nicked circular"
+            | "open_circular"
+            | "open circular"
+            | "open-circle" => Some(Self::NickedCircular),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Circular => "circular",
+            Self::Supercoiled => "supercoiled",
+            Self::RelaxedCircular => "relaxed_circular",
+            Self::NickedCircular => "nicked_circular",
+        }
+    }
+
+    pub fn display_label(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Circular => "circular",
+            Self::Supercoiled => "supercoiled",
+            Self::RelaxedCircular => "relaxed circular",
+            Self::NickedCircular => "nicked circular",
+        }
+    }
+
+    pub fn is_circular(self) -> bool {
+        !matches!(self, Self::Linear)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 /// Shared gel-run conditions used by GUI/CLI/render export.

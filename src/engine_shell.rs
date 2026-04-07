@@ -1634,6 +1634,38 @@ struct PoolExport {
     members: Vec<PoolMember>,
 }
 
+fn apply_pool_member_topology_hint(
+    member_topology: &str,
+    dna: &mut DNAsequence,
+) -> Result<(), String> {
+    let Some(form) = gentle_protocol::GelTopologyForm::from_hint(member_topology) else {
+        return Ok(());
+    };
+    if form.is_circular() {
+        dna.set_circular(true);
+    }
+    if !matches!(
+        form,
+        gentle_protocol::GelTopologyForm::Linear | gentle_protocol::GelTopologyForm::Circular
+    ) {
+        let mut value = serde_json::to_value(&*dna)
+            .map_err(|e| format!("Could not serialize sequence for topology hint: {e}"))?;
+        if let Some(obj) = value.as_object_mut() {
+            if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
+                let comments = seq_obj
+                    .entry("comments".to_string())
+                    .or_insert_with(|| json!([]));
+                if let Some(arr) = comments.as_array_mut() {
+                    arr.push(json!(format!("gel_topology={}", form.as_str())));
+                }
+            }
+        }
+        *dna = serde_json::from_value(value)
+            .map_err(|e| format!("Could not apply topology hint to sequence: {e}"))?;
+    }
+    Ok(())
+}
+
 const DEFAULT_CANDIDATE_PAGE_SIZE: usize = 100;
 const DEFAULT_CANDIDATE_SET_LIMIT: usize = 50_000;
 const DEFAULT_GUIDE_PAGE_SIZE: usize = 100;
@@ -14338,9 +14370,7 @@ fn execute_export_import_and_resource_command(
                     dna = serde_json::from_value(value)
                         .map_err(|e| format!("Could not set sequence name: {e}"))?;
                 }
-                if member.topology.eq_ignore_ascii_case("circular") {
-                    dna.set_circular(true);
-                }
+                apply_pool_member_topology_hint(&member.topology, &mut dna)?;
                 apply_member_overhang(member, &mut dna)?;
                 dna.update_computed_features();
                 let base = format!("{prefix}_{}", idx + 1);

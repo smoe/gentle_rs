@@ -1844,8 +1844,15 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Computes pool migration from sequence bp length plus one deterministic
   heuristic condition model:
   - agarose/buffer reshape the shared migration curve
-  - topology-aware mode shifts circular DNA to a faster apparent migration than
-    linear DNA of the same bp count
+  - topology-aware mode distinguishes:
+    - generic `circular`
+    - `supercoiled`
+    - `relaxed circular`
+    - `nicked/open circular`
+    - `linear`
+  - when sequence names/definitions/comments carry explicit circular-form hints,
+    those richer forms are used; otherwise circular sequences fall back to the
+    generic `circular` model
 - Computes sample-band brightness from estimated DNA mass proxy, not only
   multiplicity.
 - Applies one deterministic co-migration grouping threshold so nearby fragments
@@ -1860,7 +1867,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - The SVG also includes a compact fragment table for non-ladder lanes:
   - observed apparent size
   - actual bp
-  - topology hint
+  - topology-form hint
   - estimated mass proxy
   - merged-band annotation when several fragments co-migrate
   - source fragment labels

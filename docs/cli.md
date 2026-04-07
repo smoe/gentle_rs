@@ -1443,9 +1443,13 @@ Pool exchange commands:
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
   - Exports explicit sequence IDs (`IDS` is comma-separated) with topology and
     overhang fields into a versioned JSON pool artifact.
+  - topology now preserves richer gel-oriented circular-form hints when GENtle
+    can infer them (`supercoiled`, `relaxed_circular`, `nicked_circular`)
   - Adds `human_id` at pool level and per-member `human_id`.
 - `import-pool INPUT.pool.gentle.json [PREFIX]`
   - Imports pool members into current state; generated IDs are prefixed.
+  - richer topology strings such as `supercoiled` or `nicked_circular` are
+    preserved as gel-topology hints on imported circular molecules.
 - `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
   - Calls engine operation `ExportProcessRunBundle`.
   - Writes a deterministic process/audit bundle JSON
@@ -1606,6 +1610,9 @@ Rendering export commands:
   - `--agarose-pct` / `--buffer` / `--topology-aware` override the shared
     deterministic gel-run profile for that render.
   - Defaults are `1.0%`, `TAE`, topology-aware `true`.
+  - when topology-aware mode is on, explicit sequence hints like
+    `supercoiled`, `relaxed circular`, or `nicked/open circular` refine
+    apparent migration beyond the old generic circular-vs-linear split.
 - `render-gel-svg ...`
   - Alias for `render-pool-gel-svg ...` with identical semantics.
 - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`

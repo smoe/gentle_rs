@@ -1,6 +1,8 @@
 //! Virtual pool gel model and rendering primitives.
 
-use gentle_protocol::{GelBufferModel, GelRunConditions, LadderCatalog, default_dna_ladders};
+use gentle_protocol::{
+    GelBufferModel, GelRunConditions, GelTopologyForm, LadderCatalog, default_dna_ladders,
+};
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 use svg::Document;
@@ -22,7 +24,7 @@ static DNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_dna_ladders)
 pub struct GelSampleMember {
     pub seq_id: String,
     pub bp: usize,
-    pub circular: bool,
+    pub topology_form: GelTopologyForm,
 }
 
 #[derive(Clone, Debug)]
@@ -126,13 +128,26 @@ fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> V
 }
 
 fn apparent_bp_for_member(member: &GelSampleMember, conditions: &GelRunConditions) -> usize {
-    let mut apparent_bp = member.bp as f32;
     let normalized = conditions.normalized();
-    if normalized.topology_aware && member.circular {
+    let mut apparent_bp = member.bp as f32;
+    if normalized.topology_aware {
         let log_span = (member.bp.max(10) as f32).log10().clamp(2.0, 4.2);
-        let size_adjust = 0.80 + (log_span - 2.0) * 0.04;
+        let circular_baseline = 0.80 + (log_span - 2.0) * 0.04;
         let agarose_adjust = 1.0 - (normalized.agarose_percent - 1.0) * 0.05;
-        apparent_bp *= (size_adjust * agarose_adjust).clamp(0.72, 0.92);
+        let factor = match member.topology_form {
+            GelTopologyForm::Linear => 1.0,
+            GelTopologyForm::Circular => (circular_baseline * agarose_adjust).clamp(0.72, 0.92),
+            GelTopologyForm::Supercoiled => {
+                (circular_baseline * 0.90 * agarose_adjust).clamp(0.62, 0.86)
+            }
+            GelTopologyForm::RelaxedCircular => {
+                (1.08 + (normalized.agarose_percent - 1.0) * 0.04).clamp(1.02, 1.18)
+            }
+            GelTopologyForm::NickedCircular => {
+                (1.18 + (normalized.agarose_percent - 1.0) * 0.06).clamp(1.08, 1.32)
+            }
+        };
+        apparent_bp *= factor;
     }
     apparent_bp.round().max(1.0) as usize
 }
@@ -211,17 +226,25 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
                 / estimated_mass_units.max(1.0))
                 .round()
                 .max(1.0) as usize;
-            let circular_count = grouped.iter().filter(|(member, _)| member.circular).count();
-            let topology_label = match (circular_count, grouped.len()) {
-                (0, _) => "linear".to_string(),
-                (c, g) if c == g => "circular".to_string(),
-                _ => "mixed".to_string(),
+            let topology_label = {
+                let mut forms = grouped.iter().map(|(member, _)| member.topology_form);
+                let first = forms.next().unwrap_or(GelTopologyForm::Linear);
+                if forms.all(|form| form == first) {
+                    first.display_label().to_string()
+                } else {
+                    "mixed".to_string()
+                }
             };
             let mut labels = grouped
                 .iter()
                 .map(|(member, _)| {
-                    if member.circular {
-                        format!("{} ({} bp, circular)", member.seq_id, member.bp)
+                    if member.topology_form.is_circular() {
+                        format!(
+                            "{} ({} bp, {})",
+                            member.seq_id,
+                            member.bp,
+                            member.topology_form.display_label()
+                        )
                     } else {
                         format!("{} ({} bp)", member.seq_id, member.bp)
                     }
@@ -854,22 +877,22 @@ mod tests {
             GelSampleMember {
                 seq_id: "frag_a".to_string(),
                 bp: 420,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_b".to_string(),
                 bp: 950,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_c".to_string(),
                 bp: 1210,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_d".to_string(),
                 bp: 1210,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let layout = build_pool_gel_layout(&members, &[], None).unwrap();
@@ -886,17 +909,17 @@ mod tests {
             GelSampleMember {
                 seq_id: "frag_a".to_string(),
                 bp: 350,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_b".to_string(),
                 bp: 820,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_c".to_string(),
                 bp: 1650,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let layout = build_pool_gel_layout(&members, &[], None).unwrap();
@@ -915,7 +938,7 @@ mod tests {
                 members: vec![GelSampleMember {
                     seq_id: "vector".to_string(),
                     bp: 4952,
-                    circular: true,
+                    topology_form: GelTopologyForm::Circular,
                 }],
             },
             GelSampleInput {
@@ -923,7 +946,7 @@ mod tests {
                 members: vec![GelSampleMember {
                     seq_id: "insert".to_string(),
                     bp: 314,
-                    circular: false,
+                    topology_form: GelTopologyForm::Linear,
                 }],
             },
             GelSampleInput {
@@ -931,7 +954,7 @@ mod tests {
                 members: vec![GelSampleMember {
                     seq_id: "product".to_string(),
                     bp: 5266,
-                    circular: true,
+                    topology_form: GelTopologyForm::Circular,
                 }],
             },
         ];
@@ -968,17 +991,17 @@ mod tests {
             GelSampleMember {
                 seq_id: "frag_a".to_string(),
                 bp: 350,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_b".to_string(),
                 bp: 820,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_c".to_string(),
                 bp: 1650,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let ladders = vec![
@@ -999,17 +1022,17 @@ mod tests {
             GelSampleMember {
                 seq_id: "frag_a".to_string(),
                 bp: 350,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_b".to_string(),
                 bp: 820,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_c".to_string(),
                 bp: 1650,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let ladders = vec![
@@ -1028,12 +1051,12 @@ mod tests {
             GelSampleMember {
                 seq_id: "linear".to_string(),
                 bp: 5000,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "circular".to_string(),
                 bp: 5000,
-                circular: true,
+                topology_form: GelTopologyForm::Circular,
             },
         ];
         let layout = build_pool_gel_layout(&members, &[], None).expect("layout");
@@ -1057,17 +1080,65 @@ mod tests {
     }
 
     #[test]
+    fn test_topology_aware_explicit_circular_forms_span_supercoiled_to_nicked() {
+        let members = vec![
+            GelSampleMember {
+                seq_id: "supercoiled".to_string(),
+                bp: 5000,
+                topology_form: GelTopologyForm::Supercoiled,
+            },
+            GelSampleMember {
+                seq_id: "circular".to_string(),
+                bp: 5000,
+                topology_form: GelTopologyForm::Circular,
+            },
+            GelSampleMember {
+                seq_id: "linear".to_string(),
+                bp: 5000,
+                topology_form: GelTopologyForm::Linear,
+            },
+            GelSampleMember {
+                seq_id: "relaxed".to_string(),
+                bp: 5000,
+                topology_form: GelTopologyForm::RelaxedCircular,
+            },
+            GelSampleMember {
+                seq_id: "nicked".to_string(),
+                bp: 5000,
+                topology_form: GelTopologyForm::NickedCircular,
+            },
+        ];
+        let layout = build_pool_gel_layout(&members, &[], None).expect("layout");
+        let sample_lane = layout
+            .lanes
+            .iter()
+            .find(|lane| !lane.is_ladder)
+            .expect("sample lane");
+        let band = |label: &str| {
+            sample_lane
+                .bands
+                .iter()
+                .find(|band| band.topology_label == label)
+                .expect("topology band")
+        };
+        assert!(band("supercoiled").apparent_bp < band("circular").apparent_bp);
+        assert!(band("circular").apparent_bp < band("linear").apparent_bp);
+        assert!(band("linear").apparent_bp < band("relaxed circular").apparent_bp);
+        assert!(band("relaxed circular").apparent_bp < band("nicked circular").apparent_bp);
+    }
+
+    #[test]
     fn test_mass_based_intensity_favors_larger_single_band() {
         let members = vec![
             GelSampleMember {
                 seq_id: "small".to_string(),
                 bp: 300,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "large".to_string(),
                 bp: 5000,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let layout = build_serial_gel_layout(
@@ -1099,17 +1170,17 @@ mod tests {
             GelSampleMember {
                 seq_id: "frag_a".to_string(),
                 bp: 1000,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_b".to_string(),
                 bp: 1035,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
             GelSampleMember {
                 seq_id: "frag_c".to_string(),
                 bp: 1400,
-                circular: false,
+                topology_form: GelTopologyForm::Linear,
             },
         ];
         let layout = build_pool_gel_layout(&members, &[], None).expect("layout");
@@ -1136,12 +1207,12 @@ mod tests {
                 GelSampleMember {
                     seq_id: "frag_a".to_string(),
                     bp: 1000,
-                    circular: false,
+                    topology_form: GelTopologyForm::Linear,
                 },
                 GelSampleMember {
                     seq_id: "frag_b".to_string(),
                     bp: 1035,
-                    circular: false,
+                    topology_form: GelTopologyForm::Linear,
                 },
             ],
             &[],
@@ -1156,5 +1227,31 @@ mod tests {
         assert!(svg.contains(
             "merged xN means nearby fragments co-migrate under current gel conditions"
         ));
+    }
+
+    #[test]
+    fn test_export_pool_gel_svg_labels_explicit_circular_forms() {
+        let layout = build_pool_gel_layout(
+            &[
+                GelSampleMember {
+                    seq_id: "supercoiled_plasmid".to_string(),
+                    bp: 5000,
+                    topology_form: GelTopologyForm::Supercoiled,
+                },
+                GelSampleMember {
+                    seq_id: "nicked_plasmid".to_string(),
+                    bp: 5000,
+                    topology_form: GelTopologyForm::NickedCircular,
+                },
+            ],
+            &[],
+            None,
+        )
+        .expect("layout");
+        let svg = export_pool_gel_svg(&layout);
+        assert!(svg.contains("supercoiled"));
+        assert!(svg.contains("nicked circular"));
+        assert!(svg.contains("supercoiled_plasmid (5000 bp, supercoiled)"));
+        assert!(svg.contains("nicked_plasmid (5000 bp, nicked circular)"));
     }
 }
