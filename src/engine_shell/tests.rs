@@ -10598,16 +10598,20 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     .expect("inspect uniprot projection expert");
     assert!(!inspect.state_changed);
     assert_eq!(
-        inspect.output["panel_id"].as_str(),
+        inspect.output["kind"].as_str(),
+        Some("isoform_architecture")
+    );
+    assert_eq!(
+        inspect.output["data"]["panel_id"].as_str(),
         Some(projection_id.as_str())
     );
-    assert_eq!(inspect.output["gene_symbol"].as_str(), Some("TOY1"));
+    assert_eq!(inspect.output["data"]["gene_symbol"].as_str(), Some("TOY1"));
     assert_eq!(
-        inspect.output["panel_source"].as_str(),
+        inspect.output["data"]["panel_source"].as_str(),
         Some("UniProt projection PTEST1 (PTEST1)")
     );
     assert!(
-        inspect.output["protein_lanes"]
+        inspect.output["data"]["protein_lanes"]
             .as_array()
             .map(|rows| !rows.is_empty())
             .unwrap_or(false)

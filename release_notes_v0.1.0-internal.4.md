@@ -8,6 +8,14 @@ into a structured `gentle-*` workspace. Compared with
 more about adding an adjacent validation workflow: from sequence design and
 variant retrieval toward trace-backed confirmation and reportable evidence.
 
+At the same time, `v0.1.0-internal.4` became a significant stabilization cut:
+- the current `egui/eframe` macOS native child-window regression is now worked
+  around through one hosted root workspace with internal windows
+- the large shared shell dispatcher was decomposed further so CI/local
+  small-stack test threads no longer trip over deep matcher frames
+- async dbSNP/GenBank dialog tests and shared fetch/report paths were tightened
+  so the internal validation baseline is green again
+
 As with the earlier internal releases, these notes intentionally describe both
 what is already usable and what is visibly becoming stable enough for broader
 internal review.
@@ -38,6 +46,14 @@ internal review.
     into those crates without forcing a big-bang import rewrite
 - Help/tutorial behavior and hosted-window behavior were hardened across the
   same period, reducing friction during internal demonstrations.
+- The macOS windowing story is now intentionally conservative and reliable:
+  - one root workspace window hosts the project window plus auxiliary windows
+  - this avoids the current native child-viewport regression while preserving
+    a workable multi-window interaction model inside GENtle
+- Shared shell execution was hardened substantially:
+  - several deep command families now dispatch through dedicated helper paths
+  - this removed multiple CI/local stack-overflow classes without changing
+    command semantics
 
 ## Notable Changes by Area
 
@@ -119,6 +135,14 @@ internal review.
     arrangements
 - These changes improve internal onboarding and make it easier to demonstrate
   partially mature workflows without fighting the windowing system.
+- On macOS specifically, auxiliary-window behavior is now intentionally routed
+  through a hosted root workspace:
+  - the first native window opens as the stable gray host/root
+  - the project window becomes the first internal hosted window inside it
+  - DNA/help/specialist windows then behave as sibling internal windows rather
+    than fragile native child windows
+- This is not the ideal final UX, but it is the more honest and stable
+  response to the currently reduced upstream `egui/eframe` viewport regression.
 
 ### 6) Workspace Split and Internal Architecture Progress
 
@@ -145,9 +169,17 @@ internal review.
   copied correctly into image builds.
 - `gb-io 0.9.0` transition work was completed, which is relevant both for build
   hygiene and for keeping sequence/annotation import behavior current.
-- Shell command dispatch was also split to prevent recursive-shell stack
-  overflows, which is primarily a safety/stability improvement for agent and
-  workflow execution.
+- Shell command dispatch was also split repeatedly to prevent CI/local
+  small-stack overflows:
+  - candidate analysis/template/materialization commands
+  - arrangement/rack/ladder commands
+  - export/import/resource commands
+  - reference-genome and genome-track commands
+- This is primarily a safety/stability improvement for agent, shell, CLI, and
+  workflow execution rather than a user-facing feature by itself.
+- The dbSNP dialog async test harness was also made less timing-fragile under
+  full-suite load, which helped remove one poison-on-failure cascade across
+  the GenBank/dbSNP test cluster.
 
 ## Interim Release Readiness
 
@@ -167,6 +199,12 @@ internal review.
 - The workspace split is not release-marketing material by itself, but it is a
   meaningful readiness indicator: the codebase is being prepared for growth
   without abandoning the existing shared-engine contract.
+- This release also leaves the codebase in a better validation state than the
+  midpoint of the cycle:
+  - the full Rust test suite is green again after the shell-stack and async
+    dialog reliability fixes
+  - the shell executor is still large, but it is now substantially less brittle
+    under CI thread-stack limits
 
 ## Release-Facing Known Limitations
 
@@ -186,12 +224,16 @@ internal review.
   lives in the root crate and is only beginning to migrate.
 - Internal tutorial/figure coverage improved, but some new specialist features
   still outpace polished end-user walkthrough coverage.
+- macOS currently prefers the hosted-root/internal-window model over native
+  auxiliary child windows:
+  - this is a deliberate stability workaround for the current upstream
+    `egui/eframe` viewport regression
+  - if upstream native child-window behavior stabilizes again, this area may be
+    revisited in a later internal cut
 
 ## Install / Package Notes
 
-- Version in `Cargo.toml` has not yet been bumped beyond
-  `0.1.0-internal.3`; these notes are therefore a draft for the next internal
-  cut rather than a statement that the repository is already retagged.
+- `Cargo.toml` is now bumped to `0.1.0-internal.4`.
 - Expected artifact story remains:
   - macOS `.dmg`
   - Windows `.zip` containing `gentle.exe`
@@ -202,5 +244,9 @@ internal review.
 
 ## Release-Shaped Smoke Check Results
 
-Pending for this draft. Before tagging, run the local/internal release-shaped
-matrix from [`docs/release.md`](docs/release.md) and record pass/fail here.
+- Automated Rust baseline now passes for this draft:
+  - `cargo check -q`
+  - `cargo test -q`
+- Full release artifact smoke (desktop artifact packaging / release-shaped
+  matrix from [`docs/release.md`](docs/release.md)) remains to be recorded
+  separately before publishing a final internal tag.
