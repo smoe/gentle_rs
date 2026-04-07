@@ -80,7 +80,7 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
-pub use gentle_protocol::{ContainerId, NodeId, OpId, RunId, SeqId};
+pub use gentle_protocol::{ContainerId, GelBufferModel, GelRunConditions, NodeId, OpId, RunId, SeqId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {
@@ -2665,6 +2665,8 @@ pub enum Operation {
         container_ids: Option<Vec<ContainerId>>,
         #[serde(default)]
         arrangement_id: Option<String>,
+        #[serde(default)]
+        conditions: Option<GelRunConditions>,
     },
     RenderProtocolCartoonSvg {
         protocol: ProtocolCartoonKind,

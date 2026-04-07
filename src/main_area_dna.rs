@@ -24956,6 +24956,7 @@ impl MainAreaDna {
             },
             container_ids: None,
             arrangement_id: None,
+            conditions: None,
         });
     }
 
@@ -31367,7 +31368,7 @@ impl MainAreaDna {
         }
     }
 
-    fn current_pool_members(&self) -> Vec<(String, usize)> {
+    fn current_pool_members(&self) -> Vec<crate::pool_gel::GelSampleMember> {
         let Some(engine) = &self.engine else {
             return vec![];
         };
@@ -31379,7 +31380,11 @@ impl MainAreaDna {
                     .state()
                     .sequences
                     .get(id)
-                    .map(|dna| (id.clone(), dna.len()))
+                    .map(|dna| crate::pool_gel::GelSampleMember {
+                        seq_id: id.clone(),
+                        bp: dna.len(),
+                        circular: dna.is_circular(),
+                    })
             })
             .collect()
     }
@@ -31388,7 +31393,7 @@ impl MainAreaDna {
         let mut lengths: Vec<usize> = self
             .current_pool_members()
             .into_iter()
-            .map(|(_, bp)| bp)
+            .map(|member| member.bp)
             .collect();
         if lengths.is_empty() {
             return;
@@ -31436,7 +31441,7 @@ impl MainAreaDna {
             return;
         }
         let ladders = Self::parse_ids(&self.pool_gel_ladders);
-        let layout = match build_pool_gel_layout(&members, &ladders) {
+        let layout = match build_pool_gel_layout(&members, &ladders, None) {
             Ok(layout) => layout,
             Err(e) => {
                 ui.colored_label(egui::Color32::from_rgb(180, 40, 40), e);
@@ -31449,8 +31454,11 @@ impl MainAreaDna {
             layout.selected_ladders.join(" + ")
         };
         ui.monospace(format!(
-            "Pool gel: ladders={} | range={}..{} bp",
-            ladder_text, layout.range_min_bp, layout.range_max_bp
+            "Pool gel: ladders={} | range={}..{} bp | {}",
+            ladder_text,
+            layout.range_min_bp,
+            layout.range_max_bp,
+            layout.conditions.describe()
         ));
         let desired_h = 320.0;
         let desired_w = ui.available_width().max(460.0);
@@ -31523,7 +31531,11 @@ impl MainAreaDna {
                 },
             );
             for band in &lane.bands {
-                let y = layout.y_for_bp(band.bp, gel_rect.top() + 4.0, gel_rect.bottom() - 4.0);
+                let y = layout.y_for_bp(
+                    band.apparent_bp,
+                    gel_rect.top() + 4.0,
+                    gel_rect.bottom() - 4.0,
+                );
                 let width = if lane.is_ladder {
                     30.0 + 18.0 * band.intensity
                 } else {
@@ -31544,6 +31556,9 @@ impl MainAreaDna {
                 );
                 if !lane.is_ladder {
                     let mut label = format!("{} bp", band.bp);
+                    if band.apparent_bp != band.bp {
+                        label.push_str(&format!(" -> {} bp", band.apparent_bp));
+                    }
                     if band.count > 1 {
                         label.push_str(&format!(" (x{})", band.count));
                     }

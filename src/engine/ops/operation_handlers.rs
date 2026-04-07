@@ -3926,6 +3926,7 @@ impl GentleEngine {
                 ladders,
                 container_ids,
                 arrangement_id,
+                conditions,
             } => {
                 if let Some(arrangement_id) = arrangement_id.as_deref().map(str::trim) {
                     if !inputs.is_empty() {
@@ -3965,6 +3966,7 @@ impl GentleEngine {
                     container_ids.as_deref(),
                     arrangement_id.as_deref(),
                     ladders.as_deref(),
+                    conditions.as_ref(),
                 )?;
                 let svg = export_pool_gel_svg(&layout);
                 std::fs::write(&path, svg).map_err(|e| EngineError {
@@ -3977,11 +3979,12 @@ impl GentleEngine {
                     layout.selected_ladders.join(" + ")
                 };
                 result.messages.push(format!(
-                    "Wrote serial gel SVG for {} sample lane(s), {} sequence(s) to '{}' (ladders: {})",
+                    "Wrote serial gel SVG for {} sample lane(s), {} sequence(s) to '{}' (ladders: {}, conditions: {})",
                     layout.sample_count,
                     layout.pool_member_count,
                     path,
-                    ladders_used
+                    ladders_used,
+                    layout.conditions.describe()
                 ));
             }
             Operation::ExportDnaLadders { path, name_filter } => {

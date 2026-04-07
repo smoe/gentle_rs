@@ -6366,6 +6366,7 @@ fn test_render_pool_gel_svg_operation() {
             ladders: None,
             container_ids: None,
             arrangement_id: None,
+            conditions: None,
         })
         .unwrap();
     assert!(res.messages.iter().any(|m| m.contains("serial gel SVG")));
@@ -7420,7 +7421,7 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
     );
     let engine = GentleEngine::from_state(state);
     let layout = engine
-        .build_serial_gel_layout_for_render(&[], None, Some("arr-auto"), Some(&[]))
+        .build_serial_gel_layout_for_render(&[], None, Some("arr-auto"), Some(&[]), None)
         .expect("explicit auto override should ignore stored invalid ladder names");
     assert_eq!(layout.sample_count, 1);
     assert!(!layout.selected_ladders.is_empty());
@@ -7710,6 +7711,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             ladders: None,
             container_ids: Some(vec!["container-2".to_string()]),
             arrangement_id: None,
+            conditions: None,
         })
         .unwrap();
     assert!(
@@ -7732,6 +7734,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             ladders: None,
             container_ids: None,
             arrangement_id: Some("arr-1".to_string()),
+            conditions: None,
         })
         .unwrap();
     assert!(
@@ -7761,9 +7764,41 @@ fn test_render_pool_gel_svg_operation_missing_input_fails() {
             ladders: None,
             container_ids: None,
             arrangement_id: None,
+            conditions: None,
         })
         .unwrap_err();
     assert!(err.message.contains("not found"));
+}
+
+#[test]
+fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
+    let mut state = ProjectState::default();
+    let mut circular = seq(&"ATGC".repeat(1250));
+    circular.set_circular(true);
+    state.sequences.insert("plasmid".to_string(), circular);
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("pool.gel.svg");
+    let path_text = path.display().to_string();
+    let res = engine
+        .apply(Operation::RenderPoolGelSvg {
+            inputs: vec!["plasmid".to_string()],
+            path: path_text.clone(),
+            ladders: Some(vec!["NEB 1kb DNA Ladder".to_string()]),
+            container_ids: None,
+            arrangement_id: None,
+            conditions: Some(GelRunConditions {
+                agarose_percent: 1.6,
+                buffer_model: GelBufferModel::Tbe,
+                topology_aware: true,
+            }),
+        })
+        .unwrap();
+    assert!(res.messages.iter().any(|m| m.contains("1.6% agarose | TBE | topology-aware on")));
+    let text = std::fs::read_to_string(path_text).unwrap();
+    assert!(text.contains("Fragment table"));
+    assert!(text.contains("plasmid (5000 bp, circular)"));
+    assert!(text.contains("conditions: 1.6% agarose | TBE | topology-aware on"));
 }
 
 #[test]

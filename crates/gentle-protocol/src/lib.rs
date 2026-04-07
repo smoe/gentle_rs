@@ -94,6 +94,76 @@ impl FlexibilityModel {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Shared electrophoresis buffer preset for virtual gel rendering.
+pub enum GelBufferModel {
+    #[default]
+    Tae,
+    Tbe,
+}
+
+impl GelBufferModel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tae => "tae",
+            Self::Tbe => "tbe",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Shared gel-run conditions used by GUI/CLI/render export.
+///
+/// This is intentionally a conservative heuristic contract, not a full
+/// electrophoresis simulator. Adapters should pass this bundle unchanged to the
+/// shared engine/render path so one deterministic model is reused everywhere.
+pub struct GelRunConditions {
+    pub agarose_percent: f32,
+    pub buffer_model: GelBufferModel,
+    pub topology_aware: bool,
+}
+
+impl Default for GelRunConditions {
+    fn default() -> Self {
+        Self {
+            agarose_percent: 1.0,
+            buffer_model: GelBufferModel::Tae,
+            topology_aware: true,
+        }
+    }
+}
+
+impl GelRunConditions {
+    pub fn normalized(&self) -> Self {
+        let agarose_percent = if self.agarose_percent.is_finite() {
+            self.agarose_percent.clamp(0.5, 3.0)
+        } else {
+            1.0
+        };
+        Self {
+            agarose_percent,
+            buffer_model: self.buffer_model,
+            topology_aware: self.topology_aware,
+        }
+    }
+
+    pub fn describe(&self) -> String {
+        let normalized = self.normalized();
+        format!(
+            "{:.1}% agarose | {} | topology-aware {}",
+            normalized.agarose_percent,
+            normalized.buffer_model.as_str().to_ascii_uppercase(),
+            if normalized.topology_aware {
+                "on"
+            } else {
+                "off"
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Shared scope preset for splicing/exon-context views and RNA-read mapping.
 pub enum SplicingScopePreset {
     #[default]

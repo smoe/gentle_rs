@@ -1,25 +1,38 @@
 //! Virtual pool gel model and rendering primitives.
 
-use gentle_protocol::{LadderCatalog, default_dna_ladders};
+use gentle_protocol::{GelBufferModel, GelRunConditions, LadderCatalog, default_dna_ladders};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 use svg::Document;
 use svg::node::element::{Line, Rectangle, Text};
 
-const SVG_WIDTH: f32 = 1040.0;
+const SVG_WIDTH: f32 = 1320.0;
 const SVG_HEIGHT: f32 = 760.0;
 const GEL_LEFT: f32 = 90.0;
-const GEL_RIGHT: f32 = SVG_WIDTH - 270.0;
+const GEL_RIGHT: f32 = SVG_WIDTH - 420.0;
 const GEL_TOP: f32 = 90.0;
 const GEL_BOTTOM: f32 = SVG_HEIGHT - 110.0;
+const DETAIL_PANEL_LEFT: f32 = GEL_RIGHT + 90.0;
+const DETAIL_PANEL_TOP: f32 = GEL_TOP + 8.0;
+const DETAIL_PANEL_WIDTH: f32 = SVG_WIDTH - DETAIL_PANEL_LEFT - 36.0;
 
 static DNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_dna_ladders);
 
 #[derive(Clone, Debug)]
+pub struct GelSampleMember {
+    pub seq_id: String,
+    pub bp: usize,
+    pub circular: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct PoolGelBand {
     pub bp: usize,
+    pub apparent_bp: usize,
     pub intensity: f32,
     pub count: usize,
+    pub estimated_mass_units: f32,
+    pub topology_label: String,
     pub labels: Vec<String>,
 }
 
@@ -38,12 +51,13 @@ pub struct PoolGelLayout {
     pub pool_member_count: usize,
     pub range_min_bp: usize,
     pub range_max_bp: usize,
+    pub conditions: GelRunConditions,
 }
 
 #[derive(Clone, Debug)]
 pub struct GelSampleInput {
     pub name: String,
-    pub members: Vec<(String, usize)>,
+    pub members: Vec<GelSampleMember>,
 }
 
 impl PoolGelLayout {
@@ -55,7 +69,13 @@ impl PoolGelLayout {
         let log_max = max_bp.log10();
         let denom = (log_max - log_min).max(1e-6);
         let f = ((log_max - bp.log10()) / denom) as f32;
-        top + f.clamp(0.0, 1.0) * (bottom - top)
+        let conditions = self.conditions.normalized();
+        let mut exponent = 1.0 + (conditions.agarose_percent - 1.0) * 0.18;
+        if matches!(conditions.buffer_model, GelBufferModel::Tbe) {
+            exponent += 0.05;
+        }
+        let curved = f.clamp(0.0, 1.0).powf(exponent.clamp(0.72, 1.55));
+        top + curved * (bottom - top)
     }
 }
 
@@ -104,22 +124,80 @@ fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> V
     DNA_LADDERS.choose_for_range(min_bp, max_bp, 2)
 }
 
-fn sample_bands(members: &[(String, usize)]) -> Vec<PoolGelBand> {
-    let mut by_bp: BTreeMap<usize, Vec<String>> = BTreeMap::new();
-    for (id, bp) in members {
-        by_bp.entry(*bp).or_default().push(id.clone());
+fn apparent_bp_for_member(member: &GelSampleMember, conditions: &GelRunConditions) -> usize {
+    let mut apparent_bp = member.bp as f32;
+    let normalized = conditions.normalized();
+    if normalized.topology_aware && member.circular {
+        let log_span = (member.bp.max(10) as f32).log10().clamp(2.0, 4.2);
+        let size_adjust = 0.80 + (log_span - 2.0) * 0.04;
+        let agarose_adjust = 1.0 - (normalized.agarose_percent - 1.0) * 0.05;
+        apparent_bp *= (size_adjust * agarose_adjust).clamp(0.72, 0.92);
     }
-    by_bp
+    apparent_bp.round().max(1.0) as usize
+}
+
+fn estimate_member_mass_units(member: &GelSampleMember) -> f32 {
+    member.bp.max(1) as f32
+}
+
+fn normalize_sample_lane_intensities(lanes: &mut [PoolGelLane]) {
+    let max_mass = lanes
+        .iter()
+        .filter(|lane| !lane.is_ladder)
+        .flat_map(|lane| lane.bands.iter())
+        .map(|band| band.estimated_mass_units)
+        .fold(0.0_f32, f32::max)
+        .max(1.0);
+    for lane in lanes.iter_mut().filter(|lane| !lane.is_ladder) {
+        for band in &mut lane.bands {
+            let scaled = (band.estimated_mass_units / max_mass).sqrt();
+            band.intensity = (0.28 + 0.72 * scaled).clamp(0.24, 1.0);
+        }
+    }
+}
+
+fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> Vec<PoolGelBand> {
+    let mut by_apparent_bp: BTreeMap<usize, Vec<&GelSampleMember>> = BTreeMap::new();
+    for member in members {
+        by_apparent_bp
+            .entry(apparent_bp_for_member(member, conditions))
+            .or_default()
+            .push(member);
+    }
+    by_apparent_bp
         .iter()
         .rev()
-        .map(|(bp, ids)| {
-            let count = ids.len();
-            let intensity = (0.42 + (count as f32 * 0.2)).clamp(0.3, 1.0);
+        .map(|(apparent_bp, grouped)| {
+            let count = grouped.len();
+            let bp = grouped.iter().map(|member| member.bp).max().unwrap_or(*apparent_bp);
+            let estimated_mass_units = grouped
+                .iter()
+                .map(|member| estimate_member_mass_units(member))
+                .sum::<f32>();
+            let circular_count = grouped.iter().filter(|member| member.circular).count();
+            let topology_label = match (circular_count, grouped.len()) {
+                (0, _) => "linear".to_string(),
+                (c, g) if c == g => "circular".to_string(),
+                _ => "mixed".to_string(),
+            };
+            let labels = grouped
+                .iter()
+                .map(|member| {
+                    if member.circular {
+                        format!("{} ({} bp, circular)", member.seq_id, member.bp)
+                    } else {
+                        format!("{} ({} bp)", member.seq_id, member.bp)
+                    }
+                })
+                .collect::<Vec<_>>();
             PoolGelBand {
-                bp: *bp,
-                intensity,
+                bp,
+                apparent_bp: *apparent_bp,
+                intensity: 0.5,
                 count,
-                labels: ids.clone(),
+                estimated_mass_units,
+                topology_label,
+                labels,
             }
         })
         .collect::<Vec<_>>()
@@ -142,17 +220,19 @@ fn ladder_lane_names_for_display(selected_ladders: &[String]) -> Vec<String> {
 pub fn build_serial_gel_layout(
     samples: &[GelSampleInput],
     requested_ladders: &[String],
+    conditions: Option<&GelRunConditions>,
 ) -> Result<PoolGelLayout, String> {
     if samples.is_empty() {
         return Err("Serial gel needs at least one sample lane".to_string());
     }
+    let conditions = conditions.cloned().unwrap_or_default().normalized();
     let mut normalized_samples: Vec<GelSampleInput> = vec![];
-    let mut all_members: Vec<(String, usize)> = vec![];
+    let mut all_members: Vec<GelSampleMember> = vec![];
     for (sample_idx, sample) in samples.iter().enumerate() {
         let mut valid_members = sample
             .members
             .iter()
-            .filter(|(_, bp)| *bp > 0)
+            .filter(|member| member.bp > 0)
             .cloned()
             .collect::<Vec<_>>();
         if valid_members.is_empty() {
@@ -161,7 +241,7 @@ pub fn build_serial_gel_layout(
                 sample_idx + 1
             ));
         }
-        valid_members.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        valid_members.sort_by(|a, b| b.bp.cmp(&a.bp).then(a.seq_id.cmp(&b.seq_id)));
         all_members.extend(valid_members.clone());
         let lane_name = if sample.name.trim().is_empty() {
             format!("Sample {} (n={})", sample_idx + 1, valid_members.len())
@@ -174,10 +254,10 @@ pub fn build_serial_gel_layout(
         });
     }
 
-    let pool_min = all_members.iter().map(|(_, bp)| *bp).min().unwrap_or(1);
+    let pool_min = all_members.iter().map(|member| member.bp).min().unwrap_or(1);
     let pool_max = all_members
         .iter()
-        .map(|(_, bp)| *bp)
+        .map(|member| member.bp)
         .max()
         .unwrap_or(pool_min);
     let selected_ladders = resolve_ladder_names(requested_ladders, pool_min, pool_max);
@@ -186,7 +266,10 @@ pub fn build_serial_gel_layout(
     }
 
     let mut lanes: Vec<PoolGelLane> = vec![];
-    let mut all_band_bps: Vec<usize> = all_members.iter().map(|(_, bp)| *bp).collect();
+    let mut all_band_bps: Vec<usize> = all_members
+        .iter()
+        .map(|member| apparent_bp_for_member(member, &conditions))
+        .collect();
 
     let display_ladders = ladder_lane_names_for_display(&selected_ladders);
     let left_ladders = display_ladders
@@ -220,8 +303,11 @@ pub fn build_serial_gel_layout(
                 let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;
                 PoolGelBand {
                     bp,
+                    apparent_bp: bp,
                     intensity,
                     count: 1,
+                    estimated_mass_units: bp as f32,
+                    topology_label: "ladder".to_string(),
                     labels: vec![format!("{bp} bp")],
                 }
             })
@@ -241,9 +327,10 @@ pub fn build_serial_gel_layout(
         lanes.push(PoolGelLane {
             name: sample.name.clone(),
             is_ladder: false,
-            bands: sample_bands(&sample.members),
+            bands: sample_bands(&sample.members, &conditions),
         });
     }
+    normalize_sample_lane_intensities(&mut lanes);
 
     for ladder_name in &right_ladders {
         let Some(ladder) = DNA_LADDERS.get(ladder_name) else {
@@ -265,8 +352,11 @@ pub fn build_serial_gel_layout(
                 let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;
                 PoolGelBand {
                     bp,
+                    apparent_bp: bp,
                     intensity,
                     count: 1,
+                    estimated_mass_units: bp as f32,
+                    topology_label: "ladder".to_string(),
                     labels: vec![format!("{bp} bp")],
                 }
             })
@@ -293,16 +383,18 @@ pub fn build_serial_gel_layout(
         pool_member_count: all_members.len(),
         range_min_bp,
         range_max_bp,
+        conditions,
     })
 }
 
 pub fn build_pool_gel_layout(
-    pool_members: &[(String, usize)],
+    pool_members: &[GelSampleMember],
     requested_ladders: &[String],
+    conditions: Option<&GelRunConditions>,
 ) -> Result<PoolGelLayout, String> {
     let members = pool_members
         .iter()
-        .filter(|(_, bp)| *bp > 0)
+        .filter(|member| member.bp > 0)
         .cloned()
         .collect::<Vec<_>>();
     if members.is_empty() {
@@ -312,7 +404,19 @@ pub fn build_pool_gel_layout(
         name: format!("Pool (n={})", members.len()),
         members,
     };
-    build_serial_gel_layout(&[sample], requested_ladders)
+    build_serial_gel_layout(&[sample], requested_ladders, conditions)
+}
+
+fn format_bp_label(bp: usize) -> String {
+    if bp >= 1_000 {
+        if bp % 1_000 == 0 {
+            format!("{} kb", bp / 1_000)
+        } else {
+            format!("{:.1} kb", bp as f32 / 1_000.0)
+        }
+    } else {
+        format!("{bp} bp")
+    }
 }
 
 pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
@@ -348,6 +452,16 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 .set("rx", 10)
                 .set("ry", 10)
                 .set("fill", "#111315"),
+        )
+        .add(
+            Rectangle::new()
+                .set("x", DETAIL_PANEL_LEFT - 18.0)
+                .set("y", GEL_TOP)
+                .set("width", DETAIL_PANEL_WIDTH + 18.0)
+                .set("height", gel_height)
+                .set("rx", 10)
+                .set("ry", 10)
+                .set("fill", "#f3f4f6"),
         );
 
     let mut tick_bps = BTreeSet::new();
@@ -385,7 +499,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                     .set("stroke-width", 1),
             )
             .add(
-                Text::new(format!("{bp} bp"))
+                Text::new(format_bp_label(bp))
                     .set("x", GEL_RIGHT + 12.0)
                     .set("y", y + 4.0)
                     .set("font-family", "monospace")
@@ -419,7 +533,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             );
 
         for band in &lane.bands {
-            let y = layout.y_for_bp(band.bp, GEL_TOP + 14.0, GEL_BOTTOM - 14.0);
+            let y = layout.y_for_bp(band.apparent_bp, GEL_TOP + 14.0, GEL_BOTTOM - 14.0);
             let width = if lane.is_ladder {
                 32.0 + 18.0 * band.intensity
             } else {
@@ -444,9 +558,15 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             );
 
             if !lane.is_ladder && band.count > 0 {
-                let mut label = format!("{} bp", band.bp);
+                let mut label = format_bp_label(band.bp);
+                if band.apparent_bp != band.bp {
+                    label.push_str(&format!(" -> {}", format_bp_label(band.apparent_bp)));
+                }
                 if band.count > 1 {
                     label.push_str(&format!(" (x{})", band.count));
+                }
+                if !band.topology_label.trim().is_empty() {
+                    label.push_str(&format!(" | {}", band.topology_label));
                 }
                 doc = doc.add(
                     Text::new(label)
@@ -480,8 +600,11 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         )
         .add(
             Text::new(format!(
-                "range {}..{} bp | lanes: {}",
-                layout.range_min_bp, layout.range_max_bp, lane_count
+                "range {}..{} | lanes: {} | conditions: {}",
+                format_bp_label(layout.range_min_bp),
+                format_bp_label(layout.range_max_bp),
+                lane_count,
+                layout.conditions.describe()
             ))
             .set("x", GEL_LEFT)
             .set("y", 62.0)
@@ -504,6 +627,87 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         );
     }
 
+    doc = doc
+        .add(
+            Text::new("Fragment table")
+                .set("x", DETAIL_PANEL_LEFT)
+                .set("y", DETAIL_PANEL_TOP + 4.0)
+                .set("font-family", "monospace")
+                .set("font-size", 14)
+                .set("font-weight", 700)
+                .set("fill", "#0f172a"),
+        )
+        .add(
+            Text::new("lane | observed | actual | topology | mass")
+                .set("x", DETAIL_PANEL_LEFT)
+                .set("y", DETAIL_PANEL_TOP + 24.0)
+                .set("font-family", "monospace")
+                .set("font-size", 11)
+                .set("fill", "#64748b"),
+        );
+
+    let mut detail_y = DETAIL_PANEL_TOP + 44.0;
+    for lane in layout.lanes.iter().filter(|lane| !lane.is_ladder) {
+        doc = doc.add(
+            Text::new(lane.name.clone())
+                .set("x", DETAIL_PANEL_LEFT)
+                .set("y", detail_y)
+                .set("font-family", "monospace")
+                .set("font-size", 12)
+                .set("font-weight", 700)
+                .set("fill", "#111827"),
+        );
+        detail_y += 16.0;
+        for band in &lane.bands {
+            let row = format!(
+                "{} | {} | {} | {:.0} au",
+                format_bp_label(band.apparent_bp),
+                format_bp_label(band.bp),
+                band.topology_label,
+                band.estimated_mass_units
+            );
+            doc = doc.add(
+                Text::new(row)
+                    .set("x", DETAIL_PANEL_LEFT + 4.0)
+                    .set("y", detail_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 11)
+                    .set("fill", "#334155"),
+            );
+            detail_y += 14.0;
+            for label in band.labels.iter().take(3) {
+                doc = doc.add(
+                    Text::new(label.clone())
+                        .set("x", DETAIL_PANEL_LEFT + 14.0)
+                        .set("y", detail_y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#475569"),
+                );
+                detail_y += 12.0;
+            }
+            if band.labels.len() > 3 {
+                doc = doc.add(
+                    Text::new(format!("+{} more", band.labels.len() - 3))
+                        .set("x", DETAIL_PANEL_LEFT + 14.0)
+                        .set("y", detail_y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 10)
+                        .set("fill", "#64748b"),
+                );
+                detail_y += 12.0;
+            }
+            detail_y += 6.0;
+            if detail_y > GEL_BOTTOM - 24.0 {
+                break;
+            }
+        }
+        detail_y += 8.0;
+        if detail_y > GEL_BOTTOM - 24.0 {
+            break;
+        }
+    }
+
     doc.to_string()
 }
 
@@ -516,12 +720,28 @@ mod tests {
     #[test]
     fn test_build_pool_gel_layout_auto_ladders() {
         let members = vec![
-            ("frag_a".to_string(), 420),
-            ("frag_b".to_string(), 950),
-            ("frag_c".to_string(), 1210),
-            ("frag_d".to_string(), 1210),
+            GelSampleMember {
+                seq_id: "frag_a".to_string(),
+                bp: 420,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_b".to_string(),
+                bp: 950,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_c".to_string(),
+                bp: 1210,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_d".to_string(),
+                bp: 1210,
+                circular: false,
+            },
         ];
-        let layout = build_pool_gel_layout(&members, &[]).unwrap();
+        let layout = build_pool_gel_layout(&members, &[], None).unwrap();
         assert!(!layout.selected_ladders.is_empty());
         assert!(layout.lanes.iter().any(|l| l.is_ladder));
         assert!(layout.lanes.iter().any(|l| !l.is_ladder));
@@ -532,14 +752,28 @@ mod tests {
     #[test]
     fn test_export_pool_gel_svg() {
         let members = vec![
-            ("frag_a".to_string(), 350),
-            ("frag_b".to_string(), 820),
-            ("frag_c".to_string(), 1650),
+            GelSampleMember {
+                seq_id: "frag_a".to_string(),
+                bp: 350,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_b".to_string(),
+                bp: 820,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_c".to_string(),
+                bp: 1650,
+                circular: false,
+            },
         ];
-        let layout = build_pool_gel_layout(&members, &[]).unwrap();
+        let layout = build_pool_gel_layout(&members, &[], None).unwrap();
         let svg = export_pool_gel_svg(&layout);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Serial Gel Preview"));
+        assert!(svg.contains("Fragment table"));
+        assert!(svg.contains("conditions:"));
     }
 
     #[test]
@@ -547,15 +781,27 @@ mod tests {
         let samples = vec![
             GelSampleInput {
                 name: "Vector".to_string(),
-                members: vec![("vector".to_string(), 4952)],
+                members: vec![GelSampleMember {
+                    seq_id: "vector".to_string(),
+                    bp: 4952,
+                    circular: true,
+                }],
             },
             GelSampleInput {
                 name: "Insert".to_string(),
-                members: vec![("insert".to_string(), 314)],
+                members: vec![GelSampleMember {
+                    seq_id: "insert".to_string(),
+                    bp: 314,
+                    circular: false,
+                }],
             },
             GelSampleInput {
                 name: "Product".to_string(),
-                members: vec![("product".to_string(), 5266)],
+                members: vec![GelSampleMember {
+                    seq_id: "product".to_string(),
+                    bp: 5266,
+                    circular: true,
+                }],
             },
         ];
         let layout = build_serial_gel_layout(
@@ -564,6 +810,7 @@ mod tests {
                 "NEB 100bp DNA Ladder".to_string(),
                 "NEB 1kb DNA Ladder".to_string(),
             ],
+            None,
         )
         .expect("layout");
         assert!(layout.lanes.first().is_some_and(|lane| lane.is_ladder));
@@ -587,15 +834,27 @@ mod tests {
     #[cfg(feature = "snapshot-tests")]
     fn snapshot_pool_gel_svg() {
         let members = vec![
-            ("frag_a".to_string(), 350),
-            ("frag_b".to_string(), 820),
-            ("frag_c".to_string(), 1650),
+            GelSampleMember {
+                seq_id: "frag_a".to_string(),
+                bp: 350,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_b".to_string(),
+                bp: 820,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_c".to_string(),
+                bp: 1650,
+                circular: false,
+            },
         ];
         let ladders = vec![
             "NEB 100bp DNA Ladder".to_string(),
             "NEB 1kb DNA Ladder".to_string(),
         ];
-        let layout = build_pool_gel_layout(&members, &ladders).unwrap();
+        let layout = build_pool_gel_layout(&members, &ladders, None).unwrap();
         let svg = export_pool_gel_svg(&layout);
         let expected = include_str!("../tests/snapshots/pool_gel/minimal.svg");
         assert_eq!(svg, expected);
@@ -606,17 +865,100 @@ mod tests {
     #[ignore]
     fn write_pool_gel_snapshot() {
         let members = vec![
-            ("frag_a".to_string(), 350),
-            ("frag_b".to_string(), 820),
-            ("frag_c".to_string(), 1650),
+            GelSampleMember {
+                seq_id: "frag_a".to_string(),
+                bp: 350,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_b".to_string(),
+                bp: 820,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "frag_c".to_string(),
+                bp: 1650,
+                circular: false,
+            },
         ];
         let ladders = vec![
             "NEB 100bp DNA Ladder".to_string(),
             "NEB 1kb DNA Ladder".to_string(),
         ];
-        let layout = build_pool_gel_layout(&members, &ladders).unwrap();
+        let layout = build_pool_gel_layout(&members, &ladders, None).unwrap();
         let svg = export_pool_gel_svg(&layout);
         fs::create_dir_all("tests/snapshots/pool_gel").unwrap();
         fs::write("tests/snapshots/pool_gel/minimal.svg", svg).unwrap();
+    }
+
+    #[test]
+    fn test_topology_aware_circular_dna_runs_lower_than_linear_same_bp() {
+        let members = vec![
+            GelSampleMember {
+                seq_id: "linear".to_string(),
+                bp: 5000,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "circular".to_string(),
+                bp: 5000,
+                circular: true,
+            },
+        ];
+        let layout = build_pool_gel_layout(&members, &[], None).expect("layout");
+        let sample_lane = layout
+            .lanes
+            .iter()
+            .find(|lane| !lane.is_ladder)
+            .expect("sample lane");
+        assert_eq!(sample_lane.bands.len(), 2);
+        let circular_band = sample_lane
+            .bands
+            .iter()
+            .find(|band| band.topology_label == "circular")
+            .expect("circular band");
+        let linear_band = sample_lane
+            .bands
+            .iter()
+            .find(|band| band.topology_label == "linear")
+            .expect("linear band");
+        assert!(circular_band.apparent_bp < linear_band.apparent_bp);
+    }
+
+    #[test]
+    fn test_mass_based_intensity_favors_larger_single_band() {
+        let members = vec![
+            GelSampleMember {
+                seq_id: "small".to_string(),
+                bp: 300,
+                circular: false,
+            },
+            GelSampleMember {
+                seq_id: "large".to_string(),
+                bp: 5000,
+                circular: false,
+            },
+        ];
+        let layout = build_serial_gel_layout(
+            &[
+                GelSampleInput {
+                    name: "Small".to_string(),
+                    members: vec![members[0].clone()],
+                },
+                GelSampleInput {
+                    name: "Large".to_string(),
+                    members: vec![members[1].clone()],
+                },
+            ],
+            &[],
+            None,
+        )
+        .expect("layout");
+        let sample_lanes = layout
+            .lanes
+            .iter()
+            .filter(|lane| !lane.is_ladder)
+            .collect::<Vec<_>>();
+        assert!(sample_lanes[1].bands[0].intensity > sample_lanes[0].bands[0].intensity);
     }
 }

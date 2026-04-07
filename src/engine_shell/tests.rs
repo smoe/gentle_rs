@@ -1079,12 +1079,15 @@ fn parse_render_pool_gel_with_ladders() {
             ladders,
             container_ids,
             arrangement_id,
+            conditions,
         } => {
             assert_eq!(inputs, vec!["a".to_string(), "b".to_string()]);
             assert_eq!(output, "out.svg".to_string());
             assert_eq!(ladders, Some(vec!["1kb".to_string(), "100bp".to_string()]));
             assert_eq!(container_ids, None);
             assert_eq!(arrangement_id, None);
+            assert_eq!(conditions.agarose_percent, 1.0);
+            assert!(conditions.topology_aware);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -1101,12 +1104,14 @@ fn parse_render_pool_gel_from_arrangement() {
             ladders,
             container_ids,
             arrangement_id,
+            conditions,
         } => {
             assert!(inputs.is_empty());
             assert_eq!(output, "out.svg".to_string());
             assert_eq!(ladders, None);
             assert_eq!(container_ids, None);
             assert_eq!(arrangement_id, Some("arrangement-2".to_string()));
+            assert_eq!(conditions.buffer_model.as_str(), "tae");
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -1123,12 +1128,35 @@ fn parse_render_gel_svg_alias() {
             ladders,
             container_ids,
             arrangement_id,
+            conditions,
         } => {
             assert!(inputs.is_empty());
             assert_eq!(output, "out.svg".to_string());
             assert_eq!(ladders, None);
             assert_eq!(container_ids, None);
             assert_eq!(arrangement_id, Some("arrangement-2".to_string()));
+            assert!(conditions.topology_aware);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_render_pool_gel_with_conditions() {
+    let cmd = parse_shell_line(
+        "render-pool-gel-svg - out.svg --arrangement arrangement-2 --agarose-pct 1.6 --buffer tbe --topology-aware false",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RenderPoolGelSvg {
+            arrangement_id,
+            conditions,
+            ..
+        } => {
+            assert_eq!(arrangement_id, Some("arrangement-2".to_string()));
+            assert_eq!(conditions.agarose_percent, 1.6);
+            assert_eq!(conditions.buffer_model.as_str(), "tbe");
+            assert!(!conditions.topology_aware);
         }
         other => panic!("unexpected command: {other:?}"),
     }

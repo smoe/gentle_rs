@@ -2257,8 +2257,14 @@ Controls:
     ladder on both sides, so single-ladder selection remains simple
   - `Auto` on both sides previews/export uses shared engine auto ladder
     selection
+  - arrangement gel preview now also exposes one shared gel-condition bundle:
+    - agarose %
+    - buffer (`TAE` / `TBE`)
+    - topology-aware circular migration on/off
   - `Save to Arrangement` persists the currently selected ladder pair for later
     `Export Gel` reuse
+  - condition changes refresh the preview immediately and are reused by
+    `Export SVG...` from that preview window
 
 ## Rack View
 

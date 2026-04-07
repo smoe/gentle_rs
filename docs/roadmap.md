@@ -3109,13 +3109,15 @@ Planned upgrades:
 - Multi-lane digest conditions with per-lane enzyme sets and batch
   "apply-to-all" behavior.
 - Optional uncut/topology-aware migration model for circular DNA
-  (supercoiled/nicked/linearized lane behavior).
-- Band intensity based on estimated DNA mass per band, not only multiplicity.
+  (baseline heuristic now implemented for circular-vs-linear apparent mobility;
+  richer supercoiled/nicked/linearized modeling still open).
+- Band intensity based on estimated DNA mass per band, not only multiplicity
+  (baseline implemented).
 - Co-migration grouping thresholds and explicit merged-band annotation.
 - Lane-side fragment table with bp, estimated mass, source fragments, and
-  cut-site context.
+  cut-site context (compact baseline implemented).
 - Optional gel-conditions parameters (agarose %, buffer/model preset) with a
-  deterministic default profile.
+  deterministic default profile (baseline implemented in shared engine/CLI/GUI).
 
 #### C) Sequence/map clarity benchmarking (high value)
 

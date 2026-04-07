@@ -4,8 +4,9 @@ use gentle::{
     about,
     engine::{
         DbSnpFetchProgress, Engine, EngineStateSummary, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
+        GelBufferModel, GelRunConditions, GenomeGeneExtractMode, GenomeTrackImportProgress,
+        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
+        RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -29,6 +30,14 @@ use std::{
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
+
+fn parse_bool_flag(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "y" | "on" => Some(true),
+        "false" | "0" | "no" | "n" | "off" => Some(false),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PoolEnd {
@@ -2595,7 +2604,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 2 {
                 usage();
                 return Err(format!(
-                    "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+                    "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]"
                 ));
             }
             let ids = match args[cmd_idx + 1].trim() {
@@ -2611,6 +2620,7 @@ fn run() -> Result<(), String> {
             let mut ladders: Option<Vec<String>> = None;
             let mut container_ids: Option<Vec<String>> = None;
             let mut arrangement_id: Option<String> = None;
+            let mut conditions = GelRunConditions::default();
             let mut idx = cmd_idx + 3;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -2654,9 +2664,47 @@ fn run() -> Result<(), String> {
                         }
                         idx += 2;
                     }
+                    "--agarose-pct" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --agarose-pct".to_string());
+                        }
+                        conditions.agarose_percent =
+                            args[idx + 1].trim().parse::<f32>().map_err(|e| {
+                                format!("Invalid agarose percent '{}': {e}", args[idx + 1])
+                            })?;
+                        idx += 2;
+                    }
+                    "--buffer" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --buffer".to_string());
+                        }
+                        conditions.buffer_model = match args[idx + 1].trim().to_ascii_lowercase().as_str() {
+                            "tae" => GelBufferModel::Tae,
+                            "tbe" => GelBufferModel::Tbe,
+                            other => {
+                                return Err(format!(
+                                    "Unknown buffer '{other}' for {cmd_name} (expected tae|tbe)"
+                                ));
+                            }
+                        };
+                        idx += 2;
+                    }
+                    "--topology-aware" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --topology-aware".to_string());
+                        }
+                        conditions.topology_aware =
+                            parse_bool_flag(&args[idx + 1]).ok_or_else(|| {
+                                format!(
+                                    "Boolean value '{}' is invalid (expected true|false|1|0|yes|no|on|off)",
+                                    args[idx + 1]
+                                )
+                            })?;
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
-                            "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement)"
+                            "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement/--agarose-pct/--buffer/--topology-aware)"
                         ));
                     }
                 }
@@ -2677,6 +2725,7 @@ fn run() -> Result<(), String> {
                     ladders,
                     container_ids,
                     arrangement_id,
+                    conditions: Some(conditions.normalized()),
                 })
                 .map_err(|e| e.to_string())?;
             engine

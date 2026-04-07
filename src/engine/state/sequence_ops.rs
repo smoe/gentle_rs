@@ -176,7 +176,8 @@ impl GentleEngine {
                     message: format!("Container '{container_id}' has no members"),
                 });
             }
-            let mut members: Vec<(String, usize)> = Vec::with_capacity(container.members.len());
+            let mut members: Vec<crate::pool_gel::GelSampleMember> =
+                Vec::with_capacity(container.members.len());
             for seq_id in &container.members {
                 let dna = self
                     .state
@@ -188,7 +189,11 @@ impl GentleEngine {
                             "Container '{container_id}' references unknown sequence '{seq_id}'"
                         ),
                     })?;
-                members.push((seq_id.clone(), dna.len()));
+                members.push(crate::pool_gel::GelSampleMember {
+                    seq_id: seq_id.clone(),
+                    bp: dna.len(),
+                    circular: dna.is_circular(),
+                });
             }
             let lane_name = container
                 .name
@@ -239,6 +244,7 @@ impl GentleEngine {
         container_ids: Option<&[ContainerId]>,
         arrangement_id: Option<&str>,
         ladder_override: Option<&[String]>,
+        conditions: Option<&gentle_protocol::GelRunConditions>,
     ) -> Result<crate::pool_gel::PoolGelLayout, EngineError> {
         let mut ladder_names = ladder_override
             .map(Self::normalize_serial_gel_ladders_slice)
@@ -274,7 +280,8 @@ impl GentleEngine {
                             .to_string(),
                 });
                 }
-                let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
+                let mut members: Vec<crate::pool_gel::GelSampleMember> =
+                    Vec::with_capacity(inputs.len());
                 for seq_id in inputs {
                     let dna = self
                         .state
@@ -284,17 +291,23 @@ impl GentleEngine {
                             code: ErrorCode::NotFound,
                             message: format!("Sequence '{seq_id}' not found"),
                         })?;
-                    members.push((seq_id.clone(), dna.len()));
+                    members.push(crate::pool_gel::GelSampleMember {
+                        seq_id: seq_id.clone(),
+                        bp: dna.len(),
+                        circular: dna.is_circular(),
+                    });
                 }
                 vec![GelSampleInput {
                     name: format!("Input tube (n={})", members.len()),
                     members,
                 }]
             };
-        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names).map_err(|e| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: e,
-        })
+        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names, conditions).map_err(
+            |e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: e,
+            },
+        )
     }
 
     pub(super) fn flatten_container_members(

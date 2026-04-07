@@ -1387,6 +1387,7 @@ impl LuaInterface {
                             ladders,
                             container_ids: None,
                             arrangement_id: None,
+                            conditions: None,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]

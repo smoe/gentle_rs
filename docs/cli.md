@@ -1591,7 +1591,7 @@ Rendering export commands:
     - catalog JSON and project state files remain unchanged
     - `.gentle_state.json`, MCP/runtime files, backdrop/runtime caches, and
       `target/` are out of scope
-- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
+- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]`
   - Calls engine operation `RenderPoolGelSvg`.
   - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
   - `--containers` renders one lane per container ID.
@@ -1603,6 +1603,9 @@ Rendering export commands:
     selection.
   - If `--ladders` is omitted without `--arrangement`, engine auto-selects one
     or two ladders based on pool bp range.
+  - `--agarose-pct` / `--buffer` / `--topology-aware` override the shared
+    deterministic gel-run profile for that render.
+  - Defaults are `1.0%`, `TAE`, topology-aware `true`.
 - `render-gel-svg ...`
   - Alias for `render-pool-gel-svg ...` with identical semantics.
 - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`

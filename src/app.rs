@@ -1915,15 +1915,36 @@ struct RackDropGhostState {
     started_at: Instant,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct ArrangementGelPreviewState {
     arrangement_id: String,
     arrangement_title: String,
     saved_ladders: Vec<String>,
     left_ladder_name: String,
     right_ladder_name: String,
+    agarose_percent_text: String,
+    buffer_model: crate::engine::GelBufferModel,
+    topology_aware: bool,
     svg_uri: String,
     status: String,
+}
+
+impl Default for ArrangementGelPreviewState {
+    fn default() -> Self {
+        let defaults = crate::engine::GelRunConditions::default();
+        Self {
+            arrangement_id: String::new(),
+            arrangement_title: String::new(),
+            saved_ladders: vec![],
+            left_ladder_name: String::new(),
+            right_ladder_name: String::new(),
+            agarose_percent_text: format!("{:.1}", defaults.agarose_percent),
+            buffer_model: defaults.buffer_model,
+            topology_aware: defaults.topology_aware,
+            svg_uri: String::new(),
+            status: String::new(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -6396,6 +6417,7 @@ Error: `{err}`"
         container_ids: Option<Vec<String>>,
         arrangement_id: Option<String>,
         ladders: Option<Vec<String>>,
+        conditions: Option<crate::engine::GelRunConditions>,
     ) {
         let stem = Self::sanitize_file_stem(default_stem, "serial_gel");
         let default_file_name = format!("{stem}.gel.svg");
@@ -6418,6 +6440,7 @@ Error: `{err}`"
                 ladders,
                 container_ids,
                 arrangement_id,
+                conditions,
             });
         match result {
             Ok(op_result) => {
@@ -6486,6 +6509,24 @@ Error: `{err}`"
         }
     }
 
+    fn arrangement_gel_preview_effective_conditions(
+        &self,
+    ) -> std::result::Result<crate::engine::GelRunConditions, String> {
+        let raw = self.arrangement_gel_preview.agarose_percent_text.trim();
+        let agarose_percent = if raw.is_empty() {
+            crate::engine::GelRunConditions::default().agarose_percent
+        } else {
+            raw.parse::<f32>()
+                .map_err(|e| format!("Invalid agarose percent '{raw}': {e}"))?
+        };
+        Ok(crate::engine::GelRunConditions {
+            agarose_percent,
+            buffer_model: self.arrangement_gel_preview.buffer_model,
+            topology_aware: self.arrangement_gel_preview.topology_aware,
+        }
+        .normalized())
+    }
+
     fn coerce_arrangement_gel_preview_pair(&mut self) {
         let left = self
             .arrangement_gel_preview
@@ -6533,6 +6574,11 @@ Error: `{err}`"
         } else {
             arrangement.name.clone()
         };
+        let default_conditions = crate::engine::GelRunConditions::default();
+        self.arrangement_gel_preview.agarose_percent_text =
+            format!("{:.1}", default_conditions.agarose_percent);
+        self.arrangement_gel_preview.buffer_model = default_conditions.buffer_model;
+        self.arrangement_gel_preview.topology_aware = default_conditions.topology_aware;
         self.arrangement_gel_preview.status.clear();
         self.arrangement_gel_preview.svg_uri.clear();
         self.set_arrangement_gel_preview_controls_from_ladders(&arrangement.ladders);
@@ -6561,6 +6607,14 @@ Error: `{err}`"
             return;
         }
         let override_ladders = self.arrangement_gel_preview_effective_ladders();
+        let conditions = match self.arrangement_gel_preview_effective_conditions() {
+            Ok(conditions) => conditions,
+            Err(err) => {
+                self.arrangement_gel_preview.status = err;
+                self.arrangement_gel_preview.svg_uri.clear();
+                return;
+            }
+        };
         let layout_result = {
             let engine = self.engine.read().unwrap();
             engine.build_serial_gel_layout_for_render(
@@ -6568,6 +6622,7 @@ Error: `{err}`"
                 None,
                 Some(arrangement_id.as_str()),
                 Some(override_ladders.as_slice()),
+                Some(&conditions),
             )
         };
         let layout = match layout_result {
@@ -21851,6 +21906,67 @@ Error: `{err}`"
             self.refresh_arrangement_gel_preview_svg();
         }
 
+        let mut condition_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Conditions");
+            ui.label("Agarose %");
+            condition_changed |= ui
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.arrangement_gel_preview.agarose_percent_text,
+                    )
+                    .desired_width(52.0),
+                )
+                .changed();
+            ui.separator();
+            ui.label("Buffer");
+            egui::ComboBox::from_id_salt("arrangement_gel_buffer_model")
+                .selected_text(
+                    self.arrangement_gel_preview
+                        .buffer_model
+                        .as_str()
+                        .to_ascii_uppercase(),
+                )
+                .show_ui(ui, |ui| {
+                    condition_changed |= ui
+                        .selectable_value(
+                            &mut self.arrangement_gel_preview.buffer_model,
+                            crate::engine::GelBufferModel::Tae,
+                            "TAE",
+                        )
+                        .changed();
+                    condition_changed |= ui
+                        .selectable_value(
+                            &mut self.arrangement_gel_preview.buffer_model,
+                            crate::engine::GelBufferModel::Tbe,
+                            "TBE",
+                        )
+                        .changed();
+                });
+            ui.separator();
+            condition_changed |= ui
+                .checkbox(
+                    &mut self.arrangement_gel_preview.topology_aware,
+                    "Topology-aware circular migration",
+                )
+                .changed();
+            if ui
+                .button("Reset conditions")
+                .on_hover_text("Restore the deterministic default gel conditions")
+                .clicked()
+            {
+                let defaults = crate::engine::GelRunConditions::default();
+                self.arrangement_gel_preview.agarose_percent_text =
+                    format!("{:.1}", defaults.agarose_percent);
+                self.arrangement_gel_preview.buffer_model = defaults.buffer_model;
+                self.arrangement_gel_preview.topology_aware = defaults.topology_aware;
+                condition_changed = true;
+            }
+        });
+        if condition_changed {
+            self.refresh_arrangement_gel_preview_svg();
+        }
+
         ui.horizontal(|ui| {
             if ui
                 .button("Preview")
@@ -21880,6 +21996,7 @@ Error: `{err}`"
                     None,
                     Some(self.arrangement_gel_preview.arrangement_id.clone()),
                     Some(self.arrangement_gel_preview_effective_ladders()),
+                    self.arrangement_gel_preview_effective_conditions().ok(),
                 );
             }
         });
@@ -31336,7 +31453,7 @@ Error: `{err}`"
                                 let mut hover_pool_range: Option<(usize, usize)> = None;
                                 let mut hover_ladder_hint: Option<String> = None;
                                 if row.kind == LineageNodeKind::Sequence && row.pool_size > 1 {
-                                    let member_lengths: Vec<(String, usize)> = {
+                                    let member_lengths: Vec<crate::pool_gel::GelSampleMember> = {
                                         let engine = self.engine.read().unwrap();
                                         row.pool_members
                                             .iter()
@@ -31345,24 +31462,32 @@ Error: `{err}`"
                                                     .state()
                                                     .sequences
                                                     .get(seq_id)
-                                                    .map(|dna| (seq_id.clone(), dna.len()))
+                                                    .map(|dna| crate::pool_gel::GelSampleMember {
+                                                        seq_id: seq_id.clone(),
+                                                        bp: dna.len(),
+                                                        circular: dna.is_circular(),
+                                                    })
                                             })
                                             .collect()
                                     };
                                     if !member_lengths.is_empty() {
                                         let min_bp = member_lengths
                                             .iter()
-                                            .map(|(_, bp)| *bp)
+                                            .map(|member| member.bp)
                                             .min()
                                             .unwrap_or(0);
                                         let max_bp = member_lengths
                                             .iter()
-                                            .map(|(_, bp)| *bp)
+                                            .map(|member| member.bp)
                                             .max()
                                             .unwrap_or(min_bp);
                                         hover_pool_range = Some((min_bp, max_bp));
                                         if let Ok(layout) =
-                                            crate::pool_gel::build_pool_gel_layout(&member_lengths, &[])
+                                            crate::pool_gel::build_pool_gel_layout(
+                                                &member_lengths,
+                                                &[],
+                                                None,
+                                            )
                                         {
                                             if !layout.selected_ladders.is_empty() {
                                                 hover_ladder_hint = Some(layout.selected_ladders.join(" + "));
@@ -32951,10 +33076,10 @@ Error: `{err}`"
             });
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
-            self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None);
+            self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None, None);
         }
         if let Some((stem, arrangement_id)) = export_arrangement_gel.take() {
-            self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None);
+            self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None, None);
         }
         if let Some(arrangement_id) = open_arrangement_gel_preview.take() {
             self.open_arrangement_gel_preview_dialog(&arrangement_id);
@@ -36493,8 +36618,9 @@ Error: `{err}`"
                 ladders,
                 container_ids,
                 arrangement_id,
+                conditions,
             } => format!(
-                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}",
+                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}, conditions={}",
                 inputs.join(", "),
                 container_ids
                     .as_ref()
@@ -36511,7 +36637,11 @@ Error: `{err}`"
                     .as_ref()
                     .map(|v| v.join(", "))
                     .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "auto".to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                conditions
+                    .as_ref()
+                    .map(crate::engine::GelRunConditions::describe)
+                    .unwrap_or_else(|| crate::engine::GelRunConditions::default().describe())
             ),
             Operation::CreateArrangementSerial {
                 container_ids,

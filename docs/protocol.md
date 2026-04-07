@@ -832,7 +832,7 @@ Current draft operations:
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
-- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id? }`
+- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
 - `SetArrangementLadders { arrangement_id, ladders? }`
 - `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
@@ -1837,13 +1837,29 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Accepts explicit `inputs` (sequence ids) and an output `path`.
 - Optional `container_ids` renders one lane per referenced stored container.
 - Optional `arrangement_id` renders one lane per stored serial-arrangement lane.
-- Computes pool molecular-weight proxy from sequence bp lengths.
+- Optional `conditions` carries one shared gel-run profile for the whole render:
+  - `agarose_percent`
+  - `buffer_model` (`tae` / `tbe`)
+  - `topology_aware`
+- Computes pool migration from sequence bp length plus one deterministic
+  heuristic condition model:
+  - agarose/buffer reshape the shared migration curve
+  - topology-aware mode shifts circular DNA to a faster apparent migration than
+    linear DNA of the same bp count
+- Computes sample-band brightness from estimated DNA mass proxy, not only
+  multiplicity.
 - Chooses one or two ladders to span pool range:
   - from explicit `ladders` list when provided
   - otherwise from saved arrangement ladders when `arrangement_id` is present
     and the arrangement stores a ladder choice
   - otherwise from built-in ladder catalog (auto mode)
-- Renders ladder lanes plus pooled band lane as SVG artifact.
+- Renders ladder lanes plus pooled band lanes as SVG artifact.
+- The SVG also includes a compact fragment table for non-ladder lanes:
+  - observed apparent size
+  - actual bp
+  - topology hint
+  - estimated mass proxy
+  - source fragment labels
 
 `CreateArrangementSerial` semantics:
 

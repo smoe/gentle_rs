@@ -685,6 +685,7 @@ pub enum ShellCommand {
         ladders: Option<Vec<String>>,
         container_ids: Option<Vec<String>>,
         arrangement_id: Option<String>,
+        conditions: gentle_protocol::GelRunConditions,
     },
     CreateArrangementSerial {
         container_ids: Vec<String>,
@@ -4702,6 +4703,7 @@ impl ShellCommand {
                 ladders,
                 container_ids,
                 arrangement_id,
+                conditions,
             } => {
                 let ladders = ladders
                     .as_ref()
@@ -4717,10 +4719,11 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
                 format!(
-                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders})",
+                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders}, conditions={})",
                     inputs.len(),
                     containers,
-                    arrangement
+                    arrangement,
+                    conditions.describe()
                 )
             }
             Self::CreateArrangementSerial {
@@ -10721,6 +10724,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut ladders: Option<Vec<String>> = None;
             let mut container_ids: Option<Vec<String>> = None;
             let mut arrangement_id: Option<String> = None;
+            let mut conditions = gentle_protocol::GelRunConditions::default();
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -10754,6 +10758,48 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                         idx += 2;
                     }
+                    "--agarose-pct" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --agarose-pct".to_string());
+                        }
+                        conditions.agarose_percent =
+                            tokens[idx + 1].trim().parse::<f32>().map_err(|e| {
+                                format!("Invalid agarose percent '{}': {e}", tokens[idx + 1])
+                            })?;
+                        idx += 2;
+                    }
+                    "--buffer" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --buffer".to_string());
+                        }
+                        conditions.buffer_model = match tokens[idx + 1]
+                            .trim()
+                            .to_ascii_lowercase()
+                            .as_str()
+                        {
+                            "tae" => gentle_protocol::GelBufferModel::Tae,
+                            "tbe" => gentle_protocol::GelBufferModel::Tbe,
+                            other => {
+                                return Err(format!(
+                                    "Unknown buffer '{other}' (expected tae|tbe)"
+                                ));
+                            }
+                        };
+                        idx += 2;
+                    }
+                    "--topology-aware" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --topology-aware".to_string());
+                        }
+                        conditions.topology_aware =
+                            parse_bool_binding(&tokens[idx + 1]).ok_or_else(|| {
+                                format!(
+                                    "Boolean value '{}' is invalid (expected true|false|1|0|yes|no)",
+                                    tokens[idx + 1]
+                                )
+                            })?;
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!("Unknown argument '{other}' for {cmd_name}"));
                     }
@@ -10773,6 +10819,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 ladders,
                 container_ids,
                 arrangement_id,
+                conditions: conditions.normalized(),
             })
         }
         "arrange-serial" => {
@@ -13837,6 +13884,7 @@ fn execute_arrangement_rack_and_ladder_command(
             ladders,
             container_ids,
             arrangement_id,
+            conditions,
         } => Ok(ShellRunResult {
             state_changed: false,
             output: json!({
@@ -13847,6 +13895,7 @@ fn execute_arrangement_rack_and_ladder_command(
                         ladders: ladders.clone(),
                         container_ids: container_ids.clone(),
                         arrangement_id: arrangement_id.clone(),
+                        conditions: Some(conditions.clone()),
                     })
                     .map_err(|e| e.to_string())?
             }),
@@ -16110,6 +16159,7 @@ fn execute_shell_command_with_options_inner(
             ladders,
             container_ids,
             arrangement_id,
+            conditions,
         } => {
             let op_result = engine
                 .apply(Operation::RenderPoolGelSvg {
@@ -16118,6 +16168,7 @@ fn execute_shell_command_with_options_inner(
                     ladders: ladders.clone(),
                     container_ids: container_ids.clone(),
                     arrangement_id: arrangement_id.clone(),
+                    conditions: Some(conditions.clone()),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
