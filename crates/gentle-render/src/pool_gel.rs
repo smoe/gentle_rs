@@ -529,6 +529,39 @@ fn normalized_lane_role(lane: &PoolGelLane) -> String {
     }
 }
 
+fn canonical_role_display(role: &str) -> &'static str {
+    match role {
+        "insert" => "Insert",
+        "vector" => "Vector",
+        "product" => "Product",
+        _ => "Sample",
+    }
+}
+
+fn lane_hint_prefix(lane: &PoolGelLane, role: &str, plural: bool) -> String {
+    let canonical = canonical_role_display(role);
+    if plural {
+        return format!("{canonical} lanes");
+    }
+    let lane_name = lane.name.trim();
+    let normalized_name = lane_name.to_ascii_lowercase();
+    let normalized_role = role.to_ascii_lowercase();
+    if lane_name.is_empty() || normalized_name.starts_with(&normalized_role) {
+        format!("{canonical} lane")
+    } else {
+        format!("{canonical} lane ({lane_name})")
+    }
+}
+
+fn lane_role_badge(role: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match role {
+        "insert" => Some(("INSERT", "#d1fae5", "#065f46")),
+        "vector" => Some(("VECTOR", "#dbeafe", "#1d4ed8")),
+        "product" => Some(("PRODUCT", "#fee2e2", "#b45309")),
+        _ => None,
+    }
+}
+
 fn singleton_actual_bp(lane: &PoolGelLane) -> Option<usize> {
     if lane.is_ladder || lane.bands.len() != 1 {
         return None;
@@ -560,47 +593,66 @@ fn comparison_hint_lines(layout: &PoolGelLayout) -> Vec<String> {
     let mut lines = vec![];
     if !insert_lanes.is_empty() {
         if insert_lanes.len() == 1 {
+            let prefix = lane_hint_prefix(insert_lanes[0], "insert", false);
             if let Some(insert_bp) = singleton_actual_bp(insert_lanes[0]) {
                 lines.push(format!(
-                    "Insert lane: compare against the fine ladder and confirm the expected {} insert band.",
+                    "{prefix}: compare against the fine ladder and confirm the expected {} insert band.",
                     format_bp_label(insert_bp)
                 ));
             } else {
                 lines.push(
-                    "Insert lane: compare against the fine ladder and confirm the small-fragment insert readout."
-                        .to_string(),
+                    format!(
+                        "{prefix}: compare against the fine ladder and confirm the small-fragment insert readout."
+                    ),
                 );
             }
         } else {
+            let prefix = lane_hint_prefix(insert_lanes[0], "insert", true);
             let insert_total_bp = insert_lanes.iter().filter_map(|lane| singleton_actual_bp(lane)).sum::<usize>();
             if insert_total_bp > 0 {
                 lines.push(format!(
-                    "Insert lanes: compare each insert to the fine ladder; combined expected added payload is {}.",
+                    "{prefix}: compare each insert to the fine ladder; combined expected added payload is {}.",
                     format_bp_label(insert_total_bp)
                 ));
             } else {
                 lines.push(
-                    "Insert lanes: compare each insert to the fine ladder before reading the product shift."
-                        .to_string(),
+                    format!(
+                        "{prefix}: compare each insert to the fine ladder before reading the product shift."
+                    ),
                 );
             }
         }
     }
 
     if let (Some(vector_lane), Some(product_lane)) = (vector_lane, product_lane) {
+        let vector_label = if vector_lane.name.trim().is_empty()
+            || vector_lane.name.trim().eq_ignore_ascii_case("vector")
+        {
+            "Vector".to_string()
+        } else {
+            format!("Vector ({})", vector_lane.name.trim())
+        };
+        let product_label = if product_lane.name.trim().is_empty()
+            || product_lane.name.trim().eq_ignore_ascii_case("product")
+        {
+            "product".to_string()
+        } else {
+            format!("product ({})", product_lane.name.trim())
+        };
         if let (Some(vector_bp), Some(product_bp)) =
             (singleton_actual_bp(vector_lane), singleton_actual_bp(product_lane))
         {
             let delta_bp = product_bp.saturating_sub(vector_bp);
             if delta_bp > 0 {
                 lines.push(format!(
-                    "Vector vs product: product should run as the larger construct, about {} above the vector backbone.",
+                    "{vector_label} vs {product_label}: product should run as the larger construct, about {} above the vector backbone.",
                     format_bp_label(delta_bp)
                 ));
             } else if delta_bp == 0 {
                 lines.push(
-                    "Vector vs product: backbone-sized lanes match closely, so rely on topology label and insert lane confirmation."
-                        .to_string(),
+                    format!(
+                        "{vector_label} vs {product_label}: backbone-sized lanes match closely, so rely on topology label and insert lane confirmation."
+                    ),
                 );
             }
             let insert_total_bp = insert_lanes
@@ -744,6 +796,34 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                     .set("font-size", 13)
                     .set("fill", "#0f172a"),
             );
+
+        if !lane.is_ladder {
+            if let Some((badge_text, badge_fill, badge_text_fill)) =
+                lane_role_badge(&normalized_lane_role(lane))
+            {
+                doc = doc
+                    .add(
+                        Rectangle::new()
+                            .set("x", x - 28.0)
+                            .set("y", GEL_BOTTOM + 34.0)
+                            .set("width", 56.0)
+                            .set("height", 16.0)
+                            .set("rx", 8)
+                            .set("ry", 8)
+                            .set("fill", badge_fill),
+                    )
+                    .add(
+                        Text::new(badge_text)
+                            .set("x", x)
+                            .set("y", GEL_BOTTOM + 45.0)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 9)
+                            .set("font-weight", 700)
+                            .set("fill", badge_text_fill),
+                    );
+            }
+        }
 
         for band in &lane.bands {
             let y = layout.y_for_bp(band.apparent_bp, GEL_TOP + 14.0, GEL_BOTTOM - 14.0);

@@ -7806,8 +7806,8 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
     let mut state = ProjectState::default();
     let mut vector = seq(&"ATGC".repeat(1238));
     vector.set_circular(true);
-    let insert = seq(&"ATGC".repeat(78) + "AT");
-    let mut product = seq(&"ATGC".repeat(1316) + "AT");
+    let insert = seq(&("ATGC".repeat(78) + "AT"));
+    let mut product = seq(&("ATGC".repeat(1316) + "AT"));
     product.set_circular(true);
     state.sequences.insert("vector".to_string(), vector);
     state.sequences.insert("insert".to_string(), insert);
@@ -7817,7 +7817,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
         Container {
             container_id: "container-1".to_string(),
             kind: ContainerKind::Singleton,
-            name: Some("Vector".to_string()),
+            name: Some("Tube A".to_string()),
             members: vec!["vector".to_string()],
             created_by_op: None,
             created_at_unix_ms: 0,
@@ -7828,7 +7828,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
         Container {
             container_id: "container-2".to_string(),
             kind: ContainerKind::Singleton,
-            name: Some("Insert".to_string()),
+            name: Some("Tube B".to_string()),
             members: vec!["insert".to_string()],
             created_by_op: None,
             created_at_unix_ms: 0,
@@ -7839,7 +7839,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
         Container {
             container_id: "container-3".to_string(),
             kind: ContainerKind::Singleton,
-            name: Some("Product".to_string()),
+            name: Some("Tube C".to_string()),
             members: vec!["product".to_string()],
             created_by_op: None,
             created_at_unix_ms: 0,
@@ -7886,9 +7886,13 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
         .unwrap();
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("Comparison hints"));
-    assert!(text.contains("Insert lane: compare against the fine ladder"));
+    assert!(text.contains("Insert lane (Tube B): compare against the fine ladder"));
+    assert!(text.contains("Vector (Tube A) vs product (Tube C):"));
     assert!(text.contains("product-vector delta matches the summed insert payload"));
     assert!(text.contains("314 bp"));
+    assert!(text.contains("VECTOR"));
+    assert!(text.contains("INSERT"));
+    assert!(text.contains("PRODUCT"));
 }
 
 #[test]

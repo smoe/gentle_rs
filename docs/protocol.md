@@ -1876,6 +1876,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - insert vs fine ladder sizing
   - vector vs product size-shift reading
   - simple product-minus-vector vs summed-insert consistency checks
+  - role badges under the lane labels so generic container names still read as
+    `VECTOR`, `INSERT`, or `PRODUCT`
 - When merged bands are present, the right-hand detail panel also adds a short
   `Merged-band notes` block that explains observed band position vs the
   underlying actual source-size span.

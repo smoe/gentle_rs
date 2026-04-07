@@ -2270,6 +2270,8 @@ Controls:
   - when the lane roles look like `vector` / `insert` / `product`, the
     right-hand detail panel adds `Comparison hints` for insert sizing and
     vector-vs-product interpretation
+  - matching role badges are drawn under the lane labels, so even generic lane
+    names like `Tube A/B/C` still read as vector/insert/product immediately
   - the right-hand detail panel adds `Merged-band notes` so grouped bands are
     explained as observed-vs-actual lane readouts
   - `Save to Arrangement` persists the currently selected ladder pair for later

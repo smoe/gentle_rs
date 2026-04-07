@@ -3132,6 +3132,8 @@ Planned upgrades:
 - Lane-side comparison hints for common analytical reads such as
   insert-vs-ladder and vector-vs-product interpretation (baseline implemented
   for role-labeled serial gels).
+- Role badges in gel output so arrangement semantics stay visible even when
+  lanes are named with generic container labels (baseline implemented).
 - Optional gel-conditions parameters (agarose %, buffer/model preset) with a
   deterministic default profile (baseline implemented in shared engine/CLI/GUI).
 
