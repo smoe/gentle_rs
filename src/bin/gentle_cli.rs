@@ -3,9 +3,9 @@
 use gentle::{
     about,
     engine::{
-        DbSnpFetchProgress, Engine, EngineStateSummary, GenomeAnnotationScope,
-        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
+        DbSnpFetchProgress, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
+        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
+        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
         RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
@@ -2707,15 +2707,16 @@ fn run() -> Result<(), String> {
                         if idx + 1 >= args.len() {
                             return Err("Missing value after --buffer".to_string());
                         }
-                        conditions.buffer_model = match args[idx + 1].trim().to_ascii_lowercase().as_str() {
-                            "tae" => GelBufferModel::Tae,
-                            "tbe" => GelBufferModel::Tbe,
-                            other => {
-                                return Err(format!(
-                                    "Unknown buffer '{other}' for {cmd_name} (expected tae|tbe)"
-                                ));
-                            }
-                        };
+                        conditions.buffer_model =
+                            match args[idx + 1].trim().to_ascii_lowercase().as_str() {
+                                "tae" => GelBufferModel::Tae,
+                                "tbe" => GelBufferModel::Tbe,
+                                other => {
+                                    return Err(format!(
+                                        "Unknown buffer '{other}' for {cmd_name} (expected tae|tbe)"
+                                    ));
+                                }
+                            };
                         idx += 2;
                     }
                     "--topology-aware" => {

@@ -1854,6 +1854,12 @@ Genome convenience commands:
     required so the updated catalog can be written as a copy.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Shows whether the genome cache is prepared/indexed.
+  - Also reports `effective_cache_dir`, `requested_catalog_key`,
+    `requested_family`, and `compatible_prepared_options` so "not prepared"
+    states explain exactly which cache root was inspected and whether a
+    same-family prepared install already exists.
+  - When the selected cache root does not contain the requested genome, output
+    also includes a ready-to-run `prepare_command` hint.
   - Also reports resolved source details: `sequence_source_type`,
     `annotation_source_type`, `sequence_source`, `annotation_source`.
   - Also reports optional mass metadata:
@@ -1939,6 +1945,9 @@ Helper convenience commands:
     roots with artifact-group byte totals.
   - Default roots are `data/genomes` for references and
     `data/helper_genomes` for helpers.
+  - Runtime defaults can be redirected for sibling worktrees via:
+    - `GENTLE_REFERENCE_CACHE_DIR`
+    - `GENTLE_HELPER_CACHE_DIR`
 - `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]`
   - Conservatively deletes derived cache artifacts or prepared installs inside
     the selected roots only.

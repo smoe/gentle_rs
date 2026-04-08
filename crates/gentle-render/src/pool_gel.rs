@@ -188,7 +188,11 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
         .iter()
         .map(|member| (member, apparent_bp_for_member(member, conditions)))
         .collect::<Vec<_>>();
-    projected.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.bp.cmp(&a.0.bp)).then(a.0.seq_id.cmp(&b.0.seq_id)));
+    projected.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then(b.0.bp.cmp(&a.0.bp))
+            .then(a.0.seq_id.cmp(&b.0.seq_id))
+    });
 
     let tolerance = co_migration_log_tolerance(conditions);
     let mut groups: Vec<Vec<(&GelSampleMember, usize)>> = vec![];
@@ -215,19 +219,29 @@ fn sample_bands(members: &[GelSampleMember], conditions: &GelRunConditions) -> V
         .into_iter()
         .map(|grouped| {
             let count = grouped.len();
-            let bp = grouped.iter().map(|(member, _)| member.bp).max().unwrap_or(1);
-            let min_bp = grouped.iter().map(|(member, _)| member.bp).min().unwrap_or(bp);
+            let bp = grouped
+                .iter()
+                .map(|(member, _)| member.bp)
+                .max()
+                .unwrap_or(1);
+            let min_bp = grouped
+                .iter()
+                .map(|(member, _)| member.bp)
+                .min()
+                .unwrap_or(bp);
             let estimated_mass_units = grouped
                 .iter()
                 .map(|(member, _)| estimate_member_mass_units(member))
                 .sum::<f32>();
             let apparent_bp = (grouped
                 .iter()
-                .map(|(member, apparent_bp)| *apparent_bp as f32 * estimate_member_mass_units(member))
+                .map(|(member, apparent_bp)| {
+                    *apparent_bp as f32 * estimate_member_mass_units(member)
+                })
                 .sum::<f32>()
                 / estimated_mass_units.max(1.0))
-                .round()
-                .max(1.0) as usize;
+            .round()
+            .max(1.0) as usize;
             let topology_label = {
                 let mut forms = grouped.iter().map(|(member, _)| member.topology_form);
                 let first = forms.next().unwrap_or(GelTopologyForm::Linear);
@@ -319,7 +333,11 @@ pub fn build_serial_gel_layout(
         });
     }
 
-    let pool_min = all_members.iter().map(|member| member.bp).min().unwrap_or(1);
+    let pool_min = all_members
+        .iter()
+        .map(|member| member.bp)
+        .min()
+        .unwrap_or(1);
     let pool_max = all_members
         .iter()
         .map(|member| member.bp)
@@ -497,7 +515,11 @@ fn merged_band_note_lines(layout: &PoolGelLayout) -> Vec<String> {
             let actual_label = if band.min_bp == band.bp {
                 format_bp_label(band.bp)
             } else {
-                format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+                format!(
+                    "{}..{}",
+                    format_bp_label(band.min_bp),
+                    format_bp_label(band.bp)
+                )
             };
             lines.push(format!(
                 "{}: {} fragments -> one observed {} band from {}",
@@ -608,7 +630,10 @@ fn comparison_hint_lines(layout: &PoolGelLayout) -> Vec<String> {
             }
         } else {
             let prefix = lane_hint_prefix(insert_lanes[0], "insert", true);
-            let insert_total_bp = insert_lanes.iter().filter_map(|lane| singleton_actual_bp(lane)).sum::<usize>();
+            let insert_total_bp = insert_lanes
+                .iter()
+                .filter_map(|lane| singleton_actual_bp(lane))
+                .sum::<usize>();
             if insert_total_bp > 0 {
                 lines.push(format!(
                     "{prefix}: compare each insert to the fine ladder; combined expected added payload is {}.",
@@ -639,9 +664,10 @@ fn comparison_hint_lines(layout: &PoolGelLayout) -> Vec<String> {
         } else {
             format!("product ({})", product_lane.name.trim())
         };
-        if let (Some(vector_bp), Some(product_bp)) =
-            (singleton_actual_bp(vector_lane), singleton_actual_bp(product_lane))
-        {
+        if let (Some(vector_bp), Some(product_bp)) = (
+            singleton_actual_bp(vector_lane),
+            singleton_actual_bp(product_lane),
+        ) {
             let delta_bp = product_bp.saturating_sub(vector_bp);
             if delta_bp > 0 {
                 lines.push(format!(
@@ -854,7 +880,11 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 let mut label = if band.min_bp == band.bp {
                     format_bp_label(band.bp)
                 } else {
-                    format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+                    format!(
+                        "{}..{}",
+                        format_bp_label(band.min_bp),
+                        format_bp_label(band.bp)
+                    )
                 };
                 if band.apparent_bp != band.bp {
                     label.push_str(&format!(" -> {}", format_bp_label(band.apparent_bp)));
@@ -962,12 +992,15 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         }
         if comparison_hints.len() > 4 {
             doc = doc.add(
-                Text::new(format!("+{} more comparison hint(s)", comparison_hints.len() - 4))
-                    .set("x", DETAIL_PANEL_LEFT + 8.0)
-                    .set("y", header_y)
-                    .set("font-family", "monospace")
-                    .set("font-size", 10)
-                    .set("fill", "#64748b"),
+                Text::new(format!(
+                    "+{} more comparison hint(s)",
+                    comparison_hints.len() - 4
+                ))
+                .set("x", DETAIL_PANEL_LEFT + 8.0)
+                .set("y", header_y)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#64748b"),
             );
             header_y += 12.0;
         }
@@ -1017,12 +1050,15 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         }
         if merged_notes.len() > 4 {
             doc = doc.add(
-                Text::new(format!("+{} more merged-band note(s)", merged_notes.len() - 4))
-                    .set("x", DETAIL_PANEL_LEFT + 8.0)
-                    .set("y", header_y)
-                    .set("font-family", "monospace")
-                    .set("font-size", 10)
-                    .set("fill", "#64748b"),
+                Text::new(format!(
+                    "+{} more merged-band note(s)",
+                    merged_notes.len() - 4
+                ))
+                .set("x", DETAIL_PANEL_LEFT + 8.0)
+                .set("y", header_y)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#64748b"),
             );
             header_y += 12.0;
         }
@@ -1064,7 +1100,11 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             let actual_label = if band.min_bp == band.bp {
                 format_bp_label(band.bp)
             } else {
-                format!("{}..{}", format_bp_label(band.min_bp), format_bp_label(band.bp))
+                format!(
+                    "{}..{}",
+                    format_bp_label(band.min_bp),
+                    format_bp_label(band.bp)
+                )
             };
             let mut row = format!(
                 "{} | {} | {} | {:.0} au",
@@ -1246,33 +1286,35 @@ mod tests {
     #[test]
     fn test_export_pool_gel_svg_adds_comparison_hints_for_vector_insert_product() {
         let layout = build_serial_gel_layout(
-            &[GelSampleInput {
-                name: "Vector".to_string(),
-                role_label: Some("vector".to_string()),
-                members: vec![GelSampleMember {
-                    seq_id: "vector".to_string(),
-                    bp: 4952,
-                    topology_form: GelTopologyForm::Circular,
-                }],
-            },
-            GelSampleInput {
-                name: "Insert".to_string(),
-                role_label: Some("insert_1".to_string()),
-                members: vec![GelSampleMember {
-                    seq_id: "insert".to_string(),
-                    bp: 314,
-                    topology_form: GelTopologyForm::Linear,
-                }],
-            },
-            GelSampleInput {
-                name: "Product".to_string(),
-                role_label: Some("product".to_string()),
-                members: vec![GelSampleMember {
-                    seq_id: "product".to_string(),
-                    bp: 5266,
-                    topology_form: GelTopologyForm::Circular,
-                }],
-            }],
+            &[
+                GelSampleInput {
+                    name: "Vector".to_string(),
+                    role_label: Some("vector".to_string()),
+                    members: vec![GelSampleMember {
+                        seq_id: "vector".to_string(),
+                        bp: 4952,
+                        topology_form: GelTopologyForm::Circular,
+                    }],
+                },
+                GelSampleInput {
+                    name: "Insert".to_string(),
+                    role_label: Some("insert_1".to_string()),
+                    members: vec![GelSampleMember {
+                        seq_id: "insert".to_string(),
+                        bp: 314,
+                        topology_form: GelTopologyForm::Linear,
+                    }],
+                },
+                GelSampleInput {
+                    name: "Product".to_string(),
+                    role_label: Some("product".to_string()),
+                    members: vec![GelSampleMember {
+                        seq_id: "product".to_string(),
+                        bp: 5266,
+                        topology_form: GelTopologyForm::Circular,
+                    }],
+                },
+            ],
             &[
                 "NEB 100bp DNA Ladder".to_string(),
                 "NEB 1kb DNA Ladder".to_string(),
@@ -1284,7 +1326,11 @@ mod tests {
         assert!(svg.contains("Comparison hints"));
         assert!(svg.contains("Insert lane: compare against the fine ladder"));
         assert!(svg.contains("Vector vs product: product should run as the larger construct"));
-        assert!(svg.contains("Consistency check: product-vector delta matches the summed insert payload"));
+        assert!(
+            svg.contains(
+                "Consistency check: product-vector delta matches the summed insert payload"
+            )
+        );
         assert!(svg.contains("314 bp"));
     }
 
@@ -1530,9 +1576,11 @@ mod tests {
         assert!(svg.contains("frag_a (1000 bp)"));
         assert!(svg.contains("frag_b (1035 bp)"));
         assert!(svg.contains("Merged-band notes"));
-        assert!(svg.contains(
-            "merged xN means nearby fragments co-migrate under current gel conditions"
-        ));
+        assert!(
+            svg.contains(
+                "merged xN means nearby fragments co-migrate under current gel conditions"
+            )
+        );
     }
 
     #[test]

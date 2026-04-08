@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG DEBIAN_SUITE=sid
+ARG DEBIAN_SUITE=forky
 
 # Builder stage:
 # - uses Debian rust-all as requested

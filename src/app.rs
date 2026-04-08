@@ -92,6 +92,7 @@ use crate::{
         PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
         PreparedCacheArtifactGroup, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
         PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
+        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
     },
     gibson_planning::{
         GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonDesignAdjustmentTarget,
@@ -1509,12 +1510,12 @@ impl CacheCleanupScope {
 
     fn roots(self, reference_cache_dir: &str, helper_cache_dir: &str) -> Vec<String> {
         let reference = if reference_cache_dir.trim().is_empty() {
-            DEFAULT_GENOME_CACHE_DIR.to_string()
+            configured_reference_genome_cache_dir()
         } else {
             reference_cache_dir.trim().to_string()
         };
         let helper = if helper_cache_dir.trim().is_empty() {
-            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+            configured_helper_genome_cache_dir()
         } else {
             helper_cache_dir.trim().to_string()
         };
@@ -2295,11 +2296,11 @@ impl Default for GENtleApp {
             show_genbank_dialog: false,
             genome_dialog_scope: GenomeDialogScope::Reference,
             reference_genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
-            reference_genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
+            reference_genome_cache_dir: configured_reference_genome_cache_dir(),
             helper_genome_catalog_path: DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string(),
-            helper_genome_cache_dir: DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
+            helper_genome_cache_dir: configured_helper_genome_cache_dir(),
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
-            genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
+            genome_cache_dir: configured_reference_genome_cache_dir(),
             genome_id: "Human GRCh38 Ensembl 113".to_string(),
             genome_catalog_genomes: vec![],
             genome_catalog_error: String::new(),
@@ -2310,8 +2311,8 @@ impl Default for GENtleApp {
             genome_prepare_failure_recovery: None,
             genome_prepare_status: String::new(),
             cache_cleanup_scope: CacheCleanupScope::References,
-            cache_cleanup_reference_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
-            cache_cleanup_helper_cache_dir: DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
+            cache_cleanup_reference_cache_dir: configured_reference_genome_cache_dir(),
+            cache_cleanup_helper_cache_dir: configured_helper_genome_cache_dir(),
             cache_cleanup_mode: PreparedCacheCleanupMode::DerivedIndexesOnly,
             cache_cleanup_include_orphans: false,
             cache_cleanup_inspection: None,
@@ -9515,12 +9516,12 @@ Error: `{err}`"
         };
         self.cache_cleanup_reference_cache_dir =
             if self.reference_genome_cache_dir.trim().is_empty() {
-                DEFAULT_GENOME_CACHE_DIR.to_string()
+                configured_reference_genome_cache_dir()
             } else {
                 self.reference_genome_cache_dir.trim().to_string()
             };
         self.cache_cleanup_helper_cache_dir = if self.helper_genome_cache_dir.trim().is_empty() {
-            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+            configured_helper_genome_cache_dir()
         } else {
             self.helper_genome_cache_dir.trim().to_string()
         };
@@ -9675,12 +9676,12 @@ Error: `{err}`"
 
     fn cache_cleanup_scope_for_root(&self, cache_root: &str) -> Option<GenomeDialogScope> {
         let reference_root = if self.cache_cleanup_reference_cache_dir.trim().is_empty() {
-            DEFAULT_GENOME_CACHE_DIR.to_string()
+            configured_reference_genome_cache_dir()
         } else {
             self.cache_cleanup_reference_cache_dir.trim().to_string()
         };
         let helper_root = if self.cache_cleanup_helper_cache_dir.trim().is_empty() {
-            DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()
+            configured_helper_genome_cache_dir()
         } else {
             self.cache_cleanup_helper_cache_dir.trim().to_string()
         };
@@ -15979,7 +15980,7 @@ Error: `{err}`"
                     .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
                 let cache_label = self
                     .dbsnp_cache_dir_opt()
-                    .unwrap_or_else(|| DEFAULT_GENOME_CACHE_DIR.to_string());
+                    .unwrap_or_else(configured_reference_genome_cache_dir);
                 ui.small(format!("Examples: {}, rs334", DEFAULT_DBSNP_TUTORIAL_RS_ID));
                 ui.small(format!(
                     "Uses reference genome catalog '{}' and cache '{}'.",

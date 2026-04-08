@@ -57,6 +57,8 @@ pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
 pub const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
+pub const REFERENCE_GENOME_CACHE_DIR_ENV: &str = "GENTLE_REFERENCE_CACHE_DIR";
+pub const HELPER_GENOME_CACHE_DIR_ENV: &str = "GENTLE_HELPER_CACHE_DIR";
 pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
 pub const DEFAULT_BLASTN_BIN: &str = "blastn";
 pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
@@ -122,6 +124,32 @@ pub struct EnsemblCatalogTemplate {
 
 fn default_cache_dir() -> Option<String> {
     Some(DEFAULT_GENOME_CACHE_DIR.to_string())
+}
+
+fn configured_cache_dir_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|raw| raw.trim().to_string())
+        .filter(|raw| !raw.is_empty())
+}
+
+/// Resolve the default reference-genome cache root for this process.
+///
+/// This stays deterministic within one process, but allows sibling worktrees
+/// or CI jobs to opt into one explicitly shared prepared-cache location via
+/// `GENTLE_REFERENCE_CACHE_DIR`.
+pub fn configured_reference_genome_cache_dir() -> String {
+    configured_cache_dir_env(REFERENCE_GENOME_CACHE_DIR_ENV)
+        .unwrap_or_else(|| DEFAULT_GENOME_CACHE_DIR.to_string())
+}
+
+/// Resolve the default helper-genome cache root for this process.
+///
+/// `GENTLE_HELPER_CACHE_DIR` can point multiple worktrees at one shared helper
+/// cache without editing catalog JSON.
+pub fn configured_helper_genome_cache_dir() -> String {
+    configured_cache_dir_env(HELPER_GENOME_CACHE_DIR_ENV)
+        .unwrap_or_else(|| DEFAULT_HELPER_GENOME_CACHE_DIR.to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3132,15 +3160,42 @@ FASTA index='{}'.{}{}",
         entry: &GenomeCatalogEntry,
         cache_dir_override: Option<&str>,
     ) -> PathBuf {
-        cache_dir_override
-            .map(|raw| self.resolve_local_path(raw))
-            .or_else(|| {
-                entry
-                    .cache_dir
-                    .as_ref()
-                    .map(|raw| self.resolve_local_path(raw))
-            })
-            .unwrap_or_else(|| PathBuf::from(DEFAULT_GENOME_CACHE_DIR))
+        let cache_dir_override = cache_dir_override
+            .map(str::trim)
+            .filter(|raw| !raw.is_empty());
+        if let Some(raw) = cache_dir_override {
+            return self.resolve_local_path(raw);
+        }
+
+        let entry_cache_dir = entry
+            .cache_dir
+            .as_deref()
+            .map(str::trim)
+            .filter(|raw| !raw.is_empty());
+        let configured_default = match entry_cache_dir {
+            Some(DEFAULT_HELPER_GENOME_CACHE_DIR) => Some(configured_helper_genome_cache_dir()),
+            Some(DEFAULT_GENOME_CACHE_DIR) | None => Some(configured_reference_genome_cache_dir()),
+            Some(_) => None,
+        };
+
+        configured_default
+            .map(|raw| self.resolve_local_path(&raw))
+            .or_else(|| entry_cache_dir.map(|raw| self.resolve_local_path(raw)))
+            .unwrap_or_else(|| self.resolve_local_path(&configured_reference_genome_cache_dir()))
+    }
+
+    /// Report the effective prepared-cache root that will be used for one
+    /// genome/helper entry under the current override/environment setup.
+    pub fn effective_cache_dir(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<String, String> {
+        let entry = self.entry(genome_id)?;
+        Ok(self
+            .cache_dir_path_for_entry(entry, cache_dir_override)
+            .display()
+            .to_string())
     }
 
     #[cfg(test)]
@@ -7509,6 +7564,7 @@ mod tests {
     use std::env;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::tempdir;
 
     struct EnvVarGuard {
@@ -7540,6 +7596,11 @@ mod tests {
                 },
             }
         }
+    }
+
+    fn cache_dir_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn write_gzip(path: &Path, text: &str) {
@@ -9934,6 +9995,64 @@ mod tests {
         assert_eq!(
             inspection.compatible_prepared_options,
             vec!["Human GRCh38 Ensembl 116".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_effective_cache_dir_uses_reference_env_override_for_default_reference_cache() {
+        let _lock = cache_dir_env_lock().lock().expect("cache dir env lock");
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "ToyGenome": {
+    "sequence_local": "toy.fa",
+    "annotations_local": "toy.gtf",
+    "cache_dir": "data/genomes"
+  }
+}"#,
+        )
+        .unwrap();
+        let shared_cache = td.path().join("shared_reference_cache");
+        let _guard = EnvVarGuard::set(
+            REFERENCE_GENOME_CACHE_DIR_ENV,
+            shared_cache.to_string_lossy().as_ref(),
+        );
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("load catalog");
+        assert_eq!(
+            catalog.effective_cache_dir("ToyGenome", None).unwrap(),
+            shared_cache.display().to_string()
+        );
+    }
+
+    #[test]
+    fn test_effective_cache_dir_uses_helper_env_override_for_default_helper_cache() {
+        let _lock = cache_dir_env_lock().lock().expect("cache dir env lock");
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "HelperGenome": {
+    "sequence_local": "toy.fa",
+    "annotations_local": "toy.gtf",
+    "cache_dir": "data/helper_genomes"
+  }
+}"#,
+        )
+        .unwrap();
+        let shared_cache = td.path().join("shared_helper_cache");
+        let _guard = EnvVarGuard::set(
+            HELPER_GENOME_CACHE_DIR_ENV,
+            shared_cache.to_string_lossy().as_ref(),
+        );
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("load catalog");
+        assert_eq!(
+            catalog.effective_cache_dir("HelperGenome", None).unwrap(),
+            shared_cache.display().to_string()
         );
     }
 

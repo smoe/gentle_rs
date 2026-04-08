@@ -34,7 +34,7 @@ jobs:
           context: .
           file: ./Dockerfile
           build-args: |
-            DEBIAN_SUITE=sid
+            DEBIAN_SUITE=forky
           platforms: linux/amd64
           push: false
           provenance: false
@@ -91,7 +91,7 @@ jobs:
           context: .
           file: ./Dockerfile
           build-args: |
-            DEBIAN_SUITE=sid
+            DEBIAN_SUITE=forky
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
