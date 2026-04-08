@@ -4235,6 +4235,7 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
+    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
     let td = tempdir().expect("tempdir");
     let cache_dir = td.path().join("cache");
     fs::create_dir_all(&cache_dir).expect("cache dir");
