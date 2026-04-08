@@ -21,7 +21,7 @@ The container goal is pragmatic:
 
 ## Design Summary
 
-- Base image: Debian `sid`
+- Base image: Debian `forky` (testing)
 - Build toolchain: Debian `rust-all`
 - Runtime GUI delivery: `Xvfb` + `openbox` + `x11vnc` + `noVNC`
 - Default UX: open GENtle in a browser at `http://localhost:6080`
@@ -91,7 +91,7 @@ docker build -t gentle:local .
 Optional build arguments:
 
 - `DEBIAN_SUITE`
-  - defaults to `sid`
+  - defaults to `forky`
 - `GENTLE_CARGO_PROFILE`
   - defaults to `release-fast`
   - set to `release` if you prefer fully optimized binaries over faster image
@@ -101,19 +101,20 @@ Example:
 
 ```sh
 docker build \
-  --build-arg DEBIAN_SUITE=sid \
+  --build-arg DEBIAN_SUITE=forky \
   --build-arg GENTLE_CARGO_PROFILE=release \
   -t gentle:release .
 ```
 
-Why `sid` by default:
+Why `forky` by default:
 
-- the current GUI stack requires a newer Rust than Debian stable currently
-  provides
-- this project intentionally follows Debian archive freshness closely and uses
-  Debian-packaged `rust-all` instead of `rustup` in the container
-- `sid` is therefore the most direct Debian-first base for GENtle's current
-  dependency graph until stable catches up enough again
+- it keeps the image Debian-first while avoiding the current `sid` +
+  `qemu-aarch64` failure mode in GitHub Actions multi-arch builds
+- Debian testing (`forky`) currently ships a meaningfully newer `rust-all`
+  than `trixie`, while still providing the runtime packages this image needs,
+  including `novnc` and `python3-pybigwig`
+- this keeps the project on Debian-packaged `rust-all` instead of switching
+  the container over to `rustup`
 - GENtle does not need audio output, so the image intentionally omits ALSA
   runtime packages instead of depending on the current `libasound2` virtual
   package split
