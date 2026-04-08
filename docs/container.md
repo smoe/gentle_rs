@@ -274,7 +274,7 @@ Not implemented in-tree yet, but this is the intended release direction:
 1. build the OCI image from this `Dockerfile`
 2. publish it to `ghcr.io`
 3. tag by branch, commit SHA, and release tag
-4. build `linux/amd64` and `linux/arm64`
+4. publish a stable `linux/amd64` image from GitHub Actions
 5. let Linux/Apptainer users pull the same image through `docker://...`
 
 Suggested GitHub Actions building blocks:
@@ -290,8 +290,20 @@ The repository now includes:
 which:
 
 - builds the image as a check on pull requests and `main`
-- publishes multi-arch GHCR images for release tags matching `v*`
+- publishes `linux/amd64` GHCR images for release tags matching `v*`
 - updates the `latest` image tag only from those release-tag publishes
+
+Current arm64 note:
+
+- the release workflow intentionally does **not** publish `linux/arm64` from
+  GitHub Actions right now
+- the failure mode is an emulated `qemu-aarch64` crash during Debian package
+  configuration in the container build, not a confirmed GENtle application
+  failure
+- practical next options are:
+  - a native arm64 builder/runner
+  - a future headless-only/container-specific build split that drops the GUI
+    toolchain from the published image
 
 This keeps maintenance low while still covering:
 

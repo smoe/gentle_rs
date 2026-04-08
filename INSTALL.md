@@ -216,6 +216,13 @@ inspection, but not for low-latency tool execution.
 The GitHub workflow publishes installable container images for release tags
 matching `v*`.
 
+Current publication scope:
+
+- published GHCR images are currently `linux/amd64`
+- `linux/arm64` publication from GitHub Actions is temporarily paused because
+  the emulated `qemu-aarch64` build path is crashing during Debian package
+  configuration
+
 Generic form:
 
 ```sh

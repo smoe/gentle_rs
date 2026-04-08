@@ -56,9 +56,6 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -92,7 +89,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             DEBIAN_SUITE=forky
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}

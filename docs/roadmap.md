@@ -346,8 +346,17 @@ order. Durable architecture constraints and decisions remain in
   - GHCR workflow now lives in `.github/workflows/container.yml`
   - publishing policy is release-oriented:
     - build-check on PRs / `main`
-    - publish multi-arch images from `v*` release tags
+    - publish `linux/amd64` images from `v*` release tags
     - move `latest` only on release-tag publishes
+  - `linux/arm64` publication from GitHub Actions is currently paused:
+    - `qemu-aarch64` is crashing during Debian package configuration in the
+      build image
+    - this looks like an emulation/runtime issue rather than a confirmed
+      GENtle logic bug
+    - revisit once either:
+      - a native arm64 builder is available, or
+      - the container is split into a true headless build that no longer needs
+        the current GUI-oriented Debian build dependency set
 - macOS viewport-regression containment is now using a hosted-workspace model:
   - upstream repro remains reduced to `src/bin/gentle_egui_window_repro.rs`
   - native child viewports are still treated as unreliable on current
