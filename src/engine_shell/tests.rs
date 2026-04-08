@@ -21,14 +21,53 @@ use crate::test_support::{
     write_demo_workflow_with_shebang,
 };
 use gb_io::seq::{Feature, Location};
+use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
 
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
+struct EnvVarGuard {
+    key: String,
+    original: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &str, value: &str) -> Self {
+        let original = env::var(key).ok();
+        unsafe {
+            env::set_var(key, value);
+        }
+        Self {
+            key: key.to_string(),
+            original,
+        }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.original {
+            Some(value) => unsafe {
+                env::set_var(&self.key, value);
+            },
+            None => unsafe {
+                env::remove_var(&self.key);
+            },
+        }
+    }
+}
+
+fn cache_dir_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn with_blast_async_test_overrides<R>(
     max_concurrent: usize,
     worker_delay_ms: u64,
@@ -9043,7 +9082,11 @@ fn execute_import_pool_preserves_supercoiled_topology_hint() {
             }
         ]
     });
-    fs::write(&pool_path, serde_json::to_string_pretty(&pool_json).unwrap()).unwrap();
+    fs::write(
+        &pool_path,
+        serde_json::to_string_pretty(&pool_json).unwrap(),
+    )
+    .unwrap();
 
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let out = execute_shell_command(
@@ -10015,6 +10058,78 @@ fn execute_genomes_status_reports_length_and_mass_metadata() {
         out.output["molecular_mass_source"].as_str(),
         Some("estimated_from_nucleotide_length")
     );
+}
+
+#[test]
+fn execute_genomes_status_reports_effective_cache_dir_and_prepare_hint_when_unprepared() {
+    let _lock = cache_dir_env_lock().lock().expect("cache dir env lock");
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let shared_cache = td.path().join("shared_ref_cache");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "data/genomes"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display()
+        ),
+    )
+    .expect("write catalog");
+    let _guard = EnvVarGuard::set(
+        crate::genomes::REFERENCE_GENOME_CACHE_DIR_ENV,
+        shared_cache.to_string_lossy().as_ref(),
+    );
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceStatus {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+        },
+    )
+    .expect("execute status");
+
+    assert_eq!(out.output["prepared"].as_bool(), Some(false));
+    assert_eq!(
+        out.output["effective_cache_dir"].as_str(),
+        Some(shared_cache.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        out.output["requested_catalog_key"].as_str(),
+        Some("ToyGenome")
+    );
+    assert_eq!(
+        out.output["compatible_prepared_options"].as_array(),
+        Some(&vec![])
+    );
+    let status_message = out.output["status_message"]
+        .as_str()
+        .expect("status message");
+    assert!(status_message.contains("not prepared"));
+    assert!(status_message.contains(shared_cache.to_string_lossy().as_ref()));
+    let prepare_command = out.output["prepare_command"]
+        .as_str()
+        .expect("prepare command");
+    assert!(prepare_command.contains("genomes prepare"));
+    assert!(prepare_command.contains("ToyGenome"));
+    assert!(prepare_command.contains(shared_cache.to_string_lossy().as_ref()));
 }
 
 #[test]

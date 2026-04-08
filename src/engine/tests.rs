@@ -7795,7 +7795,11 @@ fn test_render_pool_gel_svg_operation_applies_conditions_and_fragment_table() {
             }),
         })
         .unwrap();
-    assert!(res.messages.iter().any(|m| m.contains("1.6% agarose | TBE | topology-aware on")));
+    assert!(
+        res.messages
+            .iter()
+            .any(|m| m.contains("1.6% agarose | TBE | topology-aware on"))
+    );
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.contains("Fragment table"));
     assert!(text.contains("plasmid (5000 bp, circular)"));

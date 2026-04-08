@@ -19,24 +19,28 @@
 
 use crate::{
     agent_bridge::{
-        agent_system_availability, invoke_agent_support_with_env_overrides,
-        load_agent_system_catalog, AgentExecutionIntent, AGENT_BASE_URL_ENV,
-        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
-        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
+        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
+        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DotplotMode, Engine,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GenomeAnchorSide,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, PairwiseAlignmentMode, PlanningEstimate, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
+        DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
@@ -44,35 +48,31 @@ use crate::{
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        SequenceAnchor, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
-        SequenceFeatureRangeRelation, SequenceFeatureSortBy, SequenceFeatureStrandFilter,
-        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
-        TfbsRegionSummaryRequest, Workflow, WorkflowMacroTemplate, WorkflowMacroTemplateParam,
-        WorkflowMacroTemplatePort, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
-        CANDIDATE_SETS_METADATA_KEY, DOTPLOT_ANALYSIS_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
+        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
+        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
+        SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
+        SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
     genomes::{
-        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
-        PreparedCacheCleanupRequest, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CACHE_DIR, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
+        GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
     },
-    gibson_planning::{GibsonAssemblyPlan, GIBSON_ASSEMBLY_PREVIEW_SCHEMA},
-    protocol_cartoon::{protocol_cartoon_catalog_rows, ProtocolCartoonKind},
+    gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
+    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_sync,
     shell_docs::{
-        shell_help_json as render_shell_help_json,
+        HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
+        shell_topic_help_text as render_shell_topic_help_text,
     },
     tf_motifs,
 };
@@ -81,8 +81,8 @@ use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
 #[cfg(test)]
@@ -94,8 +94,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
+        Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc, Arc, LazyLock, Mutex,
+        mpsc,
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -454,11 +455,11 @@ impl CacheCleanupScope {
 
     fn default_cache_roots(self) -> Vec<String> {
         match self {
-            Self::References => vec![DEFAULT_GENOME_CACHE_DIR.to_string()],
-            Self::Helpers => vec![DEFAULT_HELPER_GENOME_CACHE_DIR.to_string()],
+            Self::References => vec![configured_reference_genome_cache_dir()],
+            Self::Helpers => vec![configured_helper_genome_cache_dir()],
             Self::Both => vec![
-                DEFAULT_GENOME_CACHE_DIR.to_string(),
-                DEFAULT_HELPER_GENOME_CACHE_DIR.to_string(),
+                configured_reference_genome_cache_dir(),
+                configured_helper_genome_cache_dir(),
             ],
         }
     }
@@ -7131,6 +7132,27 @@ fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> S
         .unwrap_or_else(|| default_catalog_path(helper_mode).to_string())
 }
 
+fn default_cache_dir(helper_mode: bool) -> String {
+    if helper_mode {
+        configured_helper_genome_cache_dir()
+    } else {
+        configured_reference_genome_cache_dir()
+    }
+}
+
+fn quote_shell_arg(raw: &str) -> String {
+    if raw.is_empty() {
+        "''".to_string()
+    } else if raw
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
+    {
+        raw.to_string()
+    } else {
+        format!("'{}'", raw.replace('\'', "'\"'\"'"))
+    }
+}
+
 fn effective_cache_cleanup_roots(scope: CacheCleanupScope, cache_dirs: &[String]) -> Vec<String> {
     if cache_dirs.is_empty() {
         scope.default_cache_roots()
@@ -10803,19 +10825,16 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         if idx + 1 >= tokens.len() {
                             return Err("Missing value after --buffer".to_string());
                         }
-                        conditions.buffer_model = match tokens[idx + 1]
-                            .trim()
-                            .to_ascii_lowercase()
-                            .as_str()
-                        {
-                            "tae" => gentle_protocol::GelBufferModel::Tae,
-                            "tbe" => gentle_protocol::GelBufferModel::Tbe,
-                            other => {
-                                return Err(format!(
-                                    "Unknown buffer '{other}' (expected tae|tbe)"
-                                ));
-                            }
-                        };
+                        conditions.buffer_model =
+                            match tokens[idx + 1].trim().to_ascii_lowercase().as_str() {
+                                "tae" => gentle_protocol::GelBufferModel::Tae,
+                                "tbe" => gentle_protocol::GelBufferModel::Tbe,
+                                other => {
+                                    return Err(format!(
+                                        "Unknown buffer '{other}' (expected tae|tbe)"
+                                    ));
+                                }
+                            };
                         idx += 2;
                     }
                     "--topology-aware" => {
@@ -14509,11 +14528,39 @@ fn execute_reference_and_track_command(
             cache_dir,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let effective_cache_dir = if *helper_mode {
+                GentleEngine::resolve_helper_genome_cache_dir(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::resolve_reference_genome_cache_dir(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
             let prepared = GentleEngine::is_reference_genome_prepared(
                 resolved_catalog,
                 genome_id,
                 cache_dir.as_deref(),
             )
+            .map_err(|e| e.to_string())?;
+            let compatibility = if *helper_mode {
+                GentleEngine::inspect_helper_genome_prepared_compatibility(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::inspect_reference_genome_prepared_compatibility(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let source_plan = GentleEngine::describe_reference_genome_sources(
                 resolved_catalog,
@@ -14522,13 +14569,56 @@ fn execute_reference_and_track_command(
             )
             .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            let cli_label = if *helper_mode { "helpers" } else { "genomes" };
+            let effective_cache_arg = cache_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| default_cache_dir(*helper_mode));
+            let prepare_command = format!(
+                "cargo run --bin gentle_cli -- {} prepare {} --catalog {} --cache-dir {}",
+                cli_label,
+                quote_shell_arg(genome_id),
+                quote_shell_arg(&effective_catalog),
+                quote_shell_arg(&effective_cache_arg)
+            );
+            let status_message = if prepared {
+                format!(
+                    "Genome '{}' is prepared in '{}'.",
+                    compatibility.requested_catalog_key, effective_cache_dir
+                )
+            } else if compatibility.compatible_prepared_options.is_empty() {
+                format!(
+                    "Genome '{}' is not prepared in '{}'. Run prepare to populate the cache.",
+                    compatibility.requested_catalog_key, effective_cache_dir
+                )
+            } else {
+                let family = compatibility
+                    .requested_family
+                    .clone()
+                    .unwrap_or_else(|| "same-family".to_string());
+                format!(
+                    "Genome '{}' is not prepared in '{}'. Compatible prepared genomes for assembly family '{}': {}.",
+                    compatibility.requested_catalog_key,
+                    effective_cache_dir,
+                    family,
+                    compatibility.compatible_prepared_options.join(", ")
+                )
+            };
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "genome_id": genome_id,
                     "catalog_path": effective_catalog,
                     "cache_dir": cache_dir,
+                    "effective_cache_dir": effective_cache_dir,
                     "prepared": prepared,
+                    "requested_catalog_key": compatibility.requested_catalog_key,
+                    "requested_family": compatibility.requested_family,
+                    "compatible_prepared_options": compatibility.compatible_prepared_options,
+                    "status_message": status_message,
+                    "prepare_command": prepare_command,
                     "sequence_source_type": source_plan.sequence_source_type,
                     "annotation_source_type": source_plan.annotation_source_type,
                     "sequence_source": source_plan.sequence_source,

@@ -35,7 +35,8 @@ use crate::{
         GenomeCatalogEntryRemovalReport, GenomeGeneRecord, GenomeSourcePlan,
         GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
         PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
-        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
+        PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, inspect_prepared_cache_roots, is_prepare_cancelled_error,
         validate_genbank_accession,
@@ -4878,6 +4879,70 @@ impl GentleEngine {
             .filter(|v| !v.is_empty())
             .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
         Self::describe_reference_genome_sources(Some(chosen), genome_id, cache_dir)
+    }
+
+    pub fn resolve_reference_genome_cache_dir(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<String, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .effective_cache_dir(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not resolve cache dir for genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn resolve_helper_genome_cache_dir(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<String, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::resolve_reference_genome_cache_dir(Some(chosen), genome_id, cache_dir)
+    }
+
+    pub fn inspect_reference_genome_prepared_compatibility(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<PreparedGenomeCompatibilityInspection, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome_compatibility(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared compatibility for genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn inspect_helper_genome_prepared_compatibility(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PreparedGenomeCompatibilityInspection, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::inspect_reference_genome_prepared_compatibility(Some(chosen), genome_id, cache_dir)
     }
 
     pub fn is_reference_genome_prepared(

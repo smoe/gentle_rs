@@ -12,7 +12,9 @@
 use super::*;
 
 impl GentleEngine {
-    pub(crate) fn infer_gel_topology_form_from_dna(dna: &DNAsequence) -> gentle_protocol::GelTopologyForm {
+    pub(crate) fn infer_gel_topology_form_from_dna(
+        dna: &DNAsequence,
+    ) -> gentle_protocol::GelTopologyForm {
         if !dna.is_circular() {
             return gentle_protocol::GelTopologyForm::Linear;
         }
@@ -35,7 +37,9 @@ impl GentleEngine {
         for token in lowered
             .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '[' | ']'))
         {
-            let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '=' && c != '-');
+            let trimmed = token.trim_matches(|c: char| {
+                !c.is_ascii_alphanumeric() && c != '_' && c != '=' && c != '-'
+            });
             if let Some(value) = trimmed.strip_prefix("gel_topology=") {
                 if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value) {
                     return form;
@@ -356,12 +360,12 @@ impl GentleEngine {
                     members,
                 }]
             };
-        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names, conditions).map_err(
-            |e| EngineError {
+        crate::pool_gel::build_serial_gel_layout(&samples, &ladder_names, conditions).map_err(|e| {
+            EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
-            },
-        )
+            }
+        })
     }
 
     pub(super) fn flatten_container_members(

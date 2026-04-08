@@ -1652,6 +1652,13 @@ Status output note:
 - `genomes status` / `helpers status` include optional
   `nucleotide_length_bp`, `molecular_mass_da`, and `molecular_mass_source`
   alongside source-type/source-path fields.
+- The same status payload now also includes `effective_cache_dir`,
+  compatibility hints, and a ready-to-run `prepare_command` when the selected
+  genome is not prepared yet.
+- Reference/helper genome dialogs respect optional process-level shared cache
+  overrides:
+  - `GENTLE_REFERENCE_CACHE_DIR`
+  - `GENTLE_HELPER_CACHE_DIR`
 - `routines list` / `routines compare` include planning estimates when planning
   data is configured:
   `estimated_time_hours`, `estimated_cost`, `local_fit_score`,

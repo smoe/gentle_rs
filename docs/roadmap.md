@@ -15,6 +15,15 @@ order. Durable architecture constraints and decisions remain in
   directory (`.cargo/config.toml` -> `../../.gentle_target_shared`) so sibling
   worktrees reuse dependency build artifacts instead of duplicating large
   per-worktree `target/` trees.
+- Reference/helper genome caches can now also be shared deliberately across
+  sibling worktrees without editing catalog JSON:
+  - `GENTLE_REFERENCE_CACHE_DIR`
+  - `GENTLE_HELPER_CACHE_DIR`
+  - GUI defaults, shell cache inspection defaults, and engine cache resolution
+    all honor those overrides when entries still point at the conventional
+    `data/genomes` / `data/helper_genomes` roots
+  - `genomes status` / `helpers status` now report the effective cache root and
+    emit a concrete `prepare_command` hint when no prepared install exists
 - Release-installer CI now intentionally avoids caching the `target/`
   directory on tag/manual release builds:
   - the workflow still caches the Cargo registry, but desktop installer jobs
@@ -308,8 +317,14 @@ order. Durable architecture constraints and decisions remain in
   - no biology logic duplication (subprocess bridge only)
 - Debian-first container baseline is now available:
   - authoritative image definition in repository `Dockerfile`
-  - default base suite is Debian `sid` (project policy now prefers Debian
-    unstable for container freshness and for current `rust-all` availability)
+  - default base suite is Debian `forky` (testing)
+  - the earlier Debian `sid` default was dropped after GitHub Actions
+    multi-arch builds hit a `systemd` post-install crash under
+    `qemu-aarch64`
+  - `trixie` was considered as a stabilizing fallback, but its packaged
+    `rust-all` version sits too close to the project's current Rust floor;
+    `forky` keeps the image Debian-first, avoids the known `sid` arm64 publish
+    blocker, and still carries a comfortably newer packaged Rust toolchain
   - GUI served through `Xvfb` + `openbox` + `x11vnc` + `noVNC`
   - CLI/MCP/JS/Lua/Python wrapper available from the same image
   - helper-tool coverage in container:

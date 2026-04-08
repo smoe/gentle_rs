@@ -136,12 +136,8 @@ impl GelTopologyForm {
             "circular" => Some(Self::Circular),
             "supercoiled" | "superhelical" | "ccc" | "ccc dna" => Some(Self::Supercoiled),
             "relaxed" | "relaxed_circular" | "relaxed circular" => Some(Self::RelaxedCircular),
-            "nicked"
-            | "nicked_circular"
-            | "nicked circular"
-            | "open_circular"
-            | "open circular"
-            | "open-circle" => Some(Self::NickedCircular),
+            "nicked" | "nicked_circular" | "nicked circular" | "open_circular"
+            | "open circular" | "open-circle" => Some(Self::NickedCircular),
             _ => None,
         }
     }
