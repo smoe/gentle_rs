@@ -46,6 +46,7 @@ jobs:
 
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      CARGO_TARGET_DIR: target
 
     steps:
       - name: Checkout code
@@ -95,12 +96,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "target/release contents:"
-          ls -la target/release
-          echo "target/release/bundle tree:"
-          find target/release/bundle -maxdepth 4 -print || true
-          if [[ ! -d "target/release/bundle/osx" ]]; then
-            echo "Expected bundle directory target/release/bundle/osx after cargo bundle"
+          echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
+          echo "${CARGO_TARGET_DIR}/release contents:"
+          ls -la "${CARGO_TARGET_DIR}/release"
+          echo "${CARGO_TARGET_DIR}/release/bundle tree:"
+          find "${CARGO_TARGET_DIR}/release/bundle" -maxdepth 4 -print || true
+          if [[ ! -d "${CARGO_TARGET_DIR}/release/bundle/osx" ]]; then
+            echo "Expected bundle directory ${CARGO_TARGET_DIR}/release/bundle/osx after cargo bundle"
             exit 1
           fi
 
@@ -112,13 +114,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          if (!(Test-Path "target/release")) {
-            throw "target/release directory was not created"
+          Write-Host "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR"
+          if (!(Test-Path "$env:CARGO_TARGET_DIR/release")) {
+            throw "$env:CARGO_TARGET_DIR/release directory was not created"
           }
-          Write-Host "target/release contents:"
-          Get-ChildItem -Force "target/release"
-          if (!(Test-Path "target/release/gentle.exe")) {
-            throw "Expected Windows binary target/release/gentle.exe after cargo build"
+          Write-Host "$env:CARGO_TARGET_DIR/release contents:"
+          Get-ChildItem -Force "$env:CARGO_TARGET_DIR/release"
+          if (!(Test-Path "$env:CARGO_TARGET_DIR/release/gentle.exe")) {
+            throw "Expected Windows binary $env:CARGO_TARGET_DIR/release/gentle.exe after cargo build"
           }
 
       - name: Collect installer path
@@ -127,9 +130,10 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ runner.os }}" == "macOS" ]]; then
-            bundle_dir="target/release/bundle/osx"
+            bundle_dir="${CARGO_TARGET_DIR}/release/bundle/osx"
             echo "runner.os=${{ runner.os }}"
             echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
             echo "bundle_dir=${bundle_dir}"
             if [[ ! -d "$bundle_dir" ]]; then
               echo "Bundle directory not found: $bundle_dir"
@@ -153,7 +157,7 @@ jobs:
             rm -rf "$stage_dir"
             mkdir -p "$stage_dir"
             cp -R "$app_bundle" "$stage_dir/"
-            installer="target/release/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
+            installer="${CARGO_TARGET_DIR}/release/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
             echo "installer=${installer}"
             hdiutil create \
               -volname "GENtle" \
@@ -164,19 +168,20 @@ jobs:
             echo "created installer:"
             ls -la "$installer"
           else
-            exe_path="target/release/gentle.exe"
+            exe_path="${CARGO_TARGET_DIR}/release/gentle.exe"
             echo "runner.os=${{ runner.os }}"
             echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
             echo "exe_path=${exe_path}"
             if [[ ! -f "$exe_path" ]]; then
               echo "Windows binary not found: $exe_path"
               exit 1
             fi
-            out_dir="target/release/bundle/zip"
+            out_dir="${CARGO_TARGET_DIR}/release/bundle/zip"
             mkdir -p "$out_dir"
             installer="$out_dir/gentle-${RELEASE_TAG#refs/tags/}.zip"
             echo "installer=${installer}"
-            powershell -NoProfile -Command "Compress-Archive -Path 'target/release/gentle.exe' -DestinationPath '$installer' -Force"
+            powershell -NoProfile -Command "Compress-Archive -Path '$exe_path' -DestinationPath '$installer' -Force"
             echo "created installer:"
             ls -la "$installer"
           fi

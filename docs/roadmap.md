@@ -17,12 +17,16 @@ order. Durable architecture constraints and decisions remain in
   per-worktree `target/` trees.
 - Release-installer CI now intentionally avoids caching the `target/`
   directory on tag/manual release builds:
+  - the workflow also pins `CARGO_TARGET_DIR=target` for those release jobs so
+    macOS/Windows installer collection stays inside the checked-out workspace
+    instead of inheriting the shared worktree target directory from
+    `.cargo/config.toml`
   - the workflow still caches the Cargo registry, but desktop installer jobs
     now rebuild fresh per run so stale or partially restored `target/` trees
     cannot hide missing macOS bundle / Windows binary outputs
   - per-platform post-build diagnostics now print the immediate
-    `target/release` layout so release-artifact failures point at the build
-    stage rather than only the later packaging collector
+    `${CARGO_TARGET_DIR}/release` layout so release-artifact failures point at
+    the build stage rather than only the later packaging collector
 - Engine module decomposition is now underway:
   - `src/engine/protocol.rs` (stable public analysis/report/dotplot + workflow/progress/error/state-summary contracts extracted from monolithic engine file)
   - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)

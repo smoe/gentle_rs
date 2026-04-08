@@ -56,13 +56,17 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     - `linux_distribution` (`deferred|deb|appimage|rpm|tarball`)
   - Builds macOS and Windows installers, runs smoke checks, and publishes assets
     to the corresponding GitHub Release.
+  - Forces `CARGO_TARGET_DIR=target` for the release job so installer artifact
+    discovery stays inside the checked-out workspace even though normal local
+    development builds default to the shared worktree target directory from
+    `.cargo/config.toml`.
   - Caches the Cargo registry, but intentionally builds installer artifacts
-    from a fresh per-run `target/` tree rather than restoring a cached
+    from a fresh per-run local `target/` tree rather than restoring a cached
     `target/` directory, so stale tag-build outputs cannot masquerade as a
     successful package build.
-  - Logs the immediate `target/release` output layout after each platform build
-    so missing bundle/binary regressions fail close to the build step rather
-    than only during later packaging collection.
+  - Logs the immediate `${CARGO_TARGET_DIR}/release` output layout after each
+    platform build so missing bundle/binary regressions fail close to the build
+    step rather than only during later packaging collection.
   - Also publishes a release-attributes JSON file:
     - `gentle-<tag>-release-attributes.json`
     - schema marker: `gentle.release_attributes.v1`
