@@ -1720,6 +1720,15 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
     }
 
     #[test]
+    fn test_fasta_header_sets_protein_molecule_type() {
+        let record = fasta::Record::with_attrs("toy_protein", Some("molecule=protein"), b"MEEPQ");
+        let dna = DNAsequence::from_fasta_record(&record);
+        assert_eq!(dna.molecule_type(), Some("protein"));
+        assert_eq!(dna.get_forward_string(), "MEEPQ");
+        assert!(dna.overhang().is_blunt());
+    }
+
+    #[test]
     fn test_fasta_header_overhangs_for_double_stranded_oligo() {
         let record = fasta::Record::with_attrs(
             "oligo_ds",
@@ -1732,6 +1741,17 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
         assert_eq!(dna.overhang().reverse_5, b"CTAG".to_vec());
         assert_eq!(dna.overhang().forward_3, b"".to_vec());
         assert_eq!(dna.overhang().reverse_3, b"".to_vec());
+    }
+
+    #[test]
+    fn test_protein_sequence_skips_dna_specific_computed_features() {
+        let mut protein = DNAsequence::from_sequence("MSTNPKPQR").expect("protein sequence");
+        protein.set_molecule_type("protein");
+        protein.update_computed_features();
+        assert!(protein.restriction_enzyme_sites().is_empty());
+        assert!(protein.restriction_enzyme_groups().is_empty());
+        assert!(protein.open_reading_frames().is_empty());
+        assert!(protein.gc_content().regions().is_empty());
     }
 
     #[test]

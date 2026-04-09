@@ -354,9 +354,10 @@ are now maintained in `docs/roadmap.md`.
 `ProjectState` stores:
 
 - `sequences: HashMap<SeqId, DNAsequence>`
-- current sequence windows are DNA/RNA-oriented. First-class protein sequence
-  windows are intentionally deferred. UniProt integration is currently modeled
-  as metadata/projection state, not as native sequence-window materialization.
+- current sequence windows now admit DNA, RNA, and first-class protein
+  sequences. UniProt integration still keeps genome-projection state in
+  metadata, but imported/derived proteins may now also materialize as native
+  sequence entries.
 - `metadata: HashMap<String, serde_json::Value>`
   - includes in-memory candidate scoring/filter sets at
     `metadata["candidate_sets"]` (`gentle.candidate_sets.v1`)
@@ -380,6 +381,10 @@ are now maintained in `docs/roadmap.md`.
   - `containers` (explicit singleton/pool/selection containers)
   - `seq_to_latest_container` (latest container membership index)
   - `next_container_counter` (stable container id generation)
+  - each container now also records whether the declared member list is
+    intended to be exhaustive (`declared_contents_exclusive=true`, default) or
+    whether measured/known members are only a partial view of a more complex
+    mixture (`false`, needed for tissue- or lysate-derived samples)
 
 Container semantics now exist as first-class state.
 `SelectCandidate` remains explicit in-silico disambiguation when multiple

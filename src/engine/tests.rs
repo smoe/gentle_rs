@@ -1358,6 +1358,7 @@ fn test_from_state_reseeds_operation_counter_from_existing_project_ops() {
             kind: ContainerKind::Singleton,
             name: Some("seed".to_string()),
             members: vec!["seed".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: Some("op-57".to_string()),
             created_at_unix_ms: 1,
         },
@@ -4853,7 +4854,7 @@ SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
 }
 
 #[test]
-fn test_import_uniprot_entry_sequence_imports_protein_sequence() {
+fn test_import_uniprot_entry_sequence_creates_protein_sequence() {
     let dir = tempfile::tempdir().unwrap();
     let swiss_path = dir.path().join("toy_uniprot_use.txt");
     let swiss_text = r#"ID   TOY2_HUMAN              Reviewed;         12 AA.
@@ -4877,43 +4878,53 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         })
         .expect("import uniprot swiss");
 
-    let import_sequence = engine
+    let result = engine
         .apply(Operation::ImportUniprotEntrySequence {
             entry_id: "TOY_USE".to_string(),
             output_id: None,
         })
-        .expect("uniprot sequence import");
-    assert!(
-        import_sequence
-            .messages
-            .iter()
-            .any(|message| message.contains("Imported UniProt protein sequence 'TOY_USE' as 'TOY_USE'")),
-        "unexpected messages: {:?}",
-        import_sequence.messages
-    );
-    assert_eq!(import_sequence.created_seq_ids, vec!["TOY_USE".to_string()]);
-
+        .expect("import uniprot protein sequence");
+    assert_eq!(result.created_seq_ids, vec!["TOY_USE".to_string()]);
+    let seq_id = &result.created_seq_ids[0];
     let protein = engine
         .state()
         .sequences
-        .get("TOY_USE")
-        .expect("imported protein sequence should exist");
+        .get(seq_id)
+        .expect("imported protein sequence");
+    assert!(protein.is_protein_sequence());
     assert_eq!(protein.molecule_type(), Some("protein"));
     assert_eq!(protein.len(), 12);
     assert_eq!(protein.name().as_deref(), Some("Toy use protein"));
-    assert!(
-        protein
-            .features()
-            .iter()
-            .any(|feature| feature.kind.as_ref() == "Protein"),
-        "expected root Protein feature on imported UniProt sequence"
+    assert_eq!(protein.get_forward_string(), "MEEPQSDPSVEP");
+    let top_feature = protein
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("Protein"))
+        .expect("top-level protein feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(top_feature, "entry_id").as_deref(),
+        Some("TOY_USE")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(top_feature, "organism").as_deref(),
+        Some("Homo sapiens (Human)")
     );
     assert!(
         protein
             .features()
             .iter()
-            .any(|feature| feature.kind.as_ref() == "DOMAIN"),
+            .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("DOMAIN")),
         "expected imported UniProt feature rows to be preserved"
+    );
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| {
+                message.contains("Imported UniProt protein sequence 'TOY_USE' as 'TOY_USE'")
+            }),
+        "unexpected messages: {:?}",
+        result.messages
     );
 }
 
@@ -5849,6 +5860,179 @@ fn test_derive_transcript_sequences_uses_plastid_translation_table_default() {
 }
 
 #[test]
+fn test_derive_protein_sequences_creates_first_class_protein_sequence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("prot".to_string()),
+        })
+        .expect("derive protein");
+    assert_eq!(result.created_seq_ids.len(), 1);
+    let protein = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived protein");
+    assert!(protein.is_protein_sequence());
+    assert_eq!(protein.get_forward_string(), "MKP");
+    let feature = protein
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("Protein"))
+        .expect("protein feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "transcript_id").as_deref(),
+        Some("TX_TOY")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "protein_derivation_mode").as_deref(),
+        Some("annotated_cds")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "translation_speed_profile_hint").as_deref(),
+        Some("ecoli")
+    );
+}
+
+#[test]
+fn test_derive_protein_sequences_falls_back_to_inferred_orf_without_cds() {
+    let mut dna = DNAsequence::from_sequence("TTTATGAAACCCTAAGGG").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, 18),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(3, 15),
+        qualifiers: vec![
+            ("gene".into(), Some("orf1".to_string())),
+            ("transcript_id".into(), Some("TX_ORF".to_string())),
+            ("label".into(), Some("TX_ORF".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("prot".to_string()),
+        })
+        .expect("derive protein without cds");
+    assert_eq!(result.created_seq_ids.len(), 1);
+    let protein = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived protein");
+    assert_eq!(protein.get_forward_string(), "MKP");
+    let feature = protein
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("Protein"))
+        .expect("protein feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "protein_derivation_mode").as_deref(),
+        Some("inferred_orf")
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("inferred a forward ORF"))
+    );
+}
+
+#[test]
+fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_metadata() {
+    let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+    protein.set_name("Toy protein");
+    protein.set_molecule_type("protein");
+    protein.features_mut().push(gb_io::seq::Feature {
+        kind: "Protein".into(),
+        location: gb_io::seq::Location::simple_range(0, 3),
+        qualifiers: vec![
+            (
+                "translation_speed_profile_hint".into(),
+                Some("ecoli".to_string()),
+            ),
+            ("translation_table".into(), Some("11".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("prot".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::ReverseTranslateProteinSequence {
+            seq_id: "prot".to_string(),
+            output_id: Some("prot_coding".to_string()),
+            speed_profile: None,
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            translation_table: None,
+            target_anneal_tm_c: Some(58.0),
+            anneal_window_bp: Some(9),
+        })
+        .expect("reverse translate protein");
+    assert_eq!(result.created_seq_ids.len(), 1);
+    let coding = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("coding sequence");
+    assert_eq!(coding.molecule_type(), Some("dsDNA"));
+    assert_eq!(coding.len(), 9);
+    let cds = coding
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("reverse-translated cds");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation").as_deref(),
+        Some("MKP")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_hint").as_deref(),
+        Some("ecoli")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_mark").as_deref(),
+        Some("slow")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "target_anneal_tm_c").as_deref(),
+        Some("58.00")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table").as_deref(),
+        Some("11")
+    );
+}
+
+#[test]
 fn test_render_feature_expert_svg_operation() {
     let mut state = ProjectState::default();
     state
@@ -6495,6 +6679,7 @@ fn test_render_lineage_svg_projects_single_insert_gibson_as_operation_hub() {
                 "destination_vector".to_string(),
                 "insert_x_amplicon".to_string(),
             ],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 1,
         },
@@ -6759,6 +6944,7 @@ fn test_create_arrangement_serial_operation() {
             kind: ContainerKind::Singleton,
             name: Some("Tube A".to_string()),
             members: vec!["a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -6770,6 +6956,7 @@ fn test_create_arrangement_serial_operation() {
             kind: ContainerKind::Singleton,
             name: Some("Tube B".to_string()),
             members: vec!["b".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -6865,6 +7052,7 @@ fn create_arrangement_serial_auto_creates_default_rack_small_tube() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Lane {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -6929,6 +7117,7 @@ fn create_rack_profile_selection_picks_96_then_384() {
                 kind: ContainerKind::Singleton,
                 name: Some(container_id.clone()),
                 members: vec![seq_id],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7023,6 +7212,7 @@ fn move_rack_sample_within_same_block_shifts_neighbors() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7094,6 +7284,7 @@ fn move_rack_arrangement_blocks_preserves_block_order_and_shifts_neighbors() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7200,6 +7391,7 @@ fn move_rack_single_arrangement_block_shifts_later_neighbor_after_drop_target() 
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7278,6 +7470,7 @@ fn move_rack_samples_preserves_selected_order_within_one_arrangement_block() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7350,6 +7543,7 @@ fn set_custom_rack_profile_reflows_placements_and_marks_snapshot_custom() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7439,6 +7633,7 @@ fn set_rack_fill_direction_column_major_reflows_placements() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7515,6 +7710,7 @@ fn apply_rack_template_plate_edge_avoidance_sets_column_major_and_blocks_perimet
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7608,6 +7804,7 @@ fn set_rack_blocked_coordinates_reflows_and_skips_reserved_slots() {
                 kind: ContainerKind::Singleton,
                 name: Some(format!("Tube {}", idx + 1)),
                 members: vec![(*seq_id).to_string()],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7689,6 +7886,7 @@ fn place_arrangement_on_existing_rack_appends_second_block_and_exports_labels() 
                 kind: ContainerKind::Singleton,
                 name: Some(container_id.clone()),
                 members: vec![seq_id],
+                declared_contents_exclusive: true,
                 created_by_op: None,
                 created_at_unix_ms: 0,
             },
@@ -7773,6 +7971,7 @@ fn test_build_serial_gel_layout_for_render_explicit_auto_ignores_saved_arrangeme
             kind: ContainerKind::Singleton,
             name: Some("Tube A".to_string()),
             members: vec!["a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -7813,6 +8012,7 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
             kind: ContainerKind::Singleton,
             name: Some("Vector".to_string()),
             members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -7891,6 +8091,7 @@ fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangeme
             kind: ContainerKind::Singleton,
             name: Some("Vector".to_string()),
             members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -7972,6 +8173,7 @@ fn export_rack_carrier_label_presets_change_visible_sections() {
             kind: ContainerKind::Singleton,
             name: Some("Vector".to_string()),
             members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -8042,6 +8244,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             kind: ContainerKind::Singleton,
             name: Some("Tube A".to_string()),
             members: vec!["a".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -8053,6 +8256,7 @@ fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
             kind: ContainerKind::Pool,
             name: Some("Tube B".to_string()),
             members: vec!["b".to_string(), "c".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -8195,6 +8399,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
             kind: ContainerKind::Singleton,
             name: Some("Tube A".to_string()),
             members: vec!["vector".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -8206,6 +8411,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
             kind: ContainerKind::Singleton,
             name: Some("Tube B".to_string()),
             members: vec!["insert".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -8217,6 +8423,7 @@ fn test_render_pool_gel_svg_operation_from_arrangement_adds_comparison_hints() {
             kind: ContainerKind::Singleton,
             name: Some("Tube C".to_string()),
             members: vec!["product".to_string()],
+            declared_contents_exclusive: true,
             created_by_op: None,
             created_at_unix_ms: 0,
         },
@@ -20920,4 +21127,170 @@ fn apply_summarize_tfbs_region_operation_returns_summary_payload() {
     assert_eq!(summary.rows.len(), 1);
     assert_eq!(summary.rows[0].tf_name, "SP1");
     assert_eq!(engine.state().sequences.len(), 1);
+}
+
+#[test]
+fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store() {
+    let mut engine = GentleEngine::new();
+    let stored = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: " Mammalian reporter ".to_string(),
+            goal: " Choose promoter and CDS ".to_string(),
+            host_species: Some(" Homo sapiens ".to_string()),
+            preferred_routine_families: vec![
+                " Gibson ".to_string(),
+                "gibson".to_string(),
+                "Golden Gate".to_string(),
+            ],
+            required_roles: vec![
+                ConstructRole::Cds,
+                ConstructRole::Promoter,
+                ConstructRole::Cds,
+            ],
+            notes: vec![" keep compact ".to_string(), "keep compact".to_string()],
+            ..ConstructObjective::default()
+        })
+        .expect("store objective");
+
+    assert_eq!(stored.schema, CONSTRUCT_OBJECTIVE_SCHEMA);
+    assert!(stored.objective_id.starts_with("construct_objective_"));
+    assert_eq!(stored.title, "Mammalian reporter");
+    assert_eq!(stored.goal, "Choose promoter and CDS");
+    assert_eq!(stored.host_species.as_deref(), Some("Homo sapiens"));
+    assert_eq!(
+        stored.preferred_routine_families,
+        vec!["gibson".to_string(), "golden gate".to_string()]
+    );
+    assert_eq!(
+        stored.required_roles,
+        vec![ConstructRole::Promoter, ConstructRole::Cds]
+    );
+    assert_eq!(stored.notes, vec!["keep compact".to_string()]);
+
+    let store = engine.construct_reasoning_store();
+    assert_eq!(store.schema, CONSTRUCT_REASONING_STORE_SCHEMA);
+    assert_eq!(store.objectives.len(), 1);
+    assert!(store.objectives.contains_key(&stored.objective_id));
+    assert!(
+        engine
+            .state()
+            .metadata
+            .contains_key(CONSTRUCT_REASONING_METADATA_KEY)
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans() {
+    let mut dna = DNAsequence::from_sequence("GAATTCATGGCCATGAAATTTCCCGGG").expect("sequence");
+    let eco_ri = crate::enzymes::active_restriction_enzymes()
+        .into_iter()
+        .find(|enzyme| enzyme.name == "EcoRI")
+        .expect("EcoRI should exist");
+    dna.restriction_enzymes_mut().push(eco_ri);
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(0, 6),
+        qualifiers: vec![
+            ("label".into(), Some("Exon 1".to_string())),
+            ("note".into(), Some("confirmed by cDNA mapping".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(6, 18),
+        qualifiers: vec![("label".into(), Some("Reporter CDS".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(18, 24),
+        qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Reporter construct".to_string(),
+            goal: "Select promoter and coding region".to_string(),
+            required_roles: vec![ConstructRole::Promoter, ConstructRole::Cds],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph("demo", Some(&objective.objective_id), None)
+        .expect("build graph");
+
+    assert_eq!(graph.schema, CONSTRUCT_REASONING_GRAPH_SCHEMA);
+    assert_eq!(graph.seq_id, "demo");
+    assert_eq!(graph.objective.objective_id, objective.objective_id);
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.role == ConstructRole::RestrictionSite
+                && row.evidence_class == EvidenceClass::HardFact
+                && row.label == "EcoRI")
+    );
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.role == ConstructRole::Exon
+                && row.evidence_class == EvidenceClass::HardFact
+                && row.label == "Exon 1")
+    );
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.role == ConstructRole::Cds
+                && row.evidence_class == EvidenceClass::ReliableAnnotation
+                && row.label == "Reporter CDS")
+    );
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.role == ConstructRole::Tfbs
+                && row.evidence_class == EvidenceClass::SoftHypothesis
+                && row.label == "SP1")
+    );
+
+    let persisted = engine
+        .construct_reasoning_graph(&graph.graph_id)
+        .expect("persisted graph");
+    assert_eq!(persisted.graph_id, graph.graph_id);
+    assert_eq!(persisted.evidence.len(), graph.evidence.len());
+}
+
+#[test]
+fn export_construct_reasoning_graph_json_writes_pretty_payload() {
+    let mut dna = DNAsequence::from_sequence("GAATTCATGGCC").expect("sequence");
+    let eco_ri = crate::enzymes::active_restriction_enzymes()
+        .into_iter()
+        .find(|enzyme| enzyme.name == "EcoRI")
+        .expect("EcoRI should exist");
+    dna.restriction_enzymes_mut().push(eco_ri);
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("export_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph("export_demo", None, Some("graph_export_demo"))
+        .expect("build graph");
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("construct_reasoning.json");
+
+    let exported = engine
+        .export_construct_reasoning_graph_json(&graph.graph_id, path.to_str().expect("utf8 path"))
+        .expect("export graph");
+    let text = fs::read_to_string(path).expect("read exported graph");
+
+    assert_eq!(exported.graph_id, graph.graph_id);
+    assert!(text.contains("\"schema\": \"gentle.construct_reasoning_graph.v1\""));
+    assert!(text.contains("\"graph_id\": \"graph_export_demo\""));
 }

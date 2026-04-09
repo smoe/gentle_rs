@@ -5,11 +5,19 @@
 //! The first extracted slice is intentionally small: stable identifier aliases,
 //! shared analysis enums, and the portable engine error payload.
 
+pub mod construct_reasoning;
 pub mod dna_ladder;
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, error::Error, fmt};
 
+pub use construct_reasoning::{
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate, ConstructObjective,
+    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
+    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
+    DesignFact, EditableStatus, EvidenceClass,
+};
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,

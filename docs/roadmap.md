@@ -1138,9 +1138,13 @@ order. Durable architecture constraints and decisions remain in
     - `ProjectUniprotToGenome` (feature-to-genome mapping via transcript/CDS)
     - `FetchGenBankAccession` (online GenBank accession fetch + direct import)
     - `FetchDbSnpRegion` (online dbSNP rsID resolution + annotated locus extraction)
-    - `ImportUniprotEntrySequence` remains present for protocol compatibility
-      but is intentionally disabled (`Unsupported`) until first-class
-      protein-sequence windows are implemented.
+    - `ImportUniprotEntrySequence` now materializes first-class protein
+      sequence entries with projected UniProt feature annotations
+    - `DeriveProteinSequences` now materializes first-class peptides from
+      transcript/CDS context (annotated CDS first, ORF fallback second)
+    - `ReverseTranslateProteinSequence` now materializes synthetic coding DNA
+      from protein sequences with optional species/speed and annealing-bias
+      hints
   - persisted metadata stores:
     - `gentle.uniprot_entries.v1`
     - `gentle.uniprot_genome_projections.v1`
@@ -1156,13 +1160,19 @@ order. Durable architecture constraints and decisions remain in
     - the same specialist now also offers direct `Render Protein Mapping SVG...`
       affordances for the active/stored projection so inspection and export use
       one persisted projection handle
-    - the viewer reuses the shared isoform-architecture canvas rather than
-      opening first-class protein sequence windows
+    - the viewer still reuses the shared isoform-architecture canvas for
+      genome/transcript projection inspection, but imported/derived proteins
+      can now also exist as regular sequence entries
     - shared expert routes now also accept
       `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID` and
       `render-feature-expert-svg ... uniprot-projection ...`, keeping the GUI
       as a thin presentation layer over persisted
       `gentle.uniprot_genome_projections.v1` state
+  - container semantics follow-up:
+    - persisted containers now default to `declared_contents_exclusive=true`
+      so clean vials/tubes mean “only the listed members”
+    - later noisy/tissue-derived sample work can mark containers
+      non-exclusive without changing sequence semantics or rack placement
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`
@@ -3598,11 +3608,13 @@ Post-baseline follow-ups:
   - optional decision-trace export in process protocol/run-bundle artifacts.
 - Add a sequence-linked construct-reasoning graph layer ahead of routine
   choice:
-  - capture construct objective, span evidence, derived facts, decision nodes,
-    and construct candidates as engine-owned portable records
-  - keep the first milestone read-only and offline-first:
-    restriction/exon/CDS/TFBS evidence extraction + DNA-window overlay + JSON
-    export
+  - Done (2026-04-09, first slice): shared protocol records plus engine
+    metadata store now exist for construct objectives and reasoning graphs, and
+    the engine can deterministically build/export an initial read-only graph
+    from restriction/exon/CDS/TFBS-style evidence already present on a
+    sequence.
+  - Next: derive facts/decision nodes/construct candidates on top of that
+    foundation and add the DNA-window overlay/editor surface.
   - feed resulting construct candidates into Routine Assistant instead of
     forcing protocol selection before construct reasoning exists
   - detailed design note:
@@ -3703,12 +3715,14 @@ Post-baseline follow-ups:
     appears
 - Keep screenshot re-enable work as the final item and only after explicit
   endpoint-security exception/approval.
-- Keep first-class protein-sequence support deferred:
-  - UniProt remains metadata/projection input (fetch/import/list/show/map).
-  - do not reopen protein sequence-window import until a dedicated protein
-    window model exists (layout, feature toggles, exports, provenance UX).
-  - when resumed, ship as a separate export/analysis channel rather than a
-    DNA-window fallback.
+- Protein follow-up now shifts from “first-class sequence existence” to UX
+  deepening:
+  - dedicated protein-window ergonomics remain a follow-up
+  - UniProt projection and protein-sequence materialization should continue to
+    share provenance instead of forking into adapter-only flows
+  - reverse-translation ergonomics can deepen later (named presets, richer
+    codon tables, stronger annealing optimization) without reopening the basic
+    protein-sequence model question
 - Keep auto-updated documentation with embedded graphics postponed until above
   safety/contract priorities are complete.
 - Add deferred documentation track: **GUI screenshot atlas automation (blocked

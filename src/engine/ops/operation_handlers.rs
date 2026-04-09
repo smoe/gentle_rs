@@ -1660,10 +1660,11 @@ impl GentleEngine {
             return Ok(None);
         }
         let source_context_feature = Self::first_source_feature_for_derivation(source_features);
-        let organism = Self::qualifier_text_for_derivation(source_feature, "organism").or_else(|| {
-            source_context_feature
-                .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organism"))
-        });
+        let organism =
+            Self::qualifier_text_for_derivation(source_feature, "organism").or_else(|| {
+                source_context_feature
+                    .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organism"))
+            });
         let organelle =
             Self::infer_organelle_for_derivation(source_feature, None, source_context_feature);
         let speed_profile_hint = Self::infer_translation_speed_profile_hint(organism.as_deref());
@@ -1734,15 +1735,18 @@ impl GentleEngine {
             } else {
                 start_0based + ((bytes.len().saturating_sub(start_0based)) / 3) * 3
             };
-            let aa_len = translated_end.saturating_sub(start_0based) / 3
-                - usize::from(has_terminal_stop);
-            adopt_candidate(&mut best, Candidate {
-                start_0based,
-                end_0based_exclusive: translated_end,
-                aa_len,
-                has_terminal_stop,
-                derivation_mode: TranscriptProteinDerivationMode::InferredOrf,
-            });
+            let aa_len =
+                translated_end.saturating_sub(start_0based) / 3 - usize::from(has_terminal_stop);
+            adopt_candidate(
+                &mut best,
+                Candidate {
+                    start_0based,
+                    end_0based_exclusive: translated_end,
+                    aa_len,
+                    has_terminal_stop,
+                    derivation_mode: TranscriptProteinDerivationMode::InferredOrf,
+                },
+            );
         }
 
         if best.is_none() {
@@ -1756,26 +1760,33 @@ impl GentleEngine {
                     );
                     if aa == STOP_CODON {
                         let aa_len = pos.saturating_sub(segment_start) / 3;
-                        adopt_candidate(&mut best, Candidate {
-                            start_0based: segment_start,
-                            end_0based_exclusive: pos,
-                            aa_len,
-                            has_terminal_stop: false,
-                            derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
-                        });
+                        adopt_candidate(
+                            &mut best,
+                            Candidate {
+                                start_0based: segment_start,
+                                end_0based_exclusive: pos,
+                                aa_len,
+                                has_terminal_stop: false,
+                                derivation_mode:
+                                    TranscriptProteinDerivationMode::HeuristicLongestFrame,
+                            },
+                        );
                         segment_start = pos + 3;
                     }
                     pos += 3;
                 }
                 let frame_end = frame + ((bytes.len().saturating_sub(frame)) / 3) * 3;
                 let aa_len = frame_end.saturating_sub(segment_start) / 3;
-                adopt_candidate(&mut best, Candidate {
-                    start_0based: segment_start,
-                    end_0based_exclusive: frame_end,
-                    aa_len,
-                    has_terminal_stop: false,
-                    derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
-                });
+                adopt_candidate(
+                    &mut best,
+                    Candidate {
+                        start_0based: segment_start,
+                        end_0based_exclusive: frame_end,
+                        aa_len,
+                        has_terminal_stop: false,
+                        derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
+                    },
+                );
             }
         }
 
@@ -1854,7 +1865,9 @@ impl GentleEngine {
             TranslationSpeedProfile::Human => ("Human", None),
             TranslationSpeedProfile::Mouse => (
                 "Rattus norvegicus",
-                Some("Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet."),
+                Some(
+                    "Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet.",
+                ),
             ),
             TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
             TranslationSpeedProfile::Ecoli => ("E. coli", None),
@@ -1905,13 +1918,25 @@ impl GentleEngine {
                 let is_preferred = preferred.as_deref() == Some(candidate);
                 let preference_penalty = match speed_mark {
                     Some(TranslationSpeedMark::Fast) => {
-                        if is_preferred { 0.0 } else { 10.0 }
+                        if is_preferred {
+                            0.0
+                        } else {
+                            10.0
+                        }
                     }
                     Some(TranslationSpeedMark::Slow) => {
-                        if !is_preferred && multiple_candidates { 0.0 } else { 10.0 }
+                        if !is_preferred && multiple_candidates {
+                            0.0
+                        } else {
+                            10.0
+                        }
                     }
                     None => {
-                        if is_preferred { 0.0 } else { 1.0 }
+                        if is_preferred {
+                            0.0
+                        } else {
+                            1.0
+                        }
                     }
                 };
                 let tm_penalty = if let Some(target_tm) = target_anneal_tm_c {
@@ -1984,10 +2009,11 @@ impl GentleEngine {
         representative_cds_feature: Option<&gb_io::seq::Feature>,
         derivation: &TranscriptProteinDerivation,
     ) -> Result<DNAsequence, EngineError> {
-        let mut protein = DNAsequence::from_sequence(protein_sequence).map_err(|e| EngineError {
-            code: ErrorCode::Internal,
-            message: format!("Could not construct protein sequence '{seq_name}': {e}"),
-        })?;
+        let mut protein =
+            DNAsequence::from_sequence(protein_sequence).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not construct protein sequence '{seq_name}': {e}"),
+            })?;
         protein.set_name(seq_name);
         protein.set_molecule_type("protein");
         let mut qualifiers = vec![
@@ -1997,7 +2023,10 @@ impl GentleEngine {
                 "source_feature_id".into(),
                 Some((source_feature_id + 1).to_string()),
             ),
-            ("transcript_id".into(), Some(derivation.transcript_id.clone())),
+            (
+                "transcript_id".into(),
+                Some(derivation.transcript_id.clone()),
+            ),
             (
                 "protein_derivation_mode".into(),
                 Some(derivation.derivation_mode.as_str().to_string()),
@@ -2026,12 +2055,25 @@ impl GentleEngine {
             ));
         }
         if let Some(organism) = derivation.organism.as_ref() {
-            qualifiers.push(("translation_context_organism".into(), Some(organism.clone())));
+            qualifiers.push((
+                "translation_context_organism".into(),
+                Some(organism.clone()),
+            ));
         }
         if let Some(organelle) = derivation.organelle.as_ref() {
-            qualifiers.push(("translation_context_organelle".into(), Some(organelle.clone())));
+            qualifiers.push((
+                "translation_context_organelle".into(),
+                Some(organelle.clone()),
+            ));
         }
-        for key in ["gene", "gene_id", "locus_tag", "product", "protein_id", "note"] {
+        for key in [
+            "gene",
+            "gene_id",
+            "locus_tag",
+            "product",
+            "protein_id",
+            "note",
+        ] {
             if let Some(value) = representative_cds_feature
                 .and_then(|feature| Self::qualifier_text_for_derivation(feature, key))
                 .or_else(|| Self::qualifier_text_for_derivation(transcript_feature, key))
@@ -2101,13 +2143,13 @@ impl GentleEngine {
             ));
         }
         if let Some(mark) = speed_mark {
-            qualifiers.push(("translation_speed_mark".into(), Some(mark.as_str().to_string())));
+            qualifiers.push((
+                "translation_speed_mark".into(),
+                Some(mark.as_str().to_string()),
+            ));
         }
         if let Some(target_tm) = target_anneal_tm_c {
-            qualifiers.push((
-                "target_anneal_tm_c".into(),
-                Some(format!("{target_tm:.2}")),
-            ));
+            qualifiers.push(("target_anneal_tm_c".into(), Some(format!("{target_tm:.2}"))));
             qualifiers.push((
                 "target_anneal_window_bp".into(),
                 Some(anneal_window_bp.to_string()),
@@ -8597,13 +8639,14 @@ impl GentleEngine {
                         transcript_feature_id,
                         &seq_id,
                     )?;
-                    let representative_cds_feature = Self::collect_matching_cds_features_for_derivation(
-                        &source_features,
-                        source_feature,
-                        &Self::feature_ranges_0based_for_derivation(source_feature),
-                    )
-                    .into_iter()
-                    .next();
+                    let representative_cds_feature =
+                        Self::collect_matching_cds_features_for_derivation(
+                            &source_features,
+                            source_feature,
+                            &Self::feature_ranges_0based_for_derivation(source_feature),
+                        )
+                        .into_iter()
+                        .next();
                     let derivation = match annotated_derivation {
                         Some(derivation) => Some(derivation),
                         None => Self::infer_transcript_protein_derivation_without_annotation(
@@ -8653,9 +8696,7 @@ impl GentleEngine {
                         representative_cds_feature,
                         &derivation,
                     )?;
-                    self.state
-                        .sequences
-                        .insert(protein_seq_id.clone(), protein);
+                    self.state.sequences.insert(protein_seq_id.clone(), protein);
                     self.add_lineage_node(
                         &protein_seq_id,
                         SequenceOrigin::Derived,
@@ -8718,17 +8759,17 @@ impl GentleEngine {
                 }
                 let effective_speed_profile = speed_profile
                     .or_else(|| Self::sequence_feature_translation_speed_hint(&protein));
-                let (preferred_species_label, mut warnings) = if let Some(profile) = effective_speed_profile
-                {
-                    let (species, warning) = Self::codon_profile_species_label(profile);
-                    let mut warnings = vec![];
-                    if let Some(warning) = warning {
-                        warnings.push(warning.to_string());
-                    }
-                    (Some(species), warnings)
-                } else {
-                    (None, vec![])
-                };
+                let (preferred_species_label, mut warnings) =
+                    if let Some(profile) = effective_speed_profile {
+                        let (species, warning) = Self::codon_profile_species_label(profile);
+                        let mut warnings = vec![];
+                        if let Some(warning) = warning {
+                            warnings.push(warning.to_string());
+                        }
+                        (Some(species), warnings)
+                    } else {
+                        (None, vec![])
+                    };
                 let effective_translation_table = translation_table
                     .or_else(|| {
                         protein.features().iter().find_map(|feature| {
@@ -8776,11 +8817,7 @@ impl GentleEngine {
                     &warnings,
                 )?;
                 self.state.sequences.insert(coding_seq_id.clone(), coding);
-                self.add_lineage_node(
-                    &coding_seq_id,
-                    SequenceOrigin::Derived,
-                    Some(&result.op_id),
-                );
+                self.add_lineage_node(&coding_seq_id, SequenceOrigin::Derived, Some(&result.op_id));
                 parent_seq_ids.push(seq_id.clone());
                 result.created_seq_ids.push(coding_seq_id.clone());
                 result.messages.push(format!(

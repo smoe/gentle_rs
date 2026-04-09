@@ -718,6 +718,11 @@ Semantic interpretation:
 - A container may map to multiple candidate sequences/fragments.
 - Explicit container objects are first-class state (`container_state`) and are
   indexed from sequence ids via `seq_to_latest_container`.
+- Containers now also record `declared_contents_exclusive`:
+  - `true` (default): the declared members are intended to be the full known
+    contents of a clean vial/tube
+  - `false`: the declared members are measured/known constituents of a more
+    complex sample, and additional unlisted molecules may also be present
 - Arrangements stay the semantic experiment-order layer.
 - Racks are the linked physical placement layer and may host one or more
   arrangements without changing arrangement identity.
@@ -966,10 +971,12 @@ Sequencing-trace evidence notes:
 - `ImportUniprotSwissProt { path, entry_id? }`
 - `FetchUniprotSwissProt { query, entry_id? }`
 - `ImportUniprotEntrySequence { entry_id, output_id? }`
-  - currently returns `Unsupported`: protein sequence windows are deferred; use
-    UniProt entries as metadata/projection sources in this release.
+  - imports one first-class protein sequence plus projected UniProt feature
+    annotations into regular project sequence state.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
+- `DeriveProteinSequences { seq_id, feature_ids[], scope?, output_prefix? }`
+- `ReverseTranslateProteinSequence { seq_id, output_id?, speed_profile?, speed_mark?, translation_table?, target_anneal_tm_c?, anneal_window_bp? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
@@ -2151,8 +2158,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - mitochondrial context without explicit `/transl_table` currently falls
       back to table `1` and emits an explicit warning because lineage-specific
       mitochondrial table inference is not implemented yet
-  - translated protein sequences are emitted as qualifiers, not yet as
-    first-class protein sequence windows.
+  - the derived transcript still keeps translation qualifiers locally, and
+    `DeriveProteinSequences` can then materialize the corresponding peptides as
+    first-class protein sequence entries.
 - Derived feature qualifiers:
   - derived `mRNA` may now include:
     - `cds_ranges_1based`
@@ -2185,6 +2193,65 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - deterministic messages/warnings about CDS absence, translation-table
     fallback, partial codons, ambiguous codons, or internal stops.
+
+`DeriveProteinSequences` semantics:
+
+- Inputs:
+  - `seq_id`
+  - optional `feature_ids[]`
+  - optional splicing `scope`
+  - optional `output_prefix`
+- Behavior:
+  - derives one first-class protein sequence per selected/admitted transcript
+  - uses annotated CDS translation when available
+  - if CDS annotation is absent, falls back deterministically to:
+    - an inferred ATG-start ORF on the derived transcript
+    - otherwise the longest stop-free reading-frame segment
+  - emits one full-span local `Protein` feature on the derived peptide with:
+    - transcript/source provenance
+    - derivation mode (`annotated_cds`, `inferred_orf`, `heuristic_longest_frame`)
+    - translation-table context
+    - organism/organelle context when available
+    - optional `translation_speed_profile_hint`
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - deterministic warnings when CDS annotation is missing or heuristic
+    inference had to be used
+
+`ReverseTranslateProteinSequence` semantics:
+
+- Inputs:
+  - `seq_id` (must resolve to a protein sequence)
+  - optional `output_id`
+  - optional `speed_profile`:
+    - `human`
+    - `mouse`
+    - `yeast`
+    - `ecoli`
+  - optional `speed_mark`:
+    - `fast`
+    - `slow`
+  - optional `translation_table`
+  - optional `target_anneal_tm_c`
+  - optional `anneal_window_bp`
+- Behavior:
+  - generates one synthetic coding DNA sequence for the selected protein
+  - codon choice is deterministic and translation-table-aware
+  - `speed_mark=fast` biases toward preferred codons for the selected/bundled
+    species profile
+  - `speed_mark=slow` biases away from the preferred codon when synonymous
+    choices exist
+  - optional `target_anneal_tm_c` applies a lightweight local suffix Tm
+    heuristic over `anneal_window_bp` windows to mildly steer codon choice; it
+    is advisory rather than a full sequence optimizer
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - one full-span synthetic local `CDS` feature with:
+    - protein provenance
+    - translation table/label
+    - optional speed profile/mark qualifiers
+    - optional annealing-target qualifiers
+    - zero or more `reverse_translation_warning` qualifiers
 
 `RenderProtocolCartoonSvg` semantics:
 
@@ -2313,6 +2380,35 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Failure modes:
   - empty `path` => `InvalidInput`
   - unknown filtered `run_id` (no selected rows) => `NotFound`
+
+Construct reasoning graph foundation (implemented first slice):
+
+- Shared portable records now exist for:
+  - `gentle.construct_objective.v1`
+  - `gentle.design_evidence.v1`
+  - `gentle.design_fact.v1`
+  - `gentle.design_decision_node.v1`
+  - `gentle.construct_candidate.v1`
+  - `gentle.construct_reasoning_graph.v1`
+  - `gentle.construct_reasoning_store.v1`
+- Current engine-backed scope:
+  - project metadata key: `construct_reasoning`
+  - objective upsert/store round-trip
+  - deterministic read-only graph build from existing sequence facts:
+    restriction sites plus sequence-feature spans such as exon/CDS/gene/
+    transcript/UTR/promoter/TFBS when present
+  - JSON export helper for one stored graph
+- Current evidence-class rules:
+  - restriction sites => `hard_fact`
+  - exon/splice annotations with explicit cDNA-style qualifier hints =>
+    `hard_fact`
+  - imported/derived sequence annotations => `reliable_annotation`
+  - TFBS-style annotations => `soft_hypothesis`
+- Not in this first slice yet:
+  - derived facts/decision-node population beyond raw evidence capture
+  - construct-candidate ranking
+  - GUI overlay/editor surfaces
+  - process-run-bundle export integration for construct reasoning graphs
 
 Protocol-cartoon family growth direction (planned):
 

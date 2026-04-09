@@ -135,6 +135,16 @@ pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v1";
 pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
 const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
+pub const CONSTRUCT_REASONING_METADATA_KEY: &str = "construct_reasoning";
+pub const CONSTRUCT_OBJECTIVE_SCHEMA: &str = gentle_protocol::CONSTRUCT_OBJECTIVE_SCHEMA;
+pub const DESIGN_EVIDENCE_SCHEMA: &str = gentle_protocol::DESIGN_EVIDENCE_SCHEMA;
+pub const DESIGN_FACT_SCHEMA: &str = gentle_protocol::DESIGN_FACT_SCHEMA;
+pub const DESIGN_DECISION_NODE_SCHEMA: &str = gentle_protocol::DESIGN_DECISION_NODE_SCHEMA;
+pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = gentle_protocol::CONSTRUCT_CANDIDATE_SCHEMA;
+pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
+    gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
+pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
+    gentle_protocol::CONSTRUCT_REASONING_STORE_SCHEMA;
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -812,6 +822,8 @@ pub struct Container {
     pub kind: ContainerKind,
     pub name: Option<String>,
     pub members: Vec<SeqId>,
+    #[serde(default = "default_true")]
+    pub declared_contents_exclusive: bool,
     pub created_by_op: Option<OpId>,
     pub created_at_unix_ms: u128,
 }
@@ -8893,6 +8905,798 @@ impl GentleEngine {
         let status = store.sync_status.clone();
         self.write_planning_store(store)?;
         Ok(status)
+    }
+
+    fn validate_construct_objective_schema(
+        objective: &ConstructObjective,
+    ) -> Result<(), EngineError> {
+        let schema = objective.schema.trim();
+        if !schema.is_empty() && schema != CONSTRUCT_OBJECTIVE_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported construct objective schema '{}' (expected '{}')",
+                    schema, CONSTRUCT_OBJECTIVE_SCHEMA
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn normalize_role_list(roles: &mut Vec<ConstructRole>) {
+        roles.sort();
+        roles.dedup();
+    }
+
+    fn normalize_optional_note_text(values: &mut Vec<String>) {
+        let mut seen: HashSet<String> = HashSet::new();
+        *values = values
+            .drain(..)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .filter(|value| seen.insert(value.to_ascii_uppercase()))
+            .collect();
+    }
+
+    fn normalize_construct_objective(mut objective: ConstructObjective) -> ConstructObjective {
+        objective.schema = CONSTRUCT_OBJECTIVE_SCHEMA.to_string();
+        objective.objective_id = if !objective.objective_id.trim().is_empty() {
+            Self::normalize_id_token(objective.objective_id.trim())
+        } else {
+            let preferred = if !objective.title.trim().is_empty() {
+                objective.title.trim()
+            } else if !objective.goal.trim().is_empty() {
+                objective.goal.trim()
+            } else {
+                "construct_objective"
+            };
+            format!(
+                "construct_objective_{}",
+                Self::normalize_id_token(preferred)
+            )
+        };
+        objective.title = objective.title.trim().to_string();
+        objective.goal = objective.goal.trim().to_string();
+        objective.host_species = objective
+            .host_species
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        objective.cell_type = objective
+            .cell_type
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        objective.tissue = objective
+            .tissue
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        objective.organelle = objective
+            .organelle
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        objective.expression_intent = objective
+            .expression_intent
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Self::normalize_role_list(&mut objective.required_roles);
+        Self::normalize_role_list(&mut objective.forbidden_roles);
+        objective.preferred_routine_families = objective
+            .preferred_routine_families
+            .iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        objective.preferred_routine_families.sort();
+        objective.preferred_routine_families.dedup();
+        Self::normalize_optional_note_text(&mut objective.notes);
+        objective
+    }
+
+    fn normalize_confidence_score(value: Option<f64>) -> Option<f64> {
+        value.filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0)
+    }
+
+    fn normalize_optional_score(value: Option<f64>) -> Option<f64> {
+        value.filter(|value| value.is_finite())
+    }
+
+    fn normalize_design_evidence(mut evidence: DesignEvidence, idx: usize) -> DesignEvidence {
+        evidence.schema = DESIGN_EVIDENCE_SCHEMA.to_string();
+        evidence.evidence_id = if evidence.evidence_id.trim().is_empty() {
+            format!(
+                "evidence_{}_{}_{}_{}",
+                evidence.role.as_str(),
+                evidence.start_0based,
+                evidence.end_0based_exclusive,
+                idx
+            )
+        } else {
+            evidence.evidence_id.trim().to_string()
+        };
+        evidence.seq_id = evidence.seq_id.trim().to_string();
+        if evidence.end_0based_exclusive < evidence.start_0based {
+            std::mem::swap(
+                &mut evidence.start_0based,
+                &mut evidence.end_0based_exclusive,
+            );
+        }
+        evidence.strand = evidence
+            .strand
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        evidence.label = evidence.label.trim().to_string();
+        evidence.rationale = evidence.rationale.trim().to_string();
+        evidence.score = Self::normalize_optional_score(evidence.score);
+        evidence.confidence = Self::normalize_confidence_score(evidence.confidence);
+        evidence.specificity_bias = Self::normalize_confidence_score(evidence.specificity_bias);
+        evidence.sensitivity_bias = Self::normalize_confidence_score(evidence.sensitivity_bias);
+        evidence.context_tags = evidence
+            .context_tags
+            .iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+        evidence.context_tags.sort();
+        evidence.context_tags.dedup();
+        evidence.provenance_kind = evidence.provenance_kind.trim().to_string();
+        evidence.provenance_refs = evidence
+            .provenance_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        evidence.provenance_refs.sort();
+        evidence.provenance_refs.dedup();
+        Self::normalize_optional_note_text(&mut evidence.warnings);
+        Self::normalize_optional_note_text(&mut evidence.notes);
+        evidence
+    }
+
+    fn normalize_design_fact(mut fact: DesignFact, idx: usize) -> DesignFact {
+        fact.schema = DESIGN_FACT_SCHEMA.to_string();
+        fact.fact_id = if fact.fact_id.trim().is_empty() {
+            format!("fact_{}_{}", Self::normalize_id_token(&fact.fact_type), idx)
+        } else {
+            fact.fact_id.trim().to_string()
+        };
+        fact.fact_type = fact.fact_type.trim().to_string();
+        fact.label = fact.label.trim().to_string();
+        fact.rationale = fact.rationale.trim().to_string();
+        fact.based_on_evidence_ids = fact
+            .based_on_evidence_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        fact.based_on_evidence_ids.sort();
+        fact.based_on_evidence_ids.dedup();
+        fact.confidence = Self::normalize_confidence_score(fact.confidence);
+        fact
+    }
+
+    fn normalize_design_decision_node(
+        mut node: DesignDecisionNode,
+        idx: usize,
+    ) -> DesignDecisionNode {
+        node.schema = DESIGN_DECISION_NODE_SCHEMA.to_string();
+        node.decision_id = if node.decision_id.trim().is_empty() {
+            format!(
+                "decision_{}_{}",
+                Self::normalize_id_token(&node.decision_type),
+                idx
+            )
+        } else {
+            node.decision_id.trim().to_string()
+        };
+        node.decision_type = node.decision_type.trim().to_string();
+        node.title = node.title.trim().to_string();
+        node.rationale = node.rationale.trim().to_string();
+        for ids in [
+            &mut node.input_evidence_ids,
+            &mut node.input_fact_ids,
+            &mut node.output_fact_ids,
+            &mut node.output_candidate_ids,
+        ] {
+            *ids = ids
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            ids.sort();
+            ids.dedup();
+        }
+        node
+    }
+
+    fn normalize_construct_candidate(
+        mut candidate: ConstructCandidate,
+        idx: usize,
+    ) -> ConstructCandidate {
+        candidate.schema = CONSTRUCT_CANDIDATE_SCHEMA.to_string();
+        candidate.candidate_id = if candidate.candidate_id.trim().is_empty() {
+            format!("candidate_{}", idx)
+        } else {
+            candidate.candidate_id.trim().to_string()
+        };
+        candidate.objective_id = candidate.objective_id.trim().to_string();
+        candidate.title = candidate.title.trim().to_string();
+        for ids in [
+            &mut candidate.component_ids,
+            &mut candidate.derived_from_fact_ids,
+            &mut candidate.suggested_routine_ids,
+        ] {
+            *ids = ids
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            ids.sort();
+            ids.dedup();
+        }
+        candidate.compactness_score = Self::normalize_optional_score(candidate.compactness_score);
+        candidate.confidence_score = Self::normalize_confidence_score(candidate.confidence_score);
+        candidate.cloning_complexity_score =
+            Self::normalize_optional_score(candidate.cloning_complexity_score);
+        candidate.host_fit_score = Self::normalize_confidence_score(candidate.host_fit_score);
+        Self::normalize_optional_note_text(&mut candidate.warnings);
+        Self::normalize_optional_note_text(&mut candidate.notes);
+        candidate
+    }
+
+    fn normalize_construct_reasoning_graph(
+        mut graph: ConstructReasoningGraph,
+    ) -> ConstructReasoningGraph {
+        graph.schema = CONSTRUCT_REASONING_GRAPH_SCHEMA.to_string();
+        graph.seq_id = graph.seq_id.trim().to_string();
+        graph.objective = Self::normalize_construct_objective(graph.objective);
+        graph.graph_id = if graph.graph_id.trim().is_empty() {
+            format!(
+                "construct_reasoning_{}_{}",
+                Self::normalize_id_token(&graph.seq_id),
+                Self::normalize_id_token(&graph.objective.objective_id)
+            )
+        } else {
+            graph.graph_id.trim().to_string()
+        };
+        if graph.generated_at_unix_ms == 0 {
+            graph.generated_at_unix_ms = Self::now_unix_ms();
+        }
+        for (idx, evidence) in graph.evidence.iter_mut().enumerate() {
+            let mut normalized = Self::normalize_design_evidence(evidence.clone(), idx);
+            if normalized.seq_id.is_empty() {
+                normalized.seq_id = graph.seq_id.clone();
+            }
+            *evidence = normalized;
+        }
+        graph.evidence.sort_by(|a, b| {
+            a.start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.role.cmp(&b.role))
+                .then(a.evidence_class.cmp(&b.evidence_class))
+                .then(a.label.cmp(&b.label))
+                .then(a.evidence_id.cmp(&b.evidence_id))
+        });
+        graph.facts = graph
+            .facts
+            .into_iter()
+            .enumerate()
+            .map(|(idx, fact)| Self::normalize_design_fact(fact, idx))
+            .collect();
+        graph.facts.sort_by(|a, b| a.fact_id.cmp(&b.fact_id));
+        graph.decisions = graph
+            .decisions
+            .into_iter()
+            .enumerate()
+            .map(|(idx, node)| Self::normalize_design_decision_node(node, idx))
+            .collect();
+        graph
+            .decisions
+            .sort_by(|a, b| a.decision_id.cmp(&b.decision_id));
+        graph.candidates = graph
+            .candidates
+            .into_iter()
+            .enumerate()
+            .map(|(idx, candidate)| Self::normalize_construct_candidate(candidate, idx))
+            .collect();
+        graph
+            .candidates
+            .sort_by(|a, b| a.candidate_id.cmp(&b.candidate_id));
+        Self::normalize_optional_note_text(&mut graph.notes);
+        graph
+    }
+
+    fn read_construct_reasoning_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> ConstructReasoningStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<ConstructReasoningStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = CONSTRUCT_REASONING_STORE_SCHEMA.to_string();
+        }
+        store.objectives = store
+            .objectives
+            .into_values()
+            .map(Self::normalize_construct_objective)
+            .map(|objective| (objective.objective_id.clone(), objective))
+            .collect();
+        store.graphs = store
+            .graphs
+            .into_values()
+            .map(Self::normalize_construct_reasoning_graph)
+            .map(|graph| (graph.graph_id.clone(), graph))
+            .collect();
+        store.preferred_graph_id = store
+            .preferred_graph_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty() && store.graphs.contains_key(value));
+        store
+    }
+
+    fn read_construct_reasoning_store(&self) -> ConstructReasoningStore {
+        Self::read_construct_reasoning_store_from_metadata(
+            self.state.metadata.get(CONSTRUCT_REASONING_METADATA_KEY),
+        )
+    }
+
+    fn write_construct_reasoning_store(
+        &mut self,
+        mut store: ConstructReasoningStore,
+    ) -> Result<(), EngineError> {
+        store.schema = CONSTRUCT_REASONING_STORE_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        store.objectives = store
+            .objectives
+            .into_values()
+            .map(Self::normalize_construct_objective)
+            .map(|objective| (objective.objective_id.clone(), objective))
+            .collect();
+        store.graphs = store
+            .graphs
+            .into_values()
+            .map(Self::normalize_construct_reasoning_graph)
+            .map(|graph| (graph.graph_id.clone(), graph))
+            .collect();
+        if let Some(preferred_graph_id) = store.preferred_graph_id.clone() {
+            if preferred_graph_id.trim().is_empty()
+                || !store.graphs.contains_key(&preferred_graph_id)
+            {
+                store.preferred_graph_id = None;
+            }
+        }
+        if store.objectives.is_empty()
+            && store.graphs.is_empty()
+            && store.preferred_graph_id.is_none()
+        {
+            self.state.metadata.remove(CONSTRUCT_REASONING_METADATA_KEY);
+            return Ok(());
+        }
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize construct-reasoning metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(CONSTRUCT_REASONING_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub fn construct_reasoning_store(&self) -> ConstructReasoningStore {
+        self.read_construct_reasoning_store()
+    }
+
+    pub fn upsert_construct_objective(
+        &mut self,
+        objective: ConstructObjective,
+    ) -> Result<ConstructObjective, EngineError> {
+        Self::validate_construct_objective_schema(&objective)?;
+        let normalized = Self::normalize_construct_objective(objective);
+        let mut store = self.read_construct_reasoning_store();
+        store
+            .objectives
+            .insert(normalized.objective_id.clone(), normalized.clone());
+        self.write_construct_reasoning_store(store)?;
+        Ok(normalized)
+    }
+
+    pub fn construct_reasoning_graph(
+        &self,
+        graph_id: &str,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let target = graph_id.trim();
+        if target.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "graph_id cannot be empty".to_string(),
+            });
+        }
+        self.read_construct_reasoning_store()
+            .graphs
+            .get(target)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Construct reasoning graph '{}' not found", target),
+            })
+    }
+
+    pub fn upsert_construct_reasoning_graph(
+        &mut self,
+        graph: ConstructReasoningGraph,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let normalized = Self::normalize_construct_reasoning_graph(graph);
+        let mut store = self.read_construct_reasoning_store();
+        store.objectives.insert(
+            normalized.objective.objective_id.clone(),
+            normalized.objective.clone(),
+        );
+        store
+            .graphs
+            .insert(normalized.graph_id.clone(), normalized.clone());
+        if store.preferred_graph_id.is_none() {
+            store.preferred_graph_id = Some(normalized.graph_id.clone());
+        }
+        self.write_construct_reasoning_store(store)?;
+        Ok(normalized)
+    }
+
+    fn construct_reasoning_default_objective(
+        seq_id: &str,
+        dna: &DNAsequence,
+    ) -> ConstructObjective {
+        let title = dna
+            .name()
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("Construct reasoning for {seq_id}"));
+        Self::normalize_construct_objective(ConstructObjective {
+            objective_id: format!("construct_objective_{}", Self::normalize_id_token(seq_id)),
+            title,
+            goal: format!(
+                "Inspect sequence-linked construct evidence and candidate boundaries on '{seq_id}'"
+            ),
+            ..ConstructObjective::default()
+        })
+    }
+
+    fn construct_reasoning_feature_has_cdna_confirmation_hint(
+        feature: &gb_io::seq::Feature,
+    ) -> bool {
+        for key in [
+            "experiment",
+            "evidence",
+            "inference",
+            "note",
+            "support",
+            "transcript_support_level",
+        ] {
+            for value in feature.qualifier_values(key) {
+                let normalized = value.trim().to_ascii_lowercase();
+                if normalized.contains("cdna")
+                    || normalized.contains("c dna")
+                    || normalized.contains("mrna-supported")
+                    || normalized.contains("mrna supported")
+                    || normalized.contains("validated by mrna")
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn construct_reasoning_role_from_feature(
+        feature: &gb_io::seq::Feature,
+    ) -> Option<ConstructRole> {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        match kind.as_str() {
+            "GENE" => Some(ConstructRole::Gene),
+            "MRNA" | "TRANSCRIPT" | "NCRNA" | "RRNA" | "TRNA" => Some(ConstructRole::Transcript),
+            "EXON" => Some(ConstructRole::Exon),
+            "CDS" => Some(ConstructRole::Cds),
+            "5'UTR" | "5UTR" | "FIVE_PRIME_UTR" => Some(ConstructRole::Utr5Prime),
+            "3'UTR" | "3UTR" | "THREE_PRIME_UTR" => Some(ConstructRole::Utr3Prime),
+            "PROMOTER" => Some(ConstructRole::Promoter),
+            "ENHANCER" => Some(ConstructRole::Enhancer),
+            "TERMINATOR" => Some(ConstructRole::Terminator),
+            "SIG_PEPTIDE" | "SIGNAL_PEPTIDE" => Some(ConstructRole::SignalPeptide),
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Some(ConstructRole::Tfbs),
+            "REGULATORY" | "MISC_FEATURE" => {
+                let hint = Self::first_nonempty_feature_qualifier(
+                    feature,
+                    &["regulatory_class", "function", "note", "label", "name"],
+                )
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+                if hint.contains("promoter") {
+                    Some(ConstructRole::Promoter)
+                } else if hint.contains("enhancer") {
+                    Some(ConstructRole::Enhancer)
+                } else if hint.contains("terminator") {
+                    Some(ConstructRole::Terminator)
+                } else if hint.contains("splice") {
+                    Some(ConstructRole::SpliceBoundary)
+                } else if hint.contains("tfbs") || hint.contains("binding") {
+                    Some(ConstructRole::Tfbs)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn construct_reasoning_class_for_feature(
+        feature: &gb_io::seq::Feature,
+        role: ConstructRole,
+    ) -> EvidenceClass {
+        if role == ConstructRole::Tfbs {
+            return EvidenceClass::SoftHypothesis;
+        }
+        if matches!(role, ConstructRole::Exon | ConstructRole::SpliceBoundary)
+            && Self::construct_reasoning_feature_has_cdna_confirmation_hint(feature)
+        {
+            return EvidenceClass::HardFact;
+        }
+        EvidenceClass::ReliableAnnotation
+    }
+
+    fn construct_reasoning_feature_context_tags(feature: &gb_io::seq::Feature) -> Vec<String> {
+        let mut tags = vec![feature.kind.to_string().to_ascii_lowercase()];
+        if Self::construct_reasoning_feature_has_cdna_confirmation_hint(feature) {
+            tags.push("cdna_confirmed".to_string());
+        }
+        if let Some(regulatory_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
+            tags.push(regulatory_class.trim().to_ascii_lowercase());
+        }
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    fn construct_reasoning_feature_rationale(
+        _feature: &gb_io::seq::Feature,
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+    ) -> String {
+        if role == ConstructRole::Tfbs {
+            return "TFBS-style annotation is kept as a soft hypothesis because binding evidence is context-sensitive.".to_string();
+        }
+        if evidence_class == EvidenceClass::HardFact {
+            return format!(
+                "{} annotation is treated as a hard fact because its qualifiers explicitly hint at cDNA/mRNA confirmation.",
+                role.as_str()
+            );
+        }
+        format!(
+            "{} annotation imported from the sequence record as reliable construct-planning context.",
+            role.as_str()
+        )
+    }
+
+    fn build_construct_reasoning_evidence(
+        &self,
+        seq_id: &str,
+        dna: &DNAsequence,
+    ) -> Vec<DesignEvidence> {
+        let seq_len = dna.len();
+        let mut evidence: Vec<DesignEvidence> = vec![];
+
+        for (site_idx, site) in dna.restriction_enzyme_sites().iter().enumerate() {
+            let Some((start_0based, end_0based_exclusive)) =
+                site.recognition_bounds_0based(seq_len)
+            else {
+                continue;
+            };
+            let (forward_cut, reverse_cut) = site
+                .strand_cut_positions_0based(seq_len)
+                .unwrap_or((start_0based, start_0based));
+            let geometry_tag = match site.enzyme.end_geometry() {
+                crate::restriction_enzyme::RestrictionEndGeometry::Blunt => "blunt",
+                crate::restriction_enzyme::RestrictionEndGeometry::FivePrimeOverhang(_) => {
+                    "five_prime_overhang"
+                }
+                crate::restriction_enzyme::RestrictionEndGeometry::ThreePrimeOverhang(_) => {
+                    "three_prime_overhang"
+                }
+            };
+            evidence.push(DesignEvidence {
+                evidence_id: format!(
+                    "restriction_site_{}_{}_{}_{}",
+                    Self::normalize_id_token(&site.enzyme.name),
+                    start_0based,
+                    end_0based_exclusive,
+                    site_idx
+                ),
+                seq_id: seq_id.to_string(),
+                start_0based,
+                end_0based_exclusive,
+                strand: Some(if site.forward_strand { "+" } else { "-" }.to_string()),
+                role: ConstructRole::RestrictionSite,
+                evidence_class: EvidenceClass::HardFact,
+                label: site.enzyme.name.clone(),
+                rationale: format!(
+                    "Restriction site '{}' is a sequence-determined hard fact with {} cleavage geometry.",
+                    site.enzyme.name, geometry_tag
+                ),
+                score: Some(1.0),
+                confidence: Some(1.0),
+                context_tags: vec![
+                    "restriction_site".to_string(),
+                    geometry_tag.to_string(),
+                    site.enzyme.sequence.to_ascii_lowercase(),
+                ],
+                provenance_kind: "deterministic_restriction_site".to_string(),
+                provenance_refs: vec![site.enzyme.name.clone()],
+                notes: vec![format!(
+                    "recognition={} forward_cut_0based={} reverse_cut_0based={}",
+                    site.enzyme.sequence, forward_cut, reverse_cut
+                )],
+                ..DesignEvidence::default()
+            });
+        }
+
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            let Some(role) = Self::construct_reasoning_role_from_feature(feature) else {
+                continue;
+            };
+            let evidence_class = Self::construct_reasoning_class_for_feature(feature, role);
+            let mut ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.is_empty() {
+                continue;
+            }
+            let label = Self::feature_display_label(feature, feature_id);
+            let rationale =
+                Self::construct_reasoning_feature_rationale(feature, role, evidence_class);
+            let context_tags = Self::construct_reasoning_feature_context_tags(feature);
+            let strand = Some(
+                if feature_is_reverse(feature) {
+                    "-"
+                } else {
+                    "+"
+                }
+                .to_string(),
+            );
+            let total_parts = ranges.len();
+            for (part_idx, (start_0based, end_0based_exclusive)) in ranges.into_iter().enumerate() {
+                let mut part_label = label.clone();
+                if total_parts > 1 {
+                    part_label = format!(
+                        "{} (part {}/{})",
+                        part_label,
+                        part_idx.saturating_add(1),
+                        total_parts
+                    );
+                }
+                evidence.push(DesignEvidence {
+                    evidence_id: format!(
+                        "feature_{}_{}_{}_{}_{}",
+                        Self::normalize_id_token(&feature.kind.to_string()),
+                        feature_id,
+                        start_0based,
+                        end_0based_exclusive,
+                        part_idx
+                    ),
+                    seq_id: seq_id.to_string(),
+                    start_0based,
+                    end_0based_exclusive,
+                    strand: strand.clone(),
+                    role,
+                    evidence_class,
+                    label: part_label,
+                    rationale: rationale.clone(),
+                    confidence: match evidence_class {
+                        EvidenceClass::HardFact => Some(1.0),
+                        EvidenceClass::ReliableAnnotation => Some(0.9),
+                        EvidenceClass::ContextEvidence => Some(0.7),
+                        EvidenceClass::SoftHypothesis => Some(0.5),
+                        EvidenceClass::UserOverride => Some(1.0),
+                    },
+                    context_tags: context_tags.clone(),
+                    provenance_kind: "sequence_feature_annotation".to_string(),
+                    provenance_refs: vec![feature.kind.to_string()],
+                    ..DesignEvidence::default()
+                });
+            }
+        }
+
+        evidence
+    }
+
+    pub fn build_construct_reasoning_graph(
+        &mut self,
+        seq_id: &str,
+        objective_id: Option<&str>,
+        graph_id: Option<&str>,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "seq_id cannot be empty".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let objective = if let Some(objective_id) = objective_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let store = self.read_construct_reasoning_store();
+            store
+                .objectives
+                .get(objective_id)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Construct objective '{}' not found in construct reasoning store",
+                        objective_id
+                    ),
+                })?
+        } else {
+            Self::construct_reasoning_default_objective(seq_id, dna)
+        };
+
+        let graph = ConstructReasoningGraph {
+            graph_id: graph_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| {
+                    format!(
+                        "construct_reasoning_{}_{}",
+                        Self::normalize_id_token(seq_id),
+                        Self::normalize_id_token(&objective.objective_id)
+                    )
+                }),
+            seq_id: seq_id.to_string(),
+            objective,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            evidence: self.build_construct_reasoning_evidence(seq_id, dna),
+            notes: vec![
+                "v1 deterministic evidence extraction includes restriction sites and sequence annotations."
+                    .to_string(),
+            ],
+            ..ConstructReasoningGraph::default()
+        };
+        self.upsert_construct_reasoning_graph(graph)
+    }
+
+    pub fn export_construct_reasoning_graph_json(
+        &self,
+        graph_id: &str,
+        path: &str,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let graph = self.construct_reasoning_graph(graph_id)?;
+        let text = serde_json::to_string_pretty(&graph).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize construct reasoning graph '{}': {e}",
+                graph.graph_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write construct reasoning graph to '{path}': {e}"),
+        })?;
+        Ok(graph)
     }
 
     fn read_dotplot_analysis_store_from_metadata(

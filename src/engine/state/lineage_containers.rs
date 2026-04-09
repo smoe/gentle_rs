@@ -2936,6 +2936,7 @@ impl GentleEngine {
             kind,
             name,
             members: members.to_vec(),
+            declared_contents_exclusive: true,
             created_by_op: created_by_op.map(ToString::to_string),
             created_at_unix_ms: Self::now_unix_ms(),
         };

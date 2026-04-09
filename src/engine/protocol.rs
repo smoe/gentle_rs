@@ -15,12 +15,16 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
-    Capabilities, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayQuerySpec,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities, ConstructCandidate, ConstructObjective,
+    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
+    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
+    DesignFact, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayQuerySpec,
     DotplotQuerySeries, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
-    DotplotView, DotplotViewSummary, EngineError, ErrorCode, FlexibilityModel,
-    GenomeTrackImportProgress, PairwiseAlignmentMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
-    RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
-    RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+    DotplotView, DotplotViewSummary, EditableStatus, EngineError, ErrorCode, EvidenceClass,
+    FlexibilityModel, GenomeTrackImportProgress, PairwiseAlignmentMode, RnaReadAlignConfig,
+    RnaReadAlignmentBackend, RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport,
+    RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
     RnaReadAlignmentInspectionSubsetSpec, RnaReadAlignmentMode, RnaReadAlignmentTsvExport,
     RnaReadExonAbundanceExport, RnaReadExonPathsExport, RnaReadExonSupportFrequency,

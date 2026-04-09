@@ -1602,7 +1602,10 @@ impl GentleEngine {
                 ("entry_id".into(), Some(entry.entry_id.clone())),
                 ("accession".into(), Some(entry.accession.clone())),
                 ("primary_id".into(), Some(entry.primary_id.clone())),
-                ("sequence_length_aa".into(), Some(entry.sequence_length.to_string())),
+                (
+                    "sequence_length_aa".into(),
+                    Some(entry.sequence_length.to_string()),
+                ),
                 (
                     "synthetic_origin".into(),
                     Some("uniprot_entry_import".to_string()),
@@ -1631,7 +1634,8 @@ impl GentleEngine {
             });
         }
         for feature in &entry.features {
-            let (Some(start_aa), Some(end_aa)) = (feature.interval.start_aa, feature.interval.end_aa)
+            let (Some(start_aa), Some(end_aa)) =
+                (feature.interval.start_aa, feature.interval.end_aa)
             else {
                 continue;
             };

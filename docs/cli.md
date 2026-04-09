@@ -421,9 +421,12 @@ UniProt mapping capability status:
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`, `FetchDbSnpRegion`
-- `ImportUniprotEntrySequence` is currently disabled (`Unsupported`) because
-  first-class protein sequence windows are deferred; use UniProt metadata +
-  projection routes instead.
+- additional protein-sequence operations are available today through the shared
+  engine contract (`apply_operation` / workflow JSON), even though dedicated
+  shell sugar is not added yet:
+  - `ImportUniprotEntrySequence`
+  - `DeriveProteinSequences`
+  - `ReverseTranslateProteinSequence`
 
 ## Build and run
 
