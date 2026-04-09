@@ -28,6 +28,7 @@ enum SyntheticMoleculeType {
     DsDna,
     SsDna,
     Rna,
+    Protein,
 }
 
 impl SyntheticMoleculeType {
@@ -43,6 +44,7 @@ impl SyntheticMoleculeType {
             "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna" | "cdna" => {
                 Some(Self::Rna)
             }
+            "protein" | "peptide" | "aa" | "aminoacid" | "aminoacids" => Some(Self::Protein),
             _ => None,
         }
     }
@@ -52,6 +54,7 @@ impl SyntheticMoleculeType {
             Self::DsDna => "dsDNA",
             Self::SsDna => "ssDNA",
             Self::Rna => "RNA",
+            Self::Protein => "protein",
         }
     }
 
@@ -605,6 +608,14 @@ impl DNAsequence {
     }
 
     pub fn update_computed_features(&mut self) {
+        if self.is_protein_sequence() {
+            self.restriction_enzyme_sites.clear();
+            self.restriction_enzyme_groups.clear();
+            self.open_reading_frames.clear();
+            self.methylation_sites = MethylationSites::default();
+            self.gc_content = GcContents::default();
+            return;
+        }
         self.update_restriction_enyzme_sites();
         self.update_restriction_enzyme_groups();
         self.update_open_reading_frames();
@@ -642,6 +653,29 @@ impl DNAsequence {
 
     pub fn molecule_type(&self) -> Option<&str> {
         self.seq.molecule_type.as_deref()
+    }
+
+    pub fn set_molecule_type<S: Into<String>>(&mut self, molecule_type: S) {
+        let raw = molecule_type.into();
+        let trimmed = raw.trim();
+        self.seq.molecule_type = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+    }
+
+    pub fn is_protein_sequence(&self) -> bool {
+        self.molecule_type()
+            .map(|value| {
+                let normalized = value
+                    .trim()
+                    .to_ascii_lowercase()
+                    .replace(['_', '-'], "")
+                    .replace(' ', "");
+                normalized == "protein" || normalized == "peptide"
+            })
+            .unwrap_or(false)
     }
 
     pub fn description(&self) -> &Vec<String> {

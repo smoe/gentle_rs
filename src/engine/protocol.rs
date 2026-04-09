@@ -40,6 +40,8 @@ pub use gentle_protocol::{
     SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
+    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
+    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

@@ -2123,6 +2123,69 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     reference-exon side track; flexibility panel is suppressed there because
     the x-axis is normalized per series.
 
+`DeriveTranscriptSequences` semantics:
+
+- Inputs:
+  - `seq_id`
+  - optional `feature_ids[]`
+  - optional splicing `scope`
+  - optional `output_prefix`
+- Behavior:
+  - derives one spliced transcript/cDNA sequence per admitted
+    `mRNA`/`transcript` feature (or per transcript admitted by the selected
+    splicing scope).
+  - preserves transcript provenance on the derived sequence through synthetic
+    local `mRNA` and `exon` features.
+  - when coding context is available, also derives a synthetic local `CDS`
+    feature and attached protein-translation qualifiers on the derived
+    transcript sequence.
+  - CDS/protein derivation now resolves from, in order:
+    - explicit transcript `cds_ranges_1based`
+    - matching source `CDS` features that fit within the transcript exons
+    - optional `/codon_start` or `phase`
+    - optional `/transl_table`
+    - source/transcript/CDS `organism` and `organelle` context
+  - translation-table resolution is deterministic:
+    - explicit `/transl_table` on CDS, transcript, or source wins
+    - plastid/chloroplast-like organelles default to NCBI table `11`
+    - mitochondrial context without explicit `/transl_table` currently falls
+      back to table `1` and emits an explicit warning because lineage-specific
+      mitochondrial table inference is not implemented yet
+  - translated protein sequences are emitted as qualifiers, not yet as
+    first-class protein sequence windows.
+- Derived feature qualifiers:
+  - derived `mRNA` may now include:
+    - `cds_ranges_1based`
+    - `protein_length_aa`
+    - `translation_table`
+    - `translation_table_label`
+    - `translation_table_source`
+    - `translation_context_organism`
+    - `translation_context_organelle`
+    - `translation_speed_profile_hint`
+    - `derived_protein_translation`
+  - derived synthetic `CDS` may now include:
+    - `translation`
+    - `codon_start`
+    - `transl_table`
+    - `translation_table_label`
+    - `translation_table_source`
+    - `protein_length_aa`
+    - `terminal_stop_trimmed`
+    - zero or more `translation_warning` qualifiers
+- Translation-speed preparation:
+  - transcript derivation now records a normalized
+    `translation_speed_profile_hint` when the source organism resolves to one
+    of the initial target species:
+    - `human`
+    - `mouse`
+    - `yeast`
+    - `ecoli`
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - deterministic messages/warnings about CDS absence, translation-table
+    fallback, partial codons, ambiguous codons, or internal stops.
+
 `RenderProtocolCartoonSvg` semantics:
 
 - Inputs:

@@ -196,6 +196,9 @@ Dotplot/flexibility capability status:
     - selected feature derivation (`--feature-id`)
     - splicing-scope constrained derivation from one seed feature
       (`--scope ...` with exactly one `--feature-id`)
+    - additive synthetic local `CDS` + translated-protein qualifiers when the
+      admitted transcript has resolvable CDS context and translation-table
+      metadata
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
   `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`,
   `DeriveSplicingReferences`, `AlignSequences`) plus

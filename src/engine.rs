@@ -3092,6 +3092,30 @@ pub enum Operation {
         #[serde(default)]
         output_prefix: Option<String>,
     },
+    DeriveProteinSequences {
+        seq_id: SeqId,
+        #[serde(default)]
+        feature_ids: Vec<usize>,
+        #[serde(default)]
+        scope: Option<SplicingScopePreset>,
+        #[serde(default)]
+        output_prefix: Option<String>,
+    },
+    ReverseTranslateProteinSequence {
+        seq_id: SeqId,
+        #[serde(default)]
+        output_id: Option<SeqId>,
+        #[serde(default)]
+        speed_profile: Option<TranslationSpeedProfile>,
+        #[serde(default)]
+        speed_mark: Option<TranslationSpeedMark>,
+        #[serde(default)]
+        translation_table: Option<usize>,
+        #[serde(default)]
+        target_anneal_tm_c: Option<f64>,
+        #[serde(default)]
+        anneal_window_bp: Option<usize>,
+    },
     ComputeDotplot {
         seq_id: SeqId,
         #[serde(default)]
@@ -4493,6 +4517,8 @@ impl GentleEngine {
                 "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
                 "DeriveTranscriptSequences".to_string(),
+                "DeriveProteinSequences".to_string(),
+                "ReverseTranslateProteinSequence".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeDotplotOverlay".to_string(),
                 "ComputeFlexibilityTrack".to_string(),

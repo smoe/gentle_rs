@@ -11,6 +11,8 @@
 
 use super::*;
 use crate::{
+    AMINO_ACIDS,
+    amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     uniprot::UniprotNucleotideXref,
@@ -1148,6 +1150,988 @@ impl GentleEngine {
         None
     }
 
+    fn qualifier_usize_for_derivation(feature: &gb_io::seq::Feature, key: &str) -> Option<usize> {
+        Self::qualifier_text_for_derivation(feature, key).and_then(|value| {
+            value
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|parsed| *parsed > 0)
+        })
+    }
+
+    fn translation_table_display_name(table_id: usize) -> String {
+        match table_id {
+            11 => "Bacterial, Archaeal and Plant Plastid".to_string(),
+            _ => AMINO_ACIDS
+                .codon_tables
+                .get(&table_id)
+                .map(|table| table.organism.trim().to_string())
+                .filter(|label| !label.is_empty())
+                .unwrap_or_else(|| format!("translation table {table_id}")),
+        }
+    }
+
+    fn infer_translation_speed_profile_hint(organism: Option<&str>) -> Option<String> {
+        let normalized = organism?.trim().to_ascii_lowercase();
+        if normalized.contains("homo sapiens") {
+            return Some("human".to_string());
+        }
+        if normalized.contains("mus musculus") {
+            return Some("mouse".to_string());
+        }
+        if normalized.contains("saccharomyces cerevisiae") {
+            return Some("yeast".to_string());
+        }
+        if normalized.contains("escherichia coli") || normalized.contains("e. coli") {
+            return Some("ecoli".to_string());
+        }
+        None
+    }
+
+    fn first_source_feature_for_derivation(
+        source_features: &[gb_io::seq::Feature],
+    ) -> Option<&gb_io::seq::Feature> {
+        source_features
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))
+    }
+
+    fn feature_ranges_0based_for_derivation(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
+        let mut ranges: Vec<(usize, usize)> = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        if ranges.is_empty()
+            && let Ok((from, to)) = feature.location.find_bounds()
+            && from >= 0
+            && to >= 0
+            && (to as usize) > (from as usize)
+        {
+            ranges.push((from as usize, to as usize));
+        }
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges.dedup();
+        ranges.retain(|(start, end)| *end > *start);
+        ranges
+    }
+
+    fn ranges_fit_within_exons(
+        ranges_0based: &[(usize, usize)],
+        exon_ranges_0based: &[(usize, usize)],
+    ) -> bool {
+        !ranges_0based.is_empty()
+            && ranges_0based.iter().all(|(start, end)| {
+                exon_ranges_0based
+                    .iter()
+                    .any(|(exon_start, exon_end)| *start >= *exon_start && *end <= *exon_end)
+            })
+    }
+
+    fn merge_adjacent_ranges_0based(ranges_0based: &[(usize, usize)]) -> Vec<(usize, usize)> {
+        let mut sorted = ranges_0based.to_vec();
+        sorted.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged: Vec<(usize, usize)> = vec![];
+        for (start, end) in sorted {
+            if end <= start {
+                continue;
+            }
+            if let Some(last) = merged.last_mut()
+                && start <= last.1
+            {
+                last.1 = last.1.max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        merged
+    }
+
+    fn trim_leading_bases_from_ranges_0based(
+        ranges_0based: &[(usize, usize)],
+        mut trim_bp: usize,
+    ) -> Vec<(usize, usize)> {
+        let mut trimmed: Vec<(usize, usize)> = vec![];
+        for (start, end) in ranges_0based {
+            let span = end.saturating_sub(*start);
+            if span == 0 {
+                continue;
+            }
+            if trim_bp >= span {
+                trim_bp -= span;
+                continue;
+            }
+            trimmed.push((start.saturating_add(trim_bp), *end));
+            trim_bp = 0;
+        }
+        trimmed
+    }
+
+    fn collect_matching_cds_features_for_derivation<'a>(
+        source_features: &'a [gb_io::seq::Feature],
+        source_feature: &gb_io::seq::Feature,
+        exon_ranges_0based: &[(usize, usize)],
+    ) -> Vec<&'a gb_io::seq::Feature> {
+        let transcript_id = Self::qualifier_text_for_derivation(source_feature, "transcript_id");
+        let transcript_gene = Self::first_nonempty_qualifier_for_derivation(
+            source_feature,
+            &["gene_id", "gene", "locus_tag"],
+        );
+        let transcript_reverse = feature_is_reverse(source_feature);
+        let mut matches = source_features
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+            .filter(|feature| feature_is_reverse(feature) == transcript_reverse)
+            .filter(|feature| {
+                let feature_ranges = Self::feature_ranges_0based_for_derivation(feature);
+                Self::ranges_fit_within_exons(&feature_ranges, exon_ranges_0based)
+            })
+            .filter(|feature| {
+                if let Some(transcript_id) = transcript_id.as_deref() {
+                    return feature
+                        .qualifier_values("transcript_id")
+                        .any(|value| value.trim().eq_ignore_ascii_case(transcript_id));
+                }
+                if let Some(transcript_gene) = transcript_gene.as_deref() {
+                    return ["gene_id", "gene", "locus_tag"].iter().any(|key| {
+                        feature
+                            .qualifier_values(key)
+                            .any(|value| value.trim().eq_ignore_ascii_case(transcript_gene))
+                    });
+                }
+                false
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| {
+            let mut left_ranges = Self::feature_ranges_0based_for_derivation(left);
+            let mut right_ranges = Self::feature_ranges_0based_for_derivation(right);
+            left_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            right_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            left_ranges.cmp(&right_ranges)
+        });
+        matches
+    }
+
+    fn map_source_ranges_to_transcript_local_ranges_0based(
+        source_ranges_0based: &[(usize, usize)],
+        exon_segments_forward: &[(usize, usize, usize, usize)],
+        is_reverse: bool,
+        total_len: usize,
+    ) -> Vec<(usize, usize)> {
+        let mut local_ranges: Vec<(usize, usize)> = vec![];
+        for (source_start, source_end) in source_ranges_0based {
+            for (exon_start, exon_end, local_start, local_end) in exon_segments_forward {
+                let overlap_start = (*source_start).max(*exon_start);
+                let overlap_end = (*source_end).min(*exon_end);
+                if overlap_end <= overlap_start {
+                    continue;
+                }
+                let offset_start = overlap_start.saturating_sub(*exon_start);
+                let offset_end = overlap_end.saturating_sub(*exon_start);
+                let mapped_start = local_start.saturating_add(offset_start);
+                let mapped_end = local_start.saturating_add(offset_end);
+                if mapped_end > mapped_start && mapped_end <= *local_end {
+                    local_ranges.push((mapped_start, mapped_end));
+                }
+            }
+        }
+        let mut merged = Self::merge_adjacent_ranges_0based(&local_ranges);
+        if is_reverse {
+            merged = merged
+                .into_iter()
+                .map(|(start, end)| {
+                    (
+                        total_len.saturating_sub(end),
+                        total_len.saturating_sub(start),
+                    )
+                })
+                .collect();
+            merged.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            merged = Self::merge_adjacent_ranges_0based(&merged);
+        }
+        merged
+    }
+
+    fn infer_organelle_for_derivation(
+        source_feature: &gb_io::seq::Feature,
+        cds_feature: Option<&gb_io::seq::Feature>,
+        source_context_feature: Option<&gb_io::seq::Feature>,
+    ) -> Option<String> {
+        let explicit = cds_feature
+            .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organelle"))
+            .or_else(|| Self::qualifier_text_for_derivation(source_feature, "organelle"))
+            .or_else(|| {
+                source_context_feature
+                    .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organelle"))
+            });
+        if explicit.is_some() {
+            return explicit;
+        }
+        let chromosome_hint = cds_feature
+            .and_then(|feature| Self::qualifier_text_for_derivation(feature, "chromosome"))
+            .or_else(|| Self::qualifier_text_for_derivation(source_feature, "chromosome"))
+            .or_else(|| {
+                source_context_feature
+                    .and_then(|feature| Self::qualifier_text_for_derivation(feature, "chromosome"))
+            })?;
+        (Self::normalize_chromosome_alias(&chromosome_hint) == "mt")
+            .then_some("mitochondrion".to_string())
+    }
+
+    fn resolve_translation_table_for_derivation(
+        source_feature: &gb_io::seq::Feature,
+        cds_feature: Option<&gb_io::seq::Feature>,
+        source_context_feature: Option<&gb_io::seq::Feature>,
+        organelle: Option<&str>,
+    ) -> (usize, TranscriptProteinTranslationTableSource, Vec<String>) {
+        let mut warnings: Vec<String> = vec![];
+        if let Some(value) = cds_feature
+            .and_then(|feature| Self::qualifier_usize_for_derivation(feature, "transl_table"))
+        {
+            return (
+                value,
+                TranscriptProteinTranslationTableSource::ExplicitCdsQualifier,
+                warnings,
+            );
+        }
+        if let Some(value) = Self::qualifier_usize_for_derivation(source_feature, "transl_table") {
+            return (
+                value,
+                TranscriptProteinTranslationTableSource::ExplicitTranscriptQualifier,
+                warnings,
+            );
+        }
+        if let Some(value) = source_context_feature
+            .and_then(|feature| Self::qualifier_usize_for_derivation(feature, "transl_table"))
+        {
+            return (
+                value,
+                TranscriptProteinTranslationTableSource::ExplicitSourceQualifier,
+                warnings,
+            );
+        }
+
+        let organelle_normalized = organelle
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        if organelle_normalized.contains("plastid")
+            || organelle_normalized.contains("chloroplast")
+            || organelle_normalized.contains("chromoplast")
+            || organelle_normalized.contains("leucoplast")
+            || organelle_normalized.contains("apicoplast")
+        {
+            return (
+                11,
+                TranscriptProteinTranslationTableSource::OrganellePlastidDefault,
+                warnings,
+            );
+        }
+        if organelle_normalized.contains("mitochond")
+            || organelle_normalized.contains("kinetoplast")
+        {
+            warnings.push(
+                "Mitochondrial context was detected but no explicit /transl_table qualifier was present; defaulted to translation table 1 because lineage-specific mitochondrial code inference is not implemented yet.".to_string(),
+            );
+            return (
+                1,
+                TranscriptProteinTranslationTableSource::AmbiguousMitochondrialDefault,
+                warnings,
+            );
+        }
+        (
+            1,
+            TranscriptProteinTranslationTableSource::StandardDefault,
+            warnings,
+        )
+    }
+
+    fn translate_transcript_cds_to_protein(
+        derived_sequence: &str,
+        cds_ranges_0based: &[(usize, usize)],
+        translation_table: usize,
+    ) -> (String, bool, Vec<String>) {
+        let mut warnings: Vec<String> = vec![];
+        let bytes = derived_sequence.as_bytes();
+        let mut cds_bytes: Vec<u8> = vec![];
+        for (start, end) in cds_ranges_0based {
+            if *end > *start && *end <= bytes.len() {
+                cds_bytes.extend_from_slice(&bytes[*start..*end]);
+            }
+        }
+        if cds_bytes.is_empty() {
+            return (String::new(), false, warnings);
+        }
+        if !cds_bytes.len().is_multiple_of(3) {
+            warnings.push(format!(
+                "CDS length {} bp is not divisible by 3; trailing partial codon was ignored.",
+                cds_bytes.len()
+            ));
+        }
+        let mut protein = String::new();
+        for codon in cds_bytes.chunks(3) {
+            if codon.len() < 3 {
+                break;
+            }
+            let aa = AMINO_ACIDS.codon2aa([codon[0], codon[1], codon[2]], Some(translation_table));
+            protein.push(match aa {
+                STOP_CODON => '*',
+                UNKNOWN_CODON => 'X',
+                other => other,
+            });
+        }
+        let terminal_stop_trimmed = protein.ends_with('*');
+        if terminal_stop_trimmed {
+            protein.pop();
+        }
+        if protein.contains('*') {
+            warnings.push(
+                "Translated protein contains an internal stop codon after trimming any terminal stop."
+                    .to_string(),
+            );
+        }
+        if protein.contains('X') {
+            warnings.push(
+                "Translated protein contains ambiguous codon(s) that were rendered as 'X'."
+                    .to_string(),
+            );
+        }
+        (protein, terminal_stop_trimmed, warnings)
+    }
+
+    fn build_transcript_protein_derivation(
+        derived_sequence: &str,
+        source_feature: &gb_io::seq::Feature,
+        source_feature_id: usize,
+        source_seq_id: &str,
+        source_features: &[gb_io::seq::Feature],
+        exon_ranges_0based: &[(usize, usize)],
+        exon_segments_forward: &[(usize, usize, usize, usize)],
+        is_reverse: bool,
+        transcript_id: &str,
+        transcript_label: &str,
+    ) -> Result<Option<TranscriptProteinDerivation>, EngineError> {
+        let transcript_cds_ranges_0based =
+            Self::feature_qualifier_ranges_0based(source_feature, "cds_ranges_1based");
+        let matching_cds_features = Self::collect_matching_cds_features_for_derivation(
+            source_features,
+            source_feature,
+            exon_ranges_0based,
+        );
+        let representative_cds_feature = matching_cds_features.first().copied();
+        let source_cds_ranges_0based = if !transcript_cds_ranges_0based.is_empty() {
+            transcript_cds_ranges_0based
+        } else {
+            Self::merge_adjacent_ranges_0based(
+                &matching_cds_features
+                    .iter()
+                    .flat_map(|feature| Self::feature_ranges_0based_for_derivation(feature))
+                    .collect::<Vec<_>>(),
+            )
+        };
+        if source_cds_ranges_0based.is_empty() {
+            return Ok(None);
+        }
+
+        let source_context_feature = Self::first_source_feature_for_derivation(source_features);
+        let organism = representative_cds_feature
+            .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organism"))
+            .or_else(|| Self::qualifier_text_for_derivation(source_feature, "organism"))
+            .or_else(|| {
+                source_context_feature
+                    .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organism"))
+            });
+        let organelle = Self::infer_organelle_for_derivation(
+            source_feature,
+            representative_cds_feature,
+            source_context_feature,
+        );
+        let speed_profile_hint = Self::infer_translation_speed_profile_hint(organism.as_deref());
+
+        let (translation_table, translation_table_source, mut warnings) =
+            Self::resolve_translation_table_for_derivation(
+                source_feature,
+                representative_cds_feature,
+                source_context_feature,
+                organelle.as_deref(),
+            );
+        let codon_start = Self::qualifier_usize_for_derivation(source_feature, "codon_start")
+            .or_else(|| {
+                representative_cds_feature.and_then(|feature| {
+                    Self::qualifier_usize_for_derivation(feature, "codon_start")
+                })
+            })
+            .or_else(|| {
+                Self::qualifier_usize_for_derivation(source_feature, "phase")
+                    .filter(|phase| *phase <= 2)
+                    .map(|phase| phase + 1)
+            })
+            .or_else(|| {
+                representative_cds_feature.and_then(|feature| {
+                    Self::qualifier_usize_for_derivation(feature, "phase")
+                        .filter(|phase| *phase <= 2)
+                        .map(|phase| phase + 1)
+                })
+            })
+            .unwrap_or(1);
+
+        let local_cds_ranges_0based = Self::map_source_ranges_to_transcript_local_ranges_0based(
+            &source_cds_ranges_0based,
+            exon_segments_forward,
+            is_reverse,
+            derived_sequence.len(),
+        );
+        let trimmed_local_cds_ranges_0based = Self::trim_leading_bases_from_ranges_0based(
+            &local_cds_ranges_0based,
+            codon_start.saturating_sub(1),
+        );
+        let trimmed_local_cds_ranges_0based =
+            Self::merge_adjacent_ranges_0based(&trimmed_local_cds_ranges_0based);
+        if trimmed_local_cds_ranges_0based.is_empty() {
+            warnings.push(
+                "CDS ranges resolved, but applying codon_start/phase removed the entire coding span."
+                    .to_string(),
+            );
+            return Ok(Some(TranscriptProteinDerivation {
+                transcript_id: transcript_id.to_string(),
+                transcript_label: transcript_label.to_string(),
+                source_seq_id: source_seq_id.to_string(),
+                source_feature_id: source_feature_id + 1,
+                derivation_mode: TranscriptProteinDerivationMode::AnnotatedCds,
+                cds_ranges_1based: vec![],
+                cds_length_bp: 0,
+                protein_sequence: String::new(),
+                protein_length_aa: 0,
+                translation_table,
+                translation_table_label: Self::translation_table_display_name(translation_table),
+                translation_table_source,
+                codon_start,
+                organism,
+                organelle,
+                translation_speed_profile_hint: speed_profile_hint,
+                terminal_stop_trimmed: false,
+                warnings,
+            }));
+        }
+        let cds_ranges_1based = trimmed_local_cds_ranges_0based
+            .iter()
+            .map(|(start, end)| (start.saturating_add(1), *end))
+            .collect::<Vec<_>>();
+        let cds_length_bp = trimmed_local_cds_ranges_0based
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<usize>();
+        let (protein_sequence, terminal_stop_trimmed, translation_warnings) =
+            Self::translate_transcript_cds_to_protein(
+                derived_sequence,
+                &trimmed_local_cds_ranges_0based,
+                translation_table,
+            );
+        warnings.extend(translation_warnings);
+        Ok(Some(TranscriptProteinDerivation {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            source_seq_id: source_seq_id.to_string(),
+            source_feature_id: source_feature_id + 1,
+            derivation_mode: TranscriptProteinDerivationMode::AnnotatedCds,
+            cds_ranges_1based,
+            cds_length_bp,
+            protein_sequence: protein_sequence.clone(),
+            protein_length_aa: protein_sequence.len(),
+            translation_table,
+            translation_table_label: Self::translation_table_display_name(translation_table),
+            translation_table_source,
+            codon_start,
+            organism,
+            organelle,
+            translation_speed_profile_hint: speed_profile_hint,
+            terminal_stop_trimmed,
+            warnings,
+        }))
+    }
+
+    fn infer_transcript_protein_derivation_without_annotation(
+        derived_sequence: &str,
+        source_feature: &gb_io::seq::Feature,
+        source_feature_id: usize,
+        source_seq_id: &str,
+        source_features: &[gb_io::seq::Feature],
+        transcript_id: &str,
+        transcript_label: &str,
+    ) -> Result<Option<TranscriptProteinDerivation>, EngineError> {
+        if derived_sequence.len() < 3 {
+            return Ok(None);
+        }
+        let source_context_feature = Self::first_source_feature_for_derivation(source_features);
+        let organism = Self::qualifier_text_for_derivation(source_feature, "organism").or_else(|| {
+            source_context_feature
+                .and_then(|feature| Self::qualifier_text_for_derivation(feature, "organism"))
+        });
+        let organelle =
+            Self::infer_organelle_for_derivation(source_feature, None, source_context_feature);
+        let speed_profile_hint = Self::infer_translation_speed_profile_hint(organism.as_deref());
+        let (translation_table, translation_table_source, mut warnings) =
+            Self::resolve_translation_table_for_derivation(
+                source_feature,
+                None,
+                source_context_feature,
+                organelle.as_deref(),
+            );
+
+        #[derive(Clone, Copy)]
+        struct Candidate {
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            aa_len: usize,
+            has_start_codon: bool,
+            has_terminal_stop: bool,
+            derivation_mode: TranscriptProteinDerivationMode,
+        }
+
+        let bytes = derived_sequence.as_bytes();
+        let mut best: Option<Candidate> = None;
+        let adopt_candidate = |best: &mut Option<Candidate>, candidate: Candidate| {
+            if candidate.aa_len == 0 || candidate.end_0based_exclusive <= candidate.start_0based {
+                return;
+            }
+            let should_replace = match *best {
+                None => true,
+                Some(current) => {
+                    if current.derivation_mode != TranscriptProteinDerivationMode::InferredOrf
+                        && candidate.derivation_mode == TranscriptProteinDerivationMode::InferredOrf
+                    {
+                        true
+                    } else if candidate.has_terminal_stop && !current.has_terminal_stop {
+                        true
+                    } else if candidate.aa_len > current.aa_len {
+                        true
+                    } else {
+                        candidate.aa_len == current.aa_len
+                            && candidate.start_0based < current.start_0based
+                    }
+                }
+            };
+            if should_replace {
+                *best = Some(candidate);
+            }
+        };
+
+        for start_0based in 0..=derived_sequence.len().saturating_sub(3) {
+            if !bytes[start_0based..].starts_with(b"ATG") {
+                continue;
+            }
+            let mut pos = start_0based;
+            let mut has_terminal_stop = false;
+            while pos + 3 <= bytes.len() {
+                let aa = AMINO_ACIDS.codon2aa(
+                    [bytes[pos], bytes[pos + 1], bytes[pos + 2]],
+                    Some(translation_table),
+                );
+                pos += 3;
+                if aa == STOP_CODON {
+                    has_terminal_stop = true;
+                    break;
+                }
+            }
+            let translated_end = if has_terminal_stop {
+                pos
+            } else {
+                start_0based + ((bytes.len().saturating_sub(start_0based)) / 3) * 3
+            };
+            let aa_len = translated_end.saturating_sub(start_0based) / 3
+                - usize::from(has_terminal_stop);
+            adopt_candidate(&mut best, Candidate {
+                start_0based,
+                end_0based_exclusive: translated_end,
+                aa_len,
+                has_start_codon: true,
+                has_terminal_stop,
+                derivation_mode: TranscriptProteinDerivationMode::InferredOrf,
+            });
+        }
+
+        if best.is_none() {
+            for frame in 0..3usize {
+                let mut segment_start = frame;
+                let mut pos = frame;
+                while pos + 3 <= bytes.len() {
+                    let aa = AMINO_ACIDS.codon2aa(
+                        [bytes[pos], bytes[pos + 1], bytes[pos + 2]],
+                        Some(translation_table),
+                    );
+                    if aa == STOP_CODON {
+                        let aa_len = pos.saturating_sub(segment_start) / 3;
+                        adopt_candidate(&mut best, Candidate {
+                            start_0based: segment_start,
+                            end_0based_exclusive: pos,
+                            aa_len,
+                            has_start_codon: false,
+                            has_terminal_stop: false,
+                            derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
+                        });
+                        segment_start = pos + 3;
+                    }
+                    pos += 3;
+                }
+                let frame_end = frame + ((bytes.len().saturating_sub(frame)) / 3) * 3;
+                let aa_len = frame_end.saturating_sub(segment_start) / 3;
+                adopt_candidate(&mut best, Candidate {
+                    start_0based: segment_start,
+                    end_0based_exclusive: frame_end,
+                    aa_len,
+                    has_start_codon: false,
+                    has_terminal_stop: false,
+                    derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
+                });
+            }
+        }
+
+        let Some(best) = best else {
+            return Ok(None);
+        };
+        let cds_ranges_0based = vec![(best.start_0based, best.end_0based_exclusive)];
+        let cds_ranges_1based = cds_ranges_0based
+            .iter()
+            .map(|(start, end)| (start.saturating_add(1), *end))
+            .collect::<Vec<_>>();
+        let cds_length_bp = cds_ranges_0based
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<usize>();
+        let (protein_sequence, terminal_stop_trimmed, translation_warnings) =
+            Self::translate_transcript_cds_to_protein(
+                derived_sequence,
+                &cds_ranges_0based,
+                translation_table,
+            );
+        warnings.extend(translation_warnings);
+        warnings.push(match best.derivation_mode {
+            TranscriptProteinDerivationMode::InferredOrf => format!(
+                "CDS annotation was absent; inferred a forward ORF starting at transcript position {}{}.",
+                best.start_0based.saturating_add(1),
+                if best.has_terminal_stop {
+                    " and ending at the first in-frame stop codon"
+                } else {
+                    " without a terminating in-frame stop codon"
+                }
+            ),
+            TranscriptProteinDerivationMode::HeuristicLongestFrame => format!(
+                "CDS annotation and ATG-start ORFs were absent; used the longest stop-free reading frame segment starting at transcript position {}.",
+                best.start_0based.saturating_add(1)
+            ),
+            TranscriptProteinDerivationMode::AnnotatedCds => unreachable!(),
+        });
+
+        Ok(Some(TranscriptProteinDerivation {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            source_seq_id: source_seq_id.to_string(),
+            source_feature_id: source_feature_id + 1,
+            derivation_mode: best.derivation_mode,
+            cds_ranges_1based,
+            cds_length_bp,
+            protein_sequence: protein_sequence.clone(),
+            protein_length_aa: protein_sequence.len(),
+            translation_table,
+            translation_table_label: Self::translation_table_display_name(translation_table),
+            translation_table_source,
+            codon_start: 1,
+            organism,
+            organelle,
+            translation_speed_profile_hint: speed_profile_hint,
+            terminal_stop_trimmed,
+            warnings,
+        }))
+    }
+
+    fn infer_translation_speed_profile_enum(raw: Option<&str>) -> Option<TranslationSpeedProfile> {
+        match raw?.trim().to_ascii_lowercase().as_str() {
+            "human" => Some(TranslationSpeedProfile::Human),
+            "mouse" => Some(TranslationSpeedProfile::Mouse),
+            "yeast" => Some(TranslationSpeedProfile::Yeast),
+            "ecoli" | "e_coli" | "e-coli" => Some(TranslationSpeedProfile::Ecoli),
+            _ => None,
+        }
+    }
+
+    fn codon_profile_species_label(
+        profile: TranslationSpeedProfile,
+    ) -> (&'static str, Option<&'static str>) {
+        match profile {
+            TranslationSpeedProfile::Human => ("Human", None),
+            TranslationSpeedProfile::Mouse => (
+                "Rattus norvegicus",
+                Some("Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet."),
+            ),
+            TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
+            TranslationSpeedProfile::Ecoli => ("E. coli", None),
+        }
+    }
+
+    fn sequence_feature_translation_speed_hint(
+        dna: &DNAsequence,
+    ) -> Option<TranslationSpeedProfile> {
+        dna.features()
+            .iter()
+            .find_map(|feature| {
+                Self::feature_qualifier_text(feature, "translation_speed_profile_hint")
+                    .or_else(|| Self::feature_qualifier_text(feature, "speed_profile"))
+            })
+            .and_then(|raw| Self::infer_translation_speed_profile_enum(Some(raw.as_str())))
+    }
+
+    fn choose_back_translation_codon(
+        protein_char: char,
+        translation_table: usize,
+        preferred_species_label: Option<&str>,
+        speed_mark: Option<TranslationSpeedMark>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: usize,
+        current_dna: &str,
+    ) -> Option<String> {
+        let aa = if protein_char == '*' {
+            STOP_CODON
+        } else {
+            protein_char.to_ascii_uppercase()
+        };
+        let mut candidates = AMINO_ACIDS
+            .aa2codons(aa, Some(translation_table))
+            .into_iter()
+            .map(|codon| String::from_utf8_lossy(&codon).to_string())
+            .collect::<Vec<_>>();
+        candidates.sort();
+        if candidates.is_empty() {
+            return None;
+        }
+        let preferred = preferred_species_label
+            .and_then(|label| AMINO_ACIDS.preferred_species_codon(aa, label))
+            .or_else(|| AMINO_ACIDS.preferred_species_codon(aa, "Default"));
+        let multiple_candidates = candidates.len() > 1;
+        candidates.sort_by(|left, right| {
+            let score = |candidate: &str| {
+                let is_preferred = preferred.as_deref() == Some(candidate);
+                let preference_penalty = match speed_mark {
+                    Some(TranslationSpeedMark::Fast) => {
+                        if is_preferred { 0.0 } else { 10.0 }
+                    }
+                    Some(TranslationSpeedMark::Slow) => {
+                        if !is_preferred && multiple_candidates { 0.0 } else { 10.0 }
+                    }
+                    None => {
+                        if is_preferred { 0.0 } else { 1.0 }
+                    }
+                };
+                let tm_penalty = if let Some(target_tm) = target_anneal_tm_c {
+                    let appended = format!("{current_dna}{candidate}");
+                    let window_len = anneal_window_bp.max(6).min(appended.len());
+                    let suffix = &appended.as_bytes()[appended.len().saturating_sub(window_len)..];
+                    (Self::estimate_primer_tm_c(suffix) - target_tm).abs() / 10.0
+                } else {
+                    0.0
+                };
+                let gc_penalty = if target_anneal_tm_c.is_some() {
+                    let gc = Self::sequence_gc_fraction(candidate.as_bytes()).unwrap_or(0.0);
+                    (gc - 0.5).abs()
+                } else {
+                    0.0
+                };
+                (
+                    preference_penalty + tm_penalty + gc_penalty,
+                    candidate.to_string(),
+                )
+            };
+            score(left)
+                .partial_cmp(&score(right))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates.into_iter().next()
+    }
+
+    fn build_reverse_translated_coding_sequence(
+        protein_sequence: &str,
+        translation_table: usize,
+        preferred_species_label: Option<&str>,
+        speed_mark: Option<TranslationSpeedMark>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: usize,
+    ) -> (String, Vec<String>) {
+        let mut dna = String::with_capacity(protein_sequence.len().saturating_mul(3));
+        let mut warnings = vec![];
+        for (aa_index, aa) in protein_sequence.chars().enumerate() {
+            match Self::choose_back_translation_codon(
+                aa,
+                translation_table,
+                preferred_species_label,
+                speed_mark,
+                target_anneal_tm_c,
+                anneal_window_bp,
+                &dna,
+            ) {
+                Some(codon) => dna.push_str(&codon),
+                None => {
+                    dna.push_str("NNN");
+                    warnings.push(format!(
+                        "Protein residue {} ('{}') has no bundled codon-choice rule for translation table {}; used 'NNN'.",
+                        aa_index + 1,
+                        aa,
+                        translation_table
+                    ));
+                }
+            }
+        }
+        (dna, warnings)
+    }
+
+    fn build_transcript_derived_protein_sequence(
+        protein_sequence: &str,
+        seq_name: &str,
+        source_seq_id: &str,
+        source_feature_id: usize,
+        transcript_feature: &gb_io::seq::Feature,
+        representative_cds_feature: Option<&gb_io::seq::Feature>,
+        derivation: &TranscriptProteinDerivation,
+    ) -> Result<DNAsequence, EngineError> {
+        let mut protein = DNAsequence::from_sequence(protein_sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not construct protein sequence '{seq_name}': {e}"),
+        })?;
+        protein.set_name(seq_name);
+        protein.set_molecule_type("protein");
+        let mut qualifiers = vec![
+            ("label".into(), Some(seq_name.to_string())),
+            ("source_seq_id".into(), Some(source_seq_id.to_string())),
+            (
+                "source_feature_id".into(),
+                Some((source_feature_id + 1).to_string()),
+            ),
+            ("transcript_id".into(), Some(derivation.transcript_id.clone())),
+            (
+                "protein_derivation_mode".into(),
+                Some(derivation.derivation_mode.as_str().to_string()),
+            ),
+            (
+                "translation_table".into(),
+                Some(derivation.translation_table.to_string()),
+            ),
+            (
+                "translation_table_label".into(),
+                Some(derivation.translation_table_label.clone()),
+            ),
+            (
+                "translation_table_source".into(),
+                Some(derivation.translation_table_source.as_str().to_string()),
+            ),
+            (
+                "synthetic_origin".into(),
+                Some("transcript_protein_derived".to_string()),
+            ),
+        ];
+        if let Some(speed_hint) = derivation.translation_speed_profile_hint.as_ref() {
+            qualifiers.push((
+                "translation_speed_profile_hint".into(),
+                Some(speed_hint.clone()),
+            ));
+        }
+        if let Some(organism) = derivation.organism.as_ref() {
+            qualifiers.push(("translation_context_organism".into(), Some(organism.clone())));
+        }
+        if let Some(organelle) = derivation.organelle.as_ref() {
+            qualifiers.push(("translation_context_organelle".into(), Some(organelle.clone())));
+        }
+        for key in ["gene", "gene_id", "locus_tag", "product", "protein_id", "note"] {
+            if let Some(value) = representative_cds_feature
+                .and_then(|feature| Self::qualifier_text_for_derivation(feature, key))
+                .or_else(|| Self::qualifier_text_for_derivation(transcript_feature, key))
+            {
+                qualifiers.push((key.into(), Some(value)));
+            }
+        }
+        let protein_len = protein.len();
+        if protein_len > 0 {
+            protein.features_mut().push(gb_io::seq::Feature {
+                kind: "Protein".into(),
+                location: gb_io::seq::Location::simple_range(0, protein_len as i64),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut protein);
+        Ok(protein)
+    }
+
+    fn build_reverse_translated_coding_dna(
+        coding_sequence: &str,
+        seq_name: &str,
+        protein_seq_id: &str,
+        protein: &DNAsequence,
+        translation_table: usize,
+        translation_table_label: &str,
+        speed_profile: Option<TranslationSpeedProfile>,
+        preferred_species_label: Option<&str>,
+        speed_mark: Option<TranslationSpeedMark>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: usize,
+        warnings: &[String],
+    ) -> Result<DNAsequence, EngineError> {
+        let mut dna = DNAsequence::from_sequence(coding_sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not construct coding DNA sequence '{seq_name}': {e}"),
+        })?;
+        dna.set_name(seq_name);
+        dna.set_molecule_type("dsDNA");
+        let mut qualifiers = vec![
+            ("label".into(), Some(seq_name.to_string())),
+            ("protein_seq_id".into(), Some(protein_seq_id.to_string())),
+            ("translation".into(), Some(protein.get_forward_string())),
+            (
+                "translation_table".into(),
+                Some(translation_table.to_string()),
+            ),
+            (
+                "translation_table_label".into(),
+                Some(translation_table_label.to_string()),
+            ),
+            (
+                "synthetic_origin".into(),
+                Some("protein_reverse_translated".to_string()),
+            ),
+        ];
+        if let Some(profile) = speed_profile {
+            qualifiers.push((
+                "translation_speed_profile_hint".into(),
+                Some(profile.as_str().to_string()),
+            ));
+        }
+        if let Some(species) = preferred_species_label {
+            qualifiers.push((
+                "translation_speed_reference_species".into(),
+                Some(species.to_string()),
+            ));
+        }
+        if let Some(mark) = speed_mark {
+            qualifiers.push(("translation_speed_mark".into(), Some(mark.as_str().to_string())));
+        }
+        if let Some(target_tm) = target_anneal_tm_c {
+            qualifiers.push((
+                "target_anneal_tm_c".into(),
+                Some(format!("{target_tm:.2}")),
+            ));
+            qualifiers.push((
+                "target_anneal_window_bp".into(),
+                Some(anneal_window_bp.to_string()),
+            ));
+        }
+        for warning in warnings {
+            qualifiers.push(("reverse_translation_warning".into(), Some(warning.clone())));
+        }
+        let dna_len = dna.len();
+        if dna_len > 0 {
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: gb_io::seq::Location::simple_range(0, dna_len as i64),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut dna);
+        Ok(dna)
+    }
+
     fn transcript_feature_ids_for_derivation(
         &self,
         seq_id: &str,
@@ -1268,9 +2252,20 @@ impl GentleEngine {
     fn derive_transcript_sequence_from_feature(
         source_sequence_upper: &[u8],
         source_feature: &gb_io::seq::Feature,
+        source_features: &[gb_io::seq::Feature],
         source_feature_id: usize,
         source_seq_id: &str,
-    ) -> Result<(DNAsequence, String, String, bool, usize), EngineError> {
+    ) -> Result<
+        (
+            DNAsequence,
+            String,
+            String,
+            bool,
+            usize,
+            Option<TranscriptProteinDerivation>,
+        ),
+        EngineError,
+    > {
         let mut exon_ranges: Vec<(usize, usize)> = vec![];
         collect_location_ranges_usize(&source_feature.location, &mut exon_ranges);
         if exon_ranges.is_empty() {
@@ -1303,7 +2298,7 @@ impl GentleEngine {
 
         let source_len = source_sequence_upper.len();
         let mut assembled: Vec<u8> = vec![];
-        let mut exon_segments: Vec<(usize, usize, usize, usize)> = vec![];
+        let mut exon_segments_forward: Vec<(usize, usize, usize, usize)> = vec![];
         for (start_0based, end_0based_exclusive) in &exon_ranges {
             if *end_0based_exclusive > source_len {
                 return Err(EngineError {
@@ -1321,7 +2316,12 @@ impl GentleEngine {
             assembled
                 .extend_from_slice(&source_sequence_upper[*start_0based..*end_0based_exclusive]);
             let local_end = assembled.len();
-            exon_segments.push((*start_0based, *end_0based_exclusive, local_start, local_end));
+            exon_segments_forward.push((
+                *start_0based,
+                *end_0based_exclusive,
+                local_start,
+                local_end,
+            ));
         }
         if assembled.is_empty() {
             return Err(EngineError {
@@ -1335,6 +2335,7 @@ impl GentleEngine {
 
         let is_reverse = feature_is_reverse(source_feature);
         let mut derived_sequence = String::from_utf8_lossy(&assembled).to_ascii_uppercase();
+        let mut exon_segments = exon_segments_forward.clone();
         if is_reverse {
             derived_sequence = Self::reverse_complement(&derived_sequence);
             let total_len = derived_sequence.len();
@@ -1371,6 +2372,25 @@ impl GentleEngine {
             ],
         )
         .unwrap_or_else(|| transcript_id.clone());
+        let protein_derivation = Self::build_transcript_protein_derivation(
+            &derived_sequence,
+            source_feature,
+            source_feature_id,
+            source_seq_id,
+            source_features,
+            &exon_ranges,
+            &exon_segments_forward,
+            is_reverse,
+            &transcript_id,
+            &transcript_label,
+        )?;
+        let representative_cds_feature = Self::collect_matching_cds_features_for_derivation(
+            source_features,
+            source_feature,
+            &exon_ranges,
+        )
+        .into_iter()
+        .next();
 
         let mut derived =
             DNAsequence::from_sequence(&derived_sequence).map_err(|e| EngineError {
@@ -1401,6 +2421,56 @@ impl GentleEngine {
         for key in ["gene", "gene_id", "locus_tag", "note"] {
             if let Some(value) = Self::qualifier_text_for_derivation(source_feature, key) {
                 transcript_qualifiers.push((key.into(), Some(value)));
+            }
+        }
+        if let Some(derivation) = protein_derivation.as_ref() {
+            if let Some(cds_encoded) = Self::serialize_ranges_1based(&derivation.cds_ranges_1based)
+            {
+                transcript_qualifiers.push(("cds_ranges_1based".into(), Some(cds_encoded)));
+            }
+            transcript_qualifiers.push((
+                "protein_length_aa".into(),
+                Some(derivation.protein_length_aa.to_string()),
+            ));
+            transcript_qualifiers.push((
+                "translation_table".into(),
+                Some(derivation.translation_table.to_string()),
+            ));
+            transcript_qualifiers.push((
+                "translation_table_label".into(),
+                Some(derivation.translation_table_label.clone()),
+            ));
+            transcript_qualifiers.push((
+                "translation_table_source".into(),
+                Some(derivation.translation_table_source.as_str().to_string()),
+            ));
+            transcript_qualifiers.push((
+                "protein_derivation_mode".into(),
+                Some(derivation.derivation_mode.as_str().to_string()),
+            ));
+            if let Some(organism) = derivation.organism.as_ref() {
+                transcript_qualifiers.push((
+                    "translation_context_organism".into(),
+                    Some(organism.clone()),
+                ));
+            }
+            if let Some(organelle) = derivation.organelle.as_ref() {
+                transcript_qualifiers.push((
+                    "translation_context_organelle".into(),
+                    Some(organelle.clone()),
+                ));
+            }
+            if let Some(speed_hint) = derivation.translation_speed_profile_hint.as_ref() {
+                transcript_qualifiers.push((
+                    "translation_speed_profile_hint".into(),
+                    Some(speed_hint.clone()),
+                ));
+            }
+            if !derivation.protein_sequence.is_empty() {
+                transcript_qualifiers.push((
+                    "derived_protein_translation".into(),
+                    Some(derivation.protein_sequence.clone()),
+                ));
             }
         }
         derived.features_mut().push(gb_io::seq::Feature {
@@ -1444,6 +2514,116 @@ impl GentleEngine {
             });
         }
 
+        if let Some(derivation) = protein_derivation.as_ref()
+            && !derivation.cds_ranges_1based.is_empty()
+        {
+            let mut cds_parts = derivation
+                .cds_ranges_1based
+                .iter()
+                .filter_map(|(start_1based, end_1based)| {
+                    let start_0based = start_1based.saturating_sub(1);
+                    (*end_1based > start_0based).then_some(gb_io::seq::Location::simple_range(
+                        start_0based as i64,
+                        *end_1based as i64,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let cds_location = if cds_parts.len() == 1 {
+                cds_parts.remove(0)
+            } else {
+                gb_io::seq::Location::Join(cds_parts)
+            };
+            let mut cds_qualifiers = vec![
+                ("transcript_id".into(), Some(transcript_id.clone())),
+                ("label".into(), Some(format!("{transcript_label} CDS"))),
+                ("source_seq_id".into(), Some(source_seq_id.to_string())),
+                (
+                    "source_feature_id".into(),
+                    Some((source_feature_id + 1).to_string()),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("mrna_transcript_derived".to_string()),
+                ),
+                (
+                    "codon_start".into(),
+                    Some(derivation.codon_start.to_string()),
+                ),
+                (
+                    "transl_table".into(),
+                    Some(derivation.translation_table.to_string()),
+                ),
+                (
+                    "translation_table_label".into(),
+                    Some(derivation.translation_table_label.clone()),
+                ),
+                (
+                    "translation_table_source".into(),
+                    Some(derivation.translation_table_source.as_str().to_string()),
+                ),
+                (
+                    "protein_derivation_mode".into(),
+                    Some(derivation.derivation_mode.as_str().to_string()),
+                ),
+                (
+                    "protein_length_aa".into(),
+                    Some(derivation.protein_length_aa.to_string()),
+                ),
+                (
+                    "translation".into(),
+                    Some(derivation.protein_sequence.clone()),
+                ),
+            ];
+            if let Some(cds_encoded) = Self::serialize_ranges_1based(&derivation.cds_ranges_1based)
+            {
+                cds_qualifiers.push(("cds_ranges_1based".into(), Some(cds_encoded)));
+            }
+            if derivation.terminal_stop_trimmed {
+                cds_qualifiers.push(("terminal_stop_trimmed".into(), Some("true".to_string())));
+            }
+            if let Some(organism) = derivation.organism.as_ref() {
+                cds_qualifiers.push((
+                    "translation_context_organism".into(),
+                    Some(organism.clone()),
+                ));
+            }
+            if let Some(organelle) = derivation.organelle.as_ref() {
+                cds_qualifiers.push((
+                    "translation_context_organelle".into(),
+                    Some(organelle.clone()),
+                ));
+            }
+            if let Some(speed_hint) = derivation.translation_speed_profile_hint.as_ref() {
+                cds_qualifiers.push((
+                    "translation_speed_profile_hint".into(),
+                    Some(speed_hint.clone()),
+                ));
+            }
+            for key in [
+                "gene",
+                "gene_id",
+                "locus_tag",
+                "product",
+                "protein_id",
+                "note",
+            ] {
+                if let Some(value) = representative_cds_feature
+                    .and_then(|feature| Self::qualifier_text_for_derivation(feature, key))
+                    .or_else(|| Self::qualifier_text_for_derivation(source_feature, key))
+                {
+                    cds_qualifiers.push((key.into(), Some(value)));
+                }
+            }
+            for warning in &derivation.warnings {
+                cds_qualifiers.push(("translation_warning".into(), Some(warning.clone())));
+            }
+            derived.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: cds_location,
+                qualifiers: cds_qualifiers,
+            });
+        }
+
         Self::prepare_sequence(&mut derived);
         Ok((
             derived,
@@ -1451,6 +2631,7 @@ impl GentleEngine {
             transcript_label,
             is_reverse,
             exon_segments.len(),
+            protein_derivation,
         ))
     }
 
@@ -7268,13 +8449,20 @@ impl GentleEngine {
                                     transcript_feature_id, seq_id
                                 ),
                             })?;
-                    let (derived_dna, transcript_id, transcript_label, is_reverse, exon_count) =
-                        Self::derive_transcript_sequence_from_feature(
-                            &source_sequence_upper,
-                            source_feature,
-                            transcript_feature_id,
-                            &seq_id,
-                        )?;
+                    let (
+                        derived_dna,
+                        transcript_id,
+                        transcript_label,
+                        is_reverse,
+                        exon_count,
+                        protein_derivation,
+                    ) = Self::derive_transcript_sequence_from_feature(
+                        &source_sequence_upper,
+                        source_feature,
+                        &source_features,
+                        transcript_feature_id,
+                        &seq_id,
+                    )?;
                     let transcript_token = Self::normalize_id_token(&transcript_id);
                     let transcript_token = if transcript_token.is_empty() {
                         format!("feature_{}", transcript_feature_id + 1)
@@ -7313,6 +8501,34 @@ impl GentleEngine {
                         exon_count,
                         derived_len
                     ));
+                    if let Some(derivation) = protein_derivation {
+                        if derivation.protein_length_aa > 0 {
+                            result.messages.push(format!(
+                                "Derived protein for transcript '{}' using translation table {} ('{}', source={}, {} aa).",
+                                derived_seq_id,
+                                derivation.translation_table,
+                                derivation.translation_table_label,
+                                derivation.translation_table_source.as_str(),
+                                derivation.protein_length_aa
+                            ));
+                        } else {
+                            result.warnings.push(format!(
+                                "Transcript '{}' resolved CDS context but did not yield a non-empty protein sequence.",
+                                derived_seq_id
+                            ));
+                        }
+                        for warning in derivation.warnings {
+                            result.warnings.push(format!(
+                                "Transcript '{}': {}",
+                                derivation.transcript_id, warning
+                            ));
+                        }
+                    } else {
+                        result.warnings.push(format!(
+                            "Transcript '{}' has no CDS annotation; protein translation was not derived.",
+                            derived_seq_id
+                        ));
+                    }
                 }
                 if result.created_seq_ids.is_empty() {
                     return Err(EngineError {
@@ -7323,6 +8539,274 @@ impl GentleEngine {
                         ),
                     });
                 }
+            }
+            Operation::DeriveProteinSequences {
+                seq_id,
+                feature_ids,
+                scope,
+                output_prefix,
+            } => {
+                let source_sequence_upper = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .get_forward_string()
+                    .to_ascii_uppercase()
+                    .into_bytes();
+                let source_features = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .features()
+                    .to_vec();
+                let transcript_feature_ids =
+                    self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
+                parent_seq_ids.push(seq_id.clone());
+                let normalized_prefix = output_prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| format!("{seq_id}__protein"));
+                for transcript_feature_id in transcript_feature_ids {
+                    let source_feature =
+                        source_features
+                            .get(transcript_feature_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Feature id '{}' was not found in sequence '{}'",
+                                    transcript_feature_id, seq_id
+                                ),
+                            })?;
+                    let (
+                        derived_transcript,
+                        transcript_id,
+                        transcript_label,
+                        _is_reverse,
+                        _exon_count,
+                        annotated_derivation,
+                    ) = Self::derive_transcript_sequence_from_feature(
+                        &source_sequence_upper,
+                        source_feature,
+                        &source_features,
+                        transcript_feature_id,
+                        &seq_id,
+                    )?;
+                    let representative_cds_feature = Self::collect_matching_cds_features_for_derivation(
+                        &source_features,
+                        source_feature,
+                        &Self::feature_ranges_0based_for_derivation(source_feature),
+                    )
+                    .into_iter()
+                    .next();
+                    let derivation = match annotated_derivation {
+                        Some(derivation) => Some(derivation),
+                        None => Self::infer_transcript_protein_derivation_without_annotation(
+                            &derived_transcript.get_forward_string(),
+                            source_feature,
+                            transcript_feature_id,
+                            &seq_id,
+                            &source_features,
+                            &transcript_id,
+                            &transcript_label,
+                        )?,
+                    };
+                    let Some(derivation) = derivation else {
+                        result.warnings.push(format!(
+                            "Transcript feature n-{} in '{}' could not yield a protein sequence.",
+                            transcript_feature_id + 1,
+                            seq_id
+                        ));
+                        continue;
+                    };
+                    if derivation.protein_length_aa == 0 || derivation.protein_sequence.is_empty() {
+                        result.warnings.push(format!(
+                            "Transcript '{}' did not yield a non-empty protein sequence.",
+                            derivation.transcript_id
+                        ));
+                        continue;
+                    }
+                    let transcript_token = Self::normalize_id_token(&transcript_id);
+                    let transcript_token = if transcript_token.is_empty() {
+                        format!("feature_{}", transcript_feature_id + 1)
+                    } else {
+                        transcript_token
+                    };
+                    let base_seq_id = format!(
+                        "{normalized_prefix}__f{}__{}",
+                        transcript_feature_id + 1,
+                        transcript_token
+                    );
+                    let protein_seq_id = self.unique_seq_id(&base_seq_id);
+                    let protein_name = format!("{transcript_label} protein");
+                    let protein = Self::build_transcript_derived_protein_sequence(
+                        &derivation.protein_sequence,
+                        &protein_name,
+                        &seq_id,
+                        transcript_feature_id,
+                        source_feature,
+                        representative_cds_feature,
+                        &derivation,
+                    )?;
+                    self.state
+                        .sequences
+                        .insert(protein_seq_id.clone(), protein);
+                    self.add_lineage_node(
+                        &protein_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(protein_seq_id.clone());
+                    result.messages.push(format!(
+                        "Derived protein '{}' from transcript '{}' using translation table {} ('{}', mode={}, {} aa).",
+                        protein_seq_id,
+                        derivation.transcript_id,
+                        derivation.translation_table,
+                        derivation.translation_table_label,
+                        derivation.derivation_mode.as_str(),
+                        derivation.protein_length_aa
+                    ));
+                    for warning in derivation.warnings {
+                        result.warnings.push(format!(
+                            "Protein '{}' (transcript '{}'): {}",
+                            protein_seq_id, derivation.transcript_id, warning
+                        ));
+                    }
+                }
+                if result.created_seq_ids.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "DeriveProteinSequences did not produce proteins for '{}'",
+                            seq_id
+                        ),
+                    });
+                }
+            }
+            Operation::ReverseTranslateProteinSequence {
+                seq_id,
+                output_id,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+            } => {
+                let protein = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .clone();
+                if !protein.is_protein_sequence() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "ReverseTranslateProteinSequence requires a protein sequence; '{}' has molecule_type={:?}",
+                            seq_id,
+                            protein.molecule_type()
+                        ),
+                    });
+                }
+                let effective_speed_profile = speed_profile
+                    .or_else(|| Self::sequence_feature_translation_speed_hint(&protein));
+                let (preferred_species_label, mut warnings) = if let Some(profile) = effective_speed_profile
+                {
+                    let (species, warning) = Self::codon_profile_species_label(profile);
+                    let mut warnings = vec![];
+                    if let Some(warning) = warning {
+                        warnings.push(warning.to_string());
+                    }
+                    (Some(species), warnings)
+                } else {
+                    (None, vec![])
+                };
+                let effective_translation_table = translation_table
+                    .or_else(|| {
+                        protein.features().iter().find_map(|feature| {
+                            Self::feature_qualifier_text(feature, "translation_table")
+                                .or_else(|| Self::feature_qualifier_text(feature, "transl_table"))
+                                .and_then(|raw| raw.parse::<usize>().ok())
+                        })
+                    })
+                    .unwrap_or(1);
+                let anneal_window_bp = anneal_window_bp.unwrap_or(20).max(6);
+                let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
+                let (coding_sequence, reverse_translation_warnings) =
+                    Self::build_reverse_translated_coding_sequence(
+                        &protein_sequence,
+                        effective_translation_table,
+                        preferred_species_label,
+                        speed_mark,
+                        target_anneal_tm_c,
+                        anneal_window_bp,
+                    );
+                warnings.extend(reverse_translation_warnings);
+                let base_seq_id = output_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| format!("{seq_id}__coding"));
+                let coding_seq_id = self.unique_seq_id(&base_seq_id);
+                let coding_name = format!(
+                    "{} coding sequence",
+                    protein.name().as_deref().unwrap_or(seq_id.as_str())
+                );
+                let coding = Self::build_reverse_translated_coding_dna(
+                    &coding_sequence,
+                    &coding_name,
+                    &seq_id,
+                    &protein,
+                    effective_translation_table,
+                    &Self::translation_table_display_name(effective_translation_table),
+                    effective_speed_profile,
+                    preferred_species_label,
+                    speed_mark,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                    &warnings,
+                )?;
+                self.state.sequences.insert(coding_seq_id.clone(), coding);
+                self.add_lineage_node(
+                    &coding_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                parent_seq_ids.push(seq_id.clone());
+                result.created_seq_ids.push(coding_seq_id.clone());
+                result.messages.push(format!(
+                    "Reverse-translated protein '{}' into coding sequence '{}' using translation table {} ('{}'){}{}.",
+                    seq_id,
+                    coding_seq_id,
+                    effective_translation_table,
+                    Self::translation_table_display_name(effective_translation_table),
+                    effective_speed_profile
+                        .map(|profile| format!(", speed_profile={}", profile.as_str()))
+                        .unwrap_or_default(),
+                    speed_mark
+                        .map(|mark| format!(", speed_mark={}", mark.as_str()))
+                        .unwrap_or_default()
+                ));
+                if let Some(target_tm) = target_anneal_tm_c {
+                    result.messages.push(format!(
+                        "Applied local reverse-translation Tm heuristic target {:.1} °C over {} bp windows.",
+                        target_tm, anneal_window_bp
+                    ));
+                }
+                result.warnings.extend(warnings);
             }
             Operation::ComputeDotplot {
                 seq_id,

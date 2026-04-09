@@ -1080,6 +1080,20 @@ impl GentleEngine {
             .collect()
     }
 
+    pub(super) fn range_vec_1based_to_splicing(
+        mut ranges: Vec<(usize, usize)>,
+    ) -> Vec<SplicingRange> {
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges
+            .into_iter()
+            .filter(|(start, end)| *start > 0 && *end >= *start)
+            .map(|(start, end)| SplicingRange {
+                start_1based: start,
+                end_1based: end,
+            })
+            .collect()
+    }
+
     pub(super) fn order_ranges_for_transcript(
         mut ranges: Vec<(usize, usize)>,
         is_reverse: bool,
@@ -1551,18 +1565,114 @@ impl GentleEngine {
 
     pub(super) fn import_uniprot_entry_sequence(
         &mut self,
-        _result: &mut OpResult,
+        result: &mut OpResult,
         entry_id: &str,
-        _output_id: Option<&str>,
+        output_id: Option<&str>,
     ) -> Result<SeqId, EngineError> {
-        let _entry = self.get_uniprot_entry(entry_id)?;
-        Err(EngineError {
-            code: ErrorCode::Unsupported,
+        let entry = self.get_uniprot_entry(entry_id)?;
+        let base_seq_id = output_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| {
+                let normalized = crate::uniprot::normalize_entry_id(&entry.entry_id);
+                if normalized.is_empty() {
+                    format!("uniprot_{}", entry.primary_id)
+                } else {
+                    normalized
+                }
+            });
+        let seq_id = self.unique_seq_id(&base_seq_id);
+        let mut protein = DNAsequence::from_sequence(&entry.sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
             message: format!(
-                "ImportUniprotEntrySequence is currently disabled: UniProt protein sequences are metadata/projection-only in this release (entry_id='{}').",
-                entry_id
+                "Could not construct protein sequence for UniProt entry '{}': {e}",
+                entry.entry_id
             ),
-        })
+        })?;
+        protein.set_name(
+            entry
+                .protein_name
+                .clone()
+                .unwrap_or_else(|| entry.entry_id.clone()),
+        );
+        protein.set_molecule_type("protein");
+        if protein.len() > 0 {
+            let mut protein_qualifiers = vec![
+                ("entry_id".into(), Some(entry.entry_id.clone())),
+                ("accession".into(), Some(entry.accession.clone())),
+                ("primary_id".into(), Some(entry.primary_id.clone())),
+                ("sequence_length_aa".into(), Some(entry.sequence_length.to_string())),
+                (
+                    "synthetic_origin".into(),
+                    Some("uniprot_entry_import".to_string()),
+                ),
+            ];
+            if let Some(reviewed) = entry.reviewed {
+                protein_qualifiers.push(("reviewed".into(), Some(reviewed.to_string())));
+            }
+            if let Some(name) = entry.protein_name.as_ref() {
+                protein_qualifiers.push(("product".into(), Some(name.clone())));
+                protein_qualifiers.push(("label".into(), Some(name.clone())));
+            }
+            if let Some(organism) = entry.organism.as_ref() {
+                protein_qualifiers.push(("organism".into(), Some(organism.clone())));
+            }
+            for gene_name in &entry.gene_names {
+                if !gene_name.trim().is_empty() {
+                    protein_qualifiers.push(("gene".into(), Some(gene_name.clone())));
+                }
+            }
+            let protein_len = protein.len();
+            protein.features_mut().push(gb_io::seq::Feature {
+                kind: "Protein".into(),
+                location: gb_io::seq::Location::simple_range(0, protein_len as i64),
+                qualifiers: protein_qualifiers,
+            });
+        }
+        for feature in &entry.features {
+            let (Some(start_aa), Some(end_aa)) = (feature.interval.start_aa, feature.interval.end_aa)
+            else {
+                continue;
+            };
+            if start_aa == 0 || end_aa < start_aa || end_aa > protein.len() {
+                continue;
+            }
+            let mut qualifiers = vec![
+                ("label".into(), Some(feature.key.clone())),
+                (
+                    "raw_location".into(),
+                    Some(feature.interval.raw_location.clone()),
+                ),
+                ("entry_id".into(), Some(entry.entry_id.clone())),
+            ];
+            if let Some(note) = feature.note.as_ref() {
+                qualifiers.push(("note".into(), Some(note.clone())));
+            }
+            for (key, value) in &feature.qualifiers {
+                qualifiers.push((key.clone().into(), Some(value.clone())));
+            }
+            protein.features_mut().push(gb_io::seq::Feature {
+                kind: feature.key.clone().into(),
+                location: gb_io::seq::Location::simple_range(
+                    start_aa.saturating_sub(1) as i64,
+                    end_aa as i64,
+                ),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut protein);
+        self.state.sequences.insert(seq_id.clone(), protein);
+        self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+        result.created_seq_ids.push(seq_id.clone());
+        result.messages.push(format!(
+            "Imported UniProt protein sequence '{}' as '{}' ({} aa, features={}).",
+            entry.entry_id,
+            seq_id,
+            entry.sequence_length,
+            entry.features.len()
+        ));
+        Ok(seq_id)
     }
 
     pub(super) fn aa_interval_to_genomic_segments(
@@ -1844,7 +1954,18 @@ impl GentleEngine {
 
     fn feature_location_ranges_1based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
         let mut ranges = vec![];
-        collect_location_ranges_usize(&feature.location, &mut ranges);
+        let mut raw_ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut raw_ranges);
+        ranges.extend(
+            raw_ranges
+                .into_iter()
+                .filter_map(|(start_0based, end_0based_exclusive)| {
+                    if end_0based_exclusive <= start_0based {
+                        return None;
+                    }
+                    Some((start_0based.saturating_add(1), end_0based_exclusive))
+                }),
+        );
         if ranges.is_empty()
             && let Ok((from, to)) = feature.location.find_bounds()
             && from >= 0
@@ -1853,7 +1974,7 @@ impl GentleEngine {
             ranges.push((from as usize + 1, to as usize));
         }
         ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-        ranges.retain(|(start, end)| *start > 0 && *end >= *start);
+        ranges.retain(|(start, end)| *end >= *start);
         ranges
     }
 
@@ -1970,9 +2091,9 @@ impl GentleEngine {
                 transcript_id: Some(transcript.transcript_id.clone()),
                 transcript_feature_id: transcript.transcript_feature_id,
                 strand: transcript.strand.clone(),
-                transcript_exons: Self::range_vec_to_splicing(transcript_exon_ranges),
-                exons: Self::range_vec_to_splicing(cds_ranges.clone()),
-                introns: Self::range_vec_to_splicing(intron_ranges),
+                transcript_exons: Self::range_vec_1based_to_splicing(transcript_exon_ranges),
+                exons: Self::range_vec_1based_to_splicing(cds_ranges.clone()),
+                introns: Self::range_vec_1based_to_splicing(intron_ranges),
                 mapped: !transcript.aa_segments.is_empty(),
                 transactivation_class: None,
                 cds_to_protein_segments: transcript
