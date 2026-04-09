@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -3596,6 +3596,17 @@ Post-baseline follow-ups:
   - shared `routines explain` / `routines compare` payloads
   - GUI staged apply flow with explicit alternative disambiguation
   - optional decision-trace export in process protocol/run-bundle artifacts.
+- Add a sequence-linked construct-reasoning graph layer ahead of routine
+  choice:
+  - capture construct objective, span evidence, derived facts, decision nodes,
+    and construct candidates as engine-owned portable records
+  - keep the first milestone read-only and offline-first:
+    restriction/exon/CDS/TFBS evidence extraction + DNA-window overlay + JSON
+    export
+  - feed resulting construct candidates into Routine Assistant instead of
+    forcing protocol selection before construct reasoning exists
+  - detailed design note:
+    `docs/construct_reasoning_plan.md`
 - Guardrail for future genomic-context routines:
   - do not assume "one focal locus only" if that would block later
     cohort-based comparative evidence workflows.

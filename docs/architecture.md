@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-05
+Last updated: 2026-04-09
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1014,6 +1014,34 @@ Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
     with source/confidence/snapshot metadata,
   - updates are advisory; activation requires explicit user accept/reject
     action (no auto-apply).
+
+Sequence-linked construct reasoning graph direction:
+
+- The logic of "which region to take, how much context to keep, what to fuse
+  next, and which construct candidate best matches the objective" belongs in
+  GENtle's shared engine, not in adapter-local AI/GUI logic.
+- This layer should remain sequence-linked, inspectable, and editable:
+  - genomic/transcript spans stay visible on sequence coordinates,
+  - decision nodes derive reusable facts/candidates from those spans,
+  - humans can accept/reject/lock or boundary-edit those nodes explicitly.
+- Evidence classes must remain explicit rather than collapsed into one opaque
+  confidence value:
+  - `hard_fact`
+  - `reliable_annotation`
+  - `context_evidence`
+  - `soft_hypothesis`
+- Restriction-site positions and cDNA-confirmed exon boundaries are examples of
+  hard facts; TFBS and similar regulatory-role calls are expected to remain
+  soft hypotheses unless independently validated.
+- Fuzzy logic may be used inside explicit decision nodes for tradeoffs such as
+  compactness vs baggage or host-fit vs confidence, but not for exact sequence
+  geometry facts.
+- Routine/protocol execution stays downstream of construct reasoning:
+  - reasoning derives construct candidates,
+  - Routine Assistant/routine ranking chooses how to build them,
+  - execution semantics remain deterministic.
+- The reasoning graph must remain portable across GUI/CLI/JS/Lua/MCP/ClawBio
+  and usable offline from project metadata/run-bundle artifacts.
 
 Decision-trace capture/export contract (detailed plan):
 
