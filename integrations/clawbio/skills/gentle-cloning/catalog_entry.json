@@ -1,16 +1,16 @@
 {
   "name": "gentle-cloning",
   "cli_alias": "gentle-cloning",
-  "description": "Deterministic DNA construct design and cloning specialist powered by GENtle, with Docker-first execution and reproducibility bundle output.",
+  "description": "Deterministic DNA construct design and cloning specialist powered by GENtle, with Docker/Apptainer-ready execution and reproducibility bundle output.",
   "version": "0.1.0",
   "status": "mvp",
   "has_script": true,
   "has_tests": true,
   "has_demo": true,
-  "demo_command": "GENTLE_CLI_CMD='docker run --rm -i -v \"$PWD\":/work -w /work ghcr.io/smoe/gentle_rs:latest cli' python clawbio.py run gentle-cloning --demo",
+  "demo_command": "GENTLE_CLI_CMD='docker run --rm -i -v \"$PWD\":/work -w /work ghcr.io/smoe/gentle_rs:cli' python clawbio.py run gentle-cloning --demo",
   "dependencies": [
     "python3",
-    "Docker + ghcr.io/smoe/gentle_rs:latest via GENTLE_CLI_CMD (recommended)",
+    "Docker or Apptainer/Singularity via GENTLE_CLI_CMD",
     "gentle_cli on PATH or explicit --gentle-cli",
     "cargo run --quiet --bin gentle_cli -- (developer fallback)"
   ],

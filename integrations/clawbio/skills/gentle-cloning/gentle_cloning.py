@@ -107,9 +107,11 @@ def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
         )
     raise SkillError(
         "Could not resolve gentle_cli executable. "
-        "Recommended: set GENTLE_CLI_CMD to a Docker/OCI command such as "
+        "Recommended: set GENTLE_CLI_CMD to a Docker/OCI or "
+        "Apptainer/Singularity command such as "
         "'docker run --rm -i -v \"$PWD\":/work -w /work "
-        "ghcr.io/smoe/gentle_rs:latest cli'. "
+        "ghcr.io/smoe/gentle_rs:cli' or "
+        "'./gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'. "
         "Alternatives: use --gentle-cli, install gentle_cli on PATH, or run "
         "from a local repo with cargo available."
     )
@@ -286,8 +288,9 @@ def main() -> int:
     parser.add_argument(
         "--gentle-cli",
         help="Explicit command used to invoke gentle_cli. Recommended runtime "
-        "is Docker/OCI via GENTLE_CLI_CMD; examples include 'gentle_cli' or "
-        "'cargo run --bin gentle_cli --'.",
+        "is Docker/OCI or Apptainer/Singularity via GENTLE_CLI_CMD; examples "
+        "include 'gentle_cli', './gentle_apptainer_cli.sh /path/to/gentle.sif', "
+        "or 'cargo run --bin gentle_cli --'.",
     )
     args = parser.parse_args()
 

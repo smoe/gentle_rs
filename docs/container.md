@@ -6,7 +6,10 @@ use it from Docker on macOS/Linux and from Apptainer on Linux.
 The container goal is pragmatic:
 
 - one image definition (`Dockerfile`) as the maintained source of truth
-- complete GENtle functionality inside the image:
+- two published runtime targets from that one definition:
+  - a headless `cli` image for CLI/MCP/JS/Lua/Python wrapper use
+  - a `gui` image layered on top for browser-served GUI use
+- complete GENtle functionality across those images:
   - GUI
   - CLI
   - MCP server
@@ -23,8 +26,14 @@ The container goal is pragmatic:
 
 - Base image: Debian `forky` (testing)
 - Build toolchain: Debian `rust-all`
+- Runtime targets:
+  - `runtime-cli`: headless CLI/MCP/JS/Lua/Python wrapper image
+  - `runtime-gui`: GUI image built on top of `runtime-cli`
 - Runtime GUI delivery: `Xvfb` + `openbox` + `x11vnc` + `noVNC`
-- Default UX: open GENtle in a browser at `http://localhost:6080`
+- Default published tags:
+  - `ghcr.io/smoe/gentle_rs:cli`
+  - `ghcr.io/smoe/gentle_rs:gui`
+  - `ghcr.io/smoe/gentle_rs:latest` and the bare release tag remain GUI tags
 - Linux/Apptainer strategy: consume the exact same OCI image, rather than
   maintaining a second packaging language in parallel
 
@@ -80,12 +89,18 @@ Filesystem/layout note:
 This follows normal container conventions: application payload under `/opt`,
 generic executable entrypoints on `PATH`.
 
-## Build the Image
+## Build the Images
 
-Standard local build:
+Standard local GUI build:
 
 ```sh
-docker build -t gentle:local .
+docker build --target runtime-gui -t gentle:gui-local .
+```
+
+Standard local CLI build:
+
+```sh
+docker build --target runtime-cli -t gentle:cli-local .
 ```
 
 Optional build arguments:
@@ -103,7 +118,8 @@ Example:
 docker build \
   --build-arg DEBIAN_SUITE=forky \
   --build-arg GENTLE_CARGO_PROFILE=release \
-  -t gentle:release .
+  --target runtime-cli \
+  -t gentle:cli-release .
 ```
 
 Why `forky` by default:
@@ -127,7 +143,7 @@ Default mode:
 docker run --rm -it \
   -p 6080:6080 \
   -v "$(pwd)":/work \
-  gentle:local
+  gentle:gui-local
 ```
 
 Then open:
@@ -152,7 +168,7 @@ CLI:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local cli capabilities
+  gentle:cli-local capabilities
 ```
 
 MCP:
@@ -160,7 +176,7 @@ MCP:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local mcp
+  gentle:cli-local mcp
 ```
 
 JavaScript shell:
@@ -168,7 +184,7 @@ JavaScript shell:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local js
+  gentle:cli-local js
 ```
 
 Lua shell:
@@ -176,10 +192,10 @@ Lua shell:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local lua
+  gentle:cli-local lua
 ```
 
-The container entrypoint supports these modes:
+The GUI image entrypoint supports these modes:
 
 - `gui-web`
 - `gui`
@@ -189,10 +205,18 @@ The container entrypoint supports these modes:
 - `lua`
 - `examples-docs`
 
+The CLI image ships the same headless modes:
+
+- `cli`
+- `mcp`
+- `js`
+- `lua`
+- `examples-docs`
+
 Run `--help` to see the dispatch summary:
 
 ```sh
-docker run --rm gentle:local --help
+docker run --rm gentle:gui-local --help
 ```
 
 ## Python Wrapper Inside the Image
@@ -204,7 +228,7 @@ without an extra install step:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local \
+  gentle:cli-local \
   python3 - <<'PY'
 from gentle_py import GentleClient
 
@@ -224,7 +248,7 @@ docker run --rm -it \
   -e DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$(pwd)":/work \
-  gentle:local gui
+  gentle:gui-local gui
 ```
 
 This route is intentionally secondary. The browser-served GUI is the default
@@ -237,29 +261,70 @@ path is to consume the same OCI image.
 
 ### From a published GHCR image
 
-Once an OCI image is published, pull it directly:
+Once an OCI image is published, pull it directly. For headless Linux/HPC use,
+prefer the CLI image:
 
 ```sh
-apptainer pull gentle.sif docker://ghcr.io/OWNER/REPO:TAG
+apptainer pull gentle-cli.sif docker://ghcr.io/OWNER/REPO:cli
 ```
 
 Then run CLI or shell commands as usual:
 
 ```sh
-apptainer exec gentle.sif gentle_cli capabilities
+apptainer exec gentle-cli.sif gentle_cli capabilities
 ```
+
+If you use:
+
+```sh
+apptainer run gentle-cli.sif capabilities
+```
+
+the CLI image entrypoint treats that as `gentle_cli capabilities`, which makes
+`run` usable for quick headless smoke tests. For reproducible automation,
+ClawBio/OpenClaw still prefers the explicit launcher shown below.
+
+If you explicitly want the browser-served GUI image instead:
+
+```sh
+apptainer pull gentle-gui.sif docker://ghcr.io/OWNER/REPO:latest
+apptainer run gentle-gui.sif gui-web
+apptainer exec gentle-gui.sif gentle
+```
+
+Bare `apptainer run gentle-gui.sif` on the GUI image now prints a friendly
+guidance message instead of immediately dropping into the Docker-oriented
+`gui-web` default. That keeps headless Linux/HPC users from accidentally
+starting the GUI path when they really meant `gentle_cli ...`.
 
 ### From a local Docker build
 
 If you built the Docker image locally first:
 
 ```sh
-docker save gentle:local -o gentle-local.tar
-apptainer build gentle-local.sif docker-archive://gentle-local.tar
+docker save gentle:cli-local -o gentle-cli-local.tar
+apptainer build gentle-cli-local.sif docker-archive://gentle-cli-local.tar
 ```
 
 This keeps Docker as the only maintained image definition while still giving
 Linux users a normal `.sif` artifact.
+
+### ClawBio / OpenClaw launcher path
+
+The copied ClawBio skill scaffold includes:
+
+- `integrations/clawbio/skills/gentle-cloning/gentle_apptainer_cli.sh`
+
+After pulling a `.sif`, set:
+
+```sh
+export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
+```
+
+That launcher resolves `apptainer` first and falls back to `singularity`,
+binds the current working directory into `/work`, and executes `gentle_cli`
+inside the image so the ClawBio wrapper can keep using the same
+`GENTLE_CLI_CMD` contract it already uses for Docker.
 
 Important platform note:
 
@@ -289,8 +354,11 @@ The repository now includes:
 
 which:
 
-- builds the image as a check on pull requests and `main`
+- builds both runtime targets (`runtime-cli` and `runtime-gui`) as a check on
+  pull requests and `main`
 - publishes `linux/amd64` GHCR images for release tags matching `v*`
+- keeps unsuffixed GUI tags (`latest`, `v...`) for backward compatibility
+- also publishes headless tags (`cli`, `v...-cli`) for MCP/ClawBio/Apptainer use
 - updates the `latest` image tag only from those release-tag publishes
 
 Current arm64 note:
@@ -330,13 +398,17 @@ Example:
 docker run --rm -it \
   -p 6080:6080 \
   -v "$(pwd)":/work \
-  gentle:local
+  gentle:gui-local
 ```
 
 ## Current Limits / Follow-up
 
-- the in-tree implementation covers the container image and runtime dispatch
-- GitHub image publishing is still a documented recommendation rather than an
-  implemented workflow
+- the in-tree implementation now covers:
+  - the shared builder
+  - the `runtime-cli` image
+  - the `runtime-gui` image
+  - runtime dispatch for Docker and Apptainer/Singularity
+- GitHub image publishing is implemented in:
+  - `.github/workflows/container.yml`
 - Apptainer currently depends on consuming the OCI image; there is no
   dedicated native definition file yet

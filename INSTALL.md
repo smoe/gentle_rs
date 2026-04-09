@@ -143,15 +143,16 @@ run through the Debian-first container image.
 
 This route is currently aimed at macOS and Linux hosts.
 
-### Build the image locally
+### Build the images locally
 
 From the repository root:
 
 ```sh
-docker build -t gentle:local .
+docker build --target runtime-gui -t gentle:gui-local .
+docker build --target runtime-cli -t gentle:cli-local .
 ```
 
-The in-tree Dockerfile currently defaults to Debian `sid` so it can use the
+The in-tree Dockerfile currently defaults to Debian `forky` so it can use the
 Debian-packaged `rust-all` toolchain that matches GENtle's current dependency
 set.
 
@@ -170,7 +171,7 @@ The image includes:
 docker run --rm -it \
   -p 6080:6080 \
   -v "$(pwd)":/work \
-  gentle:local
+  gentle:gui-local
 ```
 
 Then open:
@@ -182,7 +183,7 @@ Then open:
 ```sh
 docker run --rm -it \
   -v "$(pwd)":/work \
-  gentle:local cli capabilities
+  gentle:cli-local capabilities
 ```
 
 ### Recommended AI / MCP route
@@ -203,13 +204,25 @@ Example:
 ```sh
 docker run --rm -i \
   -v "$(pwd)":/work \
-  ghcr.io/smoe/gentle_rs:latest \
+  ghcr.io/smoe/gentle_rs:cli \
   mcp --state /work/project.gentle.json
 ```
 
 This is usually the best starting point when integrating GENtle as a capability
 for another agent/tool. The GUI container route remains useful for human
 inspection, but not for low-latency tool execution.
+
+ClawBio/OpenClaw users on Linux can also point the copied GENtle skill scaffold
+at an Apptainer/Singularity image built from the same OCI release:
+
+```sh
+apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
+```
+
+The included launcher binds the current working directory into `/work` inside
+the image and executes `gentle_cli ...` so the ClawBio wrapper can reuse the
+same `GENTLE_CLI_CMD` contract it already uses for Docker.
 
 ### Pull a published release image from GHCR
 
@@ -222,6 +235,13 @@ Current publication scope:
 - `linux/arm64` publication from GitHub Actions is temporarily paused because
   the emulated `qemu-aarch64` build path is crashing during Debian package
   configuration
+- GUI images are published as:
+  - `ghcr.io/OWNER/gentle_rs:latest`
+  - `ghcr.io/OWNER/gentle_rs:v...`
+  - `ghcr.io/OWNER/gentle_rs:gui`
+- headless images are published as:
+  - `ghcr.io/OWNER/gentle_rs:cli`
+  - `ghcr.io/OWNER/gentle_rs:v...-cli`
 
 Generic form:
 
@@ -243,6 +263,16 @@ Version-specific tags are also published for each release, for example:
 
 ```sh
 docker pull ghcr.io/smoe/gentle_rs:v0.1.0
+docker pull ghcr.io/smoe/gentle_rs:v0.1.0-cli
+```
+
+For headless CLI/MCP use, prefer:
+
+```sh
+docker pull ghcr.io/smoe/gentle_rs:cli
+docker run --rm -it \
+  -v "$(pwd)":/work \
+  ghcr.io/smoe/gentle_rs:cli capabilities
 ```
 
 ### Linux users who prefer Apptainer / Singularity
@@ -255,7 +285,8 @@ See:
 
 - `docs/container.md`
 - GitHub releases/tags must be pushed first so the release-image workflow can
-  publish `ghcr.io/OWNER/gentle_rs:latest` and the matching version tags
+  publish GUI tags (`ghcr.io/OWNER/gentle_rs:latest`, `v...`) and the matching
+  headless tags (`ghcr.io/OWNER/gentle_rs:cli`, `v...-cli`)
 
 ## Run GENtle
 

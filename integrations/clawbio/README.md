@@ -7,6 +7,7 @@ Current scaffold:
 
 - `skills/gentle-cloning/SKILL.md`
 - `skills/gentle-cloning/gentle_cloning.py`
+- `skills/gentle-cloning/gentle_apptainer_cli.sh`
 - `skills/gentle-cloning/examples/*.json`
 - `skills/gentle-cloning/tests/*`
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
@@ -20,10 +21,21 @@ Intended use:
    example:
 
    ```bash
-   export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
+   export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
    ```
 
    Alternatives:
+   - use the included Apptainer/Singularity launcher:
+
+     ```bash
+     apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+     export GENTLE_CLI_CMD="$PWD/skills/gentle-cloning/gentle_apptainer_cli.sh $PWD/gentle.sif"
+     ```
+
+     This launcher intentionally keeps using `apptainer exec ... gentle_cli ...`
+     for deterministic wrapper execution, even though `apptainer run
+     gentle.sif capabilities` also works on the headless `:cli` image.
+
    - install `gentle_cli` locally and rely on `PATH`
    - pass `--gentle-cli "<command>"`
    - use repository-local `cargo run --quiet --bin gentle_cli --`

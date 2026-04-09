@@ -6,6 +6,7 @@ This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 
 - `SKILL.md`: skill metadata + routing/instructions
 - `gentle_cloning.py`: wrapper executable
+- `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
 - `examples/*.json`: request payload examples
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
@@ -13,9 +14,21 @@ This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 ## Recommended smoke test
 
 ```bash
-export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
+export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
 python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
 ```
+
+Apptainer / Singularity alternative:
+
+```bash
+apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+export GENTLE_CLI_CMD="$PWD/gentle_apptainer_cli.sh $PWD/gentle.sif"
+python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
+```
+
+This launcher uses `apptainer exec ... gentle_cli ...`. That is still the
+intended ClawBio/OpenClaw route, even though the headless `:cli` image also
+supports quick smoke tests such as `apptainer run gentle.sif capabilities`.
 
 Alternative runtimes:
 

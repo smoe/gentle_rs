@@ -1268,6 +1268,20 @@ order. Durable architecture constraints and decisions remain in
     `gentle.clawbio_skill_result.v1`
   - outputs include reproducibility bundle artifacts (`commands.sh`,
     `environment.yml`, checksums)
+  - the copied scaffold now also includes an
+    `gentle_apptainer_cli.sh` launcher so ClawBio/OpenClaw on Linux can point
+    `GENTLE_CLI_CMD` at an Apptainer/Singularity-backed `gentle_cli` route
+    without changing the wrapper protocol
+  - container publishing now splits into:
+    - `ghcr.io/...:cli` for headless CLI/MCP/Apptainer use
+    - `ghcr.io/...:gui` plus unsuffixed GUI tags for browser-served human use
+  - the headless `:cli` image now defaults to `cli --help`, and under
+    Apptainer/Singularity its `run IMAGE.sif SUBCOMMAND ...` path treats
+    unknown subcommands as `gentle_cli SUBCOMMAND ...` so quick smoke tests like
+    `singularity run gentle.sif capabilities` work without a separate wrapper
+  - bare `run IMAGE.sif` on the GUI image under Apptainer/Singularity now
+    prints an explicit headless-vs-GUI guidance message instead of immediately
+    falling into the Docker-oriented `gui-web` default
 
 ### GUI baseline in place
 

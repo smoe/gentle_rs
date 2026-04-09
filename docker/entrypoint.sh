@@ -11,6 +11,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/gentle-runtime}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 export MESA_LOADER_DRIVER_OVERRIDE="${MESA_LOADER_DRIVER_OVERRIDE:-llvmpipe}"
+export GENTLE_CONTAINER_FLAVOR="${GENTLE_CONTAINER_FLAVOR:-gui}"
 
 _cleanup_pids=()
 
@@ -22,6 +23,43 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+is_apptainer_runtime() {
+    [[ -n "${APPTAINER_NAME:-}" || -n "${APPTAINER_CONTAINER:-}" || -n "${SINGULARITY_NAME:-}" || -n "${SINGULARITY_CONTAINER:-}" ]]
+}
+
+show_apptainer_gui_default_message() {
+    cat >&2 <<'EOF'
+GENtle detected an Apptainer/Singularity `run` invocation on the GUI image.
+
+This image defaults to the browser-served GUI in Docker, but in a headless
+Apptainer/Singularity environment that is usually not what you want.
+
+For headless use, prefer one of:
+  apptainer exec IMAGE.sif gentle_cli capabilities
+  singularity exec IMAGE.sif gentle_cli capabilities
+
+or pull the dedicated headless image:
+  apptainer pull gentle-cli.sif docker://ghcr.io/OWNER/REPO:cli
+  apptainer run gentle-cli.sif capabilities
+
+If you really do want the GUI image here, be explicit:
+  apptainer run IMAGE.sif gui-web
+  apptainer exec IMAGE.sif gentle
+EOF
+}
+
+has_gui_support() {
+    [[ -x "${GENTLE_BIN_DIR}/gentle" ]]
+}
+
+require_gui_support() {
+    if has_gui_support; then
+        return 0
+    fi
+    echo "This container image does not include the GUI runtime. Use a GUI image/tag or run CLI/MCP modes instead." >&2
+    exit 64
+}
 
 find_novnc_proxy() {
     local candidate
@@ -55,6 +93,7 @@ wait_for_x_socket() {
 
 start_gui_web() {
     local novnc_proxy
+    require_gui_support
     mkdir -p "${XDG_RUNTIME_DIR}" /work
     chmod 700 "${XDG_RUNTIME_DIR}"
 
@@ -111,20 +150,33 @@ Modes:
   lua           Run the embedded Lua shell adapter.
   examples-docs Run documentation/example helper commands.
 
-The default mode is `gui-web`.
+Defaults:
+  GUI images default to `gui-web`.
+  CLI images default to `cli --help`.
+
+Under Apptainer/Singularity, `run IMAGE.sif SUBCOMMAND ...` treats unknown
+subcommands as `gentle_cli SUBCOMMAND ...` so headless uses like
+`singularity run gentle.sif capabilities` behave sensibly.
 EOF
 }
 
 mode="${1:-gui-web}"
+used_default_mode=1
 if [[ $# -gt 0 ]]; then
+    used_default_mode=0
     shift
 fi
 
 case "${mode}" in
     gui-web)
+        if (( used_default_mode )) && is_apptainer_runtime && [[ "${GENTLE_CONTAINER_FLAVOR}" == "gui" ]]; then
+            show_apptainer_gui_default_message
+            exit 64
+        fi
         start_gui_web "$@"
         ;;
     gui|gui-x11)
+        require_gui_support
         exec "${GENTLE_BIN_DIR}/gentle" "$@"
         ;;
     cli)
@@ -146,6 +198,9 @@ case "${mode}" in
         show_help
         ;;
     *)
+        if is_apptainer_runtime && [[ -x "${GENTLE_BIN_DIR}/gentle_cli" ]]; then
+            exec "${GENTLE_BIN_DIR}/gentle_cli" "${mode}" "$@"
+        fi
         exec "${mode}" "$@"
         ;;
 esac

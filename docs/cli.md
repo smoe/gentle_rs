@@ -63,6 +63,8 @@ GENtle ships a copy-ready ClawBio skill scaffold at:
 - `integrations/clawbio/skills/gentle-cloning/`
 - ready-to-paste catalog object:
   `integrations/clawbio/skills/gentle-cloning/catalog_entry.json`
+- included Apptainer/Singularity helper launcher:
+  `integrations/clawbio/skills/gentle-cloning/gentle_apptainer_cli.sh`
 
 Purpose:
 
@@ -90,6 +92,13 @@ Command resolution order used by the wrapper:
 2. `GENTLE_CLI_CMD` environment variable
 3. `gentle_cli` on `PATH`
 4. repository-local fallback: `cargo run --quiet --bin gentle_cli --`
+
+Typical Apptainer route for ClawBio/OpenClaw:
+
+```bash
+apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
+```
 
 ## Python module wrapper (`gentle_py`)
 

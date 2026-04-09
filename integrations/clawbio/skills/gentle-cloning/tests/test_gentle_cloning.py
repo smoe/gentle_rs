@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,10 @@ import sys
 
 def _skill_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_cloning.py"
+
+
+def _apptainer_script() -> Path:
+    return Path(__file__).resolve().parents[1] / "gentle_apptainer_cli.sh"
 
 
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
@@ -56,3 +61,43 @@ def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
     result_json = json.loads((out_dir / "result.json").read_text(encoding="utf-8"))
     assert result_json["status"] == "failed"
     assert "unsupported request schema" in result_json["error"]
+
+
+def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
+    fake_runtime = tmp_path / "apptainer"
+    capture_path = tmp_path / "apptainer_args.txt"
+    fake_runtime.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$FAKE_APPTAINER_ARGS\"\n",
+        encoding="utf-8",
+    )
+    fake_runtime.chmod(0o755)
+
+    image_path = tmp_path / "gentle.sif"
+    image_path.write_text("", encoding="utf-8")
+
+    env = dict(os.environ)
+    env["PATH"] = f"{tmp_path}:{env.get('PATH', '')}"
+    env["FAKE_APPTAINER_ARGS"] = str(capture_path)
+
+    run = subprocess.run(
+        ["bash", str(_apptainer_script()), str(image_path), "capabilities"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    args = capture_path.read_text(encoding="utf-8").splitlines()
+    assert args == [
+        "exec",
+        "--bind",
+        f"{tmp_path}:/work",
+        "--pwd",
+        "/work",
+        str(image_path),
+        "gentle_cli",
+        "capabilities",
+    ]

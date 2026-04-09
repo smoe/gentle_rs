@@ -96,8 +96,8 @@ task:
 1. **Validate**: parse the request JSON, confirm the schema is
    `gentle.clawbio_skill_request.v1`, and verify the mode-specific fields.
 2. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
-   (recommended for Docker/OCI-backed execution), then `gentle_cli` on `PATH`,
-   then repository-local
+   (recommended for Docker or Apptainer/Singularity-backed execution), then
+   `gentle_cli` on `PATH`, then repository-local
    `cargo run --quiet --bin gentle_cli --` fallback.
 3. **Canonicalize the request**: convert the request into one deterministic CLI
    argument vector.
@@ -116,7 +116,7 @@ task:
 
 ```bash
 # Recommended: run the wrapper against the published Docker image
-export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
+export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
 
 python skills/gentle-cloning/gentle_cloning.py \
   --input skills/gentle-cloning/examples/request_capabilities.json \
@@ -141,6 +141,14 @@ python skills/gentle-cloning/gentle_cloning.py \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_capabilities.json \
   --output /tmp/gentle_clawbio_run
+
+# Apptainer / Singularity alternative via the included launcher
+apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
+
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_capabilities.json \
+  --output /tmp/gentle_clawbio_run
 ```
 
 ## Demo
@@ -148,7 +156,17 @@ python clawbio.py run gentle-cloning \
 To verify the skill works:
 
 ```bash
-export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:latest cli'
+export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
+
+python skills/gentle-cloning/gentle_cloning.py \
+  --demo --output /tmp/gentle_clawbio_demo
+```
+
+or:
+
+```bash
+apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+export GENTLE_CLI_CMD="$PWD/skills/gentle-cloning/gentle_apptainer_cli.sh $PWD/gentle.sif"
 
 python skills/gentle-cloning/gentle_cloning.py \
   --demo --output /tmp/gentle_clawbio_demo
@@ -234,9 +252,11 @@ paths or state.
 **Required**:
 
 - Python 3.10+ - runs the ClawBio wrapper.
-- Recommended runtime: Docker with the published image
-  `ghcr.io/smoe/gentle_rs:latest`, exposed to the wrapper through
-  `GENTLE_CLI_CMD`.
+- Recommended runtimes:
+  - Docker with the published image
+    `ghcr.io/smoe/gentle_rs:cli`, exposed through `GENTLE_CLI_CMD`
+  - Apptainer/Singularity with a pulled `.sif` built from the same OCI image,
+    typically via the included `gentle_apptainer_cli.sh` launcher
 - A resolvable GENtle CLI route, provided by one of:
   - `GENTLE_CLI_CMD`
   - `--gentle-cli "<command>"`
