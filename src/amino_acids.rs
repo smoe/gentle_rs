@@ -159,6 +159,36 @@ impl AminoAcids {
             }
         }
     }
+
+    pub fn aa2codons(&self, aa: char, translation_table: Option<usize>) -> Vec<[u8; 3]> {
+        let translation_table = translation_table.unwrap_or(DEFAULT_TRANSLATION_TABLE);
+        let bases = [b'T', b'C', b'A', b'G'];
+        let mut out = vec![];
+        for b1 in bases {
+            for b2 in bases {
+                for b3 in bases {
+                    let codon = [b1, b2, b3];
+                    if self.codon2aa(codon, Some(translation_table)) == aa {
+                        out.push(codon);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    pub fn preferred_species_codon(&self, aa: char, species: &str) -> Option<String> {
+        let species = species.trim();
+        if species.is_empty() {
+            return None;
+        }
+        self.aas
+            .get(&aa)?
+            .species_codons
+            .get(species)
+            .map(|codon| codon.to_ascii_uppercase())
+            .filter(|codon| codon.len() == 3)
+    }
 }
 
 impl Default for AminoAcids {

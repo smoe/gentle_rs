@@ -562,6 +562,20 @@ order. Durable architecture constraints and decisions remain in
 - Transcript derivation baseline is now additive and parity-wired:
   - engine operation `DeriveTranscriptSequences` derives cDNA/transcript
     sequences from `mRNA`/`transcript` features
+  - when CDS context is available (embedded `cds_ranges_1based`, matching
+    source `CDS` features, `/codon_start`, `/transl_table`, source
+    `organism`/`organelle` qualifiers), the same operation now also derives a
+    synthetic local `CDS` feature plus translated protein qualifiers on the
+    derived transcript sequence
+  - translation-table resolution is now deterministic and portable:
+    - explicit `/transl_table` on CDS, transcript, or source wins
+    - plastid/chloroplast context defaults to translation table `11`
+    - unresolved mitochondrial context currently falls back to table `1` with
+      an explicit warning until lineage-specific mitochondrial tables are
+      implemented
+  - preparation for translation-speed investigation is now recorded as a stable
+    per-transcript hint for the first four target species:
+    `human`, `mouse`, `yeast`, `ecoli`
   - shared-shell/CLI command:
     `transcripts derive SEQ_ID [--feature-id N ...] [--scope ...] [--output-prefix PREFIX]`
   - Splicing Expert quick actions in GUI:

@@ -285,6 +285,64 @@ fn splicing_misc_rna_sequence() -> DNAsequence {
     dna
 }
 
+fn transcript_translation_test_sequence(
+    source_qualifiers: Vec<gb_io::seq::Qualifier>,
+    transcript_qualifiers: Vec<gb_io::seq::Qualifier>,
+    cds_qualifiers: Vec<gb_io::seq::Qualifier>,
+) -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence("ATGAAANNNNCCCTAA").expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, 16),
+        qualifiers: source_qualifiers,
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 6),
+            gb_io::seq::Location::simple_range(10, 16),
+        ]),
+        qualifiers: transcript_qualifiers,
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 6),
+            gb_io::seq::Location::simple_range(10, 16),
+        ]),
+        qualifiers: cds_qualifiers,
+    });
+    dna
+}
+
+fn reverse_transcript_translation_test_sequence(
+    source_qualifiers: Vec<gb_io::seq::Qualifier>,
+    transcript_qualifiers: Vec<gb_io::seq::Qualifier>,
+    cds_qualifiers: Vec<gb_io::seq::Qualifier>,
+) -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence("CCTTAGGGNNNNTTTCATGG").expect("valid DNA");
+    let join = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(2, 8),
+        gb_io::seq::Location::simple_range(12, 18),
+    ]);
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, 20),
+        qualifiers: source_qualifiers,
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(join.clone())),
+        qualifiers: transcript_qualifiers,
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::Complement(Box::new(join)),
+        qualifiers: cds_qualifiers,
+    });
+    dna
+}
+
 fn splicing_multi_gene_test_sequence() -> DNAsequence {
     let mut bases = vec![b'A'; 120];
     let mut fill_range = |start_0: usize, end_0: usize, pattern: &[u8]| {
@@ -4707,6 +4765,94 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 }
 
 #[test]
+fn test_uniprot_projection_expert_keeps_first_exon_when_location_starts_at_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_reverse_zero.txt");
+    let swiss_text = r#"ID   TOYREV_HUMAN            Reviewed;         11 AA.
+AC   PREV0;
+DE   RecName: Full=Toy reverse protein;
+GN   Name=TOYREV;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXREV0; ENSPTOYREV0; ENSGTOYREV0.
+FT   DOMAIN          2..10
+FT                   /note="terminal coverage"
+SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVE
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::Range(
+                (0, gb_io::seq::Before(false)),
+                (15, gb_io::seq::After(false)),
+            ),
+            gb_io::seq::Location::Range(
+                (30, gb_io::seq::Before(false)),
+                (48, gb_io::seq::After(false)),
+            ),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYREV".to_string())),
+            ("transcript_id".into(), Some("TXREV0".to_string())),
+            ("label".into(), Some("TXREV0".to_string())),
+            ("cds_ranges_1based".into(), Some("1-15,31-48".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_reverse".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_reverse".to_string(),
+            entry_id: "PREV0".to_string(),
+            projection_id: Some("PREV0@toy_reverse".to_string()),
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_reverse",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PREV0@toy_reverse".to_string(),
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    assert_eq!(view.transcript_lanes.len(), 1);
+    let transcript_exons = &view.transcript_lanes[0].transcript_exons;
+    assert_eq!(transcript_exons.len(), 2);
+    assert_eq!(transcript_exons[0].start_1based, 1);
+    assert_eq!(transcript_exons[0].end_1based, 15);
+    assert_eq!(transcript_exons[1].start_1based, 31);
+    assert_eq!(transcript_exons[1].end_1based, 48);
+    assert_eq!(
+        view.transcript_lanes[0]
+            .cds_to_protein_segments
+            .last()
+            .expect("terminal aa segment")
+            .genomic_start_1based,
+        1
+    );
+}
+
+#[test]
 fn test_import_uniprot_entry_sequence_is_currently_unsupported() {
     let dir = tempfile::tempdir().unwrap();
     let swiss_path = dir.path().join("toy_uniprot_use.txt");
@@ -5475,6 +5621,208 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .get(&result.created_seq_ids[0])
         .expect("derived");
     assert_eq!(derived.get_forward_string(), expected);
+}
+
+#[test]
+fn test_derive_transcript_sequences_adds_cds_translation_and_speed_hint() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("codon_start".into(), Some("1".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    assert_eq!(derived.get_forward_string(), "ATGAAACCCTAA");
+    let mrna = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(mrna, "translation_speed_profile_hint").as_deref(),
+        Some("ecoli")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(mrna, "derived_protein_translation").as_deref(),
+        Some("MKP")
+    );
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation").as_deref(),
+        Some("MKP")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("11")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("explicit_cds_qualifier")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "product").as_deref(),
+        Some("Toy enzyme")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "protein_id").as_deref(),
+        Some("PROT_TOY")
+    );
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|msg| msg.contains("Derived protein"))
+    );
+}
+
+#[test]
+fn test_derive_transcript_sequences_reverse_strand_adds_translation_context_warning() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        reverse_transcript_translation_test_sequence(
+            vec![
+                ("organism".into(), Some("Homo sapiens".to_string())),
+                ("organelle".into(), Some("mitochondrion".to_string())),
+            ],
+            vec![
+                ("gene".into(), Some("MTTOY".to_string())),
+                ("transcript_id".into(), Some("TX_MT".to_string())),
+                ("label".into(), Some("TX_MT".to_string())),
+            ],
+            vec![("transcript_id".into(), Some("TX_MT".to_string()))],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive reverse transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    assert_eq!(derived.get_forward_string(), "ATGAAACCCTAA");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation").as_deref(),
+        Some("MKP")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_context_organism").as_deref(),
+        Some("Homo sapiens")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_context_organelle").as_deref(),
+        Some("mitochondrion")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_hint").as_deref(),
+        Some("human")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("ambiguous_mitochondrial_default")
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Mitochondrial context was detected"))
+    );
+}
+
+#[test]
+fn test_derive_transcript_sequences_uses_plastid_translation_table_default() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![
+                ("organism".into(), Some("Arabidopsis thaliana".to_string())),
+                ("organelle".into(), Some("plastid:chloroplast".to_string())),
+            ],
+            vec![
+                ("gene".into(), Some("PLASTID1".to_string())),
+                ("transcript_id".into(), Some("TX_PLASTID".to_string())),
+                ("label".into(), Some("TX_PLASTID".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_PLASTID".to_string())),
+                ("codon_start".into(), Some("1".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive plastid transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("11")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("organelle_plastid_default")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_context_organelle").as_deref(),
+        Some("plastid:chloroplast")
+    );
 }
 
 #[test]

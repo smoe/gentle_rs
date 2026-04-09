@@ -2199,6 +2199,128 @@ pub struct RnaReadAlignmentInspection {
     pub rows: Vec<RnaReadAlignmentInspectionRow>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// How one transcript/CDS protein derivation resolved its genetic code table.
+pub enum TranscriptProteinTranslationTableSource {
+    #[default]
+    StandardDefault,
+    ExplicitCdsQualifier,
+    ExplicitTranscriptQualifier,
+    ExplicitSourceQualifier,
+    OrganellePlastidDefault,
+    AmbiguousMitochondrialDefault,
+}
+
+impl TranscriptProteinTranslationTableSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StandardDefault => "standard_default",
+            Self::ExplicitCdsQualifier => "explicit_cds_qualifier",
+            Self::ExplicitTranscriptQualifier => "explicit_transcript_qualifier",
+            Self::ExplicitSourceQualifier => "explicit_source_qualifier",
+            Self::OrganellePlastidDefault => "organelle_plastid_default",
+            Self::AmbiguousMitochondrialDefault => "ambiguous_mitochondrial_default",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// How a transcript-to-protein derivation chose its coding span.
+pub enum TranscriptProteinDerivationMode {
+    #[default]
+    AnnotatedCds,
+    InferredOrf,
+    HeuristicLongestFrame,
+}
+
+impl TranscriptProteinDerivationMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AnnotatedCds => "annotated_cds",
+            Self::InferredOrf => "inferred_orf",
+            Self::HeuristicLongestFrame => "heuristic_longest_frame",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Named codon-bias profile used for protein back-translation.
+pub enum TranslationSpeedProfile {
+    Human,
+    Mouse,
+    Yeast,
+    Ecoli,
+}
+
+impl TranslationSpeedProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Mouse => "mouse",
+            Self::Yeast => "yeast",
+            Self::Ecoli => "ecoli",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Qualitative codon-speed bias for reverse translation.
+pub enum TranslationSpeedMark {
+    Fast,
+    Slow,
+}
+
+impl TranslationSpeedMark {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Slow => "slow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable transcript/CDS-to-protein derivation summary.
+///
+/// This record is intentionally narrower than a first-class protein sequence
+/// window. It captures the resolved coding span, genetic code selection, and
+/// translated amino-acid sequence so GUI/CLI/shell code can inspect the same
+/// deterministic transcript-translation decision without re-implementing the
+/// biology locally.
+pub struct TranscriptProteinDerivation {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub source_seq_id: SeqId,
+    pub source_feature_id: usize,
+    #[serde(default)]
+    pub derivation_mode: TranscriptProteinDerivationMode,
+    #[serde(default)]
+    pub cds_ranges_1based: Vec<(usize, usize)>,
+    pub cds_length_bp: usize,
+    pub protein_sequence: String,
+    pub protein_length_aa: usize,
+    pub translation_table: usize,
+    pub translation_table_label: String,
+    #[serde(default)]
+    pub translation_table_source: TranscriptProteinTranslationTableSource,
+    pub codon_start: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organism: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organelle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_speed_profile_hint: Option<String>,
+    #[serde(default)]
+    pub terminal_stop_trimmed: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadPairwiseAlignmentDetail {

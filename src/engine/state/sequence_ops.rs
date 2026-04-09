@@ -512,6 +512,7 @@ impl GentleEngine {
         match normalized.as_str() {
             "ssdna" | "singlestrandeddna" | "single" | "ssdnaoligo" | "ss" => "ssdna",
             "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna" | "cdna" => "rna",
+            "protein" | "peptide" | "aa" | "aminoacid" | "aminoacids" => "protein",
             _ => "dsdna",
         }
     }
