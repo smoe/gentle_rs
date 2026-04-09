@@ -47,7 +47,7 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Does not publish release assets.
 - Container workflow: `.github/workflows/container.yml`
   - Builds the Debian-first container image on PRs / `main`.
-  - Publishes multi-arch GHCR images from tag pushes matching `v*`.
+  - Publishes `linux/amd64` GHCR images from tag pushes matching `v*`.
   - Moves `latest` only on release-tag publishes.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered by tag pushes matching `v*`.
