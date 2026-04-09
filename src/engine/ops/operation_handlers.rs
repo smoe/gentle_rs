@@ -1680,7 +1680,6 @@ impl GentleEngine {
             start_0based: usize,
             end_0based_exclusive: usize,
             aa_len: usize,
-            has_start_codon: bool,
             has_terminal_stop: bool,
             derivation_mode: TranscriptProteinDerivationMode,
         }
@@ -1741,7 +1740,6 @@ impl GentleEngine {
                 start_0based,
                 end_0based_exclusive: translated_end,
                 aa_len,
-                has_start_codon: true,
                 has_terminal_stop,
                 derivation_mode: TranscriptProteinDerivationMode::InferredOrf,
             });
@@ -1762,7 +1760,6 @@ impl GentleEngine {
                             start_0based: segment_start,
                             end_0based_exclusive: pos,
                             aa_len,
-                            has_start_codon: false,
                             has_terminal_stop: false,
                             derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
                         });
@@ -1776,7 +1773,6 @@ impl GentleEngine {
                     start_0based: segment_start,
                     end_0based_exclusive: frame_end,
                     aa_len,
-                    has_start_codon: false,
                     has_terminal_stop: false,
                     derivation_mode: TranscriptProteinDerivationMode::HeuristicLongestFrame,
                 });
