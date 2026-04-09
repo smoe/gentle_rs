@@ -3613,8 +3613,13 @@ Post-baseline follow-ups:
     the engine can deterministically build/export an initial read-only graph
     from restriction/exon/CDS/TFBS-style evidence already present on a
     sequence.
+  - Done (2026-04-09, overlay start): sequence windows now auto-refresh a
+    read-only construct-reasoning graph for the active sequence and expose a
+    `Reasoning` layer toggle that paints the engine-derived evidence spans on
+    the linear DNA map itself.
   - Next: derive facts/decision nodes/construct candidates on top of that
-    foundation and add the DNA-window overlay/editor surface.
+    foundation, deepen the overlay beyond raw evidence spans, and add the
+    editable decision/inspection surface.
   - feed resulting construct candidates into Routine Assistant instead of
     forcing protocol selection before construct reasoning exists
   - detailed design note:

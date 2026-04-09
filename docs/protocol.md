@@ -2397,7 +2397,13 @@ Construct reasoning graph foundation (implemented first slice):
   - deterministic read-only graph build from existing sequence facts:
     restriction sites plus sequence-feature spans such as exon/CDS/gene/
     transcript/UTR/promoter/TFBS when present
+  - active-sequence graph refresh helper that reuses the existing graph/objective
+    identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph
+- Current GUI-backed scope:
+  - sequence-window `Reasoning` display toggle
+  - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
+    graph and paints evidence spans directly on-sequence
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - exon/splice annotations with explicit cDNA-style qualifier hints =>
@@ -2407,7 +2413,7 @@ Construct reasoning graph foundation (implemented first slice):
 - Not in this first slice yet:
   - derived facts/decision-node population beyond raw evidence capture
   - construct-candidate ranking
-  - GUI overlay/editor surfaces
+  - editable reasoning/decision GUI surfaces beyond the current read-only span overlay
   - process-run-bundle export integration for construct reasoning graphs
 
 Protocol-cartoon family growth direction (planned):

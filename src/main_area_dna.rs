@@ -49,7 +49,9 @@ mod rna_read_support;
 
 use crate::{
     app::request_open_pcr_design_from_native_menu,
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
+    dna_display::{
+        ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria,
+    },
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
@@ -6792,6 +6794,7 @@ struct RegulatoryFeatureGrouping {
 #[derive(Clone, Debug, Default)]
 struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
+    construct_reasoning_evidence_count: usize,
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
     restriction_site_count: usize,
@@ -6815,6 +6818,10 @@ impl LayerVisibilityCounts {
         self.kind_count("TFBS")
             + self.kind_count("TF_BINDING_SITE")
             + self.kind_count("PROTEIN_BIND")
+    }
+
+    fn construct_reasoning_evidence_count(&self) -> usize {
+        self.construct_reasoning_evidence_count
     }
 
     fn total_feature_count(&self) -> usize {
@@ -7750,6 +7757,7 @@ impl MainAreaDna {
         self.mark_dna_layout_dirty();
         self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
+        self.refresh_construct_reasoning_overlay();
     }
 
     fn invalidate_dotplot_cache(&mut self) {
@@ -7799,6 +7807,23 @@ impl MainAreaDna {
         self.sync_from_engine_display();
         self.update_dna_map();
         self.sync_linear_external_feature_labels();
+    }
+
+    fn refresh_construct_reasoning_overlay(&mut self) {
+        let overlay = if let (Some(engine), Some(seq_id)) = (&self.engine, self.seq_id.as_deref()) {
+            let Ok(mut guard) = engine.try_write() else {
+                return;
+            };
+            match guard.refresh_construct_reasoning_graph_for_seq_id(seq_id) {
+                Ok(graph) => Some(ConstructReasoningOverlay::from_graph(&graph)),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_construct_reasoning_overlay(overlay);
+        }
     }
 
     fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
@@ -7998,6 +8023,7 @@ impl MainAreaDna {
             vcf_display_criteria,
             regulatory_feature_max_view_span_bp,
             gc_content_bin_size_bp,
+            construct_reasoning_overlay,
             show_contextual_transcript_features,
             restriction_display_mode,
             preferred_restriction_enzymes,
@@ -8010,6 +8036,7 @@ impl MainAreaDna {
                     display.vcf_display_criteria(),
                     display.regulatory_feature_max_view_span_bp(),
                     display.gc_content_bin_size_bp(),
+                    display.construct_reasoning_overlay().cloned(),
                     display.show_contextual_transcript_features(),
                     display.restriction_enzyme_display_mode(),
                     display.preferred_restriction_enzymes().to_vec(),
@@ -8020,6 +8047,7 @@ impl MainAreaDna {
                 VcfDisplayCriteria::default(),
                 50_000,
                 100,
+                None,
                 true,
                 RestrictionEnzymeDisplayMode::default(),
                 Vec::new(),
@@ -8141,6 +8169,24 @@ impl MainAreaDna {
                 .filter(|site| match viewport {
                     Some((start, end)) => **site >= start && **site < end,
                     None => true,
+                })
+                .count();
+        }
+        if let Some(overlay) = construct_reasoning_overlay {
+            counts.construct_reasoning_evidence_count = overlay
+                .evidence
+                .iter()
+                .filter(|span| {
+                    span.end_0based_exclusive > span.start_0based
+                        && match viewport {
+                            Some((start, end)) => Self::ranges_overlap(
+                                span.start_0based,
+                                span.end_0based_exclusive,
+                                start,
+                                end,
+                            ),
+                            None => true,
+                        }
                 })
                 .count();
         }
@@ -9504,6 +9550,35 @@ impl MainAreaDna {
                     .expect("DNA display lock poisoned")
                     .set_show_mrna_features(visible);
                 self.set_display_visibility(DisplayTarget::MrnaFeatures, visible);
+            }
+
+            let construct_reasoning_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_construct_reasoning_overlay();
+            let construct_reasoning_count = layer_counts.construct_reasoning_evidence_count();
+            let construct_reasoning_response = ui
+                .selectable_label(
+                    construct_reasoning_active,
+                    format!("Reasoning ({construct_reasoning_count})"),
+                )
+                .on_hover_text(format!(
+                    "Show or hide read-only construct-reasoning evidence spans derived from restriction sites and sequence annotations ({construct_reasoning_count} intervals in current view)"
+                ));
+            if construct_reasoning_response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_construct_reasoning_overlay()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_construct_reasoning_overlay(visible);
+                self.set_display_visibility(DisplayTarget::ConstructReasoningOverlay, visible);
+                if visible {
+                    self.refresh_construct_reasoning_overlay();
+                }
             }
 
             if matches!(self.dna_presentation_mode, DnaPresentationMode::Cdna) {
@@ -12093,6 +12168,7 @@ impl MainAreaDna {
         display.set_show_cds_features(settings.show_cds_features);
         display.set_show_gene_features(settings.show_gene_features);
         display.set_show_mrna_features(settings.show_mrna_features);
+        display.set_show_construct_reasoning_overlay(settings.show_construct_reasoning_overlay);
         display.set_show_tfbs(settings.show_tfbs);
         display.set_tfbs_display_criteria(TfbsDisplayCriteria {
             use_llr_bits: settings.tfbs_display_use_llr_bits,
@@ -12170,6 +12246,7 @@ impl MainAreaDna {
         );
         drop(display);
         self.sync_contextual_transcript_visibility_filter();
+        self.refresh_construct_reasoning_overlay();
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {

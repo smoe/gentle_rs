@@ -1,9 +1,15 @@
 //! Linear-map DNA renderer.
 
 use crate::{
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
+    dna_display::{
+        ConstructReasoningOverlay, ConstructReasoningOverlaySpan, DnaDisplay, Selection,
+        TfbsDisplayCriteria, VcfDisplayCriteria,
+    },
     dna_sequence::DNAsequence,
-    engine::{LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode},
+    engine::{
+        ConstructRole, EvidenceClass, LinearSequenceLetterLayoutMode,
+        RestrictionEnzymeDisplayMode,
+    },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     iupac_code::IupacCode,
@@ -77,6 +83,11 @@ const MCS_INLINE_BADGE_PAD_Y: f32 = 3.0;
 const VARIATION_MIN_WIDTH_PX: f32 = 7.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
 const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
+const CONSTRUCT_REASONING_TRACK_HEIGHT: f32 = 6.0;
+const CONSTRUCT_REASONING_TRACK_MARGIN: f32 = 14.0;
+const CONSTRUCT_REASONING_TRACK_GAP: f32 = 10.0;
+const CONSTRUCT_REASONING_LABEL_FONT_SIZE: f32 = 8.5;
+const CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX: f32 = 20.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -116,6 +127,14 @@ impl FeaturePosition {
     fn contains(&self, pos: Pos2) -> bool {
         self.exon_rects.iter().any(|rect| rect.contains(pos))
     }
+}
+
+#[derive(Debug, Clone)]
+struct ConstructReasoningOverlayPosition {
+    rect: Rect,
+    fill: Color32,
+    stroke: Stroke,
+    label: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -358,6 +377,9 @@ impl RenderDnaLinear {
                 include_span(y - ORF_HEIGHT * 0.5, y + ORF_HEIGHT * 0.5);
             }
         }
+        for overlay in self.construct_reasoning_overlay_positions(viewport) {
+            include_span(overlay.rect.top(), overlay.rect.bottom());
+        }
 
         if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
             Some((min_y, max_y))
@@ -505,6 +527,138 @@ impl RenderDnaLinear {
         } else {
             Color32::BLACK
         }
+    }
+
+    fn construct_reasoning_role_color(role: ConstructRole) -> Color32 {
+        match role {
+            ConstructRole::Promoter => Color32::from_rgb(234, 88, 12),
+            ConstructRole::Enhancer => Color32::from_rgb(217, 119, 6),
+            ConstructRole::Gene => Color32::from_rgb(37, 99, 235),
+            ConstructRole::Transcript => Color32::from_rgb(8, 145, 178),
+            ConstructRole::Exon => Color32::from_rgb(34, 197, 94),
+            ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => Color32::from_rgb(16, 185, 129),
+            ConstructRole::Cds => Color32::from_rgb(79, 70, 229),
+            ConstructRole::Terminator => Color32::from_rgb(220, 38, 38),
+            ConstructRole::SignalPeptide | ConstructRole::LocalizationSignal => {
+                Color32::from_rgb(236, 72, 153)
+            }
+            ConstructRole::HomologyArm | ConstructRole::FusionBoundary => {
+                Color32::from_rgb(124, 58, 237)
+            }
+            ConstructRole::RestrictionSite => Color32::from_rgb(185, 28, 28),
+            ConstructRole::SpliceBoundary => Color32::from_rgb(202, 138, 4),
+            ConstructRole::Tfbs => Color32::from_rgb(190, 24, 93),
+            ConstructRole::Linker | ConstructRole::Tag => Color32::from_rgb(20, 184, 166),
+            ConstructRole::ContextBaggage | ConstructRole::Other => Color32::from_rgb(100, 116, 139),
+        }
+    }
+
+    fn construct_reasoning_overlay_fill(role: ConstructRole, evidence_class: EvidenceClass) -> Color32 {
+        let base = Self::construct_reasoning_role_color(role);
+        let alpha = match evidence_class {
+            EvidenceClass::HardFact => 180,
+            EvidenceClass::ReliableAnnotation => 145,
+            EvidenceClass::ContextEvidence => 120,
+            EvidenceClass::SoftHypothesis => 95,
+            EvidenceClass::UserOverride => 210,
+        };
+        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+    }
+
+    fn construct_reasoning_overlay_stroke(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+    ) -> Stroke {
+        let width = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
+            EvidenceClass::ReliableAnnotation => 1.0,
+            EvidenceClass::ContextEvidence => 0.9,
+            EvidenceClass::SoftHypothesis => 0.8,
+        };
+        Stroke::new(width, Self::construct_reasoning_role_color(role).gamma_multiply(0.75))
+    }
+
+    fn construct_reasoning_overlay_min_width_px(bp_per_px: f32) -> f32 {
+        if bp_per_px <= 2.0 {
+            2.0
+        } else if bp_per_px <= 8.0 {
+            3.0
+        } else {
+            4.5
+        }
+    }
+
+    fn construct_reasoning_overlay_label(span: &ConstructReasoningOverlaySpan) -> String {
+        let raw = if span.label.trim().is_empty() {
+            span.role.as_str()
+        } else {
+            span.label.trim()
+        };
+        Self::truncate_label(raw, 32)
+    }
+
+    fn construct_reasoning_overlay_positions(
+        &self,
+        viewport: LinearViewport,
+    ) -> Vec<ConstructReasoningOverlayPosition> {
+        let (show_overlay, overlay) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.show_construct_reasoning_overlay(),
+                    display.construct_reasoning_overlay().cloned(),
+                )
+            })
+            .unwrap_or((false, None));
+        if !show_overlay {
+            return vec![];
+        }
+        let Some(ConstructReasoningOverlay { seq_id: _, evidence, .. }) = overlay else {
+            return vec![];
+        };
+        let mut top_lanes: Vec<f32> = vec![];
+        let mut bottom_lanes: Vec<f32> = vec![];
+        let min_width = Self::construct_reasoning_overlay_min_width_px(self.bp_per_px(viewport));
+        let mut positions = vec![];
+        for span in evidence {
+            let end = span.end_0based_exclusive.min(self.sequence_length);
+            let Some((draw_start, draw_end)) =
+                Self::range_overlap(span.start_0based.min(end), end, viewport.start, viewport.end)
+            else {
+                continue;
+            };
+            let x1 = self.bp_to_x(draw_start, viewport).clamp(self.area.left(), self.area.right());
+            let x2 = self
+                .bp_to_x(draw_end, viewport)
+                .clamp(self.area.left(), self.area.right())
+                .max((x1 + min_width).min(self.area.right()));
+            let place_top = !matches!(span.strand.as_deref(), Some("-"));
+            let lane = if place_top {
+                Self::allocate_lane(&mut top_lanes, x1, x2, 3.0)
+            } else {
+                Self::allocate_lane(&mut bottom_lanes, x1, x2, 3.0)
+            };
+            let center_y = if place_top {
+                self.baseline_y()
+                    - CONSTRUCT_REASONING_TRACK_MARGIN
+                    - CONSTRUCT_REASONING_TRACK_GAP * lane as f32
+            } else {
+                self.baseline_y()
+                    + CONSTRUCT_REASONING_TRACK_MARGIN
+                    + CONSTRUCT_REASONING_TRACK_GAP * lane as f32
+            };
+            positions.push(ConstructReasoningOverlayPosition {
+                rect: Rect::from_min_max(
+                    Pos2::new(x1, center_y - CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
+                    Pos2::new(x2, center_y + CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
+                ),
+                fill: Self::construct_reasoning_overlay_fill(span.role, span.evidence_class),
+                stroke: Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class),
+                label: Self::construct_reasoning_overlay_label(&span),
+            });
+        }
+        positions
     }
 
     fn feature_external_label_fill(fill: Color32, alpha: u8, emphasize: bool) -> Color32 {
@@ -2123,6 +2277,35 @@ impl RenderDnaLinear {
         }
     }
 
+    fn draw_construct_reasoning_overlay(
+        &self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+    ) {
+        let show_labels = self.bp_per_px(viewport) <= CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX;
+        for overlay in self.construct_reasoning_overlay_positions(viewport) {
+            painter.rect_filled(overlay.rect, 2.5, overlay.fill);
+            painter.rect_stroke(overlay.rect, 2.5, overlay.stroke, StrokeKind::Inside);
+            if !show_labels || overlay.label.is_empty() {
+                continue;
+            }
+            let label_width = Self::estimate_label_width(&overlay.label);
+            if overlay.rect.width() + 4.0 < label_width {
+                continue;
+            }
+            painter.text(
+                overlay.rect.center(),
+                Align2::CENTER_CENTER,
+                overlay.label,
+                FontId {
+                    size: CONSTRUCT_REASONING_LABEL_FONT_SIZE,
+                    family: FontFamily::Monospace,
+                },
+                Self::feature_label_color(overlay.fill),
+            );
+        }
+    }
+
     fn draw_features(&self, painter: &egui::Painter, detail: LinearDetailLevel) {
         let (show_features, external_font_size, external_bg_opacity) = self
             .display
@@ -2646,6 +2829,7 @@ impl RenderDnaLinear {
         self.draw_bp_ticks(&painter, viewport);
         self.draw_sequence_bases(&painter, viewport);
         self.draw_open_reading_frames(&painter, viewport, detail);
+        self.draw_construct_reasoning_overlay(&painter, viewport);
         self.draw_features(&painter, detail);
         self.draw_restriction_enzyme_sites(&painter, viewport, detail);
     }
@@ -2765,6 +2949,66 @@ mod tests {
         assert!(top < bottom);
         assert!(top.is_finite());
         assert!(bottom.is_finite());
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_positions_follow_strand_near_baseline() {
+        let mut renderer = test_renderer(1000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_construct_reasoning_overlay(Some(ConstructReasoningOverlay {
+                graph_id: "graph1".to_string(),
+                seq_id: "seq1".to_string(),
+                objective_title: "Inspect construct".to_string(),
+                objective_goal: "Place spans on-sequence".to_string(),
+                evidence: vec![
+                    ConstructReasoningOverlaySpan {
+                        evidence_id: "forward_promoter".to_string(),
+                        start_0based: 120,
+                        end_0based_exclusive: 210,
+                        strand: Some("+".to_string()),
+                        role: ConstructRole::Promoter,
+                        evidence_class: EvidenceClass::ReliableAnnotation,
+                        label: "Promoter".to_string(),
+                        rationale: "forward".to_string(),
+                        confidence: Some(0.9),
+                        editable_status: crate::engine::EditableStatus::Draft,
+                    },
+                    ConstructReasoningOverlaySpan {
+                        evidence_id: "reverse_tfbs".to_string(),
+                        start_0based: 360,
+                        end_0based_exclusive: 390,
+                        strand: Some("-".to_string()),
+                        role: ConstructRole::Tfbs,
+                        evidence_class: EvidenceClass::SoftHypothesis,
+                        label: "TFBS".to_string(),
+                        rationale: "reverse".to_string(),
+                        confidence: Some(0.5),
+                        editable_status: crate::engine::EditableStatus::Draft,
+                    },
+                ],
+            }));
+            display.set_show_construct_reasoning_overlay(true);
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        };
+        renderer.layout_features(viewport);
+        let positions = renderer.construct_reasoning_overlay_positions(viewport);
+        assert_eq!(positions.len(), 2);
+        let baseline = renderer.baseline_y();
+        let forward = positions
+            .iter()
+            .find(|position| position.label == "Promoter")
+            .expect("forward overlay");
+        let reverse = positions
+            .iter()
+            .find(|position| position.label == "TFBS")
+            .expect("reverse overlay");
+        assert!(forward.rect.center().y < baseline);
+        assert!(reverse.rect.center().y > baseline);
     }
 
     #[test]

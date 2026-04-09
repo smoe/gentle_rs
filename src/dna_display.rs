@@ -1,7 +1,10 @@
 //! Shared DNA display configuration and visibility policies.
 
 use crate::{
-    engine::{LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode},
+    engine::{
+        ConstructReasoningGraph, ConstructRole, EditableStatus, EvidenceClass,
+        LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
+    },
     enzymes::default_preferred_restriction_enzyme_names,
     gc_contents::DEFAULT_SECTION_SIZE_BP,
     restriction_enzyme::{RestrictionEndGeometry, RestrictionEnzymeKey},
@@ -146,6 +149,63 @@ impl Default for VcfDisplayCriteria {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstructReasoningOverlaySpan {
+    pub evidence_id: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: Option<String>,
+    pub role: ConstructRole,
+    pub evidence_class: EvidenceClass,
+    pub label: String,
+    pub rationale: String,
+    pub confidence: Option<f64>,
+    pub editable_status: EditableStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ConstructReasoningOverlay {
+    pub graph_id: String,
+    pub seq_id: String,
+    pub objective_title: String,
+    pub objective_goal: String,
+    pub evidence: Vec<ConstructReasoningOverlaySpan>,
+}
+
+impl ConstructReasoningOverlay {
+    pub fn from_graph(graph: &ConstructReasoningGraph) -> Self {
+        let mut evidence = graph
+            .evidence
+            .iter()
+            .map(|entry| ConstructReasoningOverlaySpan {
+                evidence_id: entry.evidence_id.clone(),
+                start_0based: entry.start_0based,
+                end_0based_exclusive: entry.end_0based_exclusive,
+                strand: entry.strand.clone(),
+                role: entry.role,
+                evidence_class: entry.evidence_class,
+                label: entry.label.clone(),
+                rationale: entry.rationale.clone(),
+                confidence: entry.confidence,
+                editable_status: entry.editable_status,
+            })
+            .collect::<Vec<_>>();
+        evidence.sort_by(|left, right| {
+            left.start_0based
+                .cmp(&right.start_0based)
+                .then_with(|| left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then_with(|| left.evidence_id.cmp(&right.evidence_id))
+        });
+        Self {
+            graph_id: graph.graph_id.clone(),
+            seq_id: graph.seq_id.clone(),
+            objective_title: graph.objective.title.clone(),
+            objective_goal: graph.objective.goal.clone(),
+            evidence,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UpdateLayoutParts {
     update_map_dna: bool,
@@ -190,6 +250,8 @@ pub struct DnaDisplay {
     suppress_cds_features_for_gene_annotations: bool,
     show_gene_features: bool,
     show_mrna_features: bool,
+    show_construct_reasoning_overlay: bool,
+    construct_reasoning_overlay: Option<ConstructReasoningOverlay>,
     show_contextual_transcript_features: bool,
     show_tfbs: bool,
     regulatory_tracks_near_baseline: bool,
@@ -447,6 +509,36 @@ impl DnaDisplay {
     pub fn set_show_mrna_features(&mut self, value: bool) {
         if self.show_mrna_features != value {
             self.show_mrna_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn show_construct_reasoning_overlay(&self) -> bool {
+        self.show_construct_reasoning_overlay
+    }
+
+    pub fn toggle_show_construct_reasoning_overlay(&mut self) {
+        self.show_construct_reasoning_overlay = !self.show_construct_reasoning_overlay;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_construct_reasoning_overlay(&mut self, value: bool) {
+        if self.show_construct_reasoning_overlay != value {
+            self.show_construct_reasoning_overlay = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn construct_reasoning_overlay(&self) -> Option<&ConstructReasoningOverlay> {
+        self.construct_reasoning_overlay.as_ref()
+    }
+
+    pub fn set_construct_reasoning_overlay(
+        &mut self,
+        overlay: Option<ConstructReasoningOverlay>,
+    ) {
+        if self.construct_reasoning_overlay != overlay {
+            self.construct_reasoning_overlay = overlay;
             self.mark_layout_dirty();
         }
     }
@@ -950,6 +1042,8 @@ impl Default for DnaDisplay {
             suppress_cds_features_for_gene_annotations: false,
             show_gene_features: true,
             show_mrna_features: true,
+            show_construct_reasoning_overlay: true,
+            construct_reasoning_overlay: None,
             show_contextual_transcript_features: true,
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,

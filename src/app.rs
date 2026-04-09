@@ -36435,6 +36435,7 @@ Error: `{err}`"
                     DisplayTarget::CdsFeatures => "CDS features",
                     DisplayTarget::GeneFeatures => "Gene features",
                     DisplayTarget::MrnaFeatures => "mRNA features",
+                    DisplayTarget::ConstructReasoningOverlay => "Construct reasoning overlay",
                     DisplayTarget::Tfbs => "TFBS",
                     DisplayTarget::RestrictionEnzymes => "Restriction enzymes",
                     DisplayTarget::GcContents => "GC contents",

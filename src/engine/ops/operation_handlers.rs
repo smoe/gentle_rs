@@ -11418,6 +11418,10 @@ impl GentleEngine {
                     DisplayTarget::MrnaFeatures => {
                         ("mrna_features", &mut self.state.display.show_mrna_features)
                     }
+                    DisplayTarget::ConstructReasoningOverlay => (
+                        "construct_reasoning_overlay",
+                        &mut self.state.display.show_construct_reasoning_overlay,
+                    ),
                     DisplayTarget::Tfbs => ("tfbs", &mut self.state.display.show_tfbs),
                     DisplayTarget::RestrictionEnzymes => (
                         "restriction_enzymes",

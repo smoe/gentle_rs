@@ -1,9 +1,9 @@
 //! Circular-map DNA renderer.
 
 use crate::{
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
+    dna_display::{ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
-    engine::RestrictionEnzymeDisplayMode,
+    engine::{ConstructRole, EvidenceClass, RestrictionEnzymeDisplayMode},
     feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
     gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
@@ -32,6 +32,8 @@ pub static GRAY_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
 const MCS_CIRCULAR_LABEL_FONT_SIZE: f32 = 11.5;
 const MCS_CIRCULAR_LABEL_PAD_X: f32 = 12.0;
 const MCS_CIRCULAR_LABEL_PAD_Y: f32 = 5.0;
+const CONSTRUCT_REASONING_CIRCULAR_THICKNESS_FACTOR: f32 = 0.45;
+const CONSTRUCT_REASONING_CIRCULAR_GAP_FACTOR: f32 = 0.45;
 static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
     let mut m = HashMap::new();
     m.insert(-1, Color32::LIGHT_RED);
@@ -306,6 +308,7 @@ impl RenderDnaCircular {
         self.draw_backbone(&painter);
         self.draw_gc_contents(&painter);
         self.draw_methylation_sites(&painter);
+        self.draw_construct_reasoning_overlay(&painter);
         self.draw_main_label(&painter);
         self.draw_bp(&painter);
         self.draw_open_reading_frames(&painter);
@@ -722,6 +725,150 @@ impl RenderDnaCircular {
 
     fn feature_thickness(&self) -> f32 {
         self.radius / 20.0
+    }
+
+    fn construct_reasoning_role_color(role: ConstructRole) -> Color32 {
+        match role {
+            ConstructRole::Promoter => Color32::from_rgb(234, 88, 12),
+            ConstructRole::Enhancer => Color32::from_rgb(217, 119, 6),
+            ConstructRole::Gene => Color32::from_rgb(37, 99, 235),
+            ConstructRole::Transcript => Color32::from_rgb(8, 145, 178),
+            ConstructRole::Exon => Color32::from_rgb(34, 197, 94),
+            ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => {
+                Color32::from_rgb(16, 185, 129)
+            }
+            ConstructRole::Cds => Color32::from_rgb(79, 70, 229),
+            ConstructRole::Terminator => Color32::from_rgb(220, 38, 38),
+            ConstructRole::SignalPeptide | ConstructRole::LocalizationSignal => {
+                Color32::from_rgb(236, 72, 153)
+            }
+            ConstructRole::HomologyArm | ConstructRole::FusionBoundary => {
+                Color32::from_rgb(124, 58, 237)
+            }
+            ConstructRole::RestrictionSite => Color32::from_rgb(185, 28, 28),
+            ConstructRole::SpliceBoundary => Color32::from_rgb(202, 138, 4),
+            ConstructRole::Tfbs => Color32::from_rgb(190, 24, 93),
+            ConstructRole::Linker | ConstructRole::Tag => Color32::from_rgb(20, 184, 166),
+            ConstructRole::ContextBaggage | ConstructRole::Other => {
+                Color32::from_rgb(100, 116, 139)
+            }
+        }
+    }
+
+    fn construct_reasoning_overlay_fill(role: ConstructRole, evidence_class: EvidenceClass) -> Color32 {
+        let base = Self::construct_reasoning_role_color(role);
+        let alpha = match evidence_class {
+            EvidenceClass::HardFact => 180,
+            EvidenceClass::ReliableAnnotation => 145,
+            EvidenceClass::ContextEvidence => 120,
+            EvidenceClass::SoftHypothesis => 95,
+            EvidenceClass::UserOverride => 210,
+        };
+        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+    }
+
+    fn construct_reasoning_overlay_stroke(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+    ) -> Stroke {
+        let width = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
+            EvidenceClass::ReliableAnnotation => 1.0,
+            EvidenceClass::ContextEvidence => 0.9,
+            EvidenceClass::SoftHypothesis => 0.8,
+        };
+        Stroke::new(width, Self::construct_reasoning_role_color(role).gamma_multiply(0.75))
+    }
+
+    fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter) {
+        let (show_overlay, overlay) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.show_construct_reasoning_overlay(),
+                    display.construct_reasoning_overlay().cloned(),
+                )
+            })
+            .unwrap_or((false, None));
+        if !show_overlay || self.sequence_length <= 0 {
+            return;
+        }
+        let Some(ConstructReasoningOverlay { evidence, .. }) = overlay else {
+            return;
+        };
+        let thickness =
+            (self.feature_thickness() * CONSTRUCT_REASONING_CIRCULAR_THICKNESS_FACTOR).max(2.0);
+        let gap = (thickness * CONSTRUCT_REASONING_CIRCULAR_GAP_FACTOR).max(1.0);
+        let overlap_padding_bp = ((self.sequence_length as f32) * 0.002).ceil() as i64;
+        let mut outer_ranges: Vec<Vec<(i64, i64)>> = vec![];
+        let mut inner_ranges: Vec<Vec<(i64, i64)>> = vec![];
+
+        let mut seeds = evidence
+            .into_iter()
+            .filter_map(|span| {
+                let start = span.start_0based.min(self.sequence_length as usize) as i64;
+                let end = span.end_0based_exclusive.min(self.sequence_length as usize) as i64;
+                if end <= start {
+                    return None;
+                }
+                Some((span, start, end))
+            })
+            .collect::<Vec<_>>();
+        seeds.sort_by(|left, right| {
+            let left_span = left.2.saturating_sub(left.1);
+            let right_span = right.2.saturating_sub(right.1);
+            right_span.cmp(&left_span).then_with(|| left.1.cmp(&right.1))
+        });
+
+        for (span, start, end) in seeds {
+            let place_outer = !matches!(span.strand.as_deref(), Some("-"));
+            let lane_ranges = if place_outer {
+                &mut outer_ranges
+            } else {
+                &mut inner_ranges
+            };
+            let mut lane = None;
+            for (lane_idx, ranges) in lane_ranges.iter_mut().enumerate() {
+                let collides = ranges.iter().any(|(other_start, other_end)| {
+                    !(end + overlap_padding_bp < *other_start
+                        || start > *other_end + overlap_padding_bp)
+                });
+                if !collides {
+                    ranges.push((start, end));
+                    lane = Some(lane_idx);
+                    break;
+                }
+            }
+            let lane = lane.unwrap_or_else(|| {
+                lane_ranges.push(vec![(start, end)]);
+                lane_ranges.len() - 1
+            }) as f32;
+
+            let (inner, outer) = if place_outer {
+                let inner = self.radius + 10.0 + lane * (thickness + gap);
+                (inner, inner + thickness)
+            } else {
+                let outer = self.radius - 10.0 - lane * (thickness + gap);
+                (outer - thickness, outer)
+            };
+            if inner <= 2.0 || outer <= inner {
+                continue;
+            }
+
+            let mut points = self.generate_arc_bp(outer, start, end);
+            let mut inner_points = self.generate_arc_bp(inner, start, end);
+            if points.len() < 2 || inner_points.len() < 2 {
+                continue;
+            }
+            inner_points.reverse();
+            points.extend(inner_points);
+            painter.add(Shape::convex_polygon(
+                points,
+                Self::construct_reasoning_overlay_fill(span.role, span.evidence_class),
+                Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class),
+            ));
+        }
     }
 
     fn intron_arch_style(feature: &Feature, base_color: Color32) -> (Color32, f32, f32) {

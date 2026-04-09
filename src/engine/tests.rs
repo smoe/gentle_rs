@@ -21267,6 +21267,55 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
 }
 
 #[test]
+fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evidence() {
+    let mut dna = DNAsequence::from_sequence("GAATTCATGGCCATGAAATTTCCCGGG").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(6, 18),
+        qualifiers: vec![("label".into(), Some("Reporter CDS".to_string()))],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("refresh_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let original = engine
+        .build_construct_reasoning_graph("refresh_demo", None, None)
+        .expect("build graph");
+    assert!(
+        !original
+            .evidence
+            .iter()
+            .any(|row| row.label == "SP1")
+    );
+
+    {
+        let sequence = engine
+            .state_mut()
+            .sequences
+            .get_mut("refresh_demo")
+            .expect("sequence");
+        sequence.features_mut().push(gb_io::seq::Feature {
+            kind: "TFBS".into(),
+            location: gb_io::seq::Location::simple_range(18, 24),
+            qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+        });
+        sequence.update_computed_features();
+    }
+
+    let refreshed = engine
+        .refresh_construct_reasoning_graph_for_seq_id("refresh_demo")
+        .expect("refresh graph");
+    assert_eq!(refreshed.graph_id, original.graph_id);
+    assert!(
+        refreshed
+            .evidence
+            .iter()
+            .any(|row| row.role == ConstructRole::Tfbs && row.label == "SP1")
+    );
+}
+
+#[test]
 fn export_construct_reasoning_graph_json_writes_pretty_payload() {
     let mut dna = DNAsequence::from_sequence("GAATTCATGGCC").expect("sequence");
     let eco_ri = crate::enzymes::active_restriction_enzymes()

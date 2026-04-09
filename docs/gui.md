@@ -1423,14 +1423,19 @@ Controls:
    - Shows or hides gene feature rendering.
 8. mRNA
    - Shows or hides mRNA feature rendering.
-9. Ctx mRNA (shown in `cDNA` mode)
+9. Reasoning
+   - Toggles the read-only construct-reasoning overlay for the active sequence.
+   - Current first slice auto-refreshes the engine-derived graph and paints
+     evidence spans from restriction sites and sequence annotations directly on
+     the linear DNA map.
+10. Ctx mRNA (shown in `cDNA` mode)
    - Explicit opt-in for contextual transcript-projection features derived from
      genome annotation/mapping context.
    - Default is off in `cDNA` mode (intrinsic cDNA evidence only).
-10. Show/Hide TFBS
+11. Show/Hide TFBS
    - Toggles computed TFBS annotations.
    - Default is off.
-11. Show/Hide restriction enzymes
+12. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
    - Marker color now encodes cleavage geometry:
      - blunt = slate
@@ -1449,34 +1454,34 @@ Controls:
      (`EcoRI,SacI,KpnI,SmaI,BamHI,XbaI,SalI,PstI,SphI,HindIII`) and a Golden
      Gate Type IIS set (for example `BsaI`, `BsmBI`, `BbsI` when present in the
      active REBASE catalog).
-12. Show/Hide GC content
+13. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).
-13. Show/Hide ORFs
+14. Show/Hide ORFs
    - Toggles open reading frame overlays.
-14. Show/Hide methylation sites
+15. Show/Hide methylation sites
    - Toggles methylation-site markers.
-15. Extract Sel
+16. Extract Sel
    - Extracts current map/text selection into a new sequence via
      `ExtractRegion`.
    - Disabled until a non-empty selection exists.
    - If the current viewport is the intended span, use `Select visible` first
      to promote the visible linear map window into the active selection.
-   - When no explicit `output_id` is supplied, the default extracted sequence
-     id now reflects the selected local `1-based` interval; dbSNP auto-fetched
-     parents collapse back to the rsID stem instead of repeating the full
-     fetched-locus coordinates.
-16. Select visible
+     - When no explicit `output_id` is supplied, the default extracted sequence
+       id now reflects the selected local `1-based` interval; dbSNP auto-fetched
+       parents collapse back to the rsID stem instead of repeating the full
+       fetched-locus coordinates.
+17. Select visible
    - Copies the current visible linear map span into the active selection.
    - Intended as a quick bridge between viewport navigation and
      selection-first actions such as `Extract Sel`, `Queue PCR selection`, and
      `PCR ROI`.
-17. Queue PCR selection
+18. Queue PCR selection
    - One-click shortcut beside `Extract Sel` that queues the current linear
      selection as one PCR region and opens Engine Ops.
    - When a selection is present, the map area also shows an inline hint with
      the active span and the same PCR queue action.
-18. Selection formula
+19. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Formula must start with `=` and define a range:
      - `=left .. right`
@@ -1494,7 +1499,7 @@ Controls:
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
-19. PCR ROI
+20. PCR ROI
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
      - add current map/text selection to PCR region queue
@@ -1505,10 +1510,10 @@ Controls:
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
-19. Export Seq
+21. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-20. Export SVG
+22. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
    - In linear mode, the SVG now honors the active bp viewport/crop instead of
      always exporting the full sequence length.

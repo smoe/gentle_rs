@@ -802,6 +802,7 @@ pub enum DisplayTarget {
     CdsFeatures,
     GeneFeatures,
     MrnaFeatures,
+    ConstructReasoningOverlay,
     Tfbs,
     RestrictionEnzymes,
     GcContents,
@@ -893,6 +894,8 @@ pub struct DisplaySettings {
     pub show_cds_features: bool,
     pub show_gene_features: bool,
     pub show_mrna_features: bool,
+    #[serde(default = "DisplaySettings::default_show_construct_reasoning_overlay")]
+    pub show_construct_reasoning_overlay: bool,
     pub show_tfbs: bool,
     pub regulatory_tracks_near_baseline: bool,
     pub regulatory_feature_max_view_span_bp: usize,
@@ -950,6 +953,10 @@ pub struct DisplaySettings {
 }
 
 impl DisplaySettings {
+    pub const fn default_show_construct_reasoning_overlay() -> bool {
+        true
+    }
+
     pub const fn default_sequence_panel_max_text_length_bp() -> usize {
         200_000
     }
@@ -986,6 +993,7 @@ impl Default for DisplaySettings {
             show_cds_features: true,
             show_gene_features: true,
             show_mrna_features: true,
+            show_construct_reasoning_overlay: Self::default_show_construct_reasoning_overlay(),
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
             regulatory_feature_max_view_span_bp: 50_000,

@@ -9328,6 +9328,73 @@ impl GentleEngine {
             })
     }
 
+    fn select_construct_reasoning_graph_for_seq_id(
+        store: &ConstructReasoningStore,
+        seq_id: &str,
+    ) -> Option<ConstructReasoningGraph> {
+        if let Some(graph) = store
+            .preferred_graph_id
+            .as_deref()
+            .and_then(|graph_id| store.graphs.get(graph_id))
+            .filter(|graph| graph.seq_id == seq_id)
+        {
+            return Some(graph.clone());
+        }
+        store
+            .graphs
+            .values()
+            .filter(|graph| graph.seq_id == seq_id)
+            .max_by(|left, right| {
+                left.generated_at_unix_ms
+                    .cmp(&right.generated_at_unix_ms)
+                    .then_with(|| left.graph_id.cmp(&right.graph_id))
+            })
+            .cloned()
+    }
+
+    pub fn construct_reasoning_graph_for_seq_id(
+        &self,
+        seq_id: &str,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let target = seq_id.trim();
+        if target.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "seq_id cannot be empty".to_string(),
+            });
+        }
+        Self::select_construct_reasoning_graph_for_seq_id(&self.read_construct_reasoning_store(), target)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No construct reasoning graph stored for sequence '{}'",
+                    target
+                ),
+            })
+    }
+
+    pub fn refresh_construct_reasoning_graph_for_seq_id(
+        &mut self,
+        seq_id: &str,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let target = seq_id.trim();
+        if target.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "seq_id cannot be empty".to_string(),
+            });
+        }
+        let existing = Self::select_construct_reasoning_graph_for_seq_id(
+            &self.read_construct_reasoning_store(),
+            target,
+        );
+        let objective_id = existing
+            .as_ref()
+            .map(|graph| graph.objective.objective_id.as_str());
+        let graph_id = existing.as_ref().map(|graph| graph.graph_id.as_str());
+        self.build_construct_reasoning_graph(target, objective_id, graph_id)
+    }
+
     pub fn upsert_construct_reasoning_graph(
         &mut self,
         graph: ConstructReasoningGraph,
