@@ -4853,7 +4853,7 @@ SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
 }
 
 #[test]
-fn test_import_uniprot_entry_sequence_is_currently_unsupported() {
+fn test_import_uniprot_entry_sequence_imports_protein_sequence() {
     let dir = tempfile::tempdir().unwrap();
     let swiss_path = dir.path().join("toy_uniprot_use.txt");
     let swiss_text = r#"ID   TOY2_HUMAN              Reviewed;         12 AA.
@@ -4877,21 +4877,44 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         })
         .expect("import uniprot swiss");
 
-    let import_sequence_err = engine
+    let import_sequence = engine
         .apply(Operation::ImportUniprotEntrySequence {
             entry_id: "TOY_USE".to_string(),
             output_id: None,
         })
-        .expect_err("uniprot sequence import should be disabled");
-    assert!(matches!(import_sequence_err.code, ErrorCode::Unsupported));
+        .expect("uniprot sequence import");
     assert!(
-        import_sequence_err
-            .message
-            .contains("ImportUniprotEntrySequence is currently disabled"),
-        "unexpected error message: {}",
-        import_sequence_err.message
+        import_sequence
+            .messages
+            .iter()
+            .any(|message| message.contains("Imported UniProt protein sequence 'TOY_USE' as 'TOY_USE'")),
+        "unexpected messages: {:?}",
+        import_sequence.messages
     );
-    assert!(!engine.state().sequences.contains_key("TOY_USE"));
+    assert_eq!(import_sequence.created_seq_ids, vec!["TOY_USE".to_string()]);
+
+    let protein = engine
+        .state()
+        .sequences
+        .get("TOY_USE")
+        .expect("imported protein sequence should exist");
+    assert_eq!(protein.molecule_type(), Some("protein"));
+    assert_eq!(protein.len(), 12);
+    assert_eq!(protein.name().as_deref(), Some("Toy use protein"));
+    assert!(
+        protein
+            .features()
+            .iter()
+            .any(|feature| feature.kind.as_ref() == "Protein"),
+        "expected root Protein feature on imported UniProt sequence"
+    );
+    assert!(
+        protein
+            .features()
+            .iter()
+            .any(|feature| feature.kind.as_ref() == "DOMAIN"),
+        "expected imported UniProt feature rows to be preserved"
+    );
 }
 
 #[test]
