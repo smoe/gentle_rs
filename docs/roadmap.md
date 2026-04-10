@@ -1298,7 +1298,8 @@ order. Durable architecture constraints and decisions remain in
     without changing the wrapper protocol
   - container publishing now splits into:
     - `ghcr.io/...:cli` for headless CLI/MCP/Apptainer use
-    - `ghcr.io/...:gui` plus unsuffixed GUI tags for browser-served human use
+    - `ghcr.io/...:gui` for explicit browser-served GUI use
+    - unsuffixed GUI tags (`:latest`, `:<tag>`) remain compatibility aliases
   - the headless `:cli` image now defaults to `cli --help`, and under
     Apptainer/Singularity its `run IMAGE.sif SUBCOMMAND ...` path treats
     unknown subcommands as `gentle_cli SUBCOMMAND ...` so quick smoke tests like

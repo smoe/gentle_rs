@@ -1,7 +1,7 @@
 # GENtle Container Guide
 
-This document describes the Debian-first container image for GENtle and how to
-use it from Docker on macOS/Linux and from Apptainer on Linux.
+This document describes the Debian-first GENtle container images and how to use
+them from Docker on macOS/Linux and from Apptainer on Linux.
 
 The container goal is pragmatic:
 
@@ -34,12 +34,12 @@ The container goal is pragmatic:
   - `ghcr.io/smoe/gentle_rs:cli`
   - `ghcr.io/smoe/gentle_rs:gui`
   - `ghcr.io/smoe/gentle_rs:latest` and the bare release tag remain GUI tags
-- Linux/Apptainer strategy: consume the exact same OCI image, rather than
+- Linux/Apptainer strategy: consume the same OCI image family, rather than
   maintaining a second packaging language in parallel
 
 This means:
 
-- macOS and Linux both use the same Linux container image
+- macOS and Linux both use the same Linux container image family
 - macOS users normally run it through Docker Desktop, Colima, or OrbStack
 - Linux users can choose Docker/Podman or Apptainer
 
@@ -287,10 +287,14 @@ ClawBio/OpenClaw still prefers the explicit launcher shown below.
 If you explicitly want the browser-served GUI image instead:
 
 ```sh
-apptainer pull gentle-gui.sif docker://ghcr.io/OWNER/REPO:latest
+apptainer pull gentle-gui.sif docker://ghcr.io/OWNER/REPO:gui
 apptainer run gentle-gui.sif gui-web
 apptainer exec gentle-gui.sif gentle
 ```
+
+The unsuffixed GUI tags (`:latest`, `:<tag>`) remain available for backward
+compatibility, but `:gui` is the clearest pull target when you want the
+browser-served GUI image explicitly.
 
 Bare `apptainer run gentle-gui.sif` on the GUI image now prints a friendly
 guidance message instead of immediately dropping into the Docker-oriented
@@ -332,15 +336,13 @@ Important platform note:
 - on macOS, use the Docker image directly unless you intentionally want an
   extra Linux VM layer just for Apptainer
 
-## Suggested GitHub Publishing Setup
-
-Not implemented in-tree yet, but this is the intended release direction:
+## GitHub Publishing Setup
 
 1. build the OCI image from this `Dockerfile`
-2. publish it to `ghcr.io`
-3. tag by branch, commit SHA, and release tag
-4. publish a stable `linux/amd64` image from GitHub Actions
-5. let Linux/Apptainer users pull the same image through `docker://...`
+2. publish both runtime targets to `ghcr.io`
+3. tag GUI and CLI images distinctly for release tags
+4. publish stable `linux/amd64` GUI and CLI images from GitHub Actions
+5. let Linux/Apptainer users pull the same images through `docker://...`
 
 Suggested GitHub Actions building blocks:
 
@@ -358,7 +360,9 @@ which:
   pull requests and `main`
 - publishes `linux/amd64` GHCR images for release tags matching `v*`
 - keeps unsuffixed GUI tags (`latest`, `v...`) for backward compatibility
-- also publishes headless tags (`cli`, `v...-cli`) for MCP/ClawBio/Apptainer use
+- also publishes explicit GUI tags (`gui`, `v...-gui`) and headless tags
+  (`cli`, `v...-cli`) so human GUI use and headless automation can target the
+  right image directly
 - updates the `latest` image tag only from those release-tag publishes
 
 Current arm64 note:

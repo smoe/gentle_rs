@@ -5,12 +5,15 @@ This project publishes installable desktop packages for:
 - macOS: `.dmg`
 - Windows: `.zip` (contains `gentle.exe`)
 
-Release tags also publish a GitHub-downloadable container image through GitHub
+Release tags also publish GitHub-downloadable container images through GitHub
 Container Registry (GHCR):
 
-- container image: `ghcr.io/<owner>/<repo>:<tag>`
-- `latest` is updated only from release-tag publishes
-- current image platforms: `linux/amd64`, `linux/arm64`
+- headless CLI image:
+  `ghcr.io/<owner>/<repo>:cli` and `ghcr.io/<owner>/<repo>:<tag>-cli`
+- browser-served GUI image:
+  `ghcr.io/<owner>/<repo>:gui` and `ghcr.io/<owner>/<repo>:<tag>`
+- `latest` is updated only from release-tag publishes and remains a GUI tag
+- current image platform: `linux/amd64`
 
 Linux installable packaging is intentionally deferred. Until Debian packaging is
 ready, releases should default Linux distribution metadata to `tarball`.
@@ -46,9 +49,11 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Runs checks/tests on pushes to `main` and pull requests.
   - Does not publish release assets.
 - Container workflow: `.github/workflows/container.yml`
-  - Builds the Debian-first container image on PRs / `main`.
-  - Publishes `linux/amd64` GHCR images from tag pushes matching `v*`.
-  - Moves `latest` only on release-tag publishes.
+  - Builds both Debian-first runtime targets (`runtime-cli`, `runtime-gui`) on
+    PRs / `main`.
+  - Publishes `linux/amd64` GHCR images from tag pushes matching `v*`:
+    `:cli` / `:<tag>-cli` for headless use and `:gui` / `:<tag>` for GUI use.
+  - Moves `latest` only on release-tag publishes, as a GUI compatibility tag.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered by tag pushes matching `v*`.
   - Can also be run manually via `workflow_dispatch` with inputs:
