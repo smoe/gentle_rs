@@ -3618,6 +3618,10 @@ Post-baseline follow-ups:
     read-only construct-reasoning graph for the active sequence and expose a
     `Reasoning` layer toggle that paints the engine-derived evidence spans on
     the linear DNA map itself.
+  - Done (2026-04-10, inspection slice): the same overlay now supports
+    hover/click inspection, side-panel evidence details, and GUI-only role /
+    evidence-class filters through the adjacent `Why` menu without duplicating
+    or mutating the underlying engine-owned graph.
   - Next: derive facts/decision nodes/construct candidates on top of that
     foundation, deepen the overlay beyond raw evidence spans, and add the
     editable decision/inspection surface.

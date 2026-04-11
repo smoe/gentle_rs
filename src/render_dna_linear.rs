@@ -131,10 +131,13 @@ impl FeaturePosition {
 
 #[derive(Debug, Clone)]
 struct ConstructReasoningOverlayPosition {
+    evidence_id: String,
     rect: Rect,
     fill: Color32,
     stroke: Stroke,
     label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -222,8 +225,10 @@ pub struct RenderDnaLinear {
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
     selected_enzyme: Option<RestrictionEnzymePosition>,
+    selected_reasoning_evidence_id: Option<String>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
+    hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
 }
 
@@ -304,8 +309,10 @@ impl RenderDnaLinear {
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
             selected_enzyme: None,
+            selected_reasoning_evidence_id: None,
             hovered_feature_number: None,
             hover_enzyme: None,
+            hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
         }
     }
@@ -601,16 +608,23 @@ impl RenderDnaLinear {
         &self,
         viewport: LinearViewport,
     ) -> Vec<ConstructReasoningOverlayPosition> {
-        let (show_overlay, overlay) = self
+        let (
+            show_overlay,
+            overlay,
+            hidden_construct_reasoning_roles,
+            hidden_construct_reasoning_evidence_classes,
+        ) = self
             .display
             .read()
             .map(|display| {
                 (
                     display.show_construct_reasoning_overlay(),
                     display.construct_reasoning_overlay().cloned(),
+                    display.hidden_construct_reasoning_roles().clone(),
+                    display.hidden_construct_reasoning_evidence_classes().clone(),
                 )
             })
-            .unwrap_or((false, None));
+            .unwrap_or((false, None, BTreeSet::new(), BTreeSet::new()));
         if !show_overlay {
             return vec![];
         }
@@ -622,6 +636,11 @@ impl RenderDnaLinear {
         let min_width = Self::construct_reasoning_overlay_min_width_px(self.bp_per_px(viewport));
         let mut positions = vec![];
         for span in evidence {
+            if hidden_construct_reasoning_roles.contains(&span.role)
+                || hidden_construct_reasoning_evidence_classes.contains(&span.evidence_class)
+            {
+                continue;
+            }
             let end = span.end_0based_exclusive.min(self.sequence_length);
             let Some((draw_start, draw_end)) =
                 Self::range_overlap(span.start_0based.min(end), end, viewport.start, viewport.end)
@@ -648,14 +667,28 @@ impl RenderDnaLinear {
                     + CONSTRUCT_REASONING_TRACK_MARGIN
                     + CONSTRUCT_REASONING_TRACK_GAP * lane as f32
             };
+            let selected = self.selected_reasoning_evidence_id.as_deref()
+                == Some(span.evidence_id.as_str());
+            let hovered = self.hovered_reasoning_evidence_id.as_deref()
+                == Some(span.evidence_id.as_str());
+            let stroke = if selected {
+                Stroke::new(2.0, Color32::YELLOW)
+            } else if hovered {
+                Stroke::new(1.6, Color32::WHITE)
+            } else {
+                Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class)
+            };
             positions.push(ConstructReasoningOverlayPosition {
+                evidence_id: span.evidence_id.clone(),
                 rect: Rect::from_min_max(
                     Pos2::new(x1, center_y - CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
                     Pos2::new(x2, center_y + CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
                 ),
                 fill: Self::construct_reasoning_overlay_fill(span.role, span.evidence_class),
-                stroke: Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class),
+                stroke,
                 label: Self::construct_reasoning_overlay_label(&span),
+                start_0based: span.start_0based,
+                end_0based_exclusive: span.end_0based_exclusive,
             });
         }
         positions
@@ -1430,6 +1463,15 @@ impl RenderDnaLinear {
         self.features.iter().find(|feature| feature.contains(pos))
     }
 
+    fn get_clicked_construct_reasoning_overlay(
+        &self,
+        pos: Pos2,
+    ) -> Option<ConstructReasoningOverlayPosition> {
+        self.construct_reasoning_overlay_positions(self.viewport())
+            .into_iter()
+            .find(|overlay| overlay.rect.contains(pos))
+    }
+
     pub fn selected_feature_number(&self) -> Option<usize> {
         self.selected_feature_number
     }
@@ -1442,17 +1484,36 @@ impl RenderDnaLinear {
         self.selected_enzyme.clone()
     }
 
+    pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
+        self.selected_reasoning_evidence_id.clone()
+    }
+
+    pub fn hovered_reasoning_evidence_id(&self) -> Option<String> {
+        self.hovered_reasoning_evidence_id.clone()
+    }
+
     pub fn select_restriction_enzyme(&mut self, selected: Option<RestrictionEnzymePosition>) {
         let has_selected = selected.is_some();
         self.selected_enzyme = selected;
         if has_selected {
             self.selected_feature_number = None;
+            self.selected_reasoning_evidence_id = None;
         }
     }
 
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         self.selected_feature_number = feature_number;
         if feature_number.is_some() {
+            self.selected_enzyme = None;
+            self.selected_reasoning_evidence_id = None;
+        }
+    }
+
+    pub fn select_reasoning_evidence(&mut self, evidence_id: Option<String>) {
+        let has_selected = evidence_id.is_some();
+        self.selected_reasoning_evidence_id = evidence_id;
+        if has_selected {
+            self.selected_feature_number = None;
             self.selected_enzyme = None;
         }
     }
@@ -1471,7 +1532,19 @@ impl RenderDnaLinear {
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
-            self.hover_enzyme = self.get_re_site_for_positon(pos);
+            self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
+                self.get_clicked_construct_reasoning_overlay(pos)
+                    .map(|overlay| overlay.evidence_id)
+            } else {
+                None
+            };
+            self.hover_enzyme = if self.hovered_feature_number.is_none()
+                && self.hovered_reasoning_evidence_id.is_none()
+            {
+                self.get_re_site_for_positon(pos)
+            } else {
+                None
+            };
         }
     }
 
@@ -1480,8 +1553,14 @@ impl RenderDnaLinear {
             if let Some(feature) = self.get_clicked_feature(pos) {
                 self.selected_feature_number = Some(feature.feature_number);
                 self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
+            } else if let Some(overlay) = self.get_clicked_construct_reasoning_overlay(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(overlay.evidence_id);
             } else {
                 self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
                 self.selected_enzyme = self.get_re_site_for_positon(pos);
             }
         }
@@ -1499,12 +1578,26 @@ impl RenderDnaLinear {
             {
                 self.selected_feature_number = Some(feature_number);
                 self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
                 let selection = Selection::new(feature_from, feature_to, self.sequence_length);
+                if let Ok(mut display) = self.display.write() {
+                    display.select(selection);
+                }
+            } else if let Some(overlay) = self.get_clicked_construct_reasoning_overlay(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(overlay.evidence_id);
+                let selection = Selection::new(
+                    overlay.start_0based,
+                    overlay.end_0based_exclusive,
+                    self.sequence_length,
+                );
                 if let Ok(mut display) = self.display.write() {
                     display.select(selection);
                 }
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
                 self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
                 self.selected_enzyme = Some(re_pos.clone());
                 let selection = Selection::new(
                     re_pos.key().from() as usize,
@@ -2971,8 +3064,14 @@ mod tests {
                         evidence_class: EvidenceClass::ReliableAnnotation,
                         label: "Promoter".to_string(),
                         rationale: "forward".to_string(),
+                        score: None,
                         confidence: Some(0.9),
+                        context_tags: vec![],
+                        provenance_kind: String::new(),
+                        provenance_refs: vec![],
                         editable_status: crate::engine::EditableStatus::Draft,
+                        warnings: vec![],
+                        notes: vec![],
                     },
                     ConstructReasoningOverlaySpan {
                         evidence_id: "reverse_tfbs".to_string(),
@@ -2983,8 +3082,14 @@ mod tests {
                         evidence_class: EvidenceClass::SoftHypothesis,
                         label: "TFBS".to_string(),
                         rationale: "reverse".to_string(),
+                        score: None,
                         confidence: Some(0.5),
+                        context_tags: vec![],
+                        provenance_kind: String::new(),
+                        provenance_refs: vec![],
                         editable_status: crate::engine::EditableStatus::Draft,
+                        warnings: vec![],
+                        notes: vec![],
                     },
                 ],
             }));
@@ -3009,6 +3114,72 @@ mod tests {
             .expect("reverse overlay");
         assert!(forward.rect.center().y < baseline);
         assert!(reverse.rect.center().y > baseline);
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_positions_respect_role_and_class_filters() {
+        let mut renderer = test_renderer(1000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_construct_reasoning_overlay(Some(ConstructReasoningOverlay {
+                graph_id: "graph1".to_string(),
+                seq_id: "seq1".to_string(),
+                objective_title: "Inspect construct".to_string(),
+                objective_goal: "Filter spans".to_string(),
+                evidence: vec![
+                    ConstructReasoningOverlaySpan {
+                        evidence_id: "promoter".to_string(),
+                        start_0based: 100,
+                        end_0based_exclusive: 160,
+                        strand: Some("+".to_string()),
+                        role: ConstructRole::Promoter,
+                        evidence_class: EvidenceClass::ReliableAnnotation,
+                        label: "Promoter".to_string(),
+                        rationale: String::new(),
+                        score: None,
+                        confidence: None,
+                        context_tags: vec![],
+                        provenance_kind: String::new(),
+                        provenance_refs: vec![],
+                        editable_status: crate::engine::EditableStatus::Draft,
+                        warnings: vec![],
+                        notes: vec![],
+                    },
+                    ConstructReasoningOverlaySpan {
+                        evidence_id: "tfbs".to_string(),
+                        start_0based: 220,
+                        end_0based_exclusive: 250,
+                        strand: Some("+".to_string()),
+                        role: ConstructRole::Tfbs,
+                        evidence_class: EvidenceClass::SoftHypothesis,
+                        label: "TFBS".to_string(),
+                        rationale: String::new(),
+                        score: None,
+                        confidence: None,
+                        context_tags: vec![],
+                        provenance_kind: String::new(),
+                        provenance_refs: vec![],
+                        editable_status: crate::engine::EditableStatus::Draft,
+                        warnings: vec![],
+                        notes: vec![],
+                    },
+                ],
+            }));
+            display.set_show_construct_reasoning_overlay(true);
+            display.set_construct_reasoning_role_visible(ConstructRole::Promoter, false);
+            display.set_construct_reasoning_evidence_class_visible(
+                EvidenceClass::SoftHypothesis,
+                false,
+            );
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        };
+        renderer.layout_features(viewport);
+        let positions = renderer.construct_reasoning_overlay_positions(viewport);
+        assert!(positions.is_empty());
     }
 
     #[test]

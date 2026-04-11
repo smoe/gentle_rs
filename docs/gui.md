@@ -1428,6 +1428,11 @@ Controls:
    - Current first slice auto-refreshes the engine-derived graph and paints
      evidence spans from restriction sites and sequence annotations directly on
      the linear DNA map.
+   - Hovering an evidence span shows a compact "why is this here?" tooltip.
+   - Clicking an evidence span routes the side-panel details view to that exact
+     reasoning record (role, class, range, rationale, provenance, and notes).
+   - The adjacent `Why` menu filters visible reasoning spans by role and
+     evidence class without changing the underlying engine graph.
 10. Ctx mRNA (shown in `cDNA` mode)
    - Explicit opt-in for contextual transcript-projection features derived from
      genome annotation/mapping context.

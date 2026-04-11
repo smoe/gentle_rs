@@ -2404,6 +2404,9 @@ Construct reasoning graph foundation (implemented first slice):
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
     graph and paints evidence spans directly on-sequence
+  - GUI-side hover/selection inspection for one evidence span at a time
+  - GUI-only role/class visibility filters layered on top of the same shared
+    engine-owned graph payload (no adapter-local graph recomputation)
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - exon/splice annotations with explicit cDNA-style qualifier hints =>

@@ -159,8 +159,14 @@ pub struct ConstructReasoningOverlaySpan {
     pub evidence_class: EvidenceClass,
     pub label: String,
     pub rationale: String,
+    pub score: Option<f64>,
     pub confidence: Option<f64>,
+    pub context_tags: Vec<String>,
+    pub provenance_kind: String,
+    pub provenance_refs: Vec<String>,
     pub editable_status: EditableStatus,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -186,8 +192,14 @@ impl ConstructReasoningOverlay {
                 evidence_class: entry.evidence_class,
                 label: entry.label.clone(),
                 rationale: entry.rationale.clone(),
+                score: entry.score,
                 confidence: entry.confidence,
+                context_tags: entry.context_tags.clone(),
+                provenance_kind: entry.provenance_kind.clone(),
+                provenance_refs: entry.provenance_refs.clone(),
                 editable_status: entry.editable_status,
+                warnings: entry.warnings.clone(),
+                notes: entry.notes.clone(),
             })
             .collect::<Vec<_>>();
         evidence.sort_by(|left, right| {
@@ -252,6 +264,8 @@ pub struct DnaDisplay {
     show_mrna_features: bool,
     show_construct_reasoning_overlay: bool,
     construct_reasoning_overlay: Option<ConstructReasoningOverlay>,
+    hidden_construct_reasoning_roles: BTreeSet<ConstructRole>,
+    hidden_construct_reasoning_evidence_classes: BTreeSet<EvidenceClass>,
     show_contextual_transcript_features: bool,
     show_tfbs: bool,
     regulatory_tracks_near_baseline: bool,
@@ -410,6 +424,16 @@ impl DnaDisplay {
         dedup.into_iter().collect()
     }
 
+    pub fn construct_reasoning_overlay_span_visible(
+        &self,
+        span: &ConstructReasoningOverlaySpan,
+    ) -> bool {
+        !self.hidden_construct_reasoning_roles.contains(&span.role)
+            && !self
+                .hidden_construct_reasoning_evidence_classes
+                .contains(&span.evidence_class)
+    }
+
     pub fn show_restriction_enzyme_sites(&self) -> bool {
         self.show_restriction_enzymes
     }
@@ -539,6 +563,58 @@ impl DnaDisplay {
     ) {
         if self.construct_reasoning_overlay != overlay {
             self.construct_reasoning_overlay = overlay;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn construct_reasoning_role_visible(&self, role: ConstructRole) -> bool {
+        !self.hidden_construct_reasoning_roles.contains(&role)
+    }
+
+    pub fn hidden_construct_reasoning_roles(&self) -> &BTreeSet<ConstructRole> {
+        &self.hidden_construct_reasoning_roles
+    }
+
+    pub fn set_construct_reasoning_role_visible(&mut self, role: ConstructRole, visible: bool) {
+        let changed = if visible {
+            self.hidden_construct_reasoning_roles.remove(&role)
+        } else {
+            self.hidden_construct_reasoning_roles.insert(role)
+        };
+        if changed {
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn construct_reasoning_evidence_class_visible(&self, class: EvidenceClass) -> bool {
+        !self.hidden_construct_reasoning_evidence_classes.contains(&class)
+    }
+
+    pub fn hidden_construct_reasoning_evidence_classes(&self) -> &BTreeSet<EvidenceClass> {
+        &self.hidden_construct_reasoning_evidence_classes
+    }
+
+    pub fn set_construct_reasoning_evidence_class_visible(
+        &mut self,
+        class: EvidenceClass,
+        visible: bool,
+    ) {
+        let changed = if visible {
+            self.hidden_construct_reasoning_evidence_classes.remove(&class)
+        } else {
+            self.hidden_construct_reasoning_evidence_classes.insert(class)
+        };
+        if changed {
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn clear_construct_reasoning_filters(&mut self) {
+        if !self.hidden_construct_reasoning_roles.is_empty()
+            || !self.hidden_construct_reasoning_evidence_classes.is_empty()
+        {
+            self.hidden_construct_reasoning_roles.clear();
+            self.hidden_construct_reasoning_evidence_classes.clear();
             self.mark_layout_dirty();
         }
     }
@@ -1044,6 +1120,8 @@ impl Default for DnaDisplay {
             show_mrna_features: true,
             show_construct_reasoning_overlay: true,
             construct_reasoning_overlay: None,
+            hidden_construct_reasoning_roles: BTreeSet::new(),
+            hidden_construct_reasoning_evidence_classes: BTreeSet::new(),
             show_contextual_transcript_features: true,
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,

@@ -152,6 +152,19 @@ impl RenderDna {
         }
     }
 
+    pub fn get_selected_reasoning_evidence_id(&self) -> Option<String> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_reasoning_evidence_id()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_reasoning_evidence_id()),
+        }
+    }
+
     pub fn get_hovered_feature_id(&self) -> Option<usize> {
         match self {
             RenderDna::Circular(renderer) => renderer
@@ -165,18 +178,37 @@ impl RenderDna {
         }
     }
 
+    pub fn get_hovered_reasoning_evidence_id(&self) -> Option<String> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_reasoning_evidence_id()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_reasoning_evidence_id()),
+        }
+    }
+
     pub fn select_feature(&self, feature_number: Option<usize>) {
         match self {
             RenderDna::Circular(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_feature(feature_number);
                     renderer.select_restriction_enzyme(None);
+                    if feature_number.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
                 }
             }
             RenderDna::Linear(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_feature(feature_number);
                     renderer.select_restriction_enzyme(None);
+                    if feature_number.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
                 }
             }
         }
@@ -196,12 +228,41 @@ impl RenderDna {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_restriction_enzyme(site.clone());
                     renderer.select_feature(None);
+                    if site.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
                 }
             }
             RenderDna::Linear(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_restriction_enzyme(site);
                     renderer.select_feature(None);
+                    if renderer.selected_restriction_enzyme().is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn select_reasoning_evidence(&self, evidence_id: Option<String>) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_reasoning_evidence(evidence_id);
+                    if renderer.selected_reasoning_evidence_id().is_some() {
+                        renderer.select_feature(None);
+                        renderer.select_restriction_enzyme(None);
+                    }
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_reasoning_evidence(evidence_id);
+                    if renderer.selected_reasoning_evidence_id().is_some() {
+                        renderer.select_feature(None);
+                        renderer.select_restriction_enzyme(None);
+                    }
                 }
             }
         }

@@ -50,13 +50,15 @@ mod rna_read_support;
 use crate::{
     app::request_open_pcr_design_from_native_menu,
     dna_display::{
-        ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria,
+        ConstructReasoningOverlay, ConstructReasoningOverlaySpan, DnaDisplay, Selection,
+        TfbsDisplayCriteria, VcfDisplayCriteria,
     },
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
-        CandidateRecord, CandidateSetOperator, DisplayTarget, DotplotMode, DotplotView, Engine,
-        EngineError, ErrorCode, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        CandidateRecord, CandidateSetOperator, ConstructRole, DisplayTarget, DotplotMode,
+        DotplotView, EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass,
+        ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
@@ -984,13 +986,14 @@ mod tests {
         RnaReadTaskMessage, RnaReadTaskOutcome, ViewSvgExportProfile,
     };
     use crate::{
-        dna_display::Selection,
+        dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            DotplotMode, DotplotView, Engine, FlexibilityModel, FlexibilityTrack, GentleEngine,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
-            ProjectState, ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
+            ConstructRole, DotplotMode, DotplotView, EditableStatus, Engine, EvidenceClass,
+            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
+            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
+            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
             RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
             RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
             RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
@@ -6456,6 +6459,60 @@ mod tests {
     }
 
     #[test]
+    fn refresh_description_cache_uses_construct_reasoning_selection_details() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq_reasoning".to_string()), None);
+        area.dna_display
+            .write()
+            .expect("display")
+            .set_construct_reasoning_overlay(Some(ConstructReasoningOverlay {
+                graph_id: "graph_reasoning".to_string(),
+                seq_id: "seq_reasoning".to_string(),
+                objective_title: "Assemble promoter cassette".to_string(),
+                objective_goal: "Inspect promoter evidence".to_string(),
+                evidence: vec![ConstructReasoningOverlaySpan {
+                    evidence_id: "ev_promoter".to_string(),
+                    start_0based: 3,
+                    end_0based_exclusive: 12,
+                    strand: Some("+".to_string()),
+                    role: ConstructRole::Promoter,
+                    evidence_class: EvidenceClass::ReliableAnnotation,
+                    label: "Promoter candidate".to_string(),
+                    rationale: "Annotation and restriction context agree".to_string(),
+                    score: Some(0.75),
+                    confidence: Some(0.91),
+                    context_tags: vec!["cassette".to_string(), "5prime".to_string()],
+                    provenance_kind: "annotation_projection".to_string(),
+                    provenance_refs: vec!["gene:TP73".to_string()],
+                    editable_status: EditableStatus::Draft,
+                    warnings: vec![],
+                    notes: vec!["inspect upstream fusion".to_string()],
+                }],
+            }));
+        area.map_dna
+            .select_reasoning_evidence(Some("ev_promoter".to_string()));
+
+        area.refresh_description_cache();
+
+        assert_eq!(area.description_cache_title, "Promoter candidate");
+        assert_eq!(
+            area.description_cache_range.as_deref(),
+            Some("4..12 (9 bp, strand +)")
+        );
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("role: Promoter"))
+        );
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("why: Annotation and restriction context agree"))
+        );
+        assert!(area.description_cache_expert_view.is_none());
+    }
+
+    #[test]
     fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -7162,6 +7219,7 @@ pub struct MainAreaDna {
     multi_selected_feature_ids: BTreeSet<usize>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
+    description_cache_selected_reasoning_evidence_id: Option<String>,
     description_cache_selected_restriction_key: Option<String>,
     description_cache_seq_len: usize,
     description_cache_feature_count: usize,
@@ -7534,6 +7592,7 @@ impl MainAreaDna {
             multi_selected_feature_ids: BTreeSet::new(),
             description_cache_initialized: false,
             description_cache_selected_id: None,
+            description_cache_selected_reasoning_evidence_id: None,
             description_cache_selected_restriction_key: None,
             description_cache_seq_len: 0,
             description_cache_feature_count: 0,
@@ -7824,6 +7883,7 @@ impl MainAreaDna {
         if let Ok(mut display) = self.dna_display.write() {
             display.set_construct_reasoning_overlay(overlay);
         }
+        self.description_cache_initialized = false;
     }
 
     fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
@@ -8024,6 +8084,8 @@ impl MainAreaDna {
             regulatory_feature_max_view_span_bp,
             gc_content_bin_size_bp,
             construct_reasoning_overlay,
+            hidden_construct_reasoning_roles,
+            hidden_construct_reasoning_evidence_classes,
             show_contextual_transcript_features,
             restriction_display_mode,
             preferred_restriction_enzymes,
@@ -8037,6 +8099,8 @@ impl MainAreaDna {
                     display.regulatory_feature_max_view_span_bp(),
                     display.gc_content_bin_size_bp(),
                     display.construct_reasoning_overlay().cloned(),
+                    display.hidden_construct_reasoning_roles().clone(),
+                    display.hidden_construct_reasoning_evidence_classes().clone(),
                     display.show_contextual_transcript_features(),
                     display.restriction_enzyme_display_mode(),
                     display.preferred_restriction_enzymes().to_vec(),
@@ -8048,6 +8112,8 @@ impl MainAreaDna {
                 50_000,
                 100,
                 None,
+                BTreeSet::new(),
+                BTreeSet::new(),
                 true,
                 RestrictionEnzymeDisplayMode::default(),
                 Vec::new(),
@@ -8178,6 +8244,9 @@ impl MainAreaDna {
                 .iter()
                 .filter(|span| {
                     span.end_0based_exclusive > span.start_0based
+                        && !hidden_construct_reasoning_roles.contains(&span.role)
+                        && !hidden_construct_reasoning_evidence_classes
+                            .contains(&span.evidence_class)
                         && match viewport {
                             Some((start, end)) => Self::ranges_overlap(
                                 span.start_0based,
@@ -9579,6 +9648,15 @@ impl MainAreaDna {
                 if visible {
                     self.refresh_construct_reasoning_overlay();
                 }
+            }
+            if construct_reasoning_active {
+                ui.menu_button("Why", |ui| {
+                    self.render_construct_reasoning_overlay_menu(ui);
+                })
+                .response
+                .on_hover_text(
+                    "Inspect and filter construct-reasoning evidence by role or confidence class",
+                );
             }
 
             if matches!(self.dna_presentation_mode, DnaPresentationMode::Cdna) {
@@ -13824,6 +13902,8 @@ impl MainAreaDna {
     fn clear_feature_focus(&mut self) {
         self.focused_feature_id = None;
         self.multi_selected_feature_ids.clear();
+        self.map_dna.select_reasoning_evidence(None);
+        self.map_dna.select_restriction_site(None);
         self.map_dna.select_feature(None);
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
@@ -13842,6 +13922,266 @@ impl MainAreaDna {
             .write()
             .expect("DNA display lock poisoned")
             .deselect();
+    }
+
+    fn construct_reasoning_role_label(role: ConstructRole) -> &'static str {
+        match role {
+            ConstructRole::Promoter => "Promoter",
+            ConstructRole::Enhancer => "Enhancer",
+            ConstructRole::Gene => "Gene",
+            ConstructRole::Transcript => "Transcript",
+            ConstructRole::Exon => "Exon",
+            ConstructRole::Utr5Prime => "5' UTR",
+            ConstructRole::Cds => "CDS",
+            ConstructRole::Utr3Prime => "3' UTR",
+            ConstructRole::Terminator => "Terminator",
+            ConstructRole::Linker => "Linker",
+            ConstructRole::Tag => "Tag",
+            ConstructRole::SignalPeptide => "Signal peptide",
+            ConstructRole::LocalizationSignal => "Localization signal",
+            ConstructRole::HomologyArm => "Homology arm",
+            ConstructRole::FusionBoundary => "Fusion boundary",
+            ConstructRole::RestrictionSite => "Restriction site",
+            ConstructRole::SpliceBoundary => "Splice boundary",
+            ConstructRole::Tfbs => "TFBS",
+            ConstructRole::ContextBaggage => "Context baggage",
+            ConstructRole::Other => "Other",
+        }
+    }
+
+    fn construct_reasoning_evidence_class_label(class: EvidenceClass) -> &'static str {
+        match class {
+            EvidenceClass::HardFact => "Hard fact",
+            EvidenceClass::ReliableAnnotation => "Reliable annotation",
+            EvidenceClass::ContextEvidence => "Context evidence",
+            EvidenceClass::SoftHypothesis => "Soft hypothesis",
+            EvidenceClass::UserOverride => "User override",
+        }
+    }
+
+    fn construct_reasoning_editable_status_label(status: EditableStatus) -> &'static str {
+        match status {
+            EditableStatus::Draft => "draft",
+            EditableStatus::Accepted => "accepted",
+            EditableStatus::Rejected => "rejected",
+            EditableStatus::Locked => "locked",
+        }
+    }
+
+    fn construct_reasoning_title(span: &ConstructReasoningOverlaySpan) -> String {
+        let label = span.label.trim();
+        if label.is_empty() {
+            Self::construct_reasoning_role_label(span.role).to_string()
+        } else {
+            label.to_string()
+        }
+    }
+
+    fn construct_reasoning_range_text(span: &ConstructReasoningOverlaySpan) -> String {
+        let start_1based = span.start_0based.saturating_add(1);
+        let end_1based = span.end_0based_exclusive.max(start_1based);
+        let bp_len = span
+            .end_0based_exclusive
+            .saturating_sub(span.start_0based)
+            .max(1);
+        let strand = span.strand.as_deref().unwrap_or("?");
+        format!("{start_1based}..{end_1based} ({bp_len} bp, strand {strand})")
+    }
+
+    fn construct_reasoning_detail_lines(
+        overlay: &ConstructReasoningOverlay,
+        span: &ConstructReasoningOverlaySpan,
+    ) -> Vec<String> {
+        let mut details = vec![
+            format!("role: {}", Self::construct_reasoning_role_label(span.role)),
+            format!(
+                "class: {}",
+                Self::construct_reasoning_evidence_class_label(span.evidence_class)
+            ),
+            format!(
+                "editable_status: {}",
+                Self::construct_reasoning_editable_status_label(span.editable_status)
+            ),
+        ];
+        if !overlay.objective_title.trim().is_empty() {
+            details.push(format!("objective: {}", overlay.objective_title.trim()));
+        }
+        if !overlay.objective_goal.trim().is_empty() {
+            details.push(format!("goal: {}", overlay.objective_goal.trim()));
+        }
+        if !span.rationale.trim().is_empty() {
+            details.push(format!("why: {}", span.rationale.trim()));
+        }
+        if let Some(score) = span.score {
+            details.push(format!("score: {score:.3}"));
+        }
+        if let Some(confidence) = span.confidence {
+            details.push(format!("confidence: {confidence:.3}"));
+        }
+        if !span.context_tags.is_empty() {
+            details.push(format!("context: {}", span.context_tags.join(", ")));
+        }
+        if !span.provenance_kind.trim().is_empty() {
+            details.push(format!("provenance: {}", span.provenance_kind.trim()));
+        }
+        if !span.provenance_refs.is_empty() {
+            details.push(format!("refs: {}", span.provenance_refs.join(", ")));
+        }
+        for warning in span.warnings.iter().take(2) {
+            if !warning.trim().is_empty() {
+                details.push(format!("warning: {}", warning.trim()));
+            }
+        }
+        for note in span.notes.iter().take(2) {
+            if !note.trim().is_empty() {
+                details.push(format!("note: {}", note.trim()));
+            }
+        }
+        details
+    }
+
+    fn find_construct_reasoning_span(
+        &self,
+        evidence_id: &str,
+    ) -> Option<(ConstructReasoningOverlay, ConstructReasoningOverlaySpan)> {
+        let display = self.dna_display.read().ok()?;
+        let overlay = display.construct_reasoning_overlay()?.clone();
+        let span = overlay
+            .evidence
+            .iter()
+            .find(|span| span.evidence_id == evidence_id)
+            .cloned()?;
+        Some((overlay, span))
+    }
+
+    fn render_construct_reasoning_hover_ui(
+        &self,
+        ui: &mut egui::Ui,
+        overlay: &ConstructReasoningOverlay,
+        span: &ConstructReasoningOverlaySpan,
+    ) {
+        let detail_font_size = self.feature_details_font_size();
+        ui.strong(Self::construct_reasoning_title(span));
+        ui.label(
+            egui::RichText::new(format!(
+                "{} | {}",
+                Self::construct_reasoning_evidence_class_label(span.evidence_class),
+                Self::construct_reasoning_range_text(span)
+            ))
+            .monospace()
+            .size(detail_font_size),
+        );
+        for line in Self::construct_reasoning_detail_lines(overlay, span)
+            .into_iter()
+            .take(4)
+        {
+            ui.label(egui::RichText::new(line).monospace().size(detail_font_size));
+        }
+    }
+
+    fn render_construct_reasoning_overlay_menu(&mut self, ui: &mut egui::Ui) {
+        let overlay = self
+            .dna_display
+            .read()
+            .ok()
+            .and_then(|display| display.construct_reasoning_overlay().cloned());
+        let Some(overlay) = overlay else {
+            ui.label("No construct reasoning evidence available.");
+            return;
+        };
+
+        ui.label(egui::RichText::new("Inspect reasoning overlay").strong());
+        if !overlay.objective_title.trim().is_empty() {
+            ui.label(overlay.objective_title.trim());
+        }
+        if !overlay.objective_goal.trim().is_empty() {
+            ui.small(overlay.objective_goal.trim());
+        }
+        ui.separator();
+
+        let mut changed = false;
+        if let Ok(mut display) = self.dna_display.write() {
+            ui.label(egui::RichText::new("Evidence classes").strong());
+            for class in [
+                EvidenceClass::HardFact,
+                EvidenceClass::ReliableAnnotation,
+                EvidenceClass::ContextEvidence,
+                EvidenceClass::SoftHypothesis,
+                EvidenceClass::UserOverride,
+            ] {
+                let count = overlay
+                    .evidence
+                    .iter()
+                    .filter(|span| span.evidence_class == class)
+                    .count();
+                if count == 0 {
+                    continue;
+                }
+                let mut visible = display.construct_reasoning_evidence_class_visible(class);
+                if ui
+                    .checkbox(
+                        &mut visible,
+                        format!(
+                            "{} ({count})",
+                            Self::construct_reasoning_evidence_class_label(class)
+                        ),
+                    )
+                    .changed()
+                {
+                    display.set_construct_reasoning_evidence_class_visible(class, visible);
+                    changed = true;
+                }
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Roles").strong());
+            let mut role_counts: BTreeMap<ConstructRole, usize> = BTreeMap::new();
+            for span in &overlay.evidence {
+                *role_counts.entry(span.role).or_insert(0) += 1;
+            }
+            for (role, count) in role_counts {
+                let mut visible = display.construct_reasoning_role_visible(role);
+                if ui
+                    .checkbox(
+                        &mut visible,
+                        format!("{} ({count})", Self::construct_reasoning_role_label(role)),
+                    )
+                    .changed()
+                {
+                    display.set_construct_reasoning_role_visible(role, visible);
+                    changed = true;
+                }
+            }
+
+            ui.separator();
+            if ui
+                .button("Show all reasoning evidence")
+                .on_hover_text("Clear reasoning overlay filters and show every evidence span again")
+                .clicked()
+            {
+                display.clear_construct_reasoning_filters();
+                changed = true;
+            }
+        }
+
+        if changed {
+            let should_clear_selected_reasoning = self
+                .map_dna
+                .get_selected_reasoning_evidence_id()
+                .and_then(|evidence_id| self.find_construct_reasoning_span(evidence_id.as_str()))
+                .map(|(_, span)| {
+                    self.dna_display
+                        .read()
+                        .map(|display| !display.construct_reasoning_overlay_span_visible(&span))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            if should_clear_selected_reasoning {
+                self.map_dna.select_reasoning_evidence(None);
+            }
+            self.description_cache_initialized = false;
+            ui.ctx().request_repaint();
+        }
     }
 
     fn inspect_feature_expert_target(
@@ -33204,11 +33544,13 @@ impl MainAreaDna {
 
     fn refresh_description_cache(&mut self) {
         let selected_id = self.get_selected_feature_id();
+        let selected_reasoning_evidence_id = self.map_dna.get_selected_reasoning_evidence_id();
         let selected_restriction = self.get_selected_restriction_site();
         let selected_restriction_key = selected_restriction
             .as_ref()
             .map(|site| site.key.to_string());
         let mut clear_invalid_selection = false;
+        let mut clear_invalid_reasoning_selection = false;
         let mut expert_target: Option<FeatureExpertTarget> = None;
         {
             let dna = self.dna.read().expect("DNA lock poisoned");
@@ -33216,6 +33558,8 @@ impl MainAreaDna {
             let feature_count = dna.features().len();
             let needs_refresh = !self.description_cache_initialized
                 || self.description_cache_selected_id != selected_id
+                || self.description_cache_selected_reasoning_evidence_id
+                    != selected_reasoning_evidence_id
                 || self.description_cache_selected_restriction_key != selected_restriction_key
                 || self.description_cache_seq_len != seq_len
                 || self.description_cache_feature_count != feature_count;
@@ -33225,6 +33569,8 @@ impl MainAreaDna {
 
             self.description_cache_initialized = true;
             self.description_cache_selected_id = selected_id;
+            self.description_cache_selected_reasoning_evidence_id =
+                selected_reasoning_evidence_id.clone();
             self.description_cache_selected_restriction_key = selected_restriction_key.clone();
             self.description_cache_seq_len = seq_len;
             self.description_cache_feature_count = feature_count;
@@ -33253,6 +33599,19 @@ impl MainAreaDna {
                 } else {
                     clear_invalid_selection = true;
                     self.description_cache_selected_id = None;
+                    self.description_cache_title = dna.description().join("\n");
+                    self.description_cache_range = None;
+                    self.description_cache_details.clear();
+                }
+            } else if let Some(evidence_id) = selected_reasoning_evidence_id.as_deref() {
+                if let Some((overlay, span)) = self.find_construct_reasoning_span(evidence_id) {
+                    self.description_cache_title = Self::construct_reasoning_title(&span);
+                    self.description_cache_range = Some(Self::construct_reasoning_range_text(&span));
+                    self.description_cache_details =
+                        Self::construct_reasoning_detail_lines(&overlay, &span);
+                } else {
+                    clear_invalid_reasoning_selection = true;
+                    self.description_cache_selected_reasoning_evidence_id = None;
                     self.description_cache_title = dna.description().join("\n");
                     self.description_cache_range = None;
                     self.description_cache_details.clear();
@@ -33310,6 +33669,9 @@ impl MainAreaDna {
         }
         if clear_invalid_selection {
             self.clear_feature_focus();
+        }
+        if clear_invalid_reasoning_selection {
+            self.map_dna.select_reasoning_evidence(None);
         }
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
@@ -33849,6 +34211,16 @@ impl MainAreaDna {
                                 }
                             });
                         }
+                    } else if let Some(evidence_id) =
+                        self.map_dna.get_hovered_reasoning_evidence_id()
+                    {
+                        if let Some((overlay, span)) =
+                            self.find_construct_reasoning_span(evidence_id.as_str())
+                        {
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                self.render_construct_reasoning_hover_ui(ui, &overlay, &span);
+                            });
+                        }
                     }
 
                     if !self.is_circular() {
@@ -33998,6 +34370,7 @@ impl MainAreaDna {
                 if response.clicked() {
                     let additive = ctx.input(|i| i.modifiers.command);
                     let previous_selected = self.map_dna.get_selected_feature_id();
+                    let previous_reasoning = self.map_dna.get_selected_reasoning_evidence_id();
                     let previous_restriction = self
                         .map_dna
                         .get_selected_restriction_site()
@@ -34005,6 +34378,7 @@ impl MainAreaDna {
                     let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                     self.map_dna.on_click(pointer_state);
                     let next_selected = self.map_dna.get_selected_feature_id();
+                    let next_reasoning = self.map_dna.get_selected_reasoning_evidence_id();
                     let next_restriction = self
                         .map_dna
                         .get_selected_restriction_site()
@@ -34012,7 +34386,7 @@ impl MainAreaDna {
                     if additive {
                         if let Some(feature_id) = next_selected {
                             self.toggle_feature_multi_select(feature_id);
-                        } else if next_restriction.is_some() {
+                        } else if next_reasoning.is_some() || next_restriction.is_some() {
                             self.clear_feature_focus_keep_map_selection();
                         } else {
                             self.clear_feature_focus();
@@ -34020,19 +34394,29 @@ impl MainAreaDna {
                     } else if next_selected != previous_selected {
                         if let Some(feature_id) = next_selected {
                             self.focus_feature(feature_id);
-                        } else if next_restriction.is_some() {
+                        } else if next_reasoning.is_some() || next_restriction.is_some() {
                             self.clear_feature_focus_keep_map_selection();
                         } else {
                             self.clear_feature_focus();
                         }
-                    } else if next_restriction != previous_restriction && next_restriction.is_some()
-                    {
-                        self.clear_feature_focus_keep_map_selection();
+                    } else if next_reasoning != previous_reasoning {
+                        if next_reasoning.is_some() || next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
+                    } else if next_restriction != previous_restriction {
+                        if next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
                     }
                 }
 
                 if response.double_clicked() {
                     let previous_selected = self.map_dna.get_selected_feature_id();
+                    let previous_reasoning = self.map_dna.get_selected_reasoning_evidence_id();
                     let previous_restriction = self
                         .map_dna
                         .get_selected_restriction_site()
@@ -34040,6 +34424,7 @@ impl MainAreaDna {
                     let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                     self.map_dna.on_double_click(pointer_state);
                     let next_selected = self.map_dna.get_selected_feature_id();
+                    let next_reasoning = self.map_dna.get_selected_reasoning_evidence_id();
                     let next_restriction = self
                         .map_dna
                         .get_selected_restriction_site()
@@ -34047,14 +34432,23 @@ impl MainAreaDna {
                     if next_selected != previous_selected {
                         if let Some(feature_id) = next_selected {
                             self.focus_feature(feature_id);
-                        } else if next_restriction.is_some() {
+                        } else if next_reasoning.is_some() || next_restriction.is_some() {
                             self.clear_feature_focus_keep_map_selection();
                         } else {
                             self.clear_feature_focus();
                         }
-                    } else if next_restriction != previous_restriction && next_restriction.is_some()
-                    {
-                        self.clear_feature_focus_keep_map_selection();
+                    } else if next_reasoning != previous_reasoning {
+                        if next_reasoning.is_some() || next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
+                    } else if next_restriction != previous_restriction {
+                        if next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
                     }
                     if let Some(feature_id) = next_selected {
                         self.open_splicing_expert_for_feature(feature_id, "double-clicked map feature");

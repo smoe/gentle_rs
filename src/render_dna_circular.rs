@@ -1,7 +1,9 @@
 //! Circular-map DNA renderer.
 
 use crate::{
-    dna_display::{ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
+    dna_display::{
+        ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria,
+    },
     dna_sequence::DNAsequence,
     engine::{ConstructRole, EvidenceClass, RestrictionEnzymeDisplayMode},
     feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
@@ -87,6 +89,17 @@ struct FeaturePosition {
     intron_arch_lift_factor: f32,
 }
 
+#[derive(Debug, Clone)]
+struct ConstructReasoningOverlayBand {
+    evidence_id: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    inner: f32,
+    outer: f32,
+    role: ConstructRole,
+    evidence_class: EvidenceClass,
+}
+
 impl FeaturePosition {
     /// Checks if a given angle and distance fall within the bounds of the feature.
     fn contains_angle_distance(&self, angle: f32, distance: f32) -> bool {
@@ -118,8 +131,10 @@ pub struct RenderDnaCircular {
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
     selected_enzyme: Option<RestrictionEnzymePosition>,
+    selected_reasoning_evidence_id: Option<String>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
+    hovered_reasoning_evidence_id: Option<String>,
 }
 
 impl RenderDnaCircular {
@@ -136,8 +151,10 @@ impl RenderDnaCircular {
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
             selected_enzyme: None,
+            selected_reasoning_evidence_id: None,
             hovered_feature_number: None,
             hover_enzyme: None,
+            hovered_reasoning_evidence_id: None,
         }
     }
 
@@ -160,8 +177,17 @@ impl RenderDnaCircular {
             if let Some(feature) = self.get_clicked_feature(pos) {
                 self.selected_feature_number = Some(feature.feature_number);
                 self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
+            } else if let Some((evidence_id, _, _)) = self
+                .get_clicked_construct_reasoning_overlay(pos)
+                .map(|band| (band.evidence_id, band.start_0based, band.end_0based_exclusive))
+            {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(evidence_id);
             } else {
                 self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
                 self.selected_enzyme = self.get_re_site_for_positon(pos);
             }
         } else {
@@ -173,7 +199,19 @@ impl RenderDnaCircular {
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
-            self.hover_enzyme = self.get_re_site_for_positon(pos);
+            self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
+                self.get_clicked_construct_reasoning_overlay(pos)
+                    .map(|band| band.evidence_id)
+            } else {
+                None
+            };
+            self.hover_enzyme = if self.hovered_feature_number.is_none()
+                && self.hovered_reasoning_evidence_id.is_none()
+            {
+                self.get_re_site_for_positon(pos)
+            } else {
+                None
+            };
         } else {
             println!("I RenderDnaCircular::on_hover: Could not select any feature.");
         }
@@ -189,6 +227,7 @@ impl RenderDnaCircular {
             {
                 self.selected_feature_number = Some(feature_number);
                 self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
                 // println!("Double-clicked {:?}", feature);
                 let selection = Selection::new(
                     feature_from as usize,
@@ -196,8 +235,19 @@ impl RenderDnaCircular {
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
+            } else if let Some(band) = self.get_clicked_construct_reasoning_overlay(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(band.evidence_id);
+                let selection = Selection::new(
+                    band.start_0based,
+                    band.end_0based_exclusive,
+                    self.sequence_length as usize,
+                );
+                self.display.write().unwrap().select(selection);
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
                 self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
                 self.selected_enzyme = Some(re_pos.clone());
                 println!("Double-clicked {re_pos:?}");
                 let selection = Selection::new(
@@ -234,6 +284,23 @@ impl RenderDnaCircular {
         clicked_features.first().map(|f| f.to_owned())
     }
 
+    fn get_clicked_construct_reasoning_overlay(
+        &self,
+        pos: Pos2,
+    ) -> Option<ConstructReasoningOverlayBand> {
+        let (angle, distance) = self.get_angle_distance(pos);
+        let angle = Self::normalize_angle(angle - 90.0);
+        let pos_bp = ((angle / 360.0) * self.sequence_length.max(1) as f32).round() as usize;
+        self.construct_reasoning_overlay_bands()
+            .into_iter()
+            .find(|band| {
+                distance >= band.inner
+                    && distance <= band.outer
+                    && pos_bp >= band.start_0based
+                    && pos_bp < band.end_0based_exclusive
+            })
+    }
+
     pub fn set_area(&mut self, area: Rect) {
         self.area = area;
         self.center = self.area.center();
@@ -251,17 +318,36 @@ impl RenderDnaCircular {
         self.selected_enzyme.clone()
     }
 
+    pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
+        self.selected_reasoning_evidence_id.clone()
+    }
+
+    pub fn hovered_reasoning_evidence_id(&self) -> Option<String> {
+        self.hovered_reasoning_evidence_id.clone()
+    }
+
     pub fn select_restriction_enzyme(&mut self, selected: Option<RestrictionEnzymePosition>) {
         let has_selected = selected.is_some();
         self.selected_enzyme = selected;
         if has_selected {
             self.selected_feature_number = None;
+            self.selected_reasoning_evidence_id = None;
         }
     }
 
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         self.selected_feature_number = feature_number;
         if feature_number.is_some() {
+            self.selected_enzyme = None;
+            self.selected_reasoning_evidence_id = None;
+        }
+    }
+
+    pub fn select_reasoning_evidence(&mut self, evidence_id: Option<String>) {
+        let has_selected = evidence_id.is_some();
+        self.selected_reasoning_evidence_id = evidence_id;
+        if has_selected {
+            self.selected_feature_number = None;
             self.selected_enzyme = None;
         }
     }
@@ -755,7 +841,10 @@ impl RenderDnaCircular {
         }
     }
 
-    fn construct_reasoning_overlay_fill(role: ConstructRole, evidence_class: EvidenceClass) -> Color32 {
+    fn construct_reasoning_overlay_fill(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+    ) -> Color32 {
         let base = Self::construct_reasoning_role_color(role);
         let alpha = match evidence_class {
             EvidenceClass::HardFact => 180,
@@ -780,22 +869,29 @@ impl RenderDnaCircular {
         Stroke::new(width, Self::construct_reasoning_role_color(role).gamma_multiply(0.75))
     }
 
-    fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter) {
-        let (show_overlay, overlay) = self
+    fn construct_reasoning_overlay_bands(&self) -> Vec<ConstructReasoningOverlayBand> {
+        let (
+            show_overlay,
+            overlay,
+            hidden_construct_reasoning_roles,
+            hidden_construct_reasoning_evidence_classes,
+        ) = self
             .display
             .read()
             .map(|display| {
                 (
                     display.show_construct_reasoning_overlay(),
                     display.construct_reasoning_overlay().cloned(),
+                    display.hidden_construct_reasoning_roles().clone(),
+                    display.hidden_construct_reasoning_evidence_classes().clone(),
                 )
             })
-            .unwrap_or((false, None));
+            .unwrap_or((false, None, BTreeSet::new(), BTreeSet::new()));
         if !show_overlay || self.sequence_length <= 0 {
-            return;
+            return vec![];
         }
         let Some(ConstructReasoningOverlay { evidence, .. }) = overlay else {
-            return;
+            return vec![];
         };
         let thickness =
             (self.feature_thickness() * CONSTRUCT_REASONING_CIRCULAR_THICKNESS_FACTOR).max(2.0);
@@ -803,10 +899,16 @@ impl RenderDnaCircular {
         let overlap_padding_bp = ((self.sequence_length as f32) * 0.002).ceil() as i64;
         let mut outer_ranges: Vec<Vec<(i64, i64)>> = vec![];
         let mut inner_ranges: Vec<Vec<(i64, i64)>> = vec![];
+        let mut bands = vec![];
 
         let mut seeds = evidence
             .into_iter()
             .filter_map(|span| {
+                if hidden_construct_reasoning_roles.contains(&span.role)
+                    || hidden_construct_reasoning_evidence_classes.contains(&span.evidence_class)
+                {
+                    return None;
+                }
                 let start = span.start_0based.min(self.sequence_length as usize) as i64;
                 let end = span.end_0based_exclusive.min(self.sequence_length as usize) as i64;
                 if end <= start {
@@ -855,18 +957,51 @@ impl RenderDnaCircular {
             if inner <= 2.0 || outer <= inner {
                 continue;
             }
+            bands.push(ConstructReasoningOverlayBand {
+                evidence_id: span.evidence_id,
+                start_0based: start as usize,
+                end_0based_exclusive: end as usize,
+                inner,
+                outer,
+                role: span.role,
+                evidence_class: span.evidence_class,
+            });
+        }
+        bands
+    }
 
-            let mut points = self.generate_arc_bp(outer, start, end);
-            let mut inner_points = self.generate_arc_bp(inner, start, end);
+    fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter) {
+        for band in self.construct_reasoning_overlay_bands() {
+            let mut points = self.generate_arc_bp(
+                band.outer,
+                band.start_0based as i64,
+                band.end_0based_exclusive as i64,
+            );
+            let mut inner_points = self.generate_arc_bp(
+                band.inner,
+                band.start_0based as i64,
+                band.end_0based_exclusive as i64,
+            );
             if points.len() < 2 || inner_points.len() < 2 {
                 continue;
             }
             inner_points.reverse();
             points.extend(inner_points);
+            let stroke = if self.selected_reasoning_evidence_id.as_deref()
+                == Some(band.evidence_id.as_str())
+            {
+                Stroke::new(2.0, Color32::YELLOW)
+            } else if self.hovered_reasoning_evidence_id.as_deref()
+                == Some(band.evidence_id.as_str())
+            {
+                Stroke::new(1.6, Color32::WHITE)
+            } else {
+                Self::construct_reasoning_overlay_stroke(band.role, band.evidence_class)
+            };
             painter.add(Shape::convex_polygon(
                 points,
-                Self::construct_reasoning_overlay_fill(span.role, span.evidence_class),
-                Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class),
+                Self::construct_reasoning_overlay_fill(band.role, band.evidence_class),
+                stroke,
             ));
         }
     }
