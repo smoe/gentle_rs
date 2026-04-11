@@ -584,7 +584,9 @@ impl DnaDisplay {
     }
 
     pub fn construct_reasoning_evidence_class_visible(&self, class: EvidenceClass) -> bool {
-        !self.hidden_construct_reasoning_evidence_classes.contains(&class)
+        !self
+            .hidden_construct_reasoning_evidence_classes
+            .contains(&class)
     }
 
     pub fn hidden_construct_reasoning_evidence_classes(&self) -> &BTreeSet<EvidenceClass> {
@@ -597,9 +599,11 @@ impl DnaDisplay {
         visible: bool,
     ) {
         let changed = if visible {
-            self.hidden_construct_reasoning_evidence_classes.remove(&class)
+            self.hidden_construct_reasoning_evidence_classes
+                .remove(&class)
         } else {
-            self.hidden_construct_reasoning_evidence_classes.insert(class)
+            self.hidden_construct_reasoning_evidence_classes
+                .insert(class)
         };
         if changed {
             self.mark_layout_dirty();

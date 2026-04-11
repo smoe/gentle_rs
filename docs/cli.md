@@ -62,6 +62,16 @@ Catalog path note:
   catalog fragments.
 - Directory fragments are merged in sorted filename order; duplicate entry ids
   currently fail fast instead of silently overriding each other.
+- When `--catalog` is omitted, GENtle now uses a deterministic discovery chain
+  instead of one hard-coded file:
+  - built-in `assets/*.json` plus optional built-in `assets/*.d/`
+  - system overlays under `/etc/gentle/catalogs/`
+  - user overlays under `$XDG_CONFIG_HOME/gentle/catalogs/` or
+    `~/.config/gentle/catalogs/`
+  - project overlays under `PROJECT_ROOT/.gentle/catalogs/`
+- Built-in/system/project roots can be overridden in controlled environments
+  via `GENTLE_ASSET_ROOT`, `GENTLE_SYSTEM_CONFIG_ROOT`, and
+  `GENTLE_PROJECT_ROOT`.
 - `genomes list` and `helpers list` now also accept `--filter TEXT` and search
   ids plus catalog metadata such as aliases, tags, search terms, and the new
   helper semantic/procurement fields.

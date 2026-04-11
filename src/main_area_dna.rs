@@ -57,15 +57,14 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, ConstructRole, DisplayTarget, DotplotMode,
-        DotplotView, EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass,
-        ExportFormat, FlexibilityModel, FlexibilityTrack,
-        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
-        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
-        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
-        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
-        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionEnzymeDisplayMode,
-        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        DotplotView, EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
+        FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide,
+        GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
+        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
+        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
+        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
+        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -993,10 +992,10 @@ mod tests {
             FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
             OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
-            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequencingConfirmationTargetKind, SequencingTraceFormat,
@@ -8100,7 +8099,9 @@ impl MainAreaDna {
                     display.gc_content_bin_size_bp(),
                     display.construct_reasoning_overlay().cloned(),
                     display.hidden_construct_reasoning_roles().clone(),
-                    display.hidden_construct_reasoning_evidence_classes().clone(),
+                    display
+                        .hidden_construct_reasoning_evidence_classes()
+                        .clone(),
                     display.show_contextual_transcript_features(),
                     display.restriction_enzyme_display_mode(),
                     display.preferred_restriction_enzymes().to_vec(),
@@ -33606,7 +33607,8 @@ impl MainAreaDna {
             } else if let Some(evidence_id) = selected_reasoning_evidence_id.as_deref() {
                 if let Some((overlay, span)) = self.find_construct_reasoning_span(evidence_id) {
                     self.description_cache_title = Self::construct_reasoning_title(&span);
-                    self.description_cache_range = Some(Self::construct_reasoning_range_text(&span));
+                    self.description_cache_range =
+                        Some(Self::construct_reasoning_range_text(&span));
                     self.description_cache_details =
                         Self::construct_reasoning_detail_lines(&overlay, &span);
                 } else {

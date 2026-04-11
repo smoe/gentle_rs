@@ -4467,7 +4467,10 @@ fn test_load_file_operation_genbank_region_anchor_enables_bed_import() {
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    assert_eq!(provenance_catalog, DEFAULT_GENOME_CATALOG_PATH);
+    assert_eq!(
+        provenance_catalog,
+        crate::genomes::default_catalog_discovery_token(false)
+    );
 
     let td = tempdir().unwrap();
     let bed_path = td.path().join("tp73_anchor_test.bed");

@@ -185,7 +185,8 @@ impl GentleEngine {
         catalog_path: &str,
         cache_dir: Option<&str>,
     ) -> Result<bool, String> {
-        let catalog = GenomeCatalog::from_json_file(catalog_path)?;
+        let (catalog, _) =
+            Self::open_reference_genome_catalog(Some(catalog_path)).map_err(|e| e.message)?;
         let mut reference = catalog.get_sequence_region_with_cache(
             &anchor.genome_id,
             &anchor.chromosome,

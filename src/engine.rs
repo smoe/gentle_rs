@@ -29,8 +29,8 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
-        BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, EnsemblCatalogUpdatePreview,
+        BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
+        DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
         EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
@@ -4249,21 +4249,13 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .map(|v| v.to_string())
-            .or_else(|| anchor.catalog_path.clone())
-            .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+            .or_else(|| anchor.catalog_path.clone());
         let resolved_cache_dir = cache_dir
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .map(|v| v.to_string())
             .or_else(|| anchor.cache_dir.clone());
-        let catalog =
-            GenomeCatalog::from_json_file(&requested_catalog_path).map_err(|e| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Could not open genome catalog '{}': {}",
-                    requested_catalog_path, e
-                ),
-            })?;
+        let (catalog, _) = Self::open_reference_genome_catalog(requested_catalog_path.as_deref())?;
         let inspection = catalog
             .inspect_prepared_genome_compatibility(&anchor.genome_id, resolved_cache_dir.as_deref())
             .map_err(|e| EngineError {
@@ -4773,19 +4765,45 @@ impl GentleEngine {
         rna_structure::render_svg(dna, path).map_err(Self::map_rna_structure_error)
     }
 
+    fn open_catalog_with_default_mode(
+        catalog_path: Option<&str>,
+        helper_mode: bool,
+    ) -> Result<(GenomeCatalog, String), EngineError> {
+        let requested_catalog = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        let catalog = match requested_catalog.as_str() {
+            "" => GenomeCatalog::from_default_discovery(helper_mode),
+            DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN => {
+                GenomeCatalog::from_default_discovery(false)
+            }
+            DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN => GenomeCatalog::from_default_discovery(true),
+            path => GenomeCatalog::from_json_file(path),
+        }
+        .map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: if requested_catalog.is_empty() {
+                format!("Could not open default genome catalog discovery: {e}")
+            } else {
+                format!("Could not open genome catalog '{}': {e}", requested_catalog)
+            },
+        })?;
+        let origin = catalog.catalog_origin_label().to_string();
+        Ok((catalog, origin))
+    }
+
     fn open_reference_genome_catalog(
         catalog_path: Option<&str>,
     ) -> Result<(GenomeCatalog, String), EngineError> {
-        let catalog_path = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_GENOME_CATALOG_PATH)
-            .to_string();
-        let catalog = GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: format!("Could not open genome catalog '{catalog_path}': {e}"),
-        })?;
-        Ok((catalog, catalog_path))
+        Self::open_catalog_with_default_mode(catalog_path, false)
+    }
+
+    fn open_helper_genome_catalog(
+        catalog_path: Option<&str>,
+    ) -> Result<(GenomeCatalog, String), EngineError> {
+        Self::open_catalog_with_default_mode(catalog_path, true)
     }
 
     pub fn list_reference_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
@@ -4852,6 +4870,37 @@ impl GentleEngine {
             })
     }
 
+    pub fn preview_helper_genome_ensembl_catalog_updates(
+        catalog_path: Option<&str>,
+    ) -> Result<EnsemblCatalogUpdatePreview, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .preview_ensembl_catalog_updates()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not preview Ensembl catalog updates for '{}': {}",
+                    catalog_path, e
+                ),
+            })
+    }
+
+    pub fn apply_helper_genome_ensembl_catalog_updates(
+        catalog_path: Option<&str>,
+        output_catalog_path: Option<&str>,
+    ) -> Result<EnsemblCatalogUpdateReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .apply_ensembl_catalog_updates(output_catalog_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not apply Ensembl catalog updates for '{}': {}",
+                    catalog_path, e
+                ),
+            })
+    }
+
     pub fn remove_reference_genome_catalog_entry(
         catalog_path: Option<&str>,
         genome_id: &str,
@@ -4864,6 +4913,23 @@ impl GentleEngine {
                 code: ErrorCode::Io,
                 message: format!(
                     "Could not remove genome catalog entry '{}' from '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn remove_helper_genome_catalog_entry(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        output_catalog_path: Option<&str>,
+    ) -> Result<GenomeCatalogEntryRemovalReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .remove_catalog_entry(genome_id, output_catalog_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not remove helper catalog entry '{}' from '{}': {}",
                     genome_id, catalog_path, e
                 ),
             })
@@ -4889,6 +4955,26 @@ impl GentleEngine {
             })
     }
 
+    pub fn remove_prepared_helper_genome(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<PreparedGenomeRemovalReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .remove_prepared_genome_install(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not remove prepared helper '{}' from '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
     pub fn inspect_prepared_cache_roots(
         cache_roots: &[String],
     ) -> Result<PreparedCacheInspectionReport, EngineError> {
@@ -4908,22 +4994,16 @@ impl GentleEngine {
     }
 
     pub fn list_helper_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::list_reference_genomes(Some(chosen))
+        let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.list_genomes())
     }
 
     pub fn list_helper_catalog_entries(
         catalog_path: Option<&str>,
         filter: Option<&str>,
     ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::list_reference_catalog_entries(Some(chosen), filter)
+        let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.list_entries(filter))
     }
 
     pub fn describe_helper_genome_sources(
@@ -4931,11 +5011,19 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<GenomeSourcePlan, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::describe_reference_genome_sources(Some(chosen), genome_id, cache_dir)
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .source_plan(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not resolve source plan for helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
     }
 
     pub fn resolve_reference_genome_cache_dir(
@@ -4963,11 +5051,19 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<String, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::resolve_reference_genome_cache_dir(Some(chosen), genome_id, cache_dir)
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .effective_cache_dir(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not resolve cache dir for helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
     }
 
     pub fn inspect_reference_genome_prepared_compatibility(
@@ -4995,11 +5091,19 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<PreparedGenomeCompatibilityInspection, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::inspect_reference_genome_prepared_compatibility(Some(chosen), genome_id, cache_dir)
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepared_genome_compatibility(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared compatibility for helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
     }
 
     pub fn is_reference_genome_prepared(
@@ -5027,11 +5131,19 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<bool, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::is_reference_genome_prepared(Some(chosen), genome_id, cache_dir)
+        let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .is_prepared(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not check prepared status for helper '{}': {}",
+                    genome_id, e
+                ),
+            })
     }
 
     pub fn list_reference_genome_genes(
@@ -5059,11 +5171,19 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<Vec<GenomeGeneRecord>, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::list_reference_genome_genes(Some(chosen), genome_id, cache_dir)
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .list_gene_regions(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not list features for helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
     }
 
     fn blast_reference_genome_raw(
@@ -5103,19 +5223,23 @@ impl GentleEngine {
         cache_dir: Option<&str>,
         should_cancel: &mut dyn FnMut() -> bool,
     ) -> Result<GenomeBlastReport, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::blast_reference_genome_raw(
-            Some(chosen),
-            genome_id,
-            query_sequence,
-            max_hits,
-            task,
-            cache_dir,
-            should_cancel,
-        )
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .blast_sequence_with_cache_and_cancel(
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                should_cancel,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not run BLAST search against helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
     }
 
     fn normalize_blast_task_value(raw: &str) -> Result<String, EngineError> {
@@ -5768,17 +5892,41 @@ impl GentleEngine {
         timeout_seconds: Option<u64>,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, EngineError> {
-        let chosen = catalog_path
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::prepare_reference_genome_once(
-            genome_id,
-            Some(chosen),
-            cache_dir,
-            timeout_seconds,
-            on_progress,
-        )
+        let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
+        let timeout = timeout_seconds.map(Duration::from_secs);
+        let started = Instant::now();
+        let mut timed_out = false;
+        let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
+            if let Some(limit) = timeout {
+                if started.elapsed() >= limit {
+                    timed_out = true;
+                    return false;
+                }
+            }
+            on_progress(progress)
+        };
+        catalog
+            .prepare_genome_once_with_progress(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                &mut guarded_progress,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: if is_prepare_cancelled_error(&e) {
+                    if timed_out {
+                        format!(
+                            "Genome preparation timed out for '{}' after {} second(s)",
+                            genome_id,
+                            timeout_seconds.unwrap_or(0)
+                        )
+                    } else {
+                        format!("Genome preparation cancelled for '{genome_id}'")
+                    }
+                } else {
+                    format!("Could not prepare helper genome '{}': {e}", genome_id)
+                },
+            })
     }
 
     pub fn format_prepare_genome_message(

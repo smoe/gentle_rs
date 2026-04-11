@@ -55,10 +55,15 @@ use tempfile::NamedTempFile;
 
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
+pub const DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/reference/default";
+pub const DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/helper/default";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
 pub const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 pub const REFERENCE_GENOME_CACHE_DIR_ENV: &str = "GENTLE_REFERENCE_CACHE_DIR";
 pub const HELPER_GENOME_CACHE_DIR_ENV: &str = "GENTLE_HELPER_CACHE_DIR";
+pub const BUILTIN_ASSET_ROOT_ENV: &str = "GENTLE_ASSET_ROOT";
+pub const SYSTEM_CONFIG_ROOT_ENV: &str = "GENTLE_SYSTEM_CONFIG_ROOT";
+pub const PROJECT_ROOT_ENV: &str = "GENTLE_PROJECT_ROOT";
 pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
 pub const DEFAULT_BLASTN_BIN: &str = "blastn";
 pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
@@ -83,6 +88,230 @@ pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
     use std::sync::{Mutex, OnceLock};
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum CatalogDomain {
+    Reference,
+    Helper,
+}
+
+impl CatalogDomain {
+    fn from_helper_mode(helper_mode: bool) -> Self {
+        if helper_mode {
+            Self::Helper
+        } else {
+            Self::Reference
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Reference => "reference",
+            Self::Helper => "helper",
+        }
+    }
+
+    fn built_in_catalog_path(self) -> &'static str {
+        match self {
+            Self::Reference => DEFAULT_GENOME_CATALOG_PATH,
+            Self::Helper => DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        }
+    }
+
+    fn overlay_catalog_file_name(self) -> &'static str {
+        match self {
+            Self::Reference => "genomes.json",
+            Self::Helper => "helper_genomes.json",
+        }
+    }
+
+    fn overlay_catalog_dir_name(self) -> &'static str {
+        match self {
+            Self::Reference => "genomes.d",
+            Self::Helper => "helper_genomes.d",
+        }
+    }
+
+    fn discovery_label(self) -> &'static str {
+        match self {
+            Self::Reference => "default reference catalog discovery",
+            Self::Helper => "default helper catalog discovery",
+        }
+    }
+
+    fn discovery_token(self) -> &'static str {
+        match self {
+            Self::Reference => DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN,
+            Self::Helper => DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CatalogSourceCandidate {
+    scope: &'static str,
+    path: PathBuf,
+}
+
+/// Stable human-facing label for default catalog discovery.
+pub fn default_catalog_discovery_label(helper_mode: bool) -> &'static str {
+    CatalogDomain::from_helper_mode(helper_mode).discovery_label()
+}
+
+/// Stable machine token for "use the default discovery chain".
+pub fn default_catalog_discovery_token(helper_mode: bool) -> &'static str {
+    CatalogDomain::from_helper_mode(helper_mode).discovery_token()
+}
+
+fn configured_builtin_asset_root() -> PathBuf {
+    std::env::var_os(BUILTIN_ASSET_ROOT_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn configured_system_config_root() -> PathBuf {
+    std::env::var_os(SYSTEM_CONFIG_ROOT_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/etc/gentle"))
+}
+
+fn configured_user_config_root() -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(root).join("gentle"));
+    }
+    std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(|home| PathBuf::from(home).join(".config").join("gentle"))
+}
+
+fn discover_project_root_from_cwd() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let mut git_root: Option<PathBuf> = None;
+    let mut cargo_root: Option<PathBuf> = None;
+    for ancestor in cwd.ancestors() {
+        if ancestor.join(".gentle").exists() {
+            return Some(ancestor.to_path_buf());
+        }
+        if git_root.is_none() && ancestor.join(".git").exists() {
+            git_root = Some(ancestor.to_path_buf());
+        }
+        if cargo_root.is_none() && ancestor.join("Cargo.toml").is_file() {
+            cargo_root = Some(ancestor.to_path_buf());
+        }
+    }
+    git_root.or(cargo_root)
+}
+
+fn configured_project_root() -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os(PROJECT_ROOT_ENV).filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(root));
+    }
+    discover_project_root_from_cwd()
+}
+
+fn catalog_discovery_candidates(domain: CatalogDomain) -> Vec<CatalogSourceCandidate> {
+    let mut candidates = vec![];
+    let built_in_root = configured_builtin_asset_root();
+    candidates.push(CatalogSourceCandidate {
+        scope: "built-in",
+        path: built_in_root.join(domain.built_in_catalog_path()),
+    });
+    candidates.push(CatalogSourceCandidate {
+        scope: "built-in",
+        path: built_in_root
+            .join("assets")
+            .join(domain.overlay_catalog_dir_name()),
+    });
+
+    let system_root = configured_system_config_root();
+    candidates.push(CatalogSourceCandidate {
+        scope: "system",
+        path: system_root
+            .join("catalogs")
+            .join(domain.overlay_catalog_file_name()),
+    });
+    candidates.push(CatalogSourceCandidate {
+        scope: "system",
+        path: system_root
+            .join("catalogs")
+            .join(domain.overlay_catalog_dir_name()),
+    });
+
+    if let Some(user_root) = configured_user_config_root() {
+        candidates.push(CatalogSourceCandidate {
+            scope: "user",
+            path: user_root
+                .join("catalogs")
+                .join(domain.overlay_catalog_file_name()),
+        });
+        candidates.push(CatalogSourceCandidate {
+            scope: "user",
+            path: user_root
+                .join("catalogs")
+                .join(domain.overlay_catalog_dir_name()),
+        });
+    }
+
+    if let Some(project_root) = configured_project_root() {
+        candidates.push(CatalogSourceCandidate {
+            scope: "project",
+            path: project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join(domain.overlay_catalog_file_name()),
+        });
+        candidates.push(CatalogSourceCandidate {
+            scope: "project",
+            path: project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join(domain.overlay_catalog_dir_name()),
+        });
+    }
+
+    candidates
+}
+
+fn discovered_catalog_sources(
+    domain: CatalogDomain,
+) -> Result<Vec<CatalogSourceCandidate>, String> {
+    let candidates = catalog_discovery_candidates(domain);
+    let mut seen_paths: BTreeSet<String> = BTreeSet::new();
+    let mut searched: Vec<String> = vec![];
+    let mut existing: Vec<CatalogSourceCandidate> = vec![];
+    for candidate in candidates {
+        let key = candidate.path.to_string_lossy().to_string();
+        if !seen_paths.insert(key.clone()) {
+            continue;
+        }
+        searched.push(format!("{}={}", candidate.scope, candidate.path.display()));
+        if candidate.path.exists() {
+            existing.push(candidate);
+        }
+    }
+    if existing.is_empty() {
+        return Err(format!(
+            "Could not find any {} catalog sources for {}. Searched: {}",
+            domain.label(),
+            domain.discovery_label(),
+            searched.join(", ")
+        ));
+    }
+    Ok(existing)
+}
+
+fn discovery_origin_label(domain: CatalogDomain, sources: &[CatalogSourceCandidate]) -> String {
+    if sources.len() == 1 {
+        return sources[0].path.display().to_string();
+    }
+    let scopes = sources
+        .iter()
+        .map(|source| format!("{}={}", source.scope, source.path.display()))
+        .collect::<Vec<_>>();
+    format!("{} [{}]", domain.discovery_label(), scopes.join(", "))
 }
 
 /// Catalog entry describing where to fetch one genome assembly and annotation.
@@ -907,42 +1136,148 @@ pub struct GenomeCatalog {
 }
 
 impl GenomeCatalog {
-    /// Load and validate a genome catalog JSON file.
+    /// Load and validate one explicit genome catalog file or fragment directory.
     ///
     /// Validation enforces source consistency rules (local/remote/assembly/
     /// accession combinations) so downstream preparation logic can stay strict.
     pub fn from_json_file(path: &str) -> Result<Self, String> {
-        let catalog_path = PathBuf::from(path);
-        let metadata = fs::metadata(&catalog_path)
-            .map_err(|e| format!("Could not read genome catalog '{path}': {e}"))?;
-        if metadata.is_dir() {
-            return Self::from_json_directory(&catalog_path, path);
-        }
-        Self::from_single_json_file(&catalog_path, path)
+        Self::from_sources(
+            &[CatalogSourceCandidate {
+                scope: "explicit",
+                path: PathBuf::from(path),
+            }],
+            path.to_string(),
+        )
     }
 
-    fn from_single_json_file(path: &Path, display_path: &str) -> Result<Self, String> {
+    /// Load the default catalog discovery chain for reference or helper assets.
+    ///
+    /// Discovery order is additive and deterministic:
+    /// built-in file, built-in fragments, system overlays, user overlays,
+    /// project overlays. Duplicate ids still fail fast until explicit
+    /// replacement/extension semantics exist.
+    pub fn from_default_discovery(helper_mode: bool) -> Result<Self, String> {
+        let domain = CatalogDomain::from_helper_mode(helper_mode);
+        let sources = discovered_catalog_sources(domain)?;
+        let origin_label = discovery_origin_label(domain, &sources);
+        Self::from_sources(&sources, origin_label)
+    }
+
+    fn from_sources(
+        sources: &[CatalogSourceCandidate],
+        origin_label: String,
+    ) -> Result<Self, String> {
+        if sources.is_empty() {
+            return Err("No catalog sources were provided".to_string());
+        }
+        let mut entries: HashMap<String, GenomeCatalogEntry> = HashMap::new();
+        let mut source_files: HashMap<String, PathBuf> = HashMap::new();
+        let mut base_dir: Option<PathBuf> = None;
+        for source in sources {
+            if base_dir.is_none() {
+                base_dir = Some(Self::catalog_source_base_dir(&source.path));
+            }
+            Self::merge_catalog_source(
+                &source.path,
+                &source.path.display().to_string(),
+                &mut entries,
+                &mut source_files,
+            )?;
+        }
+        validate_catalog_entries(&origin_label, &entries)?;
+        let catalog_path = if sources.len() == 1 {
+            let source_path = &sources[0].path;
+            if fs::metadata(source_path)
+                .map(|metadata| metadata.is_file())
+                .unwrap_or(false)
+            {
+                Some(source_path.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        Ok(Self {
+            entries,
+            catalog_base_dir: base_dir.unwrap_or_else(|| PathBuf::from(".")),
+            catalog_path,
+            catalog_origin_label: origin_label,
+        })
+    }
+
+    fn catalog_source_base_dir(path: &Path) -> PathBuf {
+        if fs::metadata(path)
+            .map(|metadata| metadata.is_dir())
+            .unwrap_or(false)
+        {
+            path.to_path_buf()
+        } else {
+            path.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."))
+        }
+    }
+
+    fn merge_catalog_source(
+        path: &Path,
+        display_path: &str,
+        entries: &mut HashMap<String, GenomeCatalogEntry>,
+        source_files: &mut HashMap<String, PathBuf>,
+    ) -> Result<(), String> {
+        let catalog_path = PathBuf::from(path);
+        let metadata = fs::metadata(&catalog_path)
+            .map_err(|e| format!("Could not read genome catalog '{display_path}': {e}"))?;
+        if metadata.is_dir() {
+            return Self::merge_json_directory(&catalog_path, display_path, entries, source_files);
+        }
+        Self::merge_single_json_file(&catalog_path, display_path, entries, source_files)
+    }
+
+    fn merge_single_json_file(
+        path: &Path,
+        display_path: &str,
+        entries: &mut HashMap<String, GenomeCatalogEntry>,
+        source_files: &mut HashMap<String, PathBuf>,
+    ) -> Result<(), String> {
         let text = fs::read_to_string(path)
             .map_err(|e| format!("Could not read genome catalog '{display_path}': {e}"))?;
-        let mut entries: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
+        let mut parsed: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
             .map_err(|e| format!("Could not parse genome catalog '{display_path}': {e}"))?;
         let base = path
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        for entry in entries.values_mut() {
+        let mut keys: Vec<String> = parsed.keys().cloned().collect();
+        keys.sort_unstable();
+        for key in keys {
+            let mut entry = parsed.remove(&key).ok_or_else(|| {
+                format!(
+                    "Catalog entry '{}' disappeared while loading '{}'",
+                    key, display_path
+                )
+            })?;
+            if let Some(previous) = source_files.get(&key) {
+                return Err(format!(
+                    "Duplicate genome/helper entry '{}' found in '{}' and '{}'",
+                    key,
+                    previous.display(),
+                    path.display()
+                ));
+            }
             entry.source_base_dir = Some(base.clone());
+            source_files.insert(key.clone(), path.to_path_buf());
+            entries.insert(key, entry);
         }
-        validate_catalog_entries(display_path, &entries)?;
-        Ok(Self {
-            entries,
-            catalog_base_dir: base,
-            catalog_path: Some(path.to_path_buf()),
-            catalog_origin_label: display_path.to_string(),
-        })
+        Ok(())
     }
 
-    fn from_json_directory(path: &Path, display_path: &str) -> Result<Self, String> {
+    fn merge_json_directory(
+        path: &Path,
+        display_path: &str,
+        entries: &mut HashMap<String, GenomeCatalogEntry>,
+        source_files: &mut HashMap<String, PathBuf>,
+    ) -> Result<(), String> {
         let read_dir = fs::read_dir(path).map_err(|e| {
             format!("Could not read genome catalog directory '{display_path}': {e}")
         })?;
@@ -979,8 +1314,6 @@ impl GenomeCatalog {
             ));
         }
 
-        let mut entries: HashMap<String, GenomeCatalogEntry> = HashMap::new();
-        let mut source_files: HashMap<String, PathBuf> = HashMap::new();
         for file_path in &json_files {
             let file_label = file_path.display().to_string();
             let text = fs::read_to_string(file_path)
@@ -1013,13 +1346,7 @@ impl GenomeCatalog {
                 entries.insert(key, entry);
             }
         }
-        validate_catalog_entries(display_path, &entries)?;
-        Ok(Self {
-            entries,
-            catalog_base_dir: path.to_path_buf(),
-            catalog_path: None,
-            catalog_origin_label: display_path.to_string(),
-        })
+        Ok(())
     }
 
     /// List catalog genome ids in deterministic sorted order.
@@ -7936,6 +8263,34 @@ mod tests {
         encoder.finish().unwrap();
     }
 
+    fn write_discovery_catalog_entry(path: &Path, genome_id: &str) {
+        let base = path.parent().expect("catalog parent");
+        fs::create_dir_all(base).unwrap();
+        let fasta = base.join(format!("{genome_id}.fa"));
+        let ann = base.join(format!("{genome_id}.gb"));
+        fs::write(&fasta, format!(">{genome_id}\nACGT\n")).unwrap();
+        fs::write(
+            &ann,
+            format!(
+                "LOCUS       {}\nFEATURES             Location/Qualifiers\n",
+                genome_id
+            ),
+        )
+        .unwrap();
+        let catalog = format!(
+            r#"{{
+  "{genome_id}": {{
+    "description": "{genome_id}",
+    "sequence_local": "{}",
+    "annotations_local": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display()
+        );
+        fs::write(path, catalog).unwrap();
+    }
+
     fn write_multi_member_gzip(path: &Path, members: &[&str]) {
         File::create(path).unwrap();
         for member in members {
@@ -10183,6 +10538,104 @@ mod tests {
 
         let err = GenomeCatalog::from_json_file(&catalog_dir.to_string_lossy()).unwrap_err();
         assert!(err.contains("Duplicate genome/helper entry 'DuplicateVector'"));
+    }
+
+    #[test]
+    fn test_default_reference_catalog_discovery_merges_builtin_system_user_and_project_sources() {
+        let _env_lock = cache_dir_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let built_in_root = td.path().join("builtin");
+        let system_root = td.path().join("system");
+        let xdg_root = td.path().join("xdg");
+        let project_root = td.path().join("project");
+
+        write_discovery_catalog_entry(
+            &built_in_root.join("assets").join("genomes.json"),
+            "BuiltInGenome",
+        );
+        write_discovery_catalog_entry(
+            &system_root
+                .join("catalogs")
+                .join("genomes.d")
+                .join("system.json"),
+            "SystemGenome",
+        );
+        write_discovery_catalog_entry(
+            &xdg_root
+                .join("gentle")
+                .join("catalogs")
+                .join("genomes.d")
+                .join("user.json"),
+            "UserGenome",
+        );
+        write_discovery_catalog_entry(
+            &project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join("genomes.d")
+                .join("project.json"),
+            "ProjectGenome",
+        );
+
+        let _asset_root =
+            EnvVarGuard::set(BUILTIN_ASSET_ROOT_ENV, &built_in_root.to_string_lossy());
+        let _system_root = EnvVarGuard::set(SYSTEM_CONFIG_ROOT_ENV, &system_root.to_string_lossy());
+        let _xdg_root = EnvVarGuard::set("XDG_CONFIG_HOME", &xdg_root.to_string_lossy());
+        let _project_root = EnvVarGuard::set(PROJECT_ROOT_ENV, &project_root.to_string_lossy());
+
+        let catalog = GenomeCatalog::from_default_discovery(false).expect("load discovery chain");
+        assert_eq!(
+            catalog.list_genomes(),
+            vec![
+                "BuiltInGenome".to_string(),
+                "ProjectGenome".to_string(),
+                "SystemGenome".to_string(),
+                "UserGenome".to_string()
+            ]
+        );
+        assert!(catalog.catalog_path().is_none());
+        assert!(
+            catalog
+                .catalog_origin_label()
+                .contains("default reference catalog discovery")
+        );
+    }
+
+    #[test]
+    fn test_default_reference_catalog_discovery_rejects_duplicate_ids_across_roots() {
+        let _env_lock = cache_dir_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let built_in_root = td.path().join("builtin");
+        let project_root = td.path().join("project");
+
+        write_discovery_catalog_entry(
+            &built_in_root.join("assets").join("genomes.json"),
+            "SharedGenome",
+        );
+        write_discovery_catalog_entry(
+            &project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join("genomes.d")
+                .join("project.json"),
+            "SharedGenome",
+        );
+
+        let _asset_root =
+            EnvVarGuard::set(BUILTIN_ASSET_ROOT_ENV, &built_in_root.to_string_lossy());
+        let _project_root = EnvVarGuard::set(PROJECT_ROOT_ENV, &project_root.to_string_lossy());
+        let _system_root = EnvVarGuard::set(
+            SYSTEM_CONFIG_ROOT_ENV,
+            &td.path().join("empty-system").to_string_lossy(),
+        );
+        let _xdg_root = EnvVarGuard::set(
+            "XDG_CONFIG_HOME",
+            &td.path().join("empty-xdg").to_string_lossy(),
+        );
+
+        let err =
+            GenomeCatalog::from_default_discovery(false).expect_err("duplicate discovery ids");
+        assert!(err.contains("Duplicate genome/helper entry 'SharedGenome'"));
     }
 
     #[test]

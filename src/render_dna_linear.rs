@@ -628,7 +628,9 @@ impl RenderDnaLinear {
                     display.show_construct_reasoning_overlay(),
                     display.construct_reasoning_overlay().cloned(),
                     display.hidden_construct_reasoning_roles().clone(),
-                    display.hidden_construct_reasoning_evidence_classes().clone(),
+                    display
+                        .hidden_construct_reasoning_evidence_classes()
+                        .clone(),
                 )
             })
             .unwrap_or((false, None, BTreeSet::new(), BTreeSet::new()));
@@ -684,10 +686,10 @@ impl RenderDnaLinear {
                     + CONSTRUCT_REASONING_TRACK_MARGIN
                     + CONSTRUCT_REASONING_TRACK_GAP * lane as f32
             };
-            let selected = self.selected_reasoning_evidence_id.as_deref()
-                == Some(span.evidence_id.as_str());
-            let hovered = self.hovered_reasoning_evidence_id.as_deref()
-                == Some(span.evidence_id.as_str());
+            let selected =
+                self.selected_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
+            let hovered =
+                self.hovered_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
             let stroke = if selected {
                 Stroke::new(2.0, Color32::YELLOW)
             } else if hovered {

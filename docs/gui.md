@@ -3095,7 +3095,11 @@ Notes:
 - `Catalog...` opens a file picker for genome catalog JSON.
 - `cache_dir` can be selected via folder picker; persistent project-local
   storage is recommended over `/tmp`.
-- If `catalog` is empty, engine uses default `assets/genomes.json`.
+- If `catalog` is empty, engine now uses the default discovery chain rather
+  than one hard-coded file:
+  - built-in `assets/genomes.json` plus optional `assets/genomes.d/`
+  - system/user/project overlays under the same `gentle/catalogs/` policy used
+    by CLI/shell routes
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
   Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 115, Danio rerio GRCz11
   Ensembl 115, Pan troglodytes Pan_tro_3.0 Ensembl 115, Canis lupus familiaris
