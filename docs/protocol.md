@@ -919,6 +919,20 @@ Catalog-backed reference/helper discovery notes:
 - `PATH` may point to either one JSON catalog file or a directory of top-level
   `*.json` fragments; directory fragments are merged deterministically by sorted
   filename and duplicate entry ids fail fast
+- when `catalog_path` is omitted, the engine now resolves a deterministic
+  discovery chain in this order:
+  - built-in catalog file plus optional built-in fragment directory
+  - system overlay file/directory under `/etc/gentle/catalogs/`
+  - user overlay file/directory under `$XDG_CONFIG_HOME/gentle/catalogs/` or
+    `~/.config/gentle/catalogs/`
+  - project overlay file/directory under `PROJECT_ROOT/.gentle/catalogs/`
+- the root locations for built-in/system/project discovery may be overridden in
+  controlled environments via `GENTLE_ASSET_ROOT`,
+  `GENTLE_SYSTEM_CONFIG_ROOT`, and `GENTLE_PROJECT_ROOT`
+- adapters that need to preserve "use default discovery" intent through
+  persisted operation/provenance records may emit
+  `gentle://catalog/reference/default` or
+  `gentle://catalog/helper/default`
 - list results now include both the stable entry id array and richer `entries`
   metadata rows so frontends, agents, and ClawBio integrations can search and
   display the same catalog facts without re-encoding them

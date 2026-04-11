@@ -59,9 +59,10 @@ use crate::{
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
-        GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
-        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
+        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
+        PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
+        configured_reference_genome_cache_dir, default_catalog_discovery_label,
+        default_catalog_discovery_token,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
@@ -5249,7 +5250,7 @@ impl ShellCommand {
                 let scope = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let filter = filter.as_deref().unwrap_or("-");
                 let species = species.as_deref().unwrap_or("-");
@@ -5266,7 +5267,7 @@ impl ShellCommand {
                 let scope = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 format!(
                     "select latest prepared {scope} for species '{species}' (catalog='{catalog}', cache='{cache}')"
@@ -5280,7 +5281,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 format!(
                     "list {label} from catalog '{}'{}",
                     catalog,
@@ -5299,7 +5300,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 format!("validate {label} catalog '{catalog}'")
             }
             Self::ReferencePreviewEnsemblSpecs {
@@ -5309,7 +5310,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 format!("preview {label} Ensembl spec updates from catalog '{catalog}'")
             }
             Self::ReferenceUpdateEnsemblSpecs {
@@ -5320,7 +5321,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let output_catalog = output_catalog_path
                     .clone()
                     .unwrap_or_else(|| "-".to_string());
@@ -5337,7 +5338,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 format!("check {label} '{genome_id}' status (catalog='{catalog}', cache='{cache}')")
             }
@@ -5354,7 +5355,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let biotypes = if biotypes.is_empty() {
                     "-".to_string()
@@ -5375,7 +5376,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let timeout = timeout_seconds
                     .map(|v| v.to_string())
@@ -5393,7 +5394,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 format!(
                     "remove prepared {label} '{genome_id}' (catalog='{catalog}', cache='{cache}')"
@@ -5408,7 +5409,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let output_catalog = output_catalog_path
                     .clone()
                     .unwrap_or_else(|| "-".to_string());
@@ -5432,7 +5433,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
                 let scope = annotation_scope
@@ -5474,7 +5475,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let occ = occurrence
                     .map(|v| v.to_string())
@@ -5521,7 +5522,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
                 let prepared = prepared_genome_id
@@ -5545,7 +5546,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let prepared = prepared_genome_id
                     .clone()
@@ -5568,7 +5569,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
                 let max_hits_label = if *max_hits_explicit {
@@ -5604,7 +5605,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
                 let max_hits_label = if *max_hits_explicit {
@@ -5665,7 +5666,7 @@ impl ShellCommand {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
-                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
                 let max_hits_label = if *max_hits_explicit {
@@ -7100,12 +7101,8 @@ fn apply_member_overhang(member: &PoolMember, dna: &mut DNAsequence) -> Result<(
     Ok(())
 }
 
-fn default_catalog_path(helper_mode: bool) -> &'static str {
-    if helper_mode {
-        DEFAULT_HELPER_GENOME_CATALOG_PATH
-    } else {
-        DEFAULT_GENOME_CATALOG_PATH
-    }
+fn default_catalog_display_label(helper_mode: bool) -> &'static str {
+    default_catalog_discovery_label(helper_mode)
 }
 
 fn operation_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> Option<String> {
@@ -7114,24 +7111,17 @@ fn operation_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> O
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string())
-        .or_else(|| helper_mode.then(|| default_catalog_path(helper_mode).to_string()))
+        .or_else(|| helper_mode.then(|| default_catalog_discovery_token(true).to_string()))
 }
 
 fn resolved_catalog_path<'a>(
     catalog_path: &'a Option<String>,
-    helper_mode: bool,
+    _helper_mode: bool,
 ) -> Option<&'a str> {
-    if let Some(value) = catalog_path
+    catalog_path
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
-    {
-        Some(value)
-    } else if helper_mode {
-        Some(default_catalog_path(helper_mode))
-    } else {
-        None
-    }
 }
 
 fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> String {
@@ -7139,8 +7129,16 @@ fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> S
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| default_catalog_path(helper_mode).to_string())
+        .map(|v| {
+            if v == default_catalog_discovery_token(false) {
+                default_catalog_display_label(false).to_string()
+            } else if v == default_catalog_discovery_token(true) {
+                default_catalog_display_label(true).to_string()
+            } else {
+                v.to_string()
+            }
+        })
+        .unwrap_or_else(|| default_catalog_display_label(helper_mode).to_string())
 }
 
 fn default_cache_dir(helper_mode: bool) -> String {
@@ -14465,9 +14463,12 @@ fn execute_reference_and_track_command(
             filter,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let entries =
+            let entries = if *helper_mode {
+                GentleEngine::list_helper_catalog_entries(resolved_catalog, filter.as_deref())
+            } else {
                 GentleEngine::list_reference_catalog_entries(resolved_catalog, filter.as_deref())
-                    .map_err(|e| e.to_string())?;
+            }
+            .map_err(|e| e.to_string())?;
             let genomes = entries
                 .iter()
                 .map(|entry| entry.genome_id.clone())
@@ -14490,11 +14491,23 @@ fn execute_reference_and_track_command(
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
-                .map_err(|e| e.to_string())?;
+            let genomes = if *helper_mode {
+                GentleEngine::list_helper_genomes(resolved_catalog)
+            } else {
+                GentleEngine::list_reference_genomes(resolved_catalog)
+            }
+            .map_err(|e| e.to_string())?;
             for genome_id in &genomes {
-                GentleEngine::describe_reference_genome_sources(resolved_catalog, genome_id, None)
-                    .map_err(|e| e.to_string())?;
+                if *helper_mode {
+                    GentleEngine::describe_helper_genome_sources(genome_id, resolved_catalog, None)
+                } else {
+                    GentleEngine::describe_reference_genome_sources(
+                        resolved_catalog,
+                        genome_id,
+                        None,
+                    )
+                }
+                .map_err(|e| e.to_string())?;
             }
             Ok(ShellRunResult {
                 state_changed: false,
@@ -14512,9 +14525,12 @@ fn execute_reference_and_track_command(
             catalog_path,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let preview =
+            let preview = if *helper_mode {
+                GentleEngine::preview_helper_genome_ensembl_catalog_updates(resolved_catalog)
+            } else {
                 GentleEngine::preview_reference_genome_ensembl_catalog_updates(resolved_catalog)
-                    .map_err(|e| e.to_string())?;
+            }
+            .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             Ok(ShellRunResult {
                 state_changed: false,
@@ -14530,10 +14546,17 @@ fn execute_reference_and_track_command(
             output_catalog_path,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
-                resolved_catalog,
-                output_catalog_path.as_deref(),
-            )
+            let report = if *helper_mode {
+                GentleEngine::apply_helper_genome_ensembl_catalog_updates(
+                    resolved_catalog,
+                    output_catalog_path.as_deref(),
+                )
+            } else {
+                GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+                    resolved_catalog,
+                    output_catalog_path.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             Ok(ShellRunResult {
@@ -14566,11 +14589,19 @@ fn execute_reference_and_track_command(
                 )
             }
             .map_err(|e| e.to_string())?;
-            let prepared = GentleEngine::is_reference_genome_prepared(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
+            let prepared = if *helper_mode {
+                GentleEngine::is_helper_genome_prepared(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::is_reference_genome_prepared(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let compatibility = if *helper_mode {
                 GentleEngine::inspect_helper_genome_prepared_compatibility(
@@ -14586,11 +14617,19 @@ fn execute_reference_and_track_command(
                 )
             }
             .map_err(|e| e.to_string())?;
-            let source_plan = GentleEngine::describe_reference_genome_sources(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
+            let source_plan = if *helper_mode {
+                GentleEngine::describe_helper_genome_sources(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::describe_reference_genome_sources(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             let cli_label = if *helper_mode { "helpers" } else { "genomes" };
@@ -14600,11 +14639,17 @@ fn execute_reference_and_track_command(
                 .filter(|value| !value.is_empty())
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| default_cache_dir(*helper_mode));
+            let catalog_arg = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!(" --catalog {}", quote_shell_arg(value)))
+                .unwrap_or_default();
             let prepare_command = format!(
-                "cargo run --bin gentle_cli -- {} prepare {} --catalog {} --cache-dir {}",
+                "cargo run --bin gentle_cli -- {} prepare {}{} --cache-dir {}",
                 cli_label,
                 quote_shell_arg(genome_id),
-                quote_shell_arg(&effective_catalog),
+                catalog_arg,
                 quote_shell_arg(&effective_cache_arg)
             );
             let status_message = if prepared {
@@ -14664,11 +14709,19 @@ fn execute_reference_and_track_command(
             offset,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let genes = GentleEngine::list_reference_genome_genes(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
+            let genes = if *helper_mode {
+                GentleEngine::list_helper_genome_features(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::list_reference_genome_genes(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let filter_regex = compile_gene_filter_regex(filter)?;
             let biotype_filter: Vec<String> = biotypes
@@ -14736,11 +14789,19 @@ fn execute_reference_and_track_command(
             cache_dir,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::remove_prepared_reference_genome(
-                resolved_catalog,
-                genome_id,
-                cache_dir.as_deref(),
-            )
+            let report = if *helper_mode {
+                GentleEngine::remove_prepared_helper_genome(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::remove_prepared_reference_genome(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             Ok(ShellRunResult {
@@ -14759,11 +14820,19 @@ fn execute_reference_and_track_command(
             output_catalog_path,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let report = GentleEngine::remove_reference_genome_catalog_entry(
-                resolved_catalog,
-                genome_id,
-                output_catalog_path.as_deref(),
-            )
+            let report = if *helper_mode {
+                GentleEngine::remove_helper_genome_catalog_entry(
+                    resolved_catalog,
+                    genome_id,
+                    output_catalog_path.as_deref(),
+                )
+            } else {
+                GentleEngine::remove_reference_genome_catalog_entry(
+                    resolved_catalog,
+                    genome_id,
+                    output_catalog_path.as_deref(),
+                )
+            }
             .map_err(|e| e.to_string())?;
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             Ok(ShellRunResult {

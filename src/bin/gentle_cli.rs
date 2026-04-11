@@ -13,8 +13,8 @@ use gentle::{
         parse_shell_tokens, parse_workflow_json_payload, shell_help_text,
     },
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeGeneRecord,
-        PrepareGenomeProgress,
+        GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
+        default_catalog_discovery_token,
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
 };
@@ -37,6 +37,33 @@ fn parse_bool_flag(raw: &str) -> Option<bool> {
         "false" | "0" | "no" | "n" | "off" => Some(false),
         _ => None,
     }
+}
+
+fn explicit_catalog_arg(catalog_path: &Option<String>) -> Option<&str> {
+    catalog_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+}
+
+fn effective_catalog_label(catalog_path: &Option<String>, helper_mode: bool) -> String {
+    explicit_catalog_arg(catalog_path)
+        .map(|value| {
+            if value == default_catalog_discovery_token(false) {
+                default_catalog_discovery_label(false).to_string()
+            } else if value == default_catalog_discovery_token(true) {
+                default_catalog_discovery_label(true).to_string()
+            } else {
+                value.to_string()
+            }
+        })
+        .unwrap_or_else(|| default_catalog_discovery_label(helper_mode).to_string())
+}
+
+fn operation_catalog_arg(catalog_path: &Option<String>, helper_mode: bool) -> Option<String> {
+    explicit_catalog_arg(catalog_path)
+        .map(|value| value.to_string())
+        .or_else(|| helper_mode.then(|| default_catalog_discovery_token(true).to_string()))
 }
 
 fn apply_pool_member_topology_hint(
@@ -1174,11 +1201,6 @@ fn run() -> Result<(), String> {
         }
         "genomes" | "helpers" => {
             let helper_mode = command == "helpers";
-            let default_catalog = if helper_mode {
-                DEFAULT_HELPER_GENOME_CATALOG_PATH
-            } else {
-                DEFAULT_GENOME_CATALOG_PATH
-            };
             let label = if helper_mode { "helpers" } else { "genomes" };
             if args.len() <= cmd_idx + 1 {
                 usage();
@@ -1214,24 +1236,24 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let entries = GentleEngine::list_reference_catalog_entries(
-                        resolved_catalog,
-                        filter.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let entries = if helper_mode {
+                        GentleEngine::list_helper_catalog_entries(
+                            resolved_catalog,
+                            filter.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::list_reference_catalog_entries(
+                            resolved_catalog,
+                            filter.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
                     let genomes = entries
                         .iter()
                         .map(|entry| entry.genome_id.clone())
                         .collect::<Vec<_>>();
-                    let effective_catalog = catalog_path
-                        .clone()
-                        .filter(|v| !v.trim().is_empty())
-                        .unwrap_or_else(|| default_catalog.to_string());
+                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
                     print_json(&json!({
                         "catalog_path": effective_catalog,
                         "filter": filter,
@@ -1262,18 +1284,15 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog))
-                        .ok_or_else(|| {
-                            format!("Missing catalog path for {label} validate-catalog")
-                        })?;
-                    let genomes = GentleEngine::list_reference_genomes(Some(resolved_catalog))
-                        .map_err(|e| e.to_string())?;
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let genomes = if helper_mode {
+                        GentleEngine::list_helper_genomes(resolved_catalog)
+                    } else {
+                        GentleEngine::list_reference_genomes(resolved_catalog)
+                    }
+                    .map_err(|e| e.to_string())?;
                     print_json(&json!({
-                        "catalog_path": resolved_catalog,
+                        "catalog_path": effective_catalog_label(&catalog_path, helper_mode),
                         "valid": true,
                         "genome_count": genomes.len(),
                     }))
@@ -1310,15 +1329,18 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let report = GentleEngine::apply_reference_genome_ensembl_catalog_updates(
-                        resolved_catalog,
-                        output_catalog_path.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let report = if helper_mode {
+                        GentleEngine::apply_helper_genome_ensembl_catalog_updates(
+                            resolved_catalog,
+                            output_catalog_path.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::apply_reference_genome_ensembl_catalog_updates(
+                            resolved_catalog,
+                            output_catalog_path.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
                     print_json(&report)
                 }
@@ -1361,27 +1383,36 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let prepared = GentleEngine::is_reference_genome_prepared(
-                        resolved_catalog,
-                        &genome_id,
-                        cache_dir.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let prepared = if helper_mode {
+                        GentleEngine::is_helper_genome_prepared(
+                            &genome_id,
+                            resolved_catalog,
+                            cache_dir.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::is_reference_genome_prepared(
+                            resolved_catalog,
+                            &genome_id,
+                            cache_dir.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
-                    let source_plan = GentleEngine::describe_reference_genome_sources(
-                        resolved_catalog,
-                        &genome_id,
-                        cache_dir.as_deref(),
-                    )
+                    let source_plan = if helper_mode {
+                        GentleEngine::describe_helper_genome_sources(
+                            &genome_id,
+                            resolved_catalog,
+                            cache_dir.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::describe_reference_genome_sources(
+                            resolved_catalog,
+                            &genome_id,
+                            cache_dir.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
-                    let effective_catalog = catalog_path
-                        .clone()
-                        .filter(|v| !v.trim().is_empty())
-                        .unwrap_or_else(|| default_catalog.to_string());
+                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
                     print_json(&json!({
                         "genome_id": genome_id,
                         "catalog_path": effective_catalog,
@@ -1483,16 +1514,20 @@ fn run() -> Result<(), String> {
                         }
                     }
 
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let genes = GentleEngine::list_reference_genome_genes(
-                        resolved_catalog,
-                        &genome_id,
-                        cache_dir.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let genes = if helper_mode {
+                        GentleEngine::list_helper_genome_features(
+                            &genome_id,
+                            resolved_catalog,
+                            cache_dir.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::list_reference_genome_genes(
+                            resolved_catalog,
+                            &genome_id,
+                            cache_dir.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
                     let filter_regex = compile_gene_filter_regex(&filter)?;
                     let available_biotypes = collect_biotypes(&genes);
@@ -1515,10 +1550,7 @@ fn run() -> Result<(), String> {
                     let offset = offset.min(total);
                     let returned: Vec<GenomeGeneRecord> =
                         filtered.into_iter().skip(offset).take(limit).collect();
-                    let effective_catalog = catalog_path
-                        .clone()
-                        .filter(|v| !v.trim().is_empty())
-                        .unwrap_or_else(|| default_catalog.to_string());
+                    let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
                     print_json(&json!({
                         "genome_id": genome_id,
                         "catalog_path": effective_catalog,
@@ -1593,9 +1625,7 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let op_catalog_path = catalog_path
-                        .filter(|v| !v.trim().is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
                     let mut engine = GentleEngine::from_state(load_state(&state_path)?);
                     let op = Operation::PrepareGenome {
                         genome_id,
@@ -1659,16 +1689,20 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let report = GentleEngine::remove_prepared_reference_genome(
-                        resolved_catalog,
-                        &genome_id,
-                        cache_dir.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let report = if helper_mode {
+                        GentleEngine::remove_prepared_helper_genome(
+                            resolved_catalog,
+                            &genome_id,
+                            cache_dir.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::remove_prepared_reference_genome(
+                            resolved_catalog,
+                            &genome_id,
+                            cache_dir.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
                     print_json(&report)
                 }
@@ -1711,16 +1745,20 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
-                    let resolved_catalog = catalog_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog));
-                    let report = GentleEngine::remove_reference_genome_catalog_entry(
-                        resolved_catalog,
-                        &genome_id,
-                        output_catalog_path.as_deref(),
-                    )
+                    let resolved_catalog = explicit_catalog_arg(&catalog_path);
+                    let report = if helper_mode {
+                        GentleEngine::remove_helper_genome_catalog_entry(
+                            resolved_catalog,
+                            &genome_id,
+                            output_catalog_path.as_deref(),
+                        )
+                    } else {
+                        GentleEngine::remove_reference_genome_catalog_entry(
+                            resolved_catalog,
+                            &genome_id,
+                            output_catalog_path.as_deref(),
+                        )
+                    }
                     .map_err(|e| e.to_string())?;
                     print_json(&report)
                 }
@@ -1849,9 +1887,7 @@ fn run() -> Result<(), String> {
                             annotation_scope = Some(mapped_scope);
                         }
                     }
-                    let op_catalog_path = catalog_path
-                        .filter(|v| !v.trim().is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
                     let mut engine = GentleEngine::from_state(load_state(&state_path)?);
                     let result = engine
                         .apply(Operation::ExtractGenomeRegion {
@@ -2060,9 +2096,7 @@ fn run() -> Result<(), String> {
                             "--promoter-upstream-bp requires --extract-mode coding_with_promoter for {label} extract-gene"
                         ));
                     }
-                    let op_catalog_path = catalog_path
-                        .filter(|v| !v.trim().is_empty())
-                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
                     let mut engine = GentleEngine::from_state(load_state(&state_path)?);
                     let result = engine
                         .apply(Operation::ExtractGenomeGene {

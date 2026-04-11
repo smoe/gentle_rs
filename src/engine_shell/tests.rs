@@ -9724,6 +9724,15 @@ fn parse_helpers_list_with_filter() {
 }
 
 #[test]
+fn helper_operation_catalog_path_defaults_to_discovery_token() {
+    assert_eq!(
+        operation_catalog_path(&None, true),
+        Some(crate::genomes::default_catalog_discovery_token(true).to_string())
+    );
+    assert_eq!(operation_catalog_path(&None, false), None);
+}
+
+#[test]
 fn parse_genomes_update_ensembl_specs() {
     let cmd = parse_shell_line(
         "genomes update-ensembl-specs --catalog assets/genomes.json --output-catalog exports/genomes.updated.json",

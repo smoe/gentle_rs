@@ -14,6 +14,7 @@ use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
+    genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     uniprot::UniprotNucleotideXref,
 };
@@ -147,11 +148,9 @@ impl GentleEngine {
         cache_dir: Option<String>,
         provenance_operation: &str,
     ) -> Result<SeqId, EngineError> {
-        let catalog_path = catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-        let catalog = GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: format!("Could not open genome catalog '{catalog_path}': {e}"),
-        })?;
+        let catalog_path =
+            catalog_path.unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+        let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
         let sequence = catalog
             .get_sequence_region_with_cache(
                 genome_id,
@@ -2793,11 +2792,13 @@ impl GentleEngine {
             .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
         if let Some(anchor) = imported_anchor {
             let mut anchor_verified: Option<bool> = None;
+            let default_catalog_path = default_catalog_discovery_token(false);
+            let default_catalog_label = default_catalog_discovery_label(false);
             if let Some(loaded) = self.state.sequences.get(&seq_id) {
                 match Self::verify_anchor_sequence_against_catalog(
                     loaded,
                     &anchor,
-                    DEFAULT_GENOME_CATALOG_PATH,
+                    default_catalog_path,
                     None,
                 ) {
                     Ok(is_match) => {
@@ -2806,7 +2807,7 @@ impl GentleEngine {
                             result.messages.push(format!(
                                 "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
                                 seq_id,
-                                DEFAULT_GENOME_CATALOG_PATH,
+                                default_catalog_label,
                                 anchor.genome_id,
                                 anchor.chromosome,
                                 anchor.start_1based
@@ -2819,14 +2820,14 @@ impl GentleEngine {
                                 anchor.chromosome,
                                 anchor.start_1based,
                                 anchor.end_1based,
-                                DEFAULT_GENOME_CATALOG_PATH
+                                default_catalog_label
                             ));
                         }
                     }
                     Err(err) => {
                         result.warnings.push(format!(
                             "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
-                            seq_id, DEFAULT_GENOME_CATALOG_PATH, err
+                            seq_id, default_catalog_label, err
                         ));
                     }
                 }
@@ -2836,7 +2837,7 @@ impl GentleEngine {
                 recorded_at_unix_ms: Self::now_unix_ms(),
                 operation: provenance_operation.to_string(),
                 genome_id: anchor.genome_id.clone(),
-                catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
+                catalog_path: default_catalog_path.to_string(),
                 cache_dir: None,
                 chromosome: Some(anchor.chromosome.clone()),
                 start_1based: Some(anchor.start_1based),
@@ -4384,11 +4385,13 @@ impl GentleEngine {
                     .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
                 if let Some(anchor) = imported_anchor {
                     let mut anchor_verified: Option<bool> = None;
+                    let default_catalog_path = default_catalog_discovery_token(false);
+                    let default_catalog_label = default_catalog_discovery_label(false);
                     if let Some(loaded) = self.state.sequences.get(&seq_id) {
                         match Self::verify_anchor_sequence_against_catalog(
                             loaded,
                             &anchor,
-                            DEFAULT_GENOME_CATALOG_PATH,
+                            default_catalog_path,
                             None,
                         ) {
                             Ok(is_match) => {
@@ -4397,7 +4400,7 @@ impl GentleEngine {
                                     result.messages.push(format!(
                                         "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
                                         seq_id,
-                                        DEFAULT_GENOME_CATALOG_PATH,
+                                        default_catalog_label,
                                         anchor.genome_id,
                                         anchor.chromosome,
                                         anchor.start_1based
@@ -4410,14 +4413,14 @@ impl GentleEngine {
                                         anchor.chromosome,
                                         anchor.start_1based,
                                         anchor.end_1based,
-                                        DEFAULT_GENOME_CATALOG_PATH
+                                        default_catalog_label
                                     ));
                                 }
                             }
                             Err(err) => {
                                 result.warnings.push(format!(
                                     "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
-                                    seq_id, DEFAULT_GENOME_CATALOG_PATH, err
+                                    seq_id, default_catalog_label, err
                                 ));
                             }
                         }
@@ -4430,7 +4433,7 @@ impl GentleEngine {
                         // Imported GenBank files are sequence sources, not catalog JSON.
                         // Keep the default catalog path so later anchor-extension flows
                         // resolve against real genome catalogs instead of the .gb file.
-                        catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
+                        catalog_path: default_catalog_path.to_string(),
                         cache_dir: None,
                         chromosome: Some(anchor.chromosome.clone()),
                         start_1based: Some(anchor.start_1based),
@@ -5338,18 +5341,10 @@ impl GentleEngine {
                         display_rs_id, genome_id
                     ),
                 );
-                let resolved_catalog_path =
-                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-                let catalog =
-                    GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
-                        EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Could not open genome catalog '{}': {}",
-                                resolved_catalog_path, e
-                            ),
-                        }
-                    })?;
+                let resolved_catalog_path = catalog_path
+                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                let (catalog, _) =
+                    Self::open_reference_genome_catalog(Some(&resolved_catalog_path))?;
                 emit_progress(
                     DbSnpFetchStage::InspectPreparedGenome,
                     format!(
@@ -5527,13 +5522,9 @@ impl GentleEngine {
                         message: "Gene query cannot be empty".to_string(),
                     });
                 }
-                let catalog_path =
-                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-                let catalog =
-                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
-                    })?;
+                let catalog_path = catalog_path
+                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
                 let genes = catalog
                     .list_gene_regions(&genome_id, cache_dir.as_deref())
                     .map_err(|e| EngineError {
@@ -6075,23 +6066,27 @@ impl GentleEngine {
                     .or(anchor.catalog_path.clone())
                     .map(|v| v.trim().to_string())
                     .filter(|v| !v.is_empty())
-                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
                 let mut resolved_catalog_path = requested_catalog_path.clone();
                 let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
                 let mut catalog_fallback_warning: Option<String> = None;
-                let catalog = match GenomeCatalog::from_json_file(&requested_catalog_path) {
-                    Ok(catalog) => catalog,
+                let catalog = match Self::open_reference_genome_catalog(Some(
+                    &requested_catalog_path,
+                )) {
+                    Ok((catalog, _)) => catalog,
                     Err(primary_err) => {
-                        let default_catalog_path = DEFAULT_GENOME_CATALOG_PATH.to_string();
+                        let default_catalog_path =
+                            default_catalog_discovery_token(false).to_string();
+                        let default_catalog_label = default_catalog_discovery_label(false);
                         let should_fallback_to_default = !explicit_catalog_requested
                             && requested_catalog_path != default_catalog_path;
                         if should_fallback_to_default {
-                            match GenomeCatalog::from_json_file(&default_catalog_path) {
-                                Ok(catalog) => {
+                            match Self::open_reference_genome_catalog(Some(&default_catalog_path)) {
+                                Ok((catalog, _)) => {
                                     resolved_catalog_path = default_catalog_path.clone();
                                     catalog_fallback_warning = Some(format!(
                                         "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
-                                        requested_catalog_path, primary_err, default_catalog_path
+                                        requested_catalog_path, primary_err, default_catalog_label
                                     ));
                                     catalog
                                 }
@@ -6101,9 +6096,9 @@ impl GentleEngine {
                                         message: format!(
                                             "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
                                             requested_catalog_path,
-                                            primary_err,
-                                            default_catalog_path,
-                                            default_err
+                                            primary_err.message,
+                                            default_catalog_label,
+                                            default_err.message
                                         ),
                                     });
                                 }
@@ -6113,7 +6108,7 @@ impl GentleEngine {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
                                     "Could not open genome catalog '{}': {}",
-                                    requested_catalog_path, primary_err
+                                    requested_catalog_path, primary_err.message
                                 ),
                             });
                         }
@@ -6310,23 +6305,29 @@ impl GentleEngine {
                     .or(anchor.catalog_path.clone())
                     .map(|v| v.trim().to_string())
                     .filter(|v| !v.is_empty())
-                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
                 let mut resolved_catalog_path = requested_catalog_path.clone();
                 let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
                 let mut catalog_fallback_warning: Option<String> = None;
-                let catalog = match GenomeCatalog::from_json_file(&requested_catalog_path) {
-                    Ok(catalog) => catalog,
+                let catalog = match Self::open_reference_genome_catalog(Some(
+                    &requested_catalog_path,
+                )) {
+                    Ok((catalog, _)) => catalog,
                     Err(primary_err) => {
-                        let default_catalog_path = DEFAULT_GENOME_CATALOG_PATH.to_string();
+                        let default_catalog_path =
+                            default_catalog_discovery_token(false).to_string();
+                        let default_catalog_label = default_catalog_discovery_label(false);
                         let should_fallback_to_default = !explicit_catalog_requested
                             && requested_catalog_path != default_catalog_path;
                         if should_fallback_to_default {
-                            match GenomeCatalog::from_json_file(&default_catalog_path) {
-                                Ok(catalog) => {
+                            match Self::open_reference_genome_catalog(Some(&default_catalog_path)) {
+                                Ok((catalog, _)) => {
                                     resolved_catalog_path = default_catalog_path.clone();
                                     catalog_fallback_warning = Some(format!(
                                         "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
-                                        requested_catalog_path, primary_err, default_catalog_path
+                                        requested_catalog_path,
+                                        primary_err.message,
+                                        default_catalog_label
                                     ));
                                     catalog
                                 }
@@ -6336,9 +6337,9 @@ impl GentleEngine {
                                         message: format!(
                                             "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
                                             requested_catalog_path,
-                                            primary_err,
-                                            default_catalog_path,
-                                            default_err
+                                            primary_err.message,
+                                            default_catalog_label,
+                                            default_err.message
                                         ),
                                     });
                                 }
@@ -6348,7 +6349,7 @@ impl GentleEngine {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
                                     "Could not open genome catalog '{}': {}",
-                                    requested_catalog_path, primary_err
+                                    requested_catalog_path, primary_err.message
                                 ),
                             });
                         }

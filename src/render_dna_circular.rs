@@ -180,7 +180,13 @@ impl RenderDnaCircular {
                 self.selected_reasoning_evidence_id = None;
             } else if let Some((evidence_id, _, _)) = self
                 .get_clicked_construct_reasoning_overlay(pos)
-                .map(|band| (band.evidence_id, band.start_0based, band.end_0based_exclusive))
+                .map(|band| {
+                    (
+                        band.evidence_id,
+                        band.start_0based,
+                        band.end_0based_exclusive,
+                    )
+                })
             {
                 self.selected_feature_number = None;
                 self.selected_enzyme = None;
@@ -884,7 +890,9 @@ impl RenderDnaCircular {
                     display.show_construct_reasoning_overlay(),
                     display.construct_reasoning_overlay().cloned(),
                     display.hidden_construct_reasoning_roles().clone(),
-                    display.hidden_construct_reasoning_evidence_classes().clone(),
+                    display
+                        .hidden_construct_reasoning_evidence_classes()
+                        .clone(),
                 )
             })
             .unwrap_or((false, None, BTreeSet::new(), BTreeSet::new()));

@@ -30,6 +30,11 @@ order. Durable architecture constraints and decisions remain in
     merges sorted `*.json` fragments deterministically
   - duplicate entry ids across fragments fail fast instead of silently
     overriding each other
+  - omitting `catalog_path` now resolves an explicit discovery chain:
+    built-in -> system -> user -> project overlays
+  - helper-mode shell/CLI operations now preserve "use default discovery"
+    intent via a stable machine token instead of collapsing back to
+    `assets/helper_genomes.json`
   - `genomes list` / `helpers list` now accept `--filter TEXT` and search not
     only ids but also aliases/tags/search terms plus helper procurement and
     semantic helper metadata
@@ -1645,10 +1650,9 @@ Notes:
 ## 2. Active known gaps (priority-ordered)
 
 1. Catalog-extensible reference/helper knowledge remains too static:
-   - current catalogs can now be loaded from one directory of JSON fragments,
-     but broader overlay/discovery policy is still pending (built-in vs
-     project vs user/site overlays, deterministic precedence, and duplicate-id
-     extension/replacement rules)
+   - current catalogs now support a deterministic discovery chain
+     (built-in -> system -> user -> project) plus one-directory fragment
+     merging, but duplicate-id extension/replacement rules are still pending
    - reference/helper source-install metadata still needs a clearer split from
      semantic construct knowledge so preparation/indexing contracts remain
      stable while richer helper/vector meaning evolves
@@ -1681,6 +1685,10 @@ Notes:
      `genomes/helpers status|prepare` so first-run remote use naturally starts
      from "prepare the reference/helper locally" rather than only from
      `capabilities`
+   - near-term practical priority after the discovery-chain slice:
+     make the ClawBio/BioClaw first-run bootstrap path smooth enough that a
+     fresh remote checkout can prepare genomes/helpers without hand-editing
+     catalog assumptions
 2. Cloning routine standardization is incomplete:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
@@ -1894,15 +1902,16 @@ Current baseline:
 
 - one explicit JSON file or one explicit directory of JSON fragments can now be
   loaded as a catalog source
+- omitting `catalog_path` now resolves a deterministic built-in -> system ->
+  user -> project discovery chain
 - `genomes list` / `helpers list` now support metadata search via `--filter`
 - helper rows can now start carrying richer semantic/procurement metadata
   without disturbing the preparation/indexing pipeline
 
 Planned work:
 
-1. Add deterministic overlay/discovery policy for catalog search roots
-   (built-in + project + user/site), with explicit precedence and duplicate-id
-   rules.
+1. Keep the discovery policy but add explicit extension/replacement semantics
+   for duplicate ids instead of fail-fast-only merging.
 2. Keep source/install descriptors stable while growing a second semantic layer
    for helper constructs:
    - procurement/order metadata
@@ -1913,6 +1922,8 @@ Planned work:
    reparsing catalog prose.
 4. Add first-run ClawBio/agent examples for `genomes/helpers status|prepare`
    and common helper/reference preparation workflows.
+   - This is the next practical integration target after the discovery-chain
+     slice so remote ClawBio/BioClaw installs can become self-bootstrapping.
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:
