@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-09
+Last updated: 2026-04-11
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -24,6 +24,19 @@ order. Durable architecture constraints and decisions remain in
     `data/genomes` / `data/helper_genomes` roots
   - `genomes status` / `helpers status` now report the effective cache root and
     emit a concrete `prepare_command` hint when no prepared install exists
+- Catalog-loading groundwork now also accepts either one JSON catalog file or
+  one directory of JSON fragments for both reference and helper catalogs:
+  - `GenomeCatalog::from_json_file(...)` now accepts a directory path and
+    merges sorted `*.json` fragments deterministically
+  - duplicate entry ids across fragments fail fast instead of silently
+    overriding each other
+  - `genomes list` / `helpers list` now accept `--filter TEXT` and search not
+    only ids but also aliases/tags/search terms plus helper procurement and
+    semantic helper metadata
+  - helper catalogs can now start carrying structured semantic fields
+    (`summary`, `aliases`, `tags`, `search_terms`, `helper_kind`,
+    `host_system`, `procurement`, `semantics`) without disturbing the existing
+    preparation/indexing contract
 - Release-installer CI now intentionally avoids caching the `target/`
   directory on tag/manual release builds:
   - the workflow also pins `CARGO_TARGET_DIR=target` for those release jobs so
@@ -1631,7 +1644,44 @@ Notes:
 
 ## 2. Active known gaps (priority-ordered)
 
-1. Cloning routine standardization is incomplete:
+1. Catalog-extensible reference/helper knowledge remains too static:
+   - current catalogs can now be loaded from one directory of JSON fragments,
+     but broader overlay/discovery policy is still pending (built-in vs
+     project vs user/site overlays, deterministic precedence, and duplicate-id
+     extension/replacement rules)
+   - reference/helper source-install metadata still needs a clearer split from
+     semantic construct knowledge so preparation/indexing contracts remain
+     stable while richer helper/vector meaning evolves
+   - helper catalogs still use the older "helper genome" terminology in engine
+     contracts even though many rows are really plasmids, reporter backbones,
+     host references, or unpublished local variants
+   - the planned terminology move to `helper constructs` should be one atomic
+     operation, performed only when no parallel feature work would otherwise
+     create mixed protocol/API/docs terminology
+   - structured semantic helper metadata is only at the foundation stage:
+     search/list support now understands fields like `aliases`, `tags`,
+     `search_terms`, `helper_kind`, `host_system`, `procurement`, and
+     `semantics`, but the shared interpretation layer over those fields is not
+     yet engine-owned
+   - the emerging reasoning/constraint engine needs this catalog direction to
+     stay portable:
+     - helper/vector knowledge should resolve into engine-owned affordance /
+       constraint / component / relationship records rather than adapter-local
+       prompts
+     - planner/reasoner surfaces should consume the normalized records instead
+       of reparsing prose descriptions on every route
+   - ontology work is expected for vectors, functional elements, and helper
+     affordances:
+     - first pass should stay lightweight and typed enough for later ontology
+       mapping
+     - likely ontology dimensions include vector/helper kind, host system,
+       purification tags, protease sites, cloning windows, selectable markers,
+       origins, promoters, reporters, and ordering/procurement metadata
+   - ClawBio/agent-facing workflows still need first-class request examples for
+     `genomes/helpers status|prepare` so first-run remote use naturally starts
+     from "prepare the reference/helper locally" rather than only from
+     `capabilities`
+2. Cloning routine standardization is incomplete:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
      depth is still incomplete
@@ -1674,15 +1724,15 @@ Notes:
        - CLI forwarded-route parity now covers `primers preflight`
        - wider matrix coverage is still pending across additional primer routes
          and adapters
-2. MCP route now has guarded mutating execution (`op`/`workflow`) and
+3. MCP route now has guarded mutating execution (`op`/`workflow`) and
    UI-intent parity baseline (`ui_intents`, `ui_intent`,
    `ui_prepared_genomes`, `ui_latest_prepared`), but broader parity breadth is
    still incomplete (additional shared-shell route coverage, richer result
    contracts for future mutating UI intents, and wider adapter-equivalence
    coverage).
-3. Mutating-intent safety policy is not yet fully hardened across agent, voice,
+4. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
-4. Async long-running command orchestration is still incomplete:
+5. Async long-running command orchestration is still incomplete:
    - BLAST async job-handle/progress/cancel baseline is now available through
      shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP
      (`blast_async_start|status|cancel|list`)
@@ -1694,16 +1744,16 @@ Notes:
    - upcoming primer-pair selection workflows are expected to fan out into
      multiple BLAST searches; this still needs workflow-level async orchestration
      on top of the baseline job primitives
-5. Core architecture parity gaps remain:
+6. Core architecture parity gaps remain:
    - some utilities are still adapter-level rather than engine operations
      (notably `import-pool` and resource-sync utilities)
    - no dedicated engine operation yet for exporting a full run/process as a
      technical-assistant protocol text artifact
    - view-model contract is not yet formalized as a frontend-neutral schema
-6. guideRNA workflow remains incomplete (guide-candidate model, oligo
+7. guideRNA workflow remains incomplete (guide-candidate model, oligo
    generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).
-7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
-8. Visualization and workflow UX gaps remain:
+8. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
+9. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - genome-extract failure diagnostics now include alias-aware guidance
      (`17` vs `chr17`) plus prepared-contig previews/suggestions from the
@@ -1803,11 +1853,11 @@ Notes:
        debug overlay visibility, reverse-strand emphasis, typography/spacing)
      - treat exact figure-style tuning as intentionally iterative while core
        functionality and workflows continue to evolve
-9. Cross-application clipboard interoperability for sequence + feature transfer
+10. Cross-application clipboard interoperability for sequence + feature transfer
    is not yet implemented (current baseline is deterministic in-app extraction).
-10. Screenshot bridge execution remains disabled by security policy.
-11. Auto-updated documentation with embedded graphics remains postponed.
-12. RNA mapping benchmark-fixture curation is still incomplete:
+11. Screenshot bridge execution remains disabled by security policy.
+12. Auto-updated documentation with embedded graphics remains postponed.
+13. RNA mapping benchmark-fixture curation is still incomplete:
    - compact committed pack now exists at `test_files/fixtures/mapping/` and
      is used by deterministic TP73 seed-filter tests
    - legacy `test_files/mapping/True_TP73/` and
@@ -1815,7 +1865,7 @@ Notes:
      need full pinned-source provenance capture before broader CI adoption
    - follow-up: add a TP53-forward benchmark profile (higher-abundance,
      TP73-family-adjacent) while keeping fixture footprint small
-13. cDNA presentation semantics are partially enforced (follow-up remains):
+14. cDNA presentation semantics are partially enforced (follow-up remains):
    - implemented:
      - cDNA mode now defaults to intrinsic evidence by hiding contextual
        transcript-projection features (`mRNA`/`exon`/`CDS`) unless explicitly
@@ -1833,6 +1883,43 @@ Notes:
        contract
      - keep "all contextual transcripts" contract stable across reopen/reload
        and expand fixture coverage for legacy projects without context tags
+
+### Catalog-extensible reference + helper-construct knowledge track (new, high priority)
+
+Goal: make reference/helper catalogs searchable, extensible outside the source
+tree, and consumable by the emerging reasoning/constraint engine without
+forcing helper/vector knowledge to live only in free text.
+
+Current baseline:
+
+- one explicit JSON file or one explicit directory of JSON fragments can now be
+  loaded as a catalog source
+- `genomes list` / `helpers list` now support metadata search via `--filter`
+- helper rows can now start carrying richer semantic/procurement metadata
+  without disturbing the preparation/indexing pipeline
+
+Planned work:
+
+1. Add deterministic overlay/discovery policy for catalog search roots
+   (built-in + project + user/site), with explicit precedence and duplicate-id
+   rules.
+2. Keep source/install descriptors stable while growing a second semantic layer
+   for helper constructs:
+   - procurement/order metadata
+   - affordances and constraints
+   - functional components and typed relationships
+3. Add engine-owned normalized helper-interpretation records so GUI/CLI/MCP/
+   ClawBio/planner routes all consume one portable meaning layer instead of
+   reparsing catalog prose.
+4. Add first-run ClawBio/agent examples for `genomes/helpers status|prepare`
+   and common helper/reference preparation workflows.
+5. Plan the terminology move from `helper genomes` to `helper constructs` as
+   one atomic protocol/docs/code rename once parallel feature churn is low.
+6. Prepare for ontology-backed helper/vector description:
+   - early typed vocab should be ontology-friendly rather than ontology-complete
+   - likely dimensions include vector/helper kind, host system, purification
+     tags, protease sites, selectable markers, origins, promoters, reporters,
+     cloning windows, and procurement/order channels
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 

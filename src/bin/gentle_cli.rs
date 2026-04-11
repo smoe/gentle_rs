@@ -531,7 +531,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
-  gentle_cli genomes list [--catalog PATH]\n  \
+  gentle_cli genomes list [--catalog PATH] [--filter TEXT]\n  \
   gentle_cli genomes validate-catalog [--catalog PATH]\n  \
   gentle_cli genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
@@ -544,7 +544,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-  gentle_cli helpers list [--catalog PATH]\n  \
+  gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
   gentle_cli helpers validate-catalog [--catalog PATH]\n  \
   gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
@@ -1187,6 +1187,7 @@ fn run() -> Result<(), String> {
             match args[cmd_idx + 1].as_str() {
                 "list" => {
                     let mut catalog_path: Option<String> = None;
+                    let mut filter: Option<String> = None;
                     let mut idx = cmd_idx + 2;
                     while idx < args.len() {
                         match args[idx].as_str() {
@@ -1199,6 +1200,15 @@ fn run() -> Result<(), String> {
                                 catalog_path = Some(args[idx + 1].clone());
                                 idx += 2;
                             }
+                            "--filter" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing TEXT after --filter for {label} list"
+                                    ));
+                                }
+                                filter = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
                             other => {
                                 return Err(format!("Unknown option '{}' for {label} list", other));
                             }
@@ -1209,16 +1219,25 @@ fn run() -> Result<(), String> {
                         .map(str::trim)
                         .filter(|v| !v.is_empty())
                         .or_else(|| helper_mode.then_some(default_catalog));
-                    let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
-                        .map_err(|e| e.to_string())?;
+                    let entries = GentleEngine::list_reference_catalog_entries(
+                        resolved_catalog,
+                        filter.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let genomes = entries
+                        .iter()
+                        .map(|entry| entry.genome_id.clone())
+                        .collect::<Vec<_>>();
                     let effective_catalog = catalog_path
                         .clone()
                         .filter(|v| !v.trim().is_empty())
                         .unwrap_or_else(|| default_catalog.to_string());
                     print_json(&json!({
                         "catalog_path": effective_catalog,
+                        "filter": filter,
                         "genome_count": genomes.len(),
                         "genomes": genomes,
+                        "entries": entries,
                     }))
                 }
                 "validate-catalog" => {

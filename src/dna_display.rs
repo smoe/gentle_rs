@@ -557,10 +557,7 @@ impl DnaDisplay {
         self.construct_reasoning_overlay.as_ref()
     }
 
-    pub fn set_construct_reasoning_overlay(
-        &mut self,
-        overlay: Option<ConstructReasoningOverlay>,
-    ) {
+    pub fn set_construct_reasoning_overlay(&mut self, overlay: Option<ConstructReasoningOverlay>) {
         if self.construct_reasoning_overlay != overlay {
             self.construct_reasoning_overlay = overlay;
             self.mark_layout_dirty();

@@ -90,6 +90,7 @@ pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
 pub struct GenomeCatalogEntry {
     pub ncbi_taxonomy_id: Option<u32>,
     pub description: Option<String>,
+    pub summary: Option<String>,
     pub ncbi_assembly_accession: Option<String>,
     pub ncbi_assembly_name: Option<String>,
     pub genbank_accession: Option<String>,
@@ -107,6 +108,42 @@ pub struct GenomeCatalogEntry {
     pub molecular_mass_da: Option<f64>,
     #[serde(default)]
     pub ensembl_template: Option<EnsemblCatalogTemplate>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub search_terms: Vec<String>,
+    pub species: Option<String>,
+    pub helper_kind: Option<String>,
+    pub host_system: Option<String>,
+    #[serde(default)]
+    pub procurement: Option<CatalogProcurementInfo>,
+    #[serde(default)]
+    pub semantics: Option<HelperConstructSemantics>,
+    #[serde(skip)]
+    pub source_base_dir: Option<PathBuf>,
+}
+
+/// Search/list projection for one catalog entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GenomeCatalogListEntry {
+    pub genome_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub search_terms: Vec<String>,
+    pub species: Option<String>,
+    pub helper_kind: Option<String>,
+    pub host_system: Option<String>,
+    #[serde(default)]
+    pub procurement: Option<CatalogProcurementInfo>,
+    #[serde(default)]
+    pub semantics: Option<HelperConstructSemantics>,
 }
 
 /// Ensembl-specific template metadata used to derive refreshable remote URLs.
@@ -120,6 +157,52 @@ pub struct EnsemblCatalogTemplate {
     pub species_dir: String,
     pub file_stem: String,
     pub release: u32,
+}
+
+/// Procurement metadata for helper constructs and curated reference assets.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct CatalogProcurementInfo {
+    pub vendor_name: Option<String>,
+    pub catalog_number: Option<String>,
+    pub order_url: Option<String>,
+    pub reference_url: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// One functional element inside a helper-construct semantic description.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructComponent {
+    pub id: String,
+    pub kind: String,
+    pub label: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub attributes: HashMap<String, String>,
+}
+
+/// One typed relation between helper-construct semantic elements.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructRelationship {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    pub note: Option<String>,
+}
+
+/// Optional semantic layer for helper constructs and curated helper assets.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructSemantics {
+    pub schema: Option<String>,
+    #[serde(default)]
+    pub affordances: Vec<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    #[serde(default)]
+    pub components: Vec<HelperConstructComponent>,
+    #[serde(default)]
+    pub relationships: Vec<HelperConstructRelationship>,
 }
 
 fn default_cache_dir() -> Option<String> {
@@ -820,6 +903,7 @@ pub struct GenomeCatalog {
     entries: HashMap<String, GenomeCatalogEntry>,
     catalog_base_dir: PathBuf,
     catalog_path: Option<PathBuf>,
+    catalog_origin_label: String,
 }
 
 impl GenomeCatalog {
@@ -828,24 +912,161 @@ impl GenomeCatalog {
     /// Validation enforces source consistency rules (local/remote/assembly/
     /// accession combinations) so downstream preparation logic can stay strict.
     pub fn from_json_file(path: &str) -> Result<Self, String> {
-        let text = fs::read_to_string(path)
+        let catalog_path = PathBuf::from(path);
+        let metadata = fs::metadata(&catalog_path)
             .map_err(|e| format!("Could not read genome catalog '{path}': {e}"))?;
-        let entries: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
-            .map_err(|e| format!("Could not parse genome catalog '{path}': {e}"))?;
-        validate_catalog_entries(path, &entries)?;
-        let base = Path::new(path)
+        if metadata.is_dir() {
+            return Self::from_json_directory(&catalog_path, path);
+        }
+        Self::from_single_json_file(&catalog_path, path)
+    }
+
+    fn from_single_json_file(path: &Path, display_path: &str) -> Result<Self, String> {
+        let text = fs::read_to_string(path)
+            .map_err(|e| format!("Could not read genome catalog '{display_path}': {e}"))?;
+        let mut entries: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
+            .map_err(|e| format!("Could not parse genome catalog '{display_path}': {e}"))?;
+        let base = path
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
+        for entry in entries.values_mut() {
+            entry.source_base_dir = Some(base.clone());
+        }
+        validate_catalog_entries(display_path, &entries)?;
         Ok(Self {
             entries,
             catalog_base_dir: base,
-            catalog_path: Some(PathBuf::from(path)),
+            catalog_path: Some(path.to_path_buf()),
+            catalog_origin_label: display_path.to_string(),
+        })
+    }
+
+    fn from_json_directory(path: &Path, display_path: &str) -> Result<Self, String> {
+        let read_dir = fs::read_dir(path).map_err(|e| {
+            format!("Could not read genome catalog directory '{display_path}': {e}")
+        })?;
+        let mut json_files: Vec<PathBuf> = vec![];
+        for row in read_dir {
+            let row = row.map_err(|e| {
+                format!("Could not iterate genome catalog directory '{display_path}': {e}")
+            })?;
+            let file_type = row.file_type().map_err(|e| {
+                format!(
+                    "Could not inspect genome catalog directory entry '{}' in '{}': {e}",
+                    row.path().display(),
+                    display_path
+                )
+            })?;
+            if !file_type.is_file() {
+                continue;
+            }
+            let file_path = row.path();
+            if file_path
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| value.eq_ignore_ascii_case("json"))
+                .unwrap_or(false)
+            {
+                json_files.push(file_path);
+            }
+        }
+        json_files.sort();
+        if json_files.is_empty() {
+            return Err(format!(
+                "Genome catalog directory '{}' does not contain any .json files",
+                display_path
+            ));
+        }
+
+        let mut entries: HashMap<String, GenomeCatalogEntry> = HashMap::new();
+        let mut source_files: HashMap<String, PathBuf> = HashMap::new();
+        for file_path in &json_files {
+            let file_label = file_path.display().to_string();
+            let text = fs::read_to_string(file_path)
+                .map_err(|e| format!("Could not read genome catalog '{}': {e}", file_label))?;
+            let mut parsed: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
+                .map_err(|e| format!("Could not parse genome catalog '{}': {e}", file_label))?;
+            let base = file_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| path.to_path_buf());
+            let mut keys: Vec<String> = parsed.keys().cloned().collect();
+            keys.sort_unstable();
+            for key in keys {
+                let mut entry = parsed.remove(&key).ok_or_else(|| {
+                    format!(
+                        "Catalog entry '{}' disappeared while loading '{}'",
+                        key, file_label
+                    )
+                })?;
+                if let Some(previous) = source_files.get(&key) {
+                    return Err(format!(
+                        "Duplicate genome/helper entry '{}' found in '{}' and '{}'",
+                        key,
+                        previous.display(),
+                        file_path.display()
+                    ));
+                }
+                entry.source_base_dir = Some(base.clone());
+                source_files.insert(key.clone(), file_path.clone());
+                entries.insert(key, entry);
+            }
+        }
+        validate_catalog_entries(display_path, &entries)?;
+        Ok(Self {
+            entries,
+            catalog_base_dir: path.to_path_buf(),
+            catalog_path: None,
+            catalog_origin_label: display_path.to_string(),
         })
     }
 
     /// List catalog genome ids in deterministic sorted order.
     pub fn list_genomes(&self) -> Vec<String> {
+        self.list_genomes_filtered(None)
+    }
+
+    /// List catalog ids in deterministic sorted order with optional metadata search.
+    pub fn list_genomes_filtered(&self, filter: Option<&str>) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .list_entries(filter)
+            .into_iter()
+            .map(|entry| entry.genome_id)
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
+    /// List catalog entries with optional metadata search across ids, aliases,
+    /// tags, summaries, procurement fields, and helper-construct semantics.
+    pub fn list_entries(&self, filter: Option<&str>) -> Vec<GenomeCatalogListEntry> {
+        let mut rows: Vec<GenomeCatalogListEntry> = vec![];
+        for genome_id in self.list_genomes_unfiltered() {
+            let Some(entry) = self.entries.get(&genome_id) else {
+                continue;
+            };
+            if !self.entry_matches_filter(&genome_id, entry, filter) {
+                continue;
+            }
+            rows.push(GenomeCatalogListEntry {
+                genome_id,
+                description: entry.description.clone(),
+                summary: entry.summary.clone(),
+                aliases: self.entry_aliases(entry),
+                tags: entry.tags.clone(),
+                search_terms: entry.search_terms.clone(),
+                species: entry.species.clone(),
+                helper_kind: entry.helper_kind.clone(),
+                host_system: entry.host_system.clone(),
+                procurement: entry.procurement.clone(),
+                semantics: entry.semantics.clone(),
+            });
+        }
+        rows
+    }
+
+    fn list_genomes_unfiltered(&self) -> Vec<String> {
         let mut names: Vec<String> = self.entries.keys().cloned().collect();
         names.sort_unstable();
         names
@@ -855,6 +1076,11 @@ impl GenomeCatalog {
     /// from one.
     pub fn catalog_path(&self) -> Option<&Path> {
         self.catalog_path.as_deref()
+    }
+
+    /// Human-facing origin label for this catalog source.
+    pub fn catalog_origin_label(&self) -> &str {
+        &self.catalog_origin_label
     }
 
     /// Return whether the backing catalog file appears writable in place.
@@ -869,6 +1095,104 @@ impl GenomeCatalog {
         self.entries
             .values()
             .any(|entry| ensembl_template_metadata(entry).is_some())
+    }
+
+    fn entry_matches_filter(
+        &self,
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+        filter: Option<&str>,
+    ) -> bool {
+        let Some(filter) = filter.map(str::trim).filter(|value| !value.is_empty()) else {
+            return true;
+        };
+        let needle = Self::normalize_genome_lookup_token(filter);
+        if needle.is_empty() {
+            return true;
+        }
+        self.entry_search_terms(genome_id, entry)
+            .into_iter()
+            .map(|value| Self::normalize_genome_lookup_token(&value))
+            .any(|value| value.contains(&needle))
+    }
+
+    fn entry_aliases(&self, entry: &GenomeCatalogEntry) -> Vec<String> {
+        let mut aliases = entry.aliases.clone();
+        for value in [
+            entry.ncbi_assembly_name.as_ref(),
+            entry.ncbi_assembly_accession.as_ref(),
+            entry.genbank_accession.as_ref(),
+        ] {
+            if let Some(value) = value {
+                aliases.push(value.clone());
+            }
+        }
+        aliases.sort_unstable();
+        aliases.dedup();
+        aliases
+    }
+
+    fn entry_search_terms(&self, genome_id: &str, entry: &GenomeCatalogEntry) -> Vec<String> {
+        let mut values: Vec<String> = vec![genome_id.to_string()];
+        if let Some(description) = entry.description.as_ref() {
+            values.push(description.clone());
+        }
+        if let Some(summary) = entry.summary.as_ref() {
+            values.push(summary.clone());
+        }
+        values.extend(self.entry_aliases(entry));
+        values.extend(entry.tags.clone());
+        values.extend(entry.search_terms.clone());
+        if let Some(species) = entry.species.as_ref() {
+            values.push(species.clone());
+        }
+        if let Some(helper_kind) = entry.helper_kind.as_ref() {
+            values.push(helper_kind.clone());
+        }
+        if let Some(host_system) = entry.host_system.as_ref() {
+            values.push(host_system.clone());
+        }
+        if let Some(procurement) = entry.procurement.as_ref() {
+            for value in [
+                procurement.vendor_name.as_ref(),
+                procurement.catalog_number.as_ref(),
+                procurement.order_url.as_ref(),
+                procurement.reference_url.as_ref(),
+                procurement.notes.as_ref(),
+            ] {
+                if let Some(value) = value {
+                    values.push(value.clone());
+                }
+            }
+        }
+        if let Some(semantics) = entry.semantics.as_ref() {
+            if let Some(schema) = semantics.schema.as_ref() {
+                values.push(schema.clone());
+            }
+            values.extend(semantics.affordances.clone());
+            values.extend(semantics.constraints.clone());
+            for component in &semantics.components {
+                values.push(component.id.clone());
+                values.push(component.kind.clone());
+                if let Some(label) = component.label.as_ref() {
+                    values.push(label.clone());
+                }
+                if let Some(description) = component.description.as_ref() {
+                    values.push(description.clone());
+                }
+                values.extend(component.tags.clone());
+                values.extend(component.attributes.values().cloned());
+            }
+            for relationship in &semantics.relationships {
+                values.push(relationship.subject.clone());
+                values.push(relationship.predicate.clone());
+                values.push(relationship.object.clone());
+                if let Some(note) = relationship.note.as_ref() {
+                    values.push(note.clone());
+                }
+            }
+        }
+        values
     }
 
     /// Remove one prepared install directory from the resolved cache root.
@@ -961,9 +1285,7 @@ impl GenomeCatalog {
         &self,
         fetch_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<EnsemblCatalogUpdatePreview, String> {
-        let catalog_path = self
-            .catalog_path()
-            .ok_or_else(|| "This genome catalog is not backed by a JSON file path".to_string())?;
+        let catalog_path = self.catalog_origin_label().to_string();
         let mut grouped: HashMap<
             String,
             Vec<(String, GenomeCatalogEntry, EnsemblCatalogTemplate)>,
@@ -1089,8 +1411,8 @@ impl GenomeCatalog {
         warnings.sort_unstable();
 
         Ok(EnsemblCatalogUpdatePreview {
-            catalog_path: catalog_path.display().to_string(),
-            writable_catalog: catalog_path_is_writable(catalog_path),
+            catalog_path,
+            writable_catalog: self.catalog_file_is_writable(),
             collection_latest_releases,
             updates,
             unchanged_entries,
@@ -2875,7 +3197,18 @@ FASTA index='{}'.{}{}",
     }
 
     fn normalize_genome_lookup_token(raw: &str) -> String {
-        raw.trim().to_ascii_lowercase()
+        let mut normalized = String::with_capacity(raw.len());
+        let mut previous_was_separator = false;
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() || ch == '.' {
+                normalized.push(ch.to_ascii_lowercase());
+                previous_was_separator = false;
+            } else if !previous_was_separator && !normalized.is_empty() {
+                normalized.push(' ');
+                previous_was_separator = true;
+            }
+        }
+        normalized.trim().to_string()
     }
 
     fn infer_assembly_family_token(raw: &str) -> Option<String> {
@@ -3099,24 +3432,11 @@ FASTA index='{}'.{}{}",
         let mut matches: Vec<String> = vec![];
         for (key, entry) in &self.entries {
             let key_match = Self::normalize_genome_lookup_token(key) == needle;
-            let alias_match = entry
-                .ncbi_assembly_name
-                .as_deref()
-                .map(Self::normalize_genome_lookup_token)
-                .map(|value| value == needle)
-                .unwrap_or(false)
-                || entry
-                    .ncbi_assembly_accession
-                    .as_deref()
-                    .map(Self::normalize_genome_lookup_token)
-                    .map(|value| value == needle)
-                    .unwrap_or(false)
-                || entry
-                    .genbank_accession
-                    .as_deref()
-                    .map(Self::normalize_genome_lookup_token)
-                    .map(|value| value == needle)
-                    .unwrap_or(false);
+            let alias_match = self
+                .entry_aliases(entry)
+                .into_iter()
+                .map(|value| Self::normalize_genome_lookup_token(&value))
+                .any(|value| value == needle);
             if key_match || alias_match {
                 matches.push(key.clone());
             }
@@ -3164,7 +3484,7 @@ FASTA index='{}'.{}{}",
             .map(str::trim)
             .filter(|raw| !raw.is_empty());
         if let Some(raw) = cache_dir_override {
-            return self.resolve_local_path(raw);
+            return self.resolve_local_path(entry, raw);
         }
 
         let entry_cache_dir = entry
@@ -3179,9 +3499,11 @@ FASTA index='{}'.{}{}",
         };
 
         configured_default
-            .map(|raw| self.resolve_local_path(&raw))
-            .or_else(|| entry_cache_dir.map(|raw| self.resolve_local_path(raw)))
-            .unwrap_or_else(|| self.resolve_local_path(&configured_reference_genome_cache_dir()))
+            .map(|raw| self.resolve_local_path(entry, &raw))
+            .or_else(|| entry_cache_dir.map(|raw| self.resolve_local_path(entry, raw)))
+            .unwrap_or_else(|| {
+                self.resolve_local_path(entry, &configured_reference_genome_cache_dir())
+            })
     }
 
     /// Report the effective prepared-cache root that will be used for one
@@ -3221,7 +3543,7 @@ FASTA index='{}'.{}{}",
     ) -> Result<SourceResolution, String> {
         let mut missing_local_path: Option<PathBuf> = None;
         if let Some(local_raw) = local {
-            let local_path = self.resolve_local_path(local_raw);
+            let local_path = self.resolve_local_path(entry, local_raw);
             if local_path.exists() {
                 return Ok(SourceResolution {
                     source: canonical_or_display(&local_path),
@@ -3259,7 +3581,7 @@ FASTA index='{}'.{}{}",
         ))
     }
 
-    fn resolve_local_path(&self, raw: &str) -> PathBuf {
+    fn resolve_local_path(&self, entry: &GenomeCatalogEntry, raw: &str) -> PathBuf {
         if let Some(stripped) = raw.strip_prefix("file://") {
             return PathBuf::from(stripped);
         }
@@ -3267,7 +3589,11 @@ FASTA index='{}'.{}{}",
         if p.is_absolute() {
             p.to_path_buf()
         } else {
-            self.catalog_base_dir.join(p)
+            entry
+                .source_base_dir
+                .as_ref()
+                .unwrap_or(&self.catalog_base_dir)
+                .join(p)
         }
     }
 
@@ -9610,6 +9936,7 @@ mod tests {
             entries,
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
         };
         let source = catalog
             .resolve_source(
@@ -9641,6 +9968,7 @@ mod tests {
             entries,
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
         };
 
         assert!(catalog.source_plan("GRCh38.p14", None).is_ok());
@@ -9672,10 +10000,189 @@ mod tests {
             entries,
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
         };
 
         let err = catalog.source_plan("GRCh38.p14", None).unwrap_err();
         assert!(err.contains("matches multiple catalog entries"));
+    }
+
+    #[test]
+    fn test_entry_resolves_custom_aliases() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "pGEX_like_vector".to_string(),
+            GenomeCatalogEntry {
+                aliases: vec!["pGEX GST Factor Xa".to_string()],
+                sequence_remote: Some("https://example.invalid/pgex.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/pgex.gb.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
+        };
+
+        assert!(catalog.source_plan("pGEX GST Factor Xa", None).is_ok());
+    }
+
+    #[test]
+    fn test_list_entries_filter_matches_semantic_helper_metadata() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "pGEX_like_vector".to_string(),
+            GenomeCatalogEntry {
+                summary: Some(
+                    "E. coli GST fusion vector with Factor Xa cleavage and in-frame MCS"
+                        .to_string(),
+                ),
+                aliases: vec!["pGEX".to_string(), "GST fusion vector".to_string()],
+                tags: vec!["expression".to_string(), "purification".to_string()],
+                search_terms: vec!["factor xa".to_string(), "mcs".to_string()],
+                species: Some("synthetic construct".to_string()),
+                helper_kind: Some("plasmid_vector".to_string()),
+                host_system: Some("Escherichia coli".to_string()),
+                procurement: Some(CatalogProcurementInfo {
+                    vendor_name: Some("lab_local".to_string()),
+                    catalog_number: Some("PGEX-001".to_string()),
+                    order_url: Some("https://example.invalid/order/pgex".to_string()),
+                    reference_url: None,
+                    notes: Some("Curated in-house backbone".to_string()),
+                }),
+                semantics: Some(HelperConstructSemantics {
+                    schema: Some("gentle.helper_semantics.v1".to_string()),
+                    affordances: vec![
+                        "bacterial_expression".to_string(),
+                        "affinity_purification".to_string(),
+                        "protease_tag_removal".to_string(),
+                    ],
+                    constraints: vec!["reading_frame_must_be_preserved".to_string()],
+                    components: vec![
+                        HelperConstructComponent {
+                            id: "gst_tag".to_string(),
+                            kind: "fusion_tag".to_string(),
+                            label: Some("GST".to_string()),
+                            description: Some("Glutathione affinity tag".to_string()),
+                            tags: vec!["purification".to_string()],
+                            attributes: HashMap::from([(
+                                "position".to_string(),
+                                "n_terminal".to_string(),
+                            )]),
+                        },
+                        HelperConstructComponent {
+                            id: "factor_xa_site".to_string(),
+                            kind: "protease_site".to_string(),
+                            label: Some("Factor Xa".to_string()),
+                            description: Some("Protease cleavage site".to_string()),
+                            tags: vec!["cleavage".to_string()],
+                            attributes: HashMap::new(),
+                        },
+                    ],
+                    relationships: vec![HelperConstructRelationship {
+                        subject: "gst_tag".to_string(),
+                        predicate: "upstream_of".to_string(),
+                        object: "factor_xa_site".to_string(),
+                        note: Some("Tag removal before MCS".to_string()),
+                    }],
+                }),
+                sequence_remote: Some("https://example.invalid/pgex.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/pgex.gb.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
+        };
+
+        assert_eq!(catalog.list_entries(Some("pGEX")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("factor xa")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("affinity purification")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("Escherichia coli")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("PGEX-001")).len(), 1);
+        assert!(catalog.list_entries(Some("yeast secretion")).is_empty());
+    }
+
+    #[test]
+    fn test_directory_catalog_loads_multiple_json_fragments() {
+        let td = tempdir().unwrap();
+        let catalog_dir = td.path().join("catalog.d");
+        fs::create_dir_all(&catalog_dir).unwrap();
+        fs::write(
+            catalog_dir.join("01-human.json"),
+            r#"{
+  "Human GRCh38 Ensembl 116": {
+    "sequence_remote": "https://example.invalid/grch38.fa.gz",
+    "annotations_remote": "https://example.invalid/grch38.gtf.gz",
+    "species": "Homo sapiens",
+    "tags": ["human", "reference"]
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            catalog_dir.join("02-helper.json"),
+            r#"{
+  "pGEX_like_vector": {
+    "sequence_remote": "https://example.invalid/pgex.fa.gz",
+    "annotations_remote": "https://example.invalid/pgex.gb.gz",
+    "helper_kind": "plasmid_vector",
+    "search_terms": ["gst", "factor xa"]
+  }
+}"#,
+        )
+        .unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_dir.to_string_lossy()).unwrap();
+        assert_eq!(
+            catalog.list_genomes(),
+            vec![
+                "Human GRCh38 Ensembl 116".to_string(),
+                "pGEX_like_vector".to_string()
+            ]
+        );
+        assert_eq!(catalog.catalog_path(), None);
+        assert_eq!(
+            catalog.catalog_origin_label(),
+            catalog_dir.to_string_lossy()
+        );
+        assert_eq!(catalog.list_entries(Some("factor xa")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("homo sapiens")).len(), 1);
+    }
+
+    #[test]
+    fn test_directory_catalog_rejects_duplicate_entry_ids() {
+        let td = tempdir().unwrap();
+        let catalog_dir = td.path().join("catalog.d");
+        fs::create_dir_all(&catalog_dir).unwrap();
+        fs::write(
+            catalog_dir.join("01-a.json"),
+            r#"{
+  "DuplicateVector": {
+    "sequence_remote": "https://example.invalid/a.fa.gz",
+    "annotations_remote": "https://example.invalid/a.gb.gz"
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            catalog_dir.join("02-b.json"),
+            r#"{
+  "DuplicateVector": {
+    "sequence_remote": "https://example.invalid/b.fa.gz",
+    "annotations_remote": "https://example.invalid/b.gb.gz"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let err = GenomeCatalog::from_json_file(&catalog_dir.to_string_lossy()).unwrap_err();
+        assert!(err.contains("Duplicate genome/helper entry 'DuplicateVector'"));
     }
 
     #[test]

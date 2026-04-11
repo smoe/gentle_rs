@@ -909,6 +909,7 @@ pub enum ShellCommand {
     ReferenceList {
         helper_mode: bool,
         catalog_path: Option<String>,
+        filter: Option<String>,
     },
     ReferenceValidateCatalog {
         helper_mode: bool,
@@ -5274,12 +5275,22 @@ impl ShellCommand {
             Self::ReferenceList {
                 helper_mode,
                 catalog_path,
+                filter,
             } => {
                 let label = if *helper_mode { "helpers" } else { "genomes" };
                 let catalog = catalog_path
                     .clone()
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
-                format!("list {label} from catalog '{catalog}'")
+                format!(
+                    "list {label} from catalog '{}'{}",
+                    catalog,
+                    filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" (filter='{value}')"))
+                        .unwrap_or_default()
+                )
             }
             Self::ReferenceValidateCatalog {
                 helper_mode,
@@ -8509,12 +8520,16 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
     match tokens[1].as_str() {
         "list" => {
             let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--catalog" => {
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--filter" => {
+                        filter = Some(parse_option_path(tokens, &mut idx, "--filter", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} list"));
@@ -8524,6 +8539,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             Ok(ShellCommand::ReferenceList {
                 helper_mode,
                 catalog_path,
+                filter,
             })
         }
         "validate-catalog" => {
@@ -14446,17 +14462,25 @@ fn execute_reference_and_track_command(
         ShellCommand::ReferenceList {
             helper_mode,
             catalog_path,
+            filter,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
-            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
-                .map_err(|e| e.to_string())?;
+            let entries =
+                GentleEngine::list_reference_catalog_entries(resolved_catalog, filter.as_deref())
+                    .map_err(|e| e.to_string())?;
+            let genomes = entries
+                .iter()
+                .map(|entry| entry.genome_id.clone())
+                .collect::<Vec<_>>();
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "catalog_path": effective_catalog,
+                    "filter": filter,
                     "genome_count": genomes.len(),
                     "genomes": genomes,
+                    "entries": entries,
                 }),
             })
         }

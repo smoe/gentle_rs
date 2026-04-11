@@ -912,6 +912,23 @@ Current draft operations:
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 
+Catalog-backed reference/helper discovery notes:
+
+- shared shell/CLI discovery commands `genomes list` and `helpers list` accept
+  optional `--catalog PATH` and `--filter TEXT`
+- `PATH` may point to either one JSON catalog file or a directory of top-level
+  `*.json` fragments; directory fragments are merged deterministically by sorted
+  filename and duplicate entry ids fail fast
+- list results now include both the stable entry id array and richer `entries`
+  metadata rows so frontends, agents, and ClawBio integrations can search and
+  display the same catalog facts without re-encoding them
+- helper/reference catalog entries may now carry typed discovery metadata such
+  as `summary`, `aliases`, `tags`, `search_terms`, `species`, `helper_kind`,
+  `host_system`, `procurement`, and optional structured `semantics`
+- that metadata is intended to stay compatible with the emerging
+  reasoning/constraint engine and with later ontology-backed helper/vector
+  descriptions rather than forcing a future rewrite of catalog records
+
 Sequencing-trace evidence notes:
 
 - raw traces are stored separately from `SequencingConfirmationReport`

@@ -9706,6 +9706,24 @@ fn parse_genomes_validate_catalog() {
 }
 
 #[test]
+fn parse_helpers_list_with_filter() {
+    let cmd = parse_shell_line("helpers list --catalog assets/helper_genomes.json --filter gst")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::ReferenceList {
+            helper_mode,
+            catalog_path,
+            filter,
+        } => {
+            assert!(helper_mode);
+            assert_eq!(catalog_path, Some("assets/helper_genomes.json".to_string()));
+            assert_eq!(filter, Some("gst".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_update_ensembl_specs() {
     let cmd = parse_shell_line(
         "genomes update-ensembl-specs --catalog assets/genomes.json --output-catalog exports/genomes.updated.json",
@@ -9902,6 +9920,53 @@ fn execute_genomes_preview_ensembl_specs_with_no_templates_reports_no_updates() 
     assert_eq!(
         out.output["preview"]["writable_catalog"].as_bool(),
         Some(true)
+    );
+}
+
+#[test]
+fn execute_helpers_list_filters_semantic_metadata() {
+    let td = tempdir().expect("tempdir");
+    let catalog = td.path().join("helpers.json");
+    fs::write(
+        &catalog,
+        r#"{
+  "pGEX_like_vector": {
+    "sequence_remote": "https://example.invalid/pgex.fa.gz",
+    "annotations_remote": "https://example.invalid/pgex.gb.gz",
+    "summary": "GST fusion vector with Factor Xa cleavage site",
+    "aliases": ["pGEX"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "search_terms": ["factor xa", "affinity purification"],
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["bacterial_expression", "protease_tag_removal"]
+    }
+  },
+  "neutral_backbone": {
+    "sequence_remote": "https://example.invalid/neutral.fa.gz",
+    "annotations_remote": "https://example.invalid/neutral.gb.gz",
+    "summary": "Simple backbone"
+  }
+}"#,
+    )
+    .expect("write catalog");
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceList {
+            helper_mode: true,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            filter: Some("factor xa".to_string()),
+        },
+    )
+    .expect("execute helpers list");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["genome_count"].as_u64(), Some(1));
+    assert_eq!(out.output["genomes"][0].as_str(), Some("pGEX_like_vector"));
+    assert_eq!(
+        out.output["entries"][0]["helper_kind"].as_str(),
+        Some("plasmid_vector")
     );
 }
 

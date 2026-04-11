@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-09
+Last updated: 2026-04-11
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1047,6 +1047,21 @@ Sequence-linked construct reasoning graph direction:
   - execution semantics remain deterministic.
 - The reasoning graph must remain portable across GUI/CLI/JS/Lua/MCP/ClawBio
   and usable offline from project metadata/run-bundle artifacts.
+- Catalog-backed reference/helper knowledge must remain compatible with this
+  reasoning direction:
+  - source/install metadata ("where do I fetch or prepare this asset from?")
+    must stay separate from semantic helper/construct metadata ("what does this
+    vector/host/helper offer, require, or constrain?")
+  - helper/vector semantics should normalize into engine-owned portable records
+    (affordances, constraints, functional components, and typed relationships)
+    rather than living only in adapter prompts or free-text notes
+  - the emerging reasoning/constraint engine should consume those normalized
+    records so catalog-backed helper knowledge, planner suggestions, and future
+    ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing
+    separate frontend-local interpretations
+  - richer ontology-backed vocabularies are expected later, but the first
+    catalog-semantic layer should already preserve enough typed structure that
+    future ontology mapping is additive rather than a rewrite
 
 Decision-trace capture/export contract (detailed plan):
 

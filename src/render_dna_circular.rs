@@ -820,9 +820,7 @@ impl RenderDnaCircular {
             ConstructRole::Gene => Color32::from_rgb(37, 99, 235),
             ConstructRole::Transcript => Color32::from_rgb(8, 145, 178),
             ConstructRole::Exon => Color32::from_rgb(34, 197, 94),
-            ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => {
-                Color32::from_rgb(16, 185, 129)
-            }
+            ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => Color32::from_rgb(16, 185, 129),
             ConstructRole::Cds => Color32::from_rgb(79, 70, 229),
             ConstructRole::Terminator => Color32::from_rgb(220, 38, 38),
             ConstructRole::SignalPeptide | ConstructRole::LocalizationSignal => {
@@ -866,7 +864,10 @@ impl RenderDnaCircular {
             EvidenceClass::ContextEvidence => 0.9,
             EvidenceClass::SoftHypothesis => 0.8,
         };
-        Stroke::new(width, Self::construct_reasoning_role_color(role).gamma_multiply(0.75))
+        Stroke::new(
+            width,
+            Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
+        )
     }
 
     fn construct_reasoning_overlay_bands(&self) -> Vec<ConstructReasoningOverlayBand> {
@@ -920,7 +921,9 @@ impl RenderDnaCircular {
         seeds.sort_by(|left, right| {
             let left_span = left.2.saturating_sub(left.1);
             let right_span = right.2.saturating_sub(right.1);
-            right_span.cmp(&left_span).then_with(|| left.1.cmp(&right.1))
+            right_span
+                .cmp(&left_span)
+                .then_with(|| left.1.cmp(&right.1))
         });
 
         for (span, start, end) in seeds {

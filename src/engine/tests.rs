@@ -4917,12 +4917,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         "expected imported UniProt feature rows to be preserved"
     );
     assert!(
-        result
-            .messages
-            .iter()
-            .any(|message| {
-                message.contains("Imported UniProt protein sequence 'TOY_USE' as 'TOY_USE'")
-            }),
+        result.messages.iter().any(|message| {
+            message.contains("Imported UniProt protein sequence 'TOY_USE' as 'TOY_USE'")
+        }),
         "unexpected messages: {:?}",
         result.messages
     );
@@ -21282,12 +21279,7 @@ fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evi
     let original = engine
         .build_construct_reasoning_graph("refresh_demo", None, None)
         .expect("build graph");
-    assert!(
-        !original
-            .evidence
-            .iter()
-            .any(|row| row.label == "SP1")
-    );
+    assert!(!original.evidence.iter().any(|row| row.label == "SP1"));
 
     {
         let sequence = engine

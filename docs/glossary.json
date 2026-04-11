@@ -939,8 +939,8 @@
             "cli-direct"
          ],
          "path": "genomes list",
-         "summary": "List reference genomes from catalog.",
-         "usage": "genomes list [--catalog PATH]"
+         "summary": "List/search reference catalog entries.",
+         "usage": "genomes list [--catalog PATH] [--filter TEXT]"
       },
       {
          "aliases": [],
@@ -1178,8 +1178,8 @@
             "cli-direct"
          ],
          "path": "helpers list",
-         "summary": "List helper genomes from catalog.",
-         "usage": "helpers list [--catalog PATH]"
+         "summary": "List/search helper catalog entries.",
+         "usage": "helpers list [--catalog PATH] [--filter TEXT]"
       },
       {
          "aliases": [],

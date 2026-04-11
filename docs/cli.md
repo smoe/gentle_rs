@@ -51,10 +51,23 @@ Structured workflow examples:
   - `online` examples run only with `GENTLE_TEST_ONLINE=1`
   - set `GENTLE_SKIP_REMOTE_TESTS=1` to force-skip all remote-resource tests
     (takes precedence over `GENTLE_TEST_ONLINE`)
-  - `skip` examples are syntax-checked only
+- `skip` examples are syntax-checked only
 
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.
+
+Catalog path note:
+
+- `--catalog PATH` accepts either one JSON file or one directory of `*.json`
+  catalog fragments.
+- Directory fragments are merged in sorted filename order; duplicate entry ids
+  currently fail fast instead of silently overriding each other.
+- `genomes list` and `helpers list` now also accept `--filter TEXT` and search
+  ids plus catalog metadata such as aliases, tags, search terms, and the new
+  helper semantic/procurement fields.
+- Helper catalogs may now carry richer metadata (`summary`, `aliases`, `tags`,
+  `search_terms`, `helper_kind`, `host_system`, `procurement`, `semantics`)
+  while still using the same preparation/indexing pipeline as before.
 
 ## ClawBio/OpenClaw skill scaffold
 

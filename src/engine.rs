@@ -32,11 +32,11 @@ use crate::{
         BlastExternalBinaryPreflightReport, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, EnsemblCatalogUpdatePreview,
         EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
-        GenomeCatalogEntryRemovalReport, GenomeGeneRecord, GenomeSourcePlan,
-        GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
-        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
-        PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
+        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
+        PrepareGenomeReport, PreparedCacheCleanupReport, PreparedCacheCleanupRequest,
+        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
+        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, inspect_prepared_cache_roots, is_prepare_cancelled_error,
         validate_genbank_accession,
@@ -4793,6 +4793,14 @@ impl GentleEngine {
         Ok(catalog.list_genomes())
     }
 
+    pub fn list_reference_catalog_entries(
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        Ok(catalog.list_entries(filter))
+    }
+
     pub fn describe_reference_genome_sources(
         catalog_path: Option<&str>,
         genome_id: &str,
@@ -4905,6 +4913,17 @@ impl GentleEngine {
             .filter(|v| !v.is_empty())
             .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
         Self::list_reference_genomes(Some(chosen))
+    }
+
+    pub fn list_helper_catalog_entries(
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::list_reference_catalog_entries(Some(chosen), filter)
     }
 
     pub fn describe_helper_genome_sources(
@@ -9363,14 +9382,17 @@ impl GentleEngine {
                 message: "seq_id cannot be empty".to_string(),
             });
         }
-        Self::select_construct_reasoning_graph_for_seq_id(&self.read_construct_reasoning_store(), target)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!(
-                    "No construct reasoning graph stored for sequence '{}'",
-                    target
-                ),
-            })
+        Self::select_construct_reasoning_graph_for_seq_id(
+            &self.read_construct_reasoning_store(),
+            target,
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "No construct reasoning graph stored for sequence '{}'",
+                target
+            ),
+        })
     }
 
     pub fn refresh_construct_reasoning_graph_for_seq_id(

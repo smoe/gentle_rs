@@ -7,8 +7,7 @@ use crate::{
     },
     dna_sequence::DNAsequence,
     engine::{
-        ConstructRole, EvidenceClass, LinearSequenceLetterLayoutMode,
-        RestrictionEnzymeDisplayMode,
+        ConstructRole, EvidenceClass, LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
     },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
@@ -556,11 +555,16 @@ impl RenderDnaLinear {
             ConstructRole::SpliceBoundary => Color32::from_rgb(202, 138, 4),
             ConstructRole::Tfbs => Color32::from_rgb(190, 24, 93),
             ConstructRole::Linker | ConstructRole::Tag => Color32::from_rgb(20, 184, 166),
-            ConstructRole::ContextBaggage | ConstructRole::Other => Color32::from_rgb(100, 116, 139),
+            ConstructRole::ContextBaggage | ConstructRole::Other => {
+                Color32::from_rgb(100, 116, 139)
+            }
         }
     }
 
-    fn construct_reasoning_overlay_fill(role: ConstructRole, evidence_class: EvidenceClass) -> Color32 {
+    fn construct_reasoning_overlay_fill(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+    ) -> Color32 {
         let base = Self::construct_reasoning_role_color(role);
         let alpha = match evidence_class {
             EvidenceClass::HardFact => 180,
@@ -582,7 +586,10 @@ impl RenderDnaLinear {
             EvidenceClass::ContextEvidence => 0.9,
             EvidenceClass::SoftHypothesis => 0.8,
         };
-        Stroke::new(width, Self::construct_reasoning_role_color(role).gamma_multiply(0.75))
+        Stroke::new(
+            width,
+            Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
+        )
     }
 
     fn construct_reasoning_overlay_min_width_px(bp_per_px: f32) -> f32 {
@@ -628,7 +635,12 @@ impl RenderDnaLinear {
         if !show_overlay {
             return vec![];
         }
-        let Some(ConstructReasoningOverlay { seq_id: _, evidence, .. }) = overlay else {
+        let Some(ConstructReasoningOverlay {
+            seq_id: _,
+            evidence,
+            ..
+        }) = overlay
+        else {
             return vec![];
         };
         let mut top_lanes: Vec<f32> = vec![];
@@ -642,12 +654,17 @@ impl RenderDnaLinear {
                 continue;
             }
             let end = span.end_0based_exclusive.min(self.sequence_length);
-            let Some((draw_start, draw_end)) =
-                Self::range_overlap(span.start_0based.min(end), end, viewport.start, viewport.end)
-            else {
+            let Some((draw_start, draw_end)) = Self::range_overlap(
+                span.start_0based.min(end),
+                end,
+                viewport.start,
+                viewport.end,
+            ) else {
                 continue;
             };
-            let x1 = self.bp_to_x(draw_start, viewport).clamp(self.area.left(), self.area.right());
+            let x1 = self
+                .bp_to_x(draw_start, viewport)
+                .clamp(self.area.left(), self.area.right());
             let x2 = self
                 .bp_to_x(draw_end, viewport)
                 .clamp(self.area.left(), self.area.right())
@@ -2370,11 +2387,7 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_construct_reasoning_overlay(
-        &self,
-        painter: &egui::Painter,
-        viewport: LinearViewport,
-    ) {
+    fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let show_labels = self.bp_per_px(viewport) <= CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX;
         for overlay in self.construct_reasoning_overlay_positions(viewport) {
             painter.rect_filled(overlay.rect, 2.5, overlay.fill);
