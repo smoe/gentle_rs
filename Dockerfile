@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     perl \
     pkg-config \
     rust-all \
+    && apt-cache clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/gentle
@@ -109,6 +110,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     primer3 \
     python3 \
     python3-pybigwig \
+    && apt-cache clean \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 gentle \
@@ -185,6 +187,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
     xdg-utils \
     xvfb \
+    && apt-cache clean \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/gentle-dist-gui/ /opt/gentle/
