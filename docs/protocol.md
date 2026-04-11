@@ -1593,6 +1593,9 @@ ClawBio/OpenClaw integration scaffold schemas:
 
 - integration path:
   `integrations/clawbio/skills/gentle-cloning/`
+- included helper launchers:
+  - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
+  - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
   - `mode`: `capabilities|state-summary|shell|op|workflow|raw`
   - optional: `state_path`, `timeout_secs`
@@ -1611,6 +1614,12 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `reproducibility/commands.sh`
   - `reproducibility/environment.yml`
   - `reproducibility/checksums.sha256`
+- included bootstrap example requests:
+  - `request_genomes_list_human.json`
+  - `request_genomes_status_grch38.json`
+  - `request_genomes_prepare_grch38.json`
+  - `request_helpers_status_puc19.json`
+  - `request_helpers_prepare_puc19.json`
 
 Planned operation refinements:
 

@@ -1310,10 +1310,25 @@ order. Durable architecture constraints and decisions remain in
     `gentle.clawbio_skill_result.v1`
   - outputs include reproducibility bundle artifacts (`commands.sh`,
     `environment.yml`, checksums)
+  - the copied scaffold now also includes a
+    `gentle_local_checkout_cli.sh` launcher so a fresh ClawBio/BioClaw machine
+    can point `GENTLE_CLI_CMD` at a local editable GENtle checkout without
+    hand-writing a wrapper script
+  - that launcher now defaults:
+    - `CARGO_TARGET_DIR=$GENTLE_REPO_ROOT/target`
+    - `GENTLE_REFERENCE_CACHE_DIR=$GENTLE_REPO_ROOT/data/genomes`
+    - `GENTLE_HELPER_CACHE_DIR=$GENTLE_REPO_ROOT/data/helper_genomes`
+    so first-run remote preparation can stay inside the local GENtle checkout
+    rather than depending on Codex's shared worktree target layout
   - the copied scaffold now also includes an
     `gentle_apptainer_cli.sh` launcher so ClawBio/OpenClaw on Linux can point
     `GENTLE_CLI_CMD` at an Apptainer/Singularity-backed `gentle_cli` route
     without changing the wrapper protocol
+  - the example request pack now also includes first-run bootstrap routes for:
+    - reference discovery/status/prepare (`Human GRCh38 Ensembl 116`)
+    - helper status/prepare (`Plasmid pUC19 (online)`)
+    so new remote installs can start from "prepare what you need locally"
+    instead of only from `capabilities`
   - container publishing now splits into:
     - `ghcr.io/...:cli` for headless CLI/MCP/Apptainer use
     - `ghcr.io/...:gui` for explicit browser-served GUI use
@@ -1681,14 +1696,11 @@ Notes:
      - likely ontology dimensions include vector/helper kind, host system,
        purification tags, protease sites, cloning windows, selectable markers,
        origins, promoters, reporters, and ordering/procurement metadata
-   - ClawBio/agent-facing workflows still need first-class request examples for
-     `genomes/helpers status|prepare` so first-run remote use naturally starts
-     from "prepare the reference/helper locally" rather than only from
-     `capabilities`
-   - near-term practical priority after the discovery-chain slice:
-     make the ClawBio/BioClaw first-run bootstrap path smooth enough that a
-     fresh remote checkout can prepare genomes/helpers without hand-editing
-     catalog assumptions
+   - ClawBio/BioClaw bootstrap is now materially smoother:
+     the scaffold includes a local-checkout launcher plus first-run
+     `genomes/helpers status|prepare` request examples, but upstream ClawBio
+     distributions still need to carry the current runtime skill registration
+     so older installs do not stop at `Unknown skill 'gentle-cloning'`
 2. Cloning routine standardization is incomplete:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
@@ -1920,10 +1932,11 @@ Planned work:
 3. Add engine-owned normalized helper-interpretation records so GUI/CLI/MCP/
    ClawBio/planner routes all consume one portable meaning layer instead of
    reparsing catalog prose.
-4. Add first-run ClawBio/agent examples for `genomes/helpers status|prepare`
-   and common helper/reference preparation workflows.
-   - This is the next practical integration target after the discovery-chain
-     slice so remote ClawBio/BioClaw installs can become self-bootstrapping.
+4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
+   common inspect/extract/BLAST and planning workflows.
+   - Bootstrap is now in place (`genomes/helpers status|prepare` plus the
+     local-checkout launcher); the next step is expanding the example library
+     once fresh remote installs no longer need hand-crafted setup steps.
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:
