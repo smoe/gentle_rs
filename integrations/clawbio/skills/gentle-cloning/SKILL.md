@@ -86,7 +86,7 @@ trail.
 | Referenced GENtle state file | `.json` | `state_path` inside the request when stateful inspection or mutation is required | `.gentle_state.json` |
 | Referenced GENtle workflow file | `.json` | `workflow_path` inside the request when replaying a saved workflow | `examples/request_workflow_file.json` |
 | Embedded operation payload | JSON object | `operation` when `mode=op` | `{"ExtractRegion": {...}}` |
-| Embedded shell command | string | `shell_line` when `mode=shell` | `"primers list-reports"` |
+| Embedded shell command | string | `shell_line` when `mode=shell` | `"genomes prepare \"Human GRCh38 Ensembl 116\" --timeout-secs 7200"` |
 
 ## Workflow
 
@@ -96,8 +96,9 @@ task:
 1. **Validate**: parse the request JSON, confirm the schema is
    `gentle.clawbio_skill_request.v1`, and verify the mode-specific fields.
 2. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
-   (recommended for Docker or Apptainer/Singularity-backed execution), then
-   `gentle_cli` on `PATH`, then repository-local
+   (recommended for the included local-checkout launcher or Docker /
+   Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
+   repository-local
    `cargo run --quiet --bin gentle_cli --` fallback.
 3. **Canonicalize the request**: convert the request into one deterministic CLI
    argument vector.
@@ -115,7 +116,29 @@ task:
 ## CLI Reference
 
 ```bash
-# Recommended: run the wrapper against the published Docker image
+# Recommended first-time route: use a local GENtle checkout through the
+# included launcher, which keeps builds and prepared caches inside that repo.
+export GENTLE_REPO_ROOT=/home/clawbio/GENtle
+export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_checkout_cli.sh
+
+python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_list_human.json \
+  --output /tmp/gentle_clawbio_list_human
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_status_grch38.json \
+  --output /tmp/gentle_clawbio_status_grch38
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json \
+  --output /tmp/gentle_clawbio_prepare_grch38
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json \
+  --output /tmp/gentle_clawbio_prepare_puc19
+```
+
+Container-backed alternative:
+
+```bash
 export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
 
 python skills/gentle-cloning/gentle_cloning.py \
@@ -154,6 +177,15 @@ python clawbio.py run gentle-cloning \
 ## Demo
 
 To verify the skill works:
+
+```bash
+export GENTLE_REPO_ROOT=/home/clawbio/GENtle
+export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_checkout_cli.sh
+
+python clawbio.py run gentle-cloning --demo
+```
+
+or with the published `:cli` image:
 
 ```bash
 export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/gentle_rs:cli'
@@ -216,6 +248,12 @@ Apply the following methodology:
 - Resolver order: explicit `--gentle-cli`, then Docker/OCI-friendly
   `GENTLE_CLI_CMD`, then `gentle_cli` on `PATH`, then local `cargo run`
   fallback.
+- Included first-run bootstrap requests:
+  - `examples/request_genomes_list_human.json`
+  - `examples/request_genomes_status_grch38.json`
+  - `examples/request_genomes_prepare_grch38.json`
+  - `examples/request_helpers_status_puc19.json`
+  - `examples/request_helpers_prepare_puc19.json`
 
 ## Example Queries
 
@@ -253,6 +291,8 @@ paths or state.
 
 - Python 3.10+ - runs the ClawBio wrapper.
 - Recommended runtimes:
+  - local GENtle checkout via the included `gentle_local_checkout_cli.sh`
+    launcher, typically with `GENTLE_REPO_ROOT=/absolute/path/to/GENtle`
   - Docker with the published image
     `ghcr.io/smoe/gentle_rs:cli`, exposed through `GENTLE_CLI_CMD`
   - Apptainer/Singularity with a pulled `.sif` built from the same OCI image,

@@ -86,6 +86,8 @@ GENtle ships a copy-ready ClawBio skill scaffold at:
 - `integrations/clawbio/skills/gentle-cloning/`
 - ready-to-paste catalog object:
   `integrations/clawbio/skills/gentle-cloning/catalog_entry.json`
+- included local-checkout launcher:
+  `integrations/clawbio/skills/gentle-cloning/gentle_local_checkout_cli.sh`
 - included Apptainer/Singularity helper launcher:
   `integrations/clawbio/skills/gentle-cloning/gentle_apptainer_cli.sh`
 
@@ -95,7 +97,31 @@ Purpose:
 - keep reproducibility artifacts (`report.md`, `result.json`,
   `reproducibility/*`) for each run.
 
-Quick usage (inside the scaffold directory):
+Recommended first-time route for ClawBio/BioClaw users:
+
+```bash
+export GENTLE_REPO_ROOT=/home/clawbio/GENtle
+export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_checkout_cli.sh
+
+cd /home/clawbio/ClawBio
+python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
+```
+
+`gentle_local_checkout_cli.sh` defaults these paths when unset:
+
+- `CARGO_TARGET_DIR=$GENTLE_REPO_ROOT/target`
+- `GENTLE_REFERENCE_CACHE_DIR=$GENTLE_REPO_ROOT/data/genomes`
+- `GENTLE_HELPER_CACHE_DIR=$GENTLE_REPO_ROOT/data/helper_genomes`
+
+That keeps both builds and prepared caches inside the local GENtle checkout, so
+first-run ClawBio preparation does not depend on the shared worktree target
+layout used by Codex development checkouts.
+
+Quick scaffold usage (inside the scaffold directory):
 
 ```bash
 python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
@@ -122,6 +148,14 @@ Typical Apptainer route for ClawBio/OpenClaw:
 apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
 export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
 ```
+
+Included first-run bootstrap request examples:
+
+- `request_genomes_list_human.json`
+- `request_genomes_status_grch38.json`
+- `request_genomes_prepare_grch38.json`
+- `request_helpers_status_puc19.json`
+- `request_helpers_prepare_puc19.json`
 
 ## Python module wrapper (`gentle_py`)
 
