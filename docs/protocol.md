@@ -2530,6 +2530,11 @@ Construct reasoning graph foundation (implemented first slice):
     - propagation-host context
     - expression-host context
     - host-transition status
+    - host-route restriction/methylation review from:
+      - explicit route-step trait text such as `hsdR- M+`, `dam+`, `dcm+`,
+        `hsdR+`, or `MDRS+`
+      - deterministic sequence motif tallies for Dam, Dcm, and EcoK-like
+        target sites
     - growth/condition context from structured medium-condition interpretation
       (for example nutrient omission, antibiotic selection agent, heat shock,
       and temperature signals)
@@ -2550,8 +2555,8 @@ Construct reasoning graph foundation (implemented first slice):
     graph and paints evidence spans directly on-sequence
   - GUI-side hover/selection inspection for one evidence span at a time
   - side-panel construct-reasoning inspector section for non-sequence facts and
-    decision steps (host/helper/medium/growth/selection context) without
-    pretending they are coordinate spans
+    decision steps (host/helper/host-route restriction-methylation/medium/
+    growth/selection context) without pretending they are coordinate spans
   - GUI-only role/class visibility filters layered on top of the same shared
     engine-owned graph payload (no adapter-local graph recomputation)
   - ClawBio/OpenClaw-facing run-bundle export integration:

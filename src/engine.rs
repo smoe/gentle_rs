@@ -143,6 +143,32 @@ struct ConstructSelectionRuleMatch {
     helper_component_attribute_matches: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructSequenceRestrictionMethylationPatterns {
+    dam_site_count: usize,
+    dcm_site_count: usize,
+    eco_k_target_site_count: usize,
+    present_pattern_tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructHostRestrictionMethylationStep {
+    step_id: String,
+    host_profile_id: String,
+    role: String,
+    trait_tokens: Vec<String>,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructRestrictionMethylationConflict {
+    conflict_id: String,
+    label: String,
+    upstream_step_id: String,
+    downstream_step_id: String,
+    rationale: String,
+}
+
 pub use crate::feature_expert::{
     FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
@@ -10236,6 +10262,214 @@ impl GentleEngine {
         })
     }
 
+    fn construct_reasoning_count_pattern_with_n(sequence: &[u8], pattern: &[u8]) -> usize {
+        if pattern.is_empty() || sequence.len() < pattern.len() {
+            return 0;
+        }
+        let mut count = 0usize;
+        for start in 0..=sequence.len().saturating_sub(pattern.len()) {
+            let matched = pattern.iter().enumerate().all(|(offset, expected)| {
+                let observed = sequence[start + offset].to_ascii_uppercase();
+                *expected == b'N' || observed == expected.to_ascii_uppercase()
+            });
+            if matched {
+                count = count.saturating_add(1);
+            }
+        }
+        count
+    }
+
+    fn construct_reasoning_scan_sequence_restriction_methylation_patterns(
+        dna: &DNAsequence,
+    ) -> ConstructSequenceRestrictionMethylationPatterns {
+        let sequence = dna.forward_bytes();
+        let mut dam_mode = crate::methylation_sites::MethylationMode::default();
+        dam_mode.set_dam(true);
+        let dam_site_count = crate::methylation_sites::MethylationSites::new_from_sequence(
+            sequence,
+            dam_mode,
+        )
+        .sites()
+        .len();
+        let mut dcm_mode = crate::methylation_sites::MethylationMode::default();
+        dcm_mode.set_dcm(true);
+        let dcm_site_count = crate::methylation_sites::MethylationSites::new_from_sequence(
+            sequence,
+            dcm_mode,
+        )
+        .sites()
+        .len();
+        let eco_k_target_site_count =
+            Self::construct_reasoning_count_pattern_with_n(sequence, b"AACNNNNNNGTGC")
+                .saturating_add(Self::construct_reasoning_count_pattern_with_n(
+                    sequence,
+                    b"GCACNNNNNNGTT",
+                ));
+        let mut present_pattern_tokens = vec![];
+        if dam_site_count > 0 {
+            present_pattern_tokens.push("dam_site".to_string());
+        }
+        if dcm_site_count > 0 {
+            present_pattern_tokens.push("dcm_site".to_string());
+        }
+        if eco_k_target_site_count > 0 {
+            present_pattern_tokens.push("eco_k_target_like_site".to_string());
+        }
+        ConstructSequenceRestrictionMethylationPatterns {
+            dam_site_count,
+            dcm_site_count,
+            eco_k_target_site_count,
+            present_pattern_tokens,
+        }
+    }
+
+    fn construct_reasoning_host_text_mentions_positive(text: &str, token: &str) -> bool {
+        let compact = text
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        compact.contains(&format!("{token}+"))
+            || compact.contains(&format!("{token}plus"))
+            || compact.contains(&format!("{token}positive"))
+    }
+
+    fn construct_reasoning_host_text_mentions_negative(text: &str, token: &str) -> bool {
+        let compact = text
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        compact.contains(&format!("{token}-"))
+            || compact.contains(&format!("{token}minus"))
+            || compact.contains(&format!("{token}negative"))
+    }
+
+    fn construct_reasoning_collect_host_route_trait_tokens(
+        step: &HostRouteStep,
+    ) -> Vec<String> {
+        let text = std::iter::once(step.host_profile_id.as_str())
+            .chain(std::iter::once(step.rationale.as_str()))
+            .chain(step.notes.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let compact = text
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let mut tokens = BTreeSet::new();
+        for token in ["hsdr", "hsdm", "hsds", "dam", "dcm", "mdrs", "mcr", "mcra", "mcrbc", "mrr"]
+        {
+            if Self::construct_reasoning_host_text_mentions_positive(&text, token) {
+                tokens.insert(format!("{token}_present"));
+            }
+            if Self::construct_reasoning_host_text_mentions_negative(&text, token) {
+                tokens.insert(format!("{token}_absent"));
+            }
+        }
+        if compact.contains("hsdr-") || compact.contains("hsdrminus") {
+            if compact.contains("m+") || compact.contains("mplus") {
+                tokens.insert("hsdm_present".to_string());
+            }
+            if compact.contains("m-") || compact.contains("mminus") {
+                tokens.insert("hsdm_absent".to_string());
+            }
+        }
+        tokens.into_iter().collect()
+    }
+
+    fn construct_reasoning_build_host_route_restriction_methylation_steps(
+        objective: &ConstructObjective,
+    ) -> Vec<ConstructHostRestrictionMethylationStep> {
+        objective
+            .host_route
+            .iter()
+            .map(|step| ConstructHostRestrictionMethylationStep {
+                step_id: step.step_id.clone(),
+                host_profile_id: step.host_profile_id.clone(),
+                role: step.role.as_str().to_string(),
+                trait_tokens: Self::construct_reasoning_collect_host_route_trait_tokens(step),
+                notes: step.notes.clone(),
+            })
+            .collect()
+    }
+
+    fn construct_reasoning_route_step_has_any_trait(
+        step: &ConstructHostRestrictionMethylationStep,
+        tokens: &[&str],
+    ) -> bool {
+        tokens.iter().any(|token| {
+            step.trait_tokens
+                .iter()
+                .any(|value| value == token)
+        })
+    }
+
+    fn construct_reasoning_detect_route_restriction_methylation_conflicts(
+        steps: &[ConstructHostRestrictionMethylationStep],
+        patterns: &ConstructSequenceRestrictionMethylationPatterns,
+    ) -> Vec<ConstructRestrictionMethylationConflict> {
+        let mut conflicts = vec![];
+        for window in steps.windows(2) {
+            let [upstream, downstream] = match window {
+                [upstream, downstream] => [upstream, downstream],
+                _ => continue,
+            };
+            let upstream_has_hsd_methylase =
+                Self::construct_reasoning_route_step_has_any_trait(upstream, &["hsdm_present"]);
+            let upstream_has_dam_dcm =
+                Self::construct_reasoning_route_step_has_any_trait(
+                    upstream,
+                    &["dam_present", "dcm_present"],
+                );
+            let downstream_has_hsd_restriction =
+                Self::construct_reasoning_route_step_has_any_trait(downstream, &["hsdr_present"]);
+            let downstream_has_methylated_dna_restriction = Self::construct_reasoning_route_step_has_any_trait(
+                downstream,
+                &["mdrs_present", "mcr_present", "mcra_present", "mcrbc_present", "mrr_present"],
+            );
+
+            if upstream_has_hsd_methylase
+                && downstream_has_hsd_restriction
+                && patterns.eco_k_target_site_count > 0
+            {
+                conflicts.push(ConstructRestrictionMethylationConflict {
+                    conflict_id: "ecoki_hsdr_transition".to_string(),
+                    label: "HsdR/HsdM host transition review".to_string(),
+                    upstream_step_id: upstream.step_id.clone(),
+                    downstream_step_id: downstream.step_id.clone(),
+                    rationale: format!(
+                        "Upstream step '{}' carries HsdM-like methylase context while downstream step '{}' carries HsdR-like restriction context, and the sequence contains {} EcoK target-like site(s). Direct transfer across that route should stay inspectable.",
+                        upstream.step_id,
+                        downstream.step_id,
+                        patterns.eco_k_target_site_count
+                    ),
+                });
+            }
+
+            if upstream_has_dam_dcm
+                && downstream_has_methylated_dna_restriction
+                && (patterns.dam_site_count > 0 || patterns.dcm_site_count > 0)
+            {
+                conflicts.push(ConstructRestrictionMethylationConflict {
+                    conflict_id: "dam_dcm_methylated_dna_transition".to_string(),
+                    label: "Dam/Dcm methylation-dependent restriction review".to_string(),
+                    upstream_step_id: upstream.step_id.clone(),
+                    downstream_step_id: downstream.step_id.clone(),
+                    rationale: format!(
+                        "Upstream step '{}' carries Dam/Dcm-like methylation context while downstream step '{}' carries methylation-dependent restriction context, and the sequence contains {} Dam site(s) plus {} Dcm site(s).",
+                        upstream.step_id,
+                        downstream.step_id,
+                        patterns.dam_site_count,
+                        patterns.dcm_site_count
+                    ),
+                });
+            }
+        }
+        conflicts
+    }
+
     fn construct_reasoning_evidence_ids_matching<F>(
         evidence: &[DesignEvidence],
         mut predicate: F,
@@ -10554,6 +10788,85 @@ impl GentleEngine {
                 json!({
                     "status": transition_status,
                     "host_route_step_count": objective.host_route.len(),
+                }),
+            ));
+        }
+
+        let host_route_restriction_steps =
+            Self::construct_reasoning_build_host_route_restriction_methylation_steps(objective);
+        let sequence_restriction_methylation_patterns =
+            Self::construct_reasoning_scan_sequence_restriction_methylation_patterns(dna);
+        let route_restriction_methylation_conflicts =
+            Self::construct_reasoning_detect_route_restriction_methylation_conflicts(
+                &host_route_restriction_steps,
+                &sequence_restriction_methylation_patterns,
+            );
+        if !host_route_restriction_steps.is_empty()
+            || !sequence_restriction_methylation_patterns
+                .present_pattern_tokens
+                .is_empty()
+        {
+            let route_status = if !route_restriction_methylation_conflicts.is_empty() {
+                "review_needed"
+            } else if !host_route_restriction_steps.is_empty() {
+                "context_recorded"
+            } else {
+                "sequence_patterns_only"
+            };
+            let route_label = match route_status {
+                "review_needed" => "Restriction/methylation transfer route requires review",
+                "context_recorded" => "Restriction/methylation transfer context recorded",
+                _ => "Sequence restriction/methylation patterns recorded",
+            }
+            .to_string();
+            let route_rationale = if !route_restriction_methylation_conflicts.is_empty() {
+                route_restriction_methylation_conflicts
+                    .iter()
+                    .map(|conflict| conflict.rationale.clone())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            } else if !host_route_restriction_steps.is_empty() {
+                format!(
+                    "Construct objective records host-route restriction/methylation traits, and the current deterministic engine also summarizes Dam/Dcm plus EcoK target-like sequence motifs (Dam={}, Dcm={}, EcoK-like={}).",
+                    sequence_restriction_methylation_patterns.dam_site_count,
+                    sequence_restriction_methylation_patterns.dcm_site_count,
+                    sequence_restriction_methylation_patterns.eco_k_target_site_count
+                )
+            } else {
+                format!(
+                    "Sequence scan records methylation-sensitive motifs for downstream host-route review (Dam={}, Dcm={}, EcoK-like={}).",
+                    sequence_restriction_methylation_patterns.dam_site_count,
+                    sequence_restriction_methylation_patterns.dcm_site_count,
+                    sequence_restriction_methylation_patterns.eco_k_target_site_count
+                )
+            };
+            let mut route_evidence_ids = host_route_evidence_ids.clone();
+            route_evidence_ids.extend(host_constraint_evidence_ids.clone());
+            route_evidence_ids.sort();
+            route_evidence_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_host_restriction_methylation_context",
+                "host_restriction_methylation_context",
+                route_label,
+                route_rationale.clone(),
+                route_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": route_status,
+                    "route_step_signals": host_route_restriction_steps,
+                    "sequence_pattern_counts": sequence_restriction_methylation_patterns,
+                    "detected_conflicts": route_restriction_methylation_conflicts,
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_methylation_restriction_risk",
+                "evaluate_methylation_restriction_risk",
+                "Evaluate Restriction/Methylation Transfer Risk".to_string(),
+                route_rationale,
+                route_evidence_ids,
+                vec!["fact_host_restriction_methylation_context".to_string()],
+                json!({
+                    "status": route_status,
                 }),
             ));
         }
@@ -10918,7 +11231,7 @@ impl GentleEngine {
             facts,
             decisions,
             notes: vec![
-                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, interpreted growth-condition signals, and first hard-rule host/helper/selection summary decisions."
+                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, interpreted growth-condition signals, host-route restriction/methylation review, and first hard-rule host/helper/selection summary decisions."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

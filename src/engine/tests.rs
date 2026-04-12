@@ -21822,6 +21822,110 @@ fn build_construct_reasoning_graph_interprets_growth_condition_signals() {
 }
 
 #[test]
+fn build_construct_reasoning_graph_derives_host_restriction_methylation_route_risk() {
+    let dna = DNAsequence::from_sequence("AACAAAAAAGTGCGATCCCTGG").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("route_risk_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Route risk reasoning".to_string(),
+            goal: "Keep restriction and methylation route risks inspectable".to_string(),
+            host_route: vec![
+                HostRouteStep {
+                    step_id: "clone_step".to_string(),
+                    host_profile_id: "ecoli_clone".to_string(),
+                    role: HostLifecycleRole::Propagation,
+                    rationale: "Use hsdR- M+ cloning host".to_string(),
+                    notes: vec!["dam+ dcm+ preserves methylation context".to_string()],
+                },
+                HostRouteStep {
+                    step_id: "screen_step".to_string(),
+                    host_profile_id: "ecoli_screen".to_string(),
+                    role: HostLifecycleRole::Intermediate,
+                    rationale: "Move into hsdR+ MDRS+ strain".to_string(),
+                    notes: vec![],
+                },
+            ],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph("route_risk_demo", Some(&objective.objective_id), None)
+        .expect("build graph");
+
+    let route_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "host_restriction_methylation_context")
+        .expect("route restriction/methylation fact");
+    assert_eq!(
+        route_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("review_needed")
+    );
+    assert_eq!(
+        route_fact
+            .value_json
+            .get("sequence_pattern_counts")
+            .and_then(|value| value.get("dam_site_count"))
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        route_fact
+            .value_json
+            .get("sequence_pattern_counts")
+            .and_then(|value| value.get("dcm_site_count"))
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        route_fact
+            .value_json
+            .get("sequence_pattern_counts")
+            .and_then(|value| value.get("eco_k_target_site_count"))
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    assert!(
+        route_fact
+            .value_json
+            .get("detected_conflicts")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("conflict_id").and_then(serde_json::Value::as_str)
+                    == Some("ecoki_hsdr_transition")
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        route_fact
+            .value_json
+            .get("detected_conflicts")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("conflict_id").and_then(serde_json::Value::as_str)
+                    == Some("dam_dcm_methylated_dna_transition")
+            }))
+            .unwrap_or(false)
+    );
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "evaluate_methylation_restriction_risk"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_host_restriction_methylation_context")
+    }));
+}
+
+#[test]
 fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evidence() {
     let mut dna = DNAsequence::from_sequence("GAATTCATGGCCATGAAATTTCCCGGG").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

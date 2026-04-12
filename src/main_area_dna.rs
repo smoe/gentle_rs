@@ -14152,6 +14152,74 @@ impl MainAreaDna {
                     detail_lines.push(format!("components: {}", helper_components.join(", ")));
                 }
             }
+            "host_restriction_methylation_context" => {
+                if let Some(patterns) = fact.value_json.get("sequence_pattern_counts") {
+                    let dam_count = patterns
+                        .get("dam_site_count")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let dcm_count = patterns
+                        .get("dcm_site_count")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let eco_k_count = patterns
+                        .get("eco_k_target_site_count")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    detail_lines.push(format!(
+                        "sequence_patterns: dam={dam_count}, dcm={dcm_count}, eco_k_like={eco_k_count}"
+                    ));
+                }
+                let route_steps = fact
+                    .value_json
+                    .get("route_step_signals")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let step_id =
+                                    row.get("step_id").and_then(serde_json::Value::as_str)?;
+                                let traits = row
+                                    .get("trait_tokens")
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|values| {
+                                        values
+                                            .iter()
+                                            .filter_map(serde_json::Value::as_str)
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default();
+                                Some(if traits.is_empty() {
+                                    step_id.to_string()
+                                } else {
+                                    format!("{step_id}: {}", traits.join(", "))
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !route_steps.is_empty() {
+                    detail_lines.push(format!("route_steps: {}", route_steps.join(" | ")));
+                }
+                let conflicts = fact
+                    .value_json
+                    .get("detected_conflicts")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                row.get("label")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(|value| value.to_string())
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !conflicts.is_empty() {
+                    detail_lines.push(format!("conflicts: {}", conflicts.join(", ")));
+                    warning_lines.extend(conflicts);
+                }
+            }
             "selection_context" => {
                 let candidates =
                     Self::construct_reasoning_json_string_list(&fact.value_json, "selection_candidates");

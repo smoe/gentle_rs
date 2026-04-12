@@ -3816,6 +3816,13 @@ Post-baseline follow-ups:
     side-panel description area now shows non-sequence construct reasoning as a
     dedicated inspector section with collapsible fact and decision entries,
     while the DNA overlay remains sequence-only.
+  - Done (2026-04-12, host-route restriction/methylation slice): graph builds
+    now derive a dedicated host-route restriction/methylation fact and
+    decision, using explicit route-step trait text (`hsdR- M+`, `dam+`,
+    `dcm+`, `hsdR+`, `MDRS+`) together with deterministic sequence motif
+    tallies for Dam, Dcm, and EcoK-like sites. The resulting review signal now
+    flows automatically into both the GUI inspector and ClawBio/OpenClaw run
+    bundles.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.
     - ClawBio/OpenClaw is the main agent-facing surface for reasoning output,
@@ -3825,7 +3832,6 @@ Post-baseline follow-ups:
       reasoning track.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
-    - host-route and methylation/restriction compatibility decisions
     - host/helper profile catalogs with inspectable source notes
     - broaden complementation/selection reasoning beyond the current
       small built-in rule seed set

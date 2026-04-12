@@ -1438,6 +1438,9 @@ Controls:
      `Construct reasoning` section for non-sequence facts and decision steps
      (for example host/helper/growth/selection context) so those records stay
      inspectable without being faked as coordinate spans.
+   - That inspector now also surfaces host-route restriction/methylation review
+     when route notes encode traits such as `hsdR- M+`, `dam+`, `dcm+`,
+     `hsdR+`, or `MDRS+`.
    - The adjacent `Why` menu filters visible reasoning spans by role and
      evidence class without changing the underlying engine graph.
 10. Ctx mRNA (shown in `cDNA` mode)
