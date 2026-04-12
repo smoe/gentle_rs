@@ -1939,6 +1939,8 @@ pub struct PlanningObjective {
     pub max_cost: Option<f64>,
     pub max_time_hours: Option<f64>,
     pub required_capabilities: Vec<String>,
+    pub helper_profile_id: Option<String>,
+    pub preferred_routine_families: Vec<String>,
     pub enforce_guardrails: bool,
 }
 

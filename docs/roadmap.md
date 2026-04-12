@@ -1992,9 +1992,14 @@ Planned work:
      helper list/status surfaces, and JS/Lua/MCP/GUI/planner now consume them
      directly; richer function derivation and more proactive planner use are
      still pending.
-   - next planner-facing step: inject helper interpretation facts into routine
-     scoring/objective synthesis instead of limiting that knowledge to
-     browser/inspection surfaces
+   - planning baseline now also accepts helper-aware `planning objective`
+     fields (`helper_profile_id`, `preferred_routine_families`) and uses one
+     shared synthesized `routine_preference_context` for:
+     - routine ranking (`routines list`, `routines compare`)
+     - construct-reasoning `routine_planning_context` facts/decisions
+   - next planner-facing step: let routine-decision traces / macro suggestion
+     layers proactively consume that synthesized context instead of only
+     exposing it in estimates and construct-reasoning facts
 4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
    - Bootstrap plus first follow-on examples are now in place; keep expanding

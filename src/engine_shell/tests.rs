@@ -5177,6 +5177,95 @@ fn execute_routines_list_applies_missing_material_penalty_default_business_days(
 }
 
 #[test]
+fn execute_routines_list_prefers_helper_compatible_routine_family() {
+    let mut engine = GentleEngine::default();
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("routines_helper_preference.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "gibson.demo_overlap",
+      "title": "Gibson Demo Overlap",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": ["gibson", "assembly"],
+      "template_name": "gibson_demo_overlap",
+      "base_time_hours": 4.0,
+      "base_cost": 2.0,
+      "input_ports": [{ "port_id": "left_seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    },
+    {
+      "routine_id": "restriction.demo_subcloning",
+      "title": "Restriction Demo Subcloning",
+      "family": "restriction",
+      "status": "implemented",
+      "vocabulary_tags": ["restriction", "ligation"],
+      "template_name": "restriction_demo_subcloning",
+      "base_time_hours": 4.0,
+      "base_cost": 2.0,
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    }
+  ]
+}"#,
+    )
+    .expect("write planning catalog");
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningObjectiveSet {
+            payload_json: r#"{
+              "schema":"gentle.planning_objective.v1",
+              "helper_profile_id":"pUC19"
+            }"#
+            .to_string(),
+        },
+    )
+    .expect("set planning objective");
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RoutinesList {
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            family: None,
+            status: None,
+            tag: None,
+            query: None,
+        },
+    )
+    .expect("list routines");
+    let rows = out.output["routines"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0]["routine_id"].as_str(),
+        Some("restriction.demo_subcloning"),
+        "helper-derived pUC19 preferences should boost restriction-family routines"
+    );
+    assert_eq!(
+        rows[0]["planning_estimate"]["explanation"]["routine_family_alignment_bonus"].as_f64(),
+        Some(0.12)
+    );
+    assert!(
+        rows[0]["planning_estimate"]["explanation"]["routine_preference_context"]
+            ["helper_derived_preferred_routine_families"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("restriction")))
+            .unwrap_or(false)
+    );
+    assert_eq!(
+        rows[1]["planning_estimate"]["explanation"]["routine_family_alignment_bonus"].as_f64(),
+        Some(0.0)
+    );
+}
+
+#[test]
 fn execute_planning_suggestion_lifecycle_pending_accept_reject() {
     let mut engine = GentleEngine::default();
 

@@ -1492,6 +1492,11 @@ Adapter-equivalence guarantee for UI-intent tools:
   - clear selected planning profile scope
 - `planning objective show`
   - inspect current planning objective
+  - objective may now also carry:
+    - optional `helper_profile_id`
+    - optional `preferred_routine_families[]`
+  - when present, routine-ranking routes synthesize helper-aware
+    `routine_preference_context` and apply a transparent family-alignment bonus
 - `planning objective set JSON_OR_@FILE`
   - set/replace planning objective
 - `planning objective clear`

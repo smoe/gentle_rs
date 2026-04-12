@@ -2326,6 +2326,8 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - Clears one profile scope.
 - `planning objective show`
   - Shows current objective weights/guardrails.
+  - Objective payloads may also include optional `helper_profile_id` and
+    `preferred_routine_families[]` fields for helper-aware routine ranking.
 - `planning objective set JSON_OR_@FILE`
   - Sets/replaces current planning objective.
 - `planning objective clear`
@@ -2356,6 +2358,10 @@ Planning estimate rule (v1 purchasing simplification):
 - Business-day model in v1: Monday-Friday only (no holiday calendar).
 - Business-day delays are converted to `estimated_time_hours` with a
   deterministic weekend-aware factor (`24h * 7/5` per business day).
+- When helper/routine preferences are present in the planning objective,
+  `routines list` and `routines compare` emit a synthesized
+  `routine_preference_context` and a transparent
+  `routine_family_alignment_bonus` inside each planning estimate explanation.
 
 Shipped starter assets:
 

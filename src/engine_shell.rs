@@ -48,9 +48,9 @@ use crate::{
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor, SequenceFeatureQualifierFilter,
-        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-        SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
+        RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
+        SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
@@ -2594,12 +2594,42 @@ fn planning_business_days_to_elapsed_hours(days: f64) -> f64 {
     days * 24.0 * (7.0 / 5.0)
 }
 
+fn routine_family_alignment_bonus(
+    routine: &CloningRoutineDefinition,
+    preference_context: &RoutinePreferenceContext,
+) -> (f64, Vec<String>) {
+    let family = normalize_planning_class_key(routine.family.as_str());
+    if family.is_empty() {
+        return (0.0, vec![]);
+    }
+    let mut sources = vec![];
+    let mut bonus = 0.0;
+    if preference_context
+        .explicit_preferred_routine_families
+        .iter()
+        .any(|value| value == &family)
+    {
+        bonus += 0.20;
+        sources.push("explicit_objective".to_string());
+    }
+    if preference_context
+        .helper_derived_preferred_routine_families
+        .iter()
+        .any(|value| value == &family)
+    {
+        bonus += 0.12;
+        sources.push("helper_derived".to_string());
+    }
+    (bonus, sources)
+}
+
 fn estimate_routine_planning(
     engine: &GentleEngine,
+    objective: &PlanningObjective,
     routine: &CloningRoutineDefinition,
+    routine_preference_context: &RoutinePreferenceContext,
 ) -> PlanningEstimate {
     let profile = engine.planning_effective_profile();
-    let objective = engine.planning_objective();
     let material_classes = infer_routine_material_classes(routine);
     let machine_classes = infer_routine_machine_classes(routine);
     let required_capabilities = infer_routine_capabilities(routine, &machine_classes);
@@ -2703,7 +2733,10 @@ fn estimate_routine_planning(
         }
     }
     let passes_guardrails = guardrail_failures.is_empty();
+    let (routine_family_alignment_bonus, routine_family_alignment_sources) =
+        routine_family_alignment_bonus(routine, routine_preference_context);
     let composite_meta_score = (objective.weight_local_fit * local_fit_score)
+        + routine_family_alignment_bonus
         - (objective.weight_time * estimated_time_hours)
         - (objective.weight_cost * estimated_cost);
 
@@ -2729,6 +2762,9 @@ fn estimate_routine_planning(
             "unknown_material_classes": unknown_materials,
             "missing_machine_classes": missing_machines,
             "missing_capabilities": missing_capabilities,
+            "routine_preference_context": routine_preference_context,
+            "routine_family_alignment_bonus": routine_family_alignment_bonus,
+            "routine_family_alignment_sources": routine_family_alignment_sources,
             "weights": {
                 "time": objective.weight_time,
                 "cost": objective.weight_cost,
@@ -15722,10 +15758,17 @@ fn execute_routines_command(
             let planning_enabled = engine.planning_meta_enabled();
             let planning_objective = engine.planning_objective();
             let planning_profile = engine.planning_effective_profile();
+            let routine_preference_context =
+                GentleEngine::planning_objective_routine_preference_context(&planning_objective);
             let mut planning_rows = routines
                 .drain(..)
                 .map(|routine| {
-                    let estimate = estimate_routine_planning(engine, &routine);
+                    let estimate = estimate_routine_planning(
+                        engine,
+                        &planning_objective,
+                        &routine,
+                        &routine_preference_context,
+                    );
                     let mut payload = serde_json::to_value(&routine).unwrap_or_else(|_| json!({}));
                     if let Some(obj) = payload.as_object_mut() {
                         obj.insert(
@@ -15830,6 +15873,7 @@ fn execute_routines_command(
                         ],
                         "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
                         "objective": planning_objective,
+                        "routine_preference_context": routine_preference_context,
                         "guardrail_blocked_count": guardrail_blocked_count,
                         "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
                     },
@@ -16093,8 +16137,20 @@ fn execute_routines_command(
             let planning_enabled = engine.planning_meta_enabled();
             let planning_objective = engine.planning_objective();
             let planning_profile = engine.planning_effective_profile();
-            let left_estimate = estimate_routine_planning(engine, &left);
-            let right_estimate = estimate_routine_planning(engine, &right);
+            let routine_preference_context =
+                GentleEngine::planning_objective_routine_preference_context(&planning_objective);
+            let left_estimate = estimate_routine_planning(
+                engine,
+                &planning_objective,
+                &left,
+                &routine_preference_context,
+            );
+            let right_estimate = estimate_routine_planning(
+                engine,
+                &planning_objective,
+                &right,
+                &routine_preference_context,
+            );
             axis_rows.push(json!({
                 "axis": "estimated_time_hours",
                 "left": format!("{:.2}", left_estimate.estimated_time_hours),
@@ -16149,6 +16205,7 @@ fn execute_routines_command(
                         "enabled": planning_enabled,
                         "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
                         "objective": planning_objective,
+                        "routine_preference_context": routine_preference_context,
                         "left_estimate": left_estimate.clone(),
                         "right_estimate": right_estimate.clone(),
                         "preferred_routine_id": preferred_routine_id,

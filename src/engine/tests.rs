@@ -21349,6 +21349,29 @@ fn list_host_profile_catalog_entries_filters_across_tags_and_notes() {
 }
 
 #[test]
+fn set_planning_objective_normalizes_helper_profile_and_preferred_routine_families() {
+    let mut engine = GentleEngine::new();
+    engine
+        .set_planning_objective(Some(PlanningObjective {
+            helper_profile_id: Some(" pUC19 ".to_string()),
+            preferred_routine_families: vec![
+                " Golden Gate ".to_string(),
+                "golden_gate".to_string(),
+                "Gibson".to_string(),
+            ],
+            ..PlanningObjective::default()
+        }))
+        .expect("set planning objective");
+
+    let objective = engine.planning_objective();
+    assert_eq!(objective.helper_profile_id.as_deref(), Some("puc19"));
+    assert_eq!(
+        objective.preferred_routine_families,
+        vec!["gibson".to_string(), "golden_gate".to_string()]
+    );
+}
+
+#[test]
 fn upsert_construct_reasoning_graph_normalizes_host_context_evidence_fields() {
     let mut engine = GentleEngine::new();
     let graph = engine
@@ -21582,7 +21605,7 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
             host_species: Some("Homo sapiens".to_string()),
             propagation_host_profile_id: Some("ecoli_k12".to_string()),
             expression_host_profile_id: Some("cho_k1".to_string()),
-            helper_profile_id: Some("puc19_carrier".to_string()),
+            helper_profile_id: Some("pUC19".to_string()),
             medium_conditions: vec!["proline-free medium".to_string()],
             required_host_traits: vec!["enda".to_string()],
             ..ConstructObjective::default()
@@ -21597,8 +21620,8 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
         )
         .expect("build graph");
 
-    assert_eq!(graph.facts.len(), 6);
-    assert_eq!(graph.decisions.len(), 6);
+    assert_eq!(graph.facts.len(), 7);
+    assert_eq!(graph.decisions.len(), 7);
 
     let propagation = graph
         .facts
@@ -21646,6 +21669,27 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
             .get("mcs_feature_labels")
             .and_then(serde_json::Value::as_array)
             .map(|rows| rows.iter().any(|row| row.as_str() == Some("MCS (pUC19)")))
+            .unwrap_or(false)
+    );
+    let routine_planning = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "routine_planning_context")
+        .expect("routine planning fact");
+    assert_eq!(
+        routine_planning
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("helper_derived")
+    );
+    assert!(
+        routine_planning
+            .value_json
+            .get("context")
+            .and_then(|value| value.get("effective_preferred_routine_families"))
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("restriction")))
             .unwrap_or(false)
     );
     let growth = graph
@@ -21704,6 +21748,13 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
             && row.get("status").and_then(serde_json::Value::as_str) == Some("supported")
     }));
 
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "prioritize_helper_compatible_routines"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_routine_planning_context")
+    }));
     assert!(graph.decisions.iter().any(|node| {
         node.decision_type == "evaluate_host_transition_risk"
             && node

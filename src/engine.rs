@@ -126,6 +126,18 @@ struct ConstructConditionSignal {
     notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Default, PartialEq, Eq)]
+pub(crate) struct RoutinePreferenceContext {
+    pub helper_profile_id: Option<String>,
+    pub helper_resolution_status: String,
+    pub explicit_preferred_routine_families: Vec<String>,
+    pub helper_derived_preferred_routine_families: Vec<String>,
+    pub effective_preferred_routine_families: Vec<String>,
+    pub helper_offered_functions: Vec<String>,
+    pub helper_component_labels: Vec<String>,
+    pub rationale: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 struct ConstructSelectionRuleMatch {
     rule_id: String,
@@ -2041,6 +2053,8 @@ impl Default for PlanningObjective {
             max_cost: None,
             max_time_hours: None,
             required_capabilities: vec![],
+            helper_profile_id: None,
+            preferred_routine_families: vec![],
             enforce_guardrails: true,
         }
     }
@@ -8417,6 +8431,26 @@ impl GentleEngine {
         }
     }
 
+    fn normalize_routine_family_token(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        let mut last_was_separator = false;
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+                last_was_separator = false;
+            } else if !last_was_separator {
+                out.push('_');
+                last_was_separator = true;
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "item".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
     fn validate_planning_profile_schema(profile: &PlanningProfile) -> Result<(), EngineError> {
         let schema = profile.schema.trim();
         if !schema.is_empty() && schema != PLANNING_PROFILE_SCHEMA {
@@ -8544,7 +8578,341 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         required_caps.sort_by_key(|value| value.to_ascii_lowercase());
         objective.required_capabilities = required_caps;
+        objective.helper_profile_id =
+            Self::normalize_optional_id_token_text(objective.helper_profile_id.take());
+        let mut preferred_families = objective
+            .preferred_routine_families
+            .iter()
+            .map(|value| Self::normalize_routine_family_token(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        preferred_families.sort_by_key(|value| value.to_ascii_lowercase());
+        objective.preferred_routine_families = preferred_families;
         objective
+    }
+
+    fn normalize_routine_family_preferences(values: &[String]) -> Vec<String> {
+        let mut families = values
+            .iter()
+            .map(|value| Self::normalize_routine_family_token(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        families.sort_by_key(|value| value.to_ascii_lowercase());
+        families
+    }
+
+    fn helper_construct_routine_preference_haystack(
+        helper_interpretation: &HelperConstructInterpretation,
+    ) -> String {
+        let mut fields = vec![
+            helper_interpretation.helper_id.as_str(),
+            helper_interpretation.description.as_deref().unwrap_or_default(),
+            helper_interpretation.summary.as_deref().unwrap_or_default(),
+        ];
+        for alias in &helper_interpretation.aliases {
+            fields.push(alias.as_str());
+        }
+        for kind in &helper_interpretation.helper_kinds {
+            fields.push(kind.as_str());
+        }
+        for host in &helper_interpretation.host_systems {
+            fields.push(host.as_str());
+        }
+        for function in &helper_interpretation.offered_functions {
+            fields.push(function.as_str());
+        }
+        for component in &helper_interpretation.components {
+            fields.push(component.id.as_str());
+            fields.push(component.kind.as_str());
+            fields.push(component.label.as_deref().unwrap_or_default());
+            fields.push(component.description.as_deref().unwrap_or_default());
+            for tag in &component.tags {
+                fields.push(tag.as_str());
+            }
+            for value in component.attributes.values() {
+                fields.push(value.as_str());
+            }
+        }
+        for relationship in &helper_interpretation.relationships {
+            fields.push(relationship.subject.as_str());
+            fields.push(relationship.predicate.as_str());
+            fields.push(relationship.object.as_str());
+            fields.push(relationship.note.as_deref().unwrap_or_default());
+        }
+        fields.join(" ").to_ascii_lowercase()
+    }
+
+    fn helper_construct_haystack_contains_any(haystack: &str, terms: &[&str]) -> bool {
+        let lower = haystack.to_ascii_lowercase();
+        terms.iter().any(|term| lower.contains(&term.to_ascii_lowercase()))
+    }
+
+    fn helper_construct_derived_routine_preferences(
+        helper_interpretation: &HelperConstructInterpretation,
+    ) -> (Vec<String>, Vec<String>) {
+        let haystack = Self::helper_construct_routine_preference_haystack(helper_interpretation);
+        let offered_functions = helper_interpretation
+            .offered_functions
+            .iter()
+            .map(|value| Self::normalize_planning_class_key(value))
+            .collect::<BTreeSet<_>>();
+        let component_kinds = helper_interpretation
+            .components
+            .iter()
+            .map(|component| Self::normalize_planning_class_key(&component.kind))
+            .collect::<BTreeSet<_>>();
+        let component_tags = helper_interpretation
+            .components
+            .iter()
+            .flat_map(|component| component.tags.iter())
+            .map(|value| Self::normalize_planning_class_key(value))
+            .collect::<BTreeSet<_>>();
+
+        let has_insert_cloning = offered_functions.contains("insert_cloning")
+            || component_kinds.contains("cloning_site")
+            || component_tags.contains("insert_cloning");
+        let has_in_frame_fusion_context = offered_functions.contains("in_frame_fusion_design")
+            || offered_functions.contains("fusion_tagging")
+            || offered_functions.contains("protease_cleavage")
+            || offered_functions.contains("protease_tag_removal");
+
+        let mut families = BTreeSet::new();
+        let mut rationale = BTreeSet::new();
+
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["gateway", "clonase", "attl", "attr", "attb", "attp"],
+        ) {
+            families.insert("gateway".to_string());
+            rationale.insert(
+                "Helper interpretation mentions Gateway-specific cloning tokens, so Gateway routines stay near the top of routine ranking.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["golden gate", "type_iis", "type iis", "type-iis"],
+        ) {
+            families.insert("golden_gate".to_string());
+            rationale.insert(
+                "Helper interpretation mentions Type IIS / Golden Gate grammar, so Golden Gate routines are treated as a compatible fit.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["gibson", "gibson assembly"],
+        ) {
+            families.insert("gibson".to_string());
+            rationale.insert(
+                "Helper interpretation explicitly mentions Gibson-style overlap assembly.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["in-fusion", "infusion"],
+        ) {
+            families.insert("infusion".to_string());
+            rationale.insert(
+                "Helper interpretation explicitly mentions In-Fusion-style overlap assembly.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["nebuilder", "hi-fi assembly", "hifi assembly"],
+        ) {
+            families.insert("nebuilder_hifi".to_string());
+            rationale.insert(
+                "Helper interpretation explicitly mentions NEBuilder HiFi-style overlap assembly.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &["topo cloning", "topo vector"],
+        ) {
+            families.insert("topo".to_string());
+            rationale.insert(
+                "Helper interpretation mentions TOPO-style cloning semantics.".to_string(),
+            );
+        }
+        if Self::helper_construct_haystack_contains_any(
+            &haystack,
+            &[
+                "ta cloning",
+                "t-overhang",
+                "t overhang",
+                "a-overhang",
+                "a overhang",
+            ],
+        ) {
+            families.insert("ta_gc".to_string());
+            rationale.insert(
+                "Helper interpretation mentions TA-style overhang cloning semantics.".to_string(),
+            );
+        }
+        if has_insert_cloning
+            || Self::helper_construct_haystack_contains_any(
+                &haystack,
+                &["multiple cloning site", "mcs", "restriction", "digest", "ligation"],
+            )
+        {
+            families.insert("restriction".to_string());
+            rationale.insert(
+                "Helper interpretation exposes a cloning-site / insert-cloning context, so restriction-family subcloning stays explicitly favored.".to_string(),
+            );
+        }
+        if has_in_frame_fusion_context {
+            families.insert("gibson".to_string());
+            families.insert("infusion".to_string());
+            families.insert("nebuilder_hifi".to_string());
+            rationale.insert(
+                "Helper interpretation exposes in-frame fusion / protease-tag context, so overlap-assembly families are favored for scar-aware CDS insertion planning.".to_string(),
+            );
+        }
+
+        (families.into_iter().collect(), rationale.into_iter().collect())
+    }
+
+    fn build_routine_preference_context(
+        helper_profile_id: Option<&str>,
+        explicit_preferred_routine_families: &[String],
+        helper_interpretation: Option<&HelperConstructInterpretation>,
+        helper_resolution_status: &str,
+        helper_resolution_note: Option<String>,
+    ) -> RoutinePreferenceContext {
+        let explicit_preferred_routine_families =
+            Self::normalize_routine_family_preferences(explicit_preferred_routine_families);
+        let helper_profile_id = helper_profile_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let helper_offered_functions = helper_interpretation
+            .map(|row| row.offered_functions.clone())
+            .unwrap_or_default();
+        let helper_component_labels = helper_interpretation
+            .map(|row| {
+                row.components
+                    .iter()
+                    .map(|component| {
+                        component
+                            .label
+                            .clone()
+                            .unwrap_or_else(|| component.id.clone())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let (helper_derived_preferred_routine_families, mut rationale) = helper_interpretation
+            .map(Self::helper_construct_derived_routine_preferences)
+            .unwrap_or_else(|| (vec![], vec![]));
+        if !explicit_preferred_routine_families.is_empty() {
+            rationale.push(format!(
+                "Objective explicitly prefers routine families: {}.",
+                explicit_preferred_routine_families.join(", ")
+            ));
+        }
+        if let Some(note) = helper_resolution_note {
+            rationale.push(note);
+        }
+        rationale.sort();
+        rationale.dedup();
+        let mut effective_preferred_routine_families = explicit_preferred_routine_families
+            .iter()
+            .chain(helper_derived_preferred_routine_families.iter())
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        effective_preferred_routine_families.sort_by_key(|value| value.to_ascii_lowercase());
+
+        RoutinePreferenceContext {
+            helper_profile_id,
+            helper_resolution_status: helper_resolution_status.to_string(),
+            explicit_preferred_routine_families,
+            helper_derived_preferred_routine_families,
+            effective_preferred_routine_families,
+            helper_offered_functions,
+            helper_component_labels,
+            rationale,
+        }
+    }
+
+    pub(crate) fn planning_objective_routine_preference_context(
+        objective: &PlanningObjective,
+    ) -> RoutinePreferenceContext {
+        let explicit_preferred_routine_families =
+            Self::normalize_routine_family_preferences(&objective.preferred_routine_families);
+        let Some(helper_profile_id) = objective.helper_profile_id.as_deref() else {
+            return Self::build_routine_preference_context(
+                None,
+                &explicit_preferred_routine_families,
+                None,
+                "not_requested",
+                None,
+            );
+        };
+        match Self::interpret_helper_genome(helper_profile_id, None) {
+            Ok(Some(helper_interpretation)) => Self::build_routine_preference_context(
+                Some(helper_profile_id),
+                &explicit_preferred_routine_families,
+                Some(&helper_interpretation),
+                "resolved",
+                None,
+            ),
+            Ok(None) => Self::build_routine_preference_context(
+                Some(helper_profile_id),
+                &explicit_preferred_routine_families,
+                None,
+                "not_found",
+                Some(format!(
+                    "Planning objective selected helper profile '{helper_profile_id}', but no helper interpretation was found in the active helper catalog."
+                )),
+            ),
+            Err(error) => Self::build_routine_preference_context(
+                Some(helper_profile_id),
+                &explicit_preferred_routine_families,
+                None,
+                "error",
+                Some(format!(
+                    "Planning objective could not resolve helper profile '{helper_profile_id}' for routine-preference synthesis: {}.",
+                    error.message
+                )),
+            ),
+        }
+    }
+
+    fn construct_objective_routine_preference_context(
+        objective: &ConstructObjective,
+        helper_interpretation: Option<&HelperConstructInterpretation>,
+    ) -> RoutinePreferenceContext {
+        let explicit_preferred_routine_families =
+            Self::normalize_routine_family_preferences(&objective.preferred_routine_families);
+        let helper_resolution_status = match (
+            objective.helper_profile_id.as_ref(),
+            helper_interpretation.is_some(),
+        ) {
+            (None, _) => "not_requested",
+            (Some(_), true) => "resolved",
+            (Some(_), false) => "not_found",
+        };
+        let helper_resolution_note = match (
+            objective.helper_profile_id.as_ref(),
+            helper_interpretation.is_some(),
+        ) {
+            (Some(helper_profile_id), false) => Some(format!(
+                "Construct objective selected helper profile '{helper_profile_id}', but no helper interpretation was available for routine-preference synthesis."
+            )),
+            _ => None,
+        };
+        Self::build_routine_preference_context(
+            objective.helper_profile_id.as_deref(),
+            &explicit_preferred_routine_families,
+            helper_interpretation,
+            helper_resolution_status,
+            helper_resolution_note,
+        )
     }
 
     fn merge_planning_profile(base: &mut PlanningProfile, overlay: &PlanningProfile) {
@@ -11270,6 +11638,8 @@ impl GentleEngine {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let routine_preference_context =
+            Self::construct_objective_routine_preference_context(objective, helper_interpretation);
         if objective.helper_profile_id.is_some() || !helper_mcs_feature_labels.is_empty() {
             let helper_status = match (
                 objective.helper_profile_id.as_ref(),
@@ -11330,6 +11700,76 @@ impl GentleEngine {
                 vec!["fact_helper_context".to_string()],
                 json!({
                     "status": helper_status,
+                }),
+            ));
+        }
+
+        if objective.helper_profile_id.is_some()
+            || !objective.preferred_routine_families.is_empty()
+            || !routine_preference_context
+                .helper_derived_preferred_routine_families
+                .is_empty()
+        {
+            let planning_status = match (
+                routine_preference_context
+                    .explicit_preferred_routine_families
+                    .is_empty(),
+                routine_preference_context
+                    .helper_derived_preferred_routine_families
+                    .is_empty(),
+                routine_preference_context.helper_resolution_status.as_str(),
+            ) {
+                (false, false, _) => "explicit_and_helper_derived",
+                (false, true, _) => "explicit_only",
+                (true, false, _) => "helper_derived",
+                (true, true, "error") => "helper_resolution_error",
+                (true, true, "not_found") => "helper_not_found",
+                _ => "unspecified",
+            };
+            let planning_label = match planning_status {
+                "explicit_and_helper_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "explicit_only" => "Routine planning preferences recorded".to_string(),
+                "helper_derived" => "Routine planning preferences derived from helper profile"
+                    .to_string(),
+                "helper_resolution_error" => {
+                    "Helper-derived routine planning context could not be resolved".to_string()
+                }
+                "helper_not_found" => {
+                    "Helper-derived routine planning context missing from catalog".to_string()
+                }
+                _ => "Routine planning context unspecified".to_string(),
+            };
+            let planning_rationale = if !routine_preference_context.rationale.is_empty() {
+                routine_preference_context.rationale.join(" ")
+            } else {
+                "Current deterministic construct reasoning did not synthesize any routine-family preferences from the recorded objective context."
+                    .to_string()
+            };
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_routine_planning_context",
+                "routine_planning_context",
+                planning_label,
+                planning_rationale.clone(),
+                helper_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": planning_status,
+                    "context": routine_preference_context,
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_prioritize_helper_compatible_routines",
+                "prioritize_helper_compatible_routines",
+                "Prioritize Helper-Compatible Routines".to_string(),
+                planning_rationale,
+                helper_evidence_ids.clone(),
+                vec!["fact_routine_planning_context".to_string()],
+                json!({
+                    "status": planning_status,
+                    "effective_preferred_routine_families": routine_preference_context
+                        .effective_preferred_routine_families,
                 }),
             ));
         }
