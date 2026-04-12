@@ -1,5 +1,5 @@
 {
-   "command_count": 287,
+   "command_count": 298,
    "commands": [
       {
          "aliases": [
@@ -950,6 +950,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "genomes ensembl-available",
+         "summary": "List Ensembl species directories that currently appear installable.",
+         "usage": "genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "genomes validate-catalog",
          "summary": "Validate reference genome catalog entries.",
          "usage": "genomes validate-catalog [--catalog PATH]"
@@ -1180,6 +1192,30 @@
          "path": "helpers list",
          "summary": "List/search helper catalog entries.",
          "usage": "helpers list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers ensembl-available",
+         "summary": "List current Ensembl candidates under the helper-family command tree.",
+         "usage": "helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "hosts list",
+         "summary": "List/search structured host-profile catalog entries.",
+         "usage": "hosts list [--catalog PATH] [--filter TEXT]"
       },
       {
          "aliases": [],
@@ -3146,6 +3182,26 @@
          "interfaces": [
             "js"
          ],
+         "path": "list_host_profile_catalog_entries",
+         "summary": "List structured host-profile catalog entries, optionally filtered.",
+         "usage": "list_host_profile_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_ensembl_installable_genomes",
+         "summary": "List current Ensembl candidates where both FASTA and GTF listings are present.",
+         "usage": "list_ensembl_installable_genomes([collection], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
          "path": "list_rna_ladders",
          "summary": "Alias for inspect_rna_ladders.",
          "usage": "list_rna_ladders([name_filter])"
@@ -3523,6 +3579,26 @@
          "path": "list_helper_catalog_entries",
          "summary": "List structured helper catalog entries, including optional interpretation metadata.",
          "usage": "list_helper_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_host_profile_catalog_entries",
+         "summary": "List structured host-profile catalog entries, optionally filtered.",
+         "usage": "list_host_profile_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_ensembl_installable_genomes",
+         "summary": "List current Ensembl candidates where both FASTA and GTF listings are present.",
+         "usage": "list_ensembl_installable_genomes([collection], [filter])"
       },
       {
          "aliases": [],

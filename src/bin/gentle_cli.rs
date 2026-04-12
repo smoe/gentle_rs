@@ -3,10 +3,10 @@
 use gentle::{
     about,
     engine::{
-        DbSnpFetchProgress, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
-        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
-        RnaReadInterpretProgress, TfbsProgress,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, Engine, EngineStateSummary,
+        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
+        OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -584,6 +584,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
+  gentle_cli hosts list [--catalog PATH] [--filter TEXT]\n\n  \
+  gentle_cli genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n  \
+  gentle_cli helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
@@ -682,6 +685,7 @@ fn usage() {
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "cache",
+    "hosts",
     "genomes",
     "helpers",
     "agents",
@@ -1207,6 +1211,48 @@ fn run() -> Result<(), String> {
                 return Err(format!("{label} requires a subcommand"));
             }
             match args[cmd_idx + 1].as_str() {
+                "ensembl-available" => {
+                    let mut collection: Option<String> = None;
+                    let mut filter: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--collection" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing VALUE after --collection for {label} ensembl-available"
+                                    ));
+                                }
+                                collection = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--filter" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing TEXT after --filter for {label} ensembl-available"
+                                    ));
+                                }
+                                filter = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} ensembl-available",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let report = GentleEngine::discover_ensembl_installable_genomes(
+                        collection.as_deref(),
+                        filter.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    print_json(&json!({
+                        "scope": label,
+                        "report": report,
+                    }))
+                }
                 "list" => {
                     let mut catalog_path: Option<String> = None;
                     let mut filter: Option<String> = None;
@@ -2127,9 +2173,65 @@ fn run() -> Result<(), String> {
                     print_json(&result)
                 }
                 other => Err(format!(
-                    "Unknown {label} subcommand '{}' (expected list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene)",
+                    "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene)",
                     other
                 )),
+            }
+        }
+        "hosts" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("hosts requires a subcommand".to_string());
+            }
+            match args[cmd_idx + 1].as_str() {
+                "list" => {
+                    let mut catalog_path: Option<String> = None;
+                    let mut filter: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(
+                                        "Missing PATH after --catalog for hosts list".to_string()
+                                    );
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--filter" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(
+                                        "Missing TEXT after --filter for hosts list".to_string()
+                                    );
+                                }
+                                filter = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!("Unknown option '{}' for hosts list", other));
+                            }
+                        }
+                    }
+                    let entries = GentleEngine::list_host_profile_catalog_entries(
+                        explicit_catalog_arg(&catalog_path),
+                        filter.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let profile_ids = entries
+                        .iter()
+                        .map(|entry| entry.profile_id.clone())
+                        .collect::<Vec<_>>();
+                    print_json(&json!({
+                        "catalog_path": explicit_catalog_arg(&catalog_path)
+                            .unwrap_or(DEFAULT_HOST_PROFILE_CATALOG_PATH),
+                        "filter": filter,
+                        "profile_count": profile_ids.len(),
+                        "profile_ids": profile_ids,
+                        "entries": entries,
+                    }))
+                }
+                other => Err(format!("Unknown hosts subcommand '{}'", other)),
             }
         }
         "resources" => {

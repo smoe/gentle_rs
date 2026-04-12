@@ -7,7 +7,9 @@
 
 use crate::{
     about,
-    engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
+    engine::{
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
+    },
     engine_shell::{ShellExecutionOptions, execute_shell_command_with_options, parse_shell_tokens},
     genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     shell_docs::{
@@ -310,6 +312,44 @@ fn tool_list() -> Value {
                     "filter": {
                         "type": "string",
                         "description": "Optional metadata filter matching ids, aliases, tags, summaries, procurement fields, and helper semantics."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "host_profile_catalog_entries",
+            "title": "Host Profile Catalog Entries",
+            "description": "Return structured host-profile catalog entries used by construct reasoning.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "catalog_path": {
+                        "type": "string",
+                        "description": "Optional host-profile catalog path. Defaults to the bundled starter catalog."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional metadata filter matching ids, aliases, species, strain, genotype tags, phenotype tags, and notes."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "ensembl_installable_genomes",
+            "title": "Ensembl Installable Genomes",
+            "description": "Return Ensembl species directories that currently appear installable because both sequence and annotation listings are present.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional Ensembl collection filter: all, vertebrates, or metazoa."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional metadata filter matching collection, species directory, and humanized display name."
                     }
                 },
                 "additionalProperties": false
@@ -865,6 +905,60 @@ fn catalog_entries_tool_result(arguments: &Value, helper_mode: bool) -> Value {
     }
 }
 
+fn host_profile_catalog_entries_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match GentleEngine::list_host_profile_catalog_entries(
+        catalog_path.as_deref(),
+        filter.as_deref(),
+    ) {
+        Ok(entries) => {
+            let profile_ids = entries
+                .iter()
+                .map(|entry| entry.profile_id.clone())
+                .collect::<Vec<_>>();
+            tool_result_json(
+                json!({
+                    "catalog_path": catalog_path
+                        .unwrap_or_else(|| DEFAULT_HOST_PROFILE_CATALOG_PATH.to_string()),
+                    "filter": filter,
+                    "profile_count": profile_ids.len(),
+                    "profile_ids": profile_ids,
+                    "entries": entries,
+                }),
+                false,
+            )
+        }
+        Err(err) => tool_result_text(err.to_string(), "text", true),
+    }
+}
+
+fn ensembl_installable_genomes_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let collection = match optional_string_arg(&args, "collection") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match GentleEngine::discover_ensembl_installable_genomes(
+        collection.as_deref(),
+        filter.as_deref(),
+    ) {
+        Ok(report) => tool_result_json(json!(report), false),
+        Err(err) => tool_result_text(err.to_string(), "text", true),
+    }
+}
+
 fn helper_interpretation_tool_result(arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let helper_id = match required_string_arg(&args, "helper_id") {
@@ -1405,6 +1499,10 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         }
         "reference_catalog_entries" => catalog_entries_tool_result(&params.arguments, false),
         "helper_catalog_entries" => catalog_entries_tool_result(&params.arguments, true),
+        "host_profile_catalog_entries" => {
+            host_profile_catalog_entries_tool_result(&params.arguments)
+        }
+        "ensembl_installable_genomes" => ensembl_installable_genomes_tool_result(&params.arguments),
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
@@ -1712,6 +1810,40 @@ mod tests {
 }"#,
         )
         .expect("write helper catalog");
+        catalog_path.to_string_lossy().to_string()
+    }
+
+    fn write_host_profile_catalog_fixture(dir: &Path) -> String {
+        let catalog_path = dir.join("host_profiles.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.host_profile_catalog.v1",
+  "profiles": [
+    {
+      "profile_id": "ecoli_dh5alpha",
+      "species": "Escherichia coli",
+      "strain": "DH5alpha",
+      "aliases": ["DH5α"],
+      "genotype_tags": ["hsdR17", "deoR", "relA1"],
+      "phenotype_tags": ["cloning_host", "large_insert_friendly"],
+      "notes": ["Routine cloning host with deoR-associated large-insert friendliness."],
+      "source_notes": ["Synthetic test fixture"]
+    },
+    {
+      "profile_id": "ecoli_k12_restriction_positive",
+      "species": "Escherichia coli",
+      "strain": "K-12 restriction-positive background",
+      "aliases": ["E. coli K-12"],
+      "genotype_tags": ["hsdR+", "hsdM+"],
+      "phenotype_tags": ["type_i_restriction_barrier"],
+      "notes": ["Restriction-positive route review host."],
+      "source_notes": ["Synthetic test fixture"]
+    }
+  ]
+}"#,
+        )
+        .expect("write host profile catalog");
         catalog_path.to_string_lossy().to_string()
     }
 
@@ -2282,6 +2414,7 @@ mod tests {
         let td = tempdir().expect("tempdir");
         let reference_catalog_path = write_reference_catalog_fixture(td.path());
         let helper_catalog_path = write_helper_catalog_fixture(td.path());
+        let host_catalog_path = write_host_profile_catalog_fixture(td.path());
 
         let mcp_reference = run_tool(
             DEFAULT_MCP_STATE_PATH,
@@ -2333,6 +2466,28 @@ mod tests {
             "factor xa".to_string(),
         ]);
         assert_eq!(mcp_helper["result"]["structuredContent"], expected_helper);
+
+        let mcp_host = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "host_profile_catalog_entries",
+            json!({
+                "catalog_path": host_catalog_path.clone(),
+                "filter": "deoR"
+            }),
+        );
+        assert_eq!(
+            mcp_host.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_host = run_shared_shell_command(vec![
+            "hosts".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            host_catalog_path.clone(),
+            "--filter".to_string(),
+            "deoR".to_string(),
+        ]);
+        assert_eq!(mcp_host["result"]["structuredContent"], expected_host);
     }
 
     #[test]

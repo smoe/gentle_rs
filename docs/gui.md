@@ -2881,6 +2881,11 @@ Recommended flow:
      - keeps older pinned release rows in the catalog
      - adds or refreshes the newest pinned release row without preparing or downloading genomes
      - if the active catalog file is not writable, the dialog requires saving an updated catalog copy instead of modifying the bundled catalog in place
+   - `Browse Ensembl Candidates...` opens a read-only discovery browser:
+     - inspects current Ensembl/Ensembl Metazoa FASTA + GTF species-directory listings
+     - reports candidates where both listing types are present
+     - shows collection, species directory, and the current listing URLs
+     - does not edit the local catalog; it is meant to answer "what looks installable right now?"
    - helper-scope dialogs (`Prepare Helper Genome...`, `Retrieve Helper Sequence...`,
      `BLAST Helper Sequence...`, and the prepared-reference inspector while
      helper scope is active) now also show a normalized helper-construct

@@ -30,11 +30,11 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY,
-        DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView,
+        FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
+        GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
         PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
         PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
@@ -907,9 +907,18 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         species: String,
     },
+    HostsList {
+        catalog_path: Option<String>,
+        filter: Option<String>,
+    },
     ReferenceList {
         helper_mode: bool,
         catalog_path: Option<String>,
+        filter: Option<String>,
+    },
+    ReferenceEnsemblAvailable {
+        helper_mode: bool,
+        collection: Option<String>,
         filter: Option<String>,
     },
     ReferenceValidateCatalog {
@@ -5273,6 +5282,24 @@ impl ShellCommand {
                     "select latest prepared {scope} for species '{species}' (catalog='{catalog}', cache='{cache}')"
                 )
             }
+            Self::HostsList {
+                catalog_path,
+                filter,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_HOST_PROFILE_CATALOG_PATH.to_string());
+                format!(
+                    "list host profiles from catalog '{}'{}",
+                    catalog,
+                    filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" (filter='{value}')"))
+                        .unwrap_or_default()
+                )
+            }
             Self::ReferenceList {
                 helper_mode,
                 catalog_path,
@@ -5290,6 +5317,24 @@ impl ShellCommand {
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(|value| format!(" (filter='{value}')"))
+                        .unwrap_or_default()
+                )
+            }
+            Self::ReferenceEnsemblAvailable {
+                helper_mode,
+                collection,
+                filter,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let collection = collection.clone().unwrap_or_else(|| "all".to_string());
+                format!(
+                    "list Ensembl-installable {label} candidates (collection='{}'{})",
+                    collection,
+                    filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(", filter='{value}'"))
                         .unwrap_or_default()
                 )
             }
@@ -8510,6 +8555,40 @@ fn parse_help_command(tokens: &[String]) -> Result<ShellCommand, String> {
     })
 }
 
+fn parse_hosts_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("hosts requires a subcommand".to_string());
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", "hosts")?)
+                    }
+                    "--filter" => {
+                        filter = Some(parse_option_path(tokens, &mut idx, "--filter", "hosts")?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for hosts list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::HostsList {
+                catalog_path,
+                filter,
+            })
+        }
+        other => Err(format!(
+            "Unknown hosts subcommand '{other}' (expected list)"
+        )),
+    }
+}
+
 fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<ShellCommand, String> {
     let label = if helper_mode { "helpers" } else { "genomes" };
     if tokens.len() < 2 {
@@ -8537,6 +8616,32 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             Ok(ShellCommand::ReferenceList {
                 helper_mode,
                 catalog_path,
+                filter,
+            })
+        }
+        "ensembl-available" => {
+            let mut collection: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--collection" => {
+                        collection =
+                            Some(parse_option_path(tokens, &mut idx, "--collection", label)?)
+                    }
+                    "--filter" => {
+                        filter = Some(parse_option_path(tokens, &mut idx, "--filter", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} ensembl-available"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceEnsemblAvailable {
+                helper_mode,
+                collection,
                 filter,
             })
         }
@@ -9505,7 +9610,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected ensembl-available, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -12261,6 +12366,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "cache" => parse_cache_command(tokens),
+        "hosts" => parse_hosts_command(tokens),
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "panels" => parse_panels_command(tokens),
@@ -14457,6 +14563,32 @@ fn execute_reference_and_track_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::HostsList {
+            catalog_path,
+            filter,
+        } => {
+            let entries = GentleEngine::list_host_profile_catalog_entries(
+                catalog_path.as_deref(),
+                filter.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let profile_ids = entries
+                .iter()
+                .map(|entry| entry.profile_id.clone())
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": catalog_path
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_HOST_PROFILE_CATALOG_PATH.to_string()),
+                    "filter": filter,
+                    "profile_count": profile_ids.len(),
+                    "profile_ids": profile_ids,
+                    "entries": entries,
+                }),
+            })
+        }
         ShellCommand::ReferenceList {
             helper_mode,
             catalog_path,
@@ -14482,6 +14614,24 @@ fn execute_reference_and_track_command(
                     "genome_count": genomes.len(),
                     "genomes": genomes,
                     "entries": entries,
+                }),
+            })
+        }
+        ShellCommand::ReferenceEnsemblAvailable {
+            helper_mode,
+            collection,
+            filter,
+        } => {
+            let report = GentleEngine::discover_ensembl_installable_genomes(
+                collection.as_deref(),
+                filter.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "scope": if *helper_mode { "helpers" } else { "genomes" },
+                    "report": report,
                 }),
             })
         }
@@ -18068,7 +18218,9 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
-        ShellCommand::ReferenceList { .. }
+        ShellCommand::HostsList { .. }
+            | ShellCommand::ReferenceList { .. }
+            | ShellCommand::ReferenceEnsemblAvailable { .. }
             | ShellCommand::ReferenceValidateCatalog { .. }
             | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
             | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
@@ -19442,7 +19594,9 @@ fn execute_shell_command_with_options_inner(
                 species.clone(),
             );
         }
-        ShellCommand::ReferenceList { .. }
+        ShellCommand::HostsList { .. }
+        | ShellCommand::ReferenceList { .. }
+        | ShellCommand::ReferenceEnsemblAvailable { .. }
         | ShellCommand::ReferenceValidateCatalog { .. }
         | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
         | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }

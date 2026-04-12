@@ -385,6 +385,34 @@ fn list_helper_catalog_entries(
 
 #[op2]
 #[serde]
+fn list_host_profile_catalog_entries(
+    #[string] catalog_path: &str,
+    #[string] filter: &str,
+) -> Result<Vec<crate::engine::HostProfileRecord>, JsAnyhow> {
+    GentleEngine::list_host_profile_catalog_entries(
+        empty_to_none(catalog_path),
+        empty_to_none(filter),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
+}
+
+#[op2]
+#[serde]
+fn list_ensembl_installable_genomes(
+    #[string] collection: &str,
+    #[string] filter: &str,
+) -> Result<crate::genomes::EnsemblInstallableGenomeCatalog, JsAnyhow> {
+    GentleEngine::discover_ensembl_installable_genomes(
+        empty_to_none(collection),
+        empty_to_none(filter),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
+}
+
+#[op2]
+#[serde]
 fn list_agent_systems(#[string] catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
@@ -569,6 +597,8 @@ impl JavaScriptInterface {
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
         const LIST_REFERENCE_CATALOG_ENTRIES: OpDecl = list_reference_catalog_entries();
         const LIST_HELPER_CATALOG_ENTRIES: OpDecl = list_helper_catalog_entries();
+        const LIST_HOST_PROFILE_CATALOG_ENTRIES: OpDecl = list_host_profile_catalog_entries();
+        const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
@@ -597,6 +627,8 @@ impl JavaScriptInterface {
                 LIST_REFERENCE_GENOMES,
                 LIST_REFERENCE_CATALOG_ENTRIES,
                 LIST_HELPER_CATALOG_ENTRIES,
+                LIST_HOST_PROFILE_CATALOG_ENTRIES,
+                LIST_ENSEMBL_INSTALLABLE_GENOMES,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
                 IS_REFERENCE_GENOME_PREPARED,
@@ -644,18 +676,24 @@ impl JavaScriptInterface {
 		          	function export_rna_ladders(path, name_filter) {
 		          		return Deno.core.ops.export_rna_ladders(path, name_filter ?? "");
 		          	}
-			          	function list_reference_genomes(catalog_path) {
-			          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
-			          	}
-			          	function list_reference_catalog_entries(catalog_path, filter) {
-			          		return Deno.core.ops.list_reference_catalog_entries(catalog_path ?? "", filter ?? "");
-			          	}
-			          	function list_helper_catalog_entries(catalog_path, filter) {
-			          		return Deno.core.ops.list_helper_catalog_entries(catalog_path ?? "", filter ?? "");
-			          	}
-			          	function list_agent_systems(catalog_path) {
-			          		return Deno.core.ops.list_agent_systems(catalog_path ?? "");
-			          	}
+                      function list_reference_genomes(catalog_path) {
+                        return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
+                      }
+                      function list_reference_catalog_entries(catalog_path, filter) {
+                        return Deno.core.ops.list_reference_catalog_entries(catalog_path ?? "", filter ?? "");
+                      }
+                      function list_helper_catalog_entries(catalog_path, filter) {
+                        return Deno.core.ops.list_helper_catalog_entries(catalog_path ?? "", filter ?? "");
+                      }
+                      function list_host_profile_catalog_entries(catalog_path, filter) {
+                        return Deno.core.ops.list_host_profile_catalog_entries(catalog_path ?? "", filter ?? "");
+                      }
+                      function list_ensembl_installable_genomes(collection, filter) {
+                        return Deno.core.ops.list_ensembl_installable_genomes(collection ?? "", filter ?? "");
+                      }
+                      function list_agent_systems(catalog_path) {
+                        return Deno.core.ops.list_agent_systems(catalog_path ?? "");
+                      }
 			          	function ask_agent_system(state, system_id, prompt, options) {
 			          		const opts = options ?? {};
 			          		return Deno.core.ops.ask_agent_system(
@@ -1220,6 +1258,12 @@ mod tests {
                 if (typeof list_helper_catalog_entries !== "function") {
                     throw new Error("list_helper_catalog_entries wrapper is missing");
                 }
+                if (typeof list_host_profile_catalog_entries !== "function") {
+                    throw new Error("list_host_profile_catalog_entries wrapper is missing");
+                }
+                if (typeof list_ensembl_installable_genomes !== "function") {
+                    throw new Error("list_ensembl_installable_genomes wrapper is missing");
+                }
             "#
             .to_string(),
         )
@@ -1275,6 +1319,47 @@ mod tests {
             "#
         ))
         .expect("helper catalog entries via js");
+    }
+
+    #[test]
+    fn js_host_profile_catalog_entry_wrapper_lists_rows() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("host_profiles.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.host_profile_catalog.v1",
+  "profiles": [
+    {
+      "profile_id": "ecoli_dh5alpha",
+      "species": "Escherichia coli",
+      "strain": "DH5alpha",
+      "aliases": ["DH5α"],
+      "genotype_tags": ["deoR", "endA1"],
+      "phenotype_tags": ["large_insert_friendly"],
+      "notes": ["Common cloning host"],
+      "source_notes": ["Synthetic regression fixture"]
+    }
+  ]
+}"#,
+        )
+        .expect("write host profile catalog");
+
+        let mut js = JavaScriptInterface::default();
+        let catalog_js = serde_json::to_string(catalog_path.to_string_lossy().as_ref())
+            .expect("serialize catalog path");
+        js.run_checked(format!(
+            r#"
+                const rows = list_host_profile_catalog_entries({catalog_js}, "deoR");
+                if (rows.length !== 1) {{
+                    throw new Error(`expected one host row, got ${{rows.length}}`);
+                }}
+                if (rows[0].profile_id !== "ecoli_dh5alpha") {{
+                    throw new Error("unexpected profile id");
+                }}
+            "#
+        ))
+        .expect("host profile catalog entries via js");
     }
 
     #[test]

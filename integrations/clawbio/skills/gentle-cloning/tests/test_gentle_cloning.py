@@ -358,6 +358,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "helpers list --filter gst",
             180,
         ),
+        "request_hosts_list_deor.json": (
+            "shell",
+            "hosts list --filter deoR",
+            180,
+        ),
+        "request_genomes_ensembl_available_human.json": (
+            "shell",
+            "genomes ensembl-available --collection vertebrates --filter human",
+            300,
+        ),
         "request_shell_state_summary.json": (
             "shell",
             "state-summary",

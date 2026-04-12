@@ -28,6 +28,8 @@ cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_ensembl_available_human.json --output /tmp/gentle_ensembl_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
@@ -108,6 +110,8 @@ Included first-run bootstrap requests:
 
 - `examples/request_genomes_list_human.json`
 - `examples/request_helpers_list_gst.json`
+- `examples/request_hosts_list_deor.json`
+- `examples/request_genomes_ensembl_available_human.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_genomes_status_grch38.json`
 - `examples/request_genomes_prepare_grch38.json`

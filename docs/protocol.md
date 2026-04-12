@@ -1198,6 +1198,8 @@ external coding agent runtime, see:
     - `help`
     - `reference_catalog_entries` (shared `genomes list` catalog contract)
     - `helper_catalog_entries` (shared `helpers list` catalog contract)
+    - `host_profile_catalog_entries` (shared `hosts list` catalog contract)
+    - `ensembl_installable_genomes` (shared Ensembl discovery contract for currently installable candidates)
     - `helper_interpretation` (direct helper-construct interpretation lookup)
     - `ui_intents` (shared `ui intents` catalog)
     - `ui_intent` (shared `ui open|focus ...` resolution path)
@@ -1237,6 +1239,26 @@ MCP query/introspection tool contracts (current):
   - result:
     - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
     - helper `entries[]` may carry normalized `interpretation` records
+
+- `host_profile_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `hosts list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `profile_count`, `profile_ids[]`, `entries[]`
+
+- `ensembl_installable_genomes`
+  - arguments:
+    - optional: `collection`, `filter`
+  - behavior:
+    - returns the same Ensembl discovery report used by GUI/CLI/JS/Lua for
+      answering which genomes currently look installable because both FASTA and
+      GTF species-directory listings are present
+  - result:
+    - `collection_filter`, `availability_basis`,
+      `collection_latest_releases{}`, `candidates[]`, `warnings[]`
 
 - `helper_interpretation`
   - arguments:

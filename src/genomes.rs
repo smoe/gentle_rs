@@ -622,6 +622,30 @@ pub struct EnsemblCatalogUpdateReport {
     pub warnings: Vec<String>,
 }
 
+/// One Ensembl-discovered species directory that looks installable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnsemblInstallableGenomeCandidate {
+    pub collection: String,
+    pub species_dir: String,
+    pub display_name: String,
+    pub latest_release: u32,
+    pub current_fasta_listing_url: String,
+    pub current_gtf_listing_url: String,
+}
+
+/// Non-mutating report of genomes that Ensembl currently appears to expose.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct EnsemblInstallableGenomeCatalog {
+    pub collection_filter: String,
+    pub availability_basis: String,
+    #[serde(default)]
+    pub collection_latest_releases: HashMap<String, u32>,
+    #[serde(default)]
+    pub candidates: Vec<EnsemblInstallableGenomeCandidate>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 /// Result of deleting one prepared install directory from a cache root.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedGenomeRemovalReport {
@@ -1835,6 +1859,19 @@ impl GenomeCatalog {
     ) -> Result<EnsemblCatalogUpdateReport, String> {
         self.apply_ensembl_catalog_updates_with_fetcher(
             output_catalog_path,
+            &fetch_http_text_with_retry,
+        )
+    }
+
+    /// Discover species that Ensembl currently appears to expose with both
+    /// sequence and annotation listings.
+    pub fn discover_ensembl_installable_genomes(
+        collection_filter: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<EnsemblInstallableGenomeCatalog, String> {
+        discover_ensembl_installable_genomes_with_fetcher(
+            collection_filter,
+            filter,
             &fetch_http_text_with_retry,
         )
     }
@@ -5577,6 +5614,22 @@ fn template_group_key(template: &EnsemblCatalogTemplate) -> String {
     )
 }
 
+fn current_ensembl_collection_fasta_root_url(collection: &str) -> Option<&'static str> {
+    match normalize_ensembl_collection(collection)? {
+        "vertebrates" => Some("https://ftp.ensembl.org/pub/current_fasta/"),
+        "metazoa" => Some("https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/fasta/"),
+        _ => None,
+    }
+}
+
+fn current_ensembl_collection_gtf_root_url(collection: &str) -> Option<&'static str> {
+    match normalize_ensembl_collection(collection)? {
+        "vertebrates" => Some("https://ftp.ensembl.org/pub/current_gtf/"),
+        "metazoa" => Some("https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/gtf/"),
+        _ => None,
+    }
+}
+
 fn current_ensembl_fasta_listing_url(template: &EnsemblCatalogTemplate) -> String {
     match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
         "vertebrates" => format!(
@@ -5706,6 +5759,144 @@ fn parse_listing_href_values(listing: &str) -> Vec<String> {
     values.sort_unstable();
     values.dedup();
     values
+}
+
+fn parse_listing_directory_names(listing: &str) -> Vec<String> {
+    let href_regex = Regex::new(r#"href="([^"]+)""#).expect("valid href regex");
+    let mut values: Vec<String> = href_regex
+        .captures_iter(listing)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().trim().to_string()))
+        .filter(|value| value.ends_with('/'))
+        .map(|value| value.trim_end_matches('/').to_string())
+        .filter(|value| {
+            !value.is_empty()
+                && value != "."
+                && value != ".."
+                && !value.contains('?')
+                && !value.contains('#')
+        })
+        .collect();
+    values.sort_unstable();
+    values.dedup();
+    values
+}
+
+fn ensembl_species_display_name(species_dir: &str) -> String {
+    species_dir
+        .split('_')
+        .filter(|token| !token.trim().is_empty())
+        .map(|token| {
+            let mut chars = token.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            let mut out = String::new();
+            out.extend(first.to_uppercase());
+            out.push_str(&chars.as_str().to_ascii_lowercase());
+            out
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn ensembl_installable_candidate_matches_filter(
+    candidate: &EnsemblInstallableGenomeCandidate,
+    filter: Option<&str>,
+) -> bool {
+    let tokens = filter
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .split_whitespace()
+                .map(|token| token.trim().to_ascii_lowercase())
+                .filter(|token| !token.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if tokens.is_empty() {
+        return true;
+    }
+    let haystack = format!(
+        "{}\n{}\n{}",
+        candidate.collection, candidate.species_dir, candidate.display_name
+    )
+    .to_ascii_lowercase();
+    tokens.iter().all(|token| haystack.contains(token))
+}
+
+fn discover_ensembl_installable_genomes_with_fetcher(
+    collection_filter: Option<&str>,
+    filter: Option<&str>,
+    fetch_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<EnsemblInstallableGenomeCatalog, String> {
+    let requested_filter = collection_filter
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("all")
+        .to_ascii_lowercase();
+    let collections: Vec<&'static str> = match requested_filter.as_str() {
+        "" | "all" => vec!["vertebrates", "metazoa"],
+        other => vec![
+            normalize_ensembl_collection(other)
+                .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", other))?,
+        ],
+    };
+    let mut collection_latest_releases = HashMap::<String, u32>::new();
+    let mut candidates = vec![];
+    let mut warnings = vec![];
+
+    for collection in collections {
+        let fasta_root = current_ensembl_collection_fasta_root_url(collection)
+            .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", collection))?;
+        let gtf_root = current_ensembl_collection_gtf_root_url(collection)
+            .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", collection))?;
+        let latest_release = fetch_ensembl_collection_latest_release(collection, fetch_text)?;
+        collection_latest_releases.insert(collection.to_string(), latest_release);
+
+        let fasta_listing = fetch_text(fasta_root)?;
+        let gtf_listing = fetch_text(gtf_root)?;
+        let fasta_species = parse_listing_directory_names(&fasta_listing)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let gtf_species = parse_listing_directory_names(&gtf_listing)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if fasta_species.is_empty() || gtf_species.is_empty() {
+            warnings.push(format!(
+                "{}: current FASTA/GTF root listings were unexpectedly empty",
+                collection
+            ));
+        }
+        for species_dir in fasta_species.intersection(&gtf_species) {
+            let candidate = EnsemblInstallableGenomeCandidate {
+                collection: collection.to_string(),
+                species_dir: species_dir.clone(),
+                display_name: ensembl_species_display_name(species_dir),
+                latest_release,
+                current_fasta_listing_url: format!("{fasta_root}{species_dir}/dna/"),
+                current_gtf_listing_url: format!("{gtf_root}{species_dir}/"),
+            };
+            if ensembl_installable_candidate_matches_filter(&candidate, filter) {
+                candidates.push(candidate);
+            }
+        }
+    }
+    candidates.sort_by(|left, right| {
+        left.collection
+            .cmp(&right.collection)
+            .then_with(|| left.display_name.cmp(&right.display_name))
+            .then_with(|| left.species_dir.cmp(&right.species_dir))
+    });
+    warnings.sort_unstable();
+
+    Ok(EnsemblInstallableGenomeCatalog {
+        collection_filter: requested_filter,
+        availability_basis: "current_fasta/current_gtf species-directory intersection".to_string(),
+        collection_latest_releases,
+        candidates,
+        warnings,
+    })
 }
 
 fn choose_current_ensembl_fasta_filename(listing: &str, file_stem: &str) -> Result<String, String> {
@@ -11620,6 +11811,77 @@ mod tests {
             parse_latest_release_from_listing(listing, r"release-1[1-9][0-9]"),
             Some(116)
         );
+    }
+
+    #[test]
+    fn test_discover_ensembl_installable_genomes_intersects_current_species_dirs() {
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/" => {
+                    Ok(r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#.to_string())
+                }
+                "https://ftp.ensembl.org/pub/current_fasta/" => Ok(
+                    r#"<a href="../">../</a><a href="danio_rerio/">danio_rerio/</a><a href="mus_musculus/">mus_musculus/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/" => Ok(
+                    r#"<a href="../">../</a><a href="homo_sapiens/">homo_sapiens/</a><a href="mus_musculus/">mus_musculus/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/" => {
+                    Ok(r#"<a href="release-60/">release-60/</a><a href="release-61/">release-61/</a>"#.to_string())
+                }
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/fasta/" => Ok(
+                    r#"<a href="../">../</a><a href="caenorhabditis_elegans/">caenorhabditis_elegans/</a><a href="drosophila_melanogaster/">drosophila_melanogaster/</a>"#
+                        .to_string(),
+                ),
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/gtf/" => Ok(
+                    r#"<a href="../">../</a><a href="caenorhabditis_elegans/">caenorhabditis_elegans/</a>"#
+                        .to_string(),
+                ),
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let discovery =
+            discover_ensembl_installable_genomes_with_fetcher(Some("all"), None, &fetch)
+                .expect("discover installable genomes");
+        assert_eq!(discovery.collection_filter, "all");
+        assert_eq!(
+            discovery.availability_basis,
+            "current_fasta/current_gtf species-directory intersection"
+        );
+        assert_eq!(
+            discovery
+                .collection_latest_releases
+                .get("vertebrates")
+                .copied(),
+            Some(116)
+        );
+        assert_eq!(
+            discovery.collection_latest_releases.get("metazoa").copied(),
+            Some(61)
+        );
+        assert_eq!(discovery.candidates.len(), 2);
+        assert!(discovery.candidates.iter().any(|candidate| {
+            candidate.collection == "vertebrates"
+                && candidate.species_dir == "mus_musculus"
+                && candidate.display_name == "Mus Musculus"
+        }));
+        assert!(discovery.candidates.iter().any(|candidate| {
+            candidate.collection == "metazoa"
+                && candidate.species_dir == "caenorhabditis_elegans"
+                && candidate.display_name == "Caenorhabditis Elegans"
+        }));
+
+        let filtered = discover_ensembl_installable_genomes_with_fetcher(
+            Some("metazoa"),
+            Some("elegans"),
+            &fetch,
+        )
+        .expect("filtered discovery");
+        assert_eq!(filtered.candidates.len(), 1);
+        assert_eq!(filtered.candidates[0].species_dir, "caenorhabditis_elegans");
     }
 
     #[test]

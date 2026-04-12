@@ -1941,22 +1941,34 @@ Current baseline:
 - `genomes list` / `helpers list` now support metadata search via `--filter`
 - helper rows can now start carrying richer semantic/procurement metadata
   without disturbing the preparation/indexing pipeline
+- a shared `hosts list` catalog route now exposes inspectable host/strain
+  starter records for GUI/shell/CLI/MCP/JS/Lua/ClawBio consumption
+- a shared `genomes|helpers ensembl-available` discovery route now reports
+  which current Ensembl species directories appear installable because both
+  FASTA and GTF listings are present, without mutating local catalogs
 - helper list/status routes now also expose an initial normalized
   `interpretation` record so downstream adapters can start consuming one
   portable helper-meaning layer
 - JS/Lua adapters now also expose structured reference/helper catalog-entry
   helpers so agents/scripts can consume catalog metadata and helper
   `interpretation` records without reparsing shell JSON
+- JS/Lua adapters now also expose host-profile catalog queries and Ensembl
+  installability discovery so non-GUI automation can inspect the same
+  cross-catalog discovery layer
 - `gentle_mcp` now also exposes structured `reference_catalog_entries`,
-  `helper_catalog_entries`, and targeted `helper_interpretation` tools so
-  MCP-native agents can consume the same catalog/interpretation layer without
-  going through shell-command text
+  `helper_catalog_entries`, `host_profile_catalog_entries`,
+  `ensembl_installable_genomes`, and targeted `helper_interpretation` tools so
+  MCP-native agents can consume the same catalog/discovery layer without going
+  through shell-command text
 - GUI helper dialogs/inspector and the Planning window now also consume the
   same normalized helper interpretation layer:
   - helper prepare/retrieve/BLAST/inspector surfaces show a shared
     helper-construct interpretation panel
   - the Planning window now includes a searchable helper-construct browser
     backed by shared catalog-entry + interpretation projections
+- the Planning window now also includes a searchable host-profile browser, and
+  the prepare dialog exposes a read-only `Browse Ensembl Candidates...` window
+  so current installability can be inspected without editing catalogs
 
 Planned work:
 

@@ -31,8 +31,8 @@ use crate::{
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
         DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
-        EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
-        GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
+        EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog, GenomeBlastReport,
+        GenomeCatalog, GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation, PrepareGenomePlan,
         PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
         PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
@@ -4625,6 +4625,18 @@ impl GentleEngine {
                     catalog_path, e
                 ),
             })
+    }
+
+    pub fn discover_ensembl_installable_genomes(
+        collection_filter: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<EnsemblInstallableGenomeCatalog, EngineError> {
+        GenomeCatalog::discover_ensembl_installable_genomes(collection_filter, filter).map_err(
+            |e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not discover installable Ensembl genomes: {e}"),
+            },
+        )
     }
 
     pub fn apply_helper_genome_ensembl_catalog_updates(

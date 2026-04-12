@@ -107,6 +107,8 @@ cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_ensembl_available_human.json --output /tmp/gentle_ensembl_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
@@ -176,6 +178,8 @@ Included first-run bootstrap request examples:
 
 - `request_genomes_list_human.json`
 - `request_helpers_list_gst.json`
+- `request_hosts_list_deor.json`
+- `request_genomes_ensembl_available_human.json`
 - `request_shell_state_summary.json`
 - `request_genomes_status_grch38.json`
 - `request_genomes_prepare_grch38.json`
@@ -252,8 +256,8 @@ Resource update capability status:
 Reference genome capability status:
 
 - `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`) and shell-level `genomes/helpers blast`
-- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
-- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
 Agent-assistant capability status:
 
@@ -691,17 +695,23 @@ Exit methods:
     - Lists structured helper-catalog entries, including optional normalized
       `interpretation` records.
     - `filter` is optional and matches the same search surface as `helpers list --filter`.
-16. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+16. `list_host_profile_catalog_entries(catalog_path, filter)`
+    - Lists structured host-profile catalog entries for construct-reasoning host/strain lookup.
+    - `filter` is optional and matches ids, aliases, species, strain, genotype tags, phenotype tags, and notes.
+17. `list_ensembl_installable_genomes(collection, filter)`
+    - Lists Ensembl species directories that currently appear installable because both FASTA and GTF listings are present.
+    - `collection` is optional (`all`, `vertebrates`, `metazoa`).
+18. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-17. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+19. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-18. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+20. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-19. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+21. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-20. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+22. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-21. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
+23. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
     - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
 22. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
@@ -756,6 +766,8 @@ Current tools:
 - `help`
 - `reference_catalog_entries` (structured reference catalog rows via the shared `genomes list` contract)
 - `helper_catalog_entries` (structured helper catalog rows with normalized helper `interpretation` when available)
+- `host_profile_catalog_entries` (structured host-profile catalog rows via the shared `hosts list` contract)
+- `ensembl_installable_genomes` (shared Ensembl discovery report for currently installable candidates)
 - `helper_interpretation` (direct helper-construct interpretation lookup by id or alias)
 - `ui_intents` (discover deterministic UI-intent contracts)
 - `ui_intent` (run deterministic `ui open|focus` intent resolution path)
@@ -870,6 +882,14 @@ Minimum MCP JSON-RPC flow:
 
 - optional: `catalog_path`, `filter`
 
+`host_profile_catalog_entries` arguments:
+
+- optional: `catalog_path`, `filter`
+
+`ensembl_installable_genomes` arguments:
+
+- optional: `collection`, `filter`
+
 `helper_interpretation` arguments:
 
 - required: `helper_id` (catalog id or alias)
@@ -979,15 +999,19 @@ Exit methods:
 15. `list_helper_catalog_entries([catalog_path], [filter])`
     - Lists structured helper-catalog entries, including optional normalized
       `interpretation` records.
-16. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+16. `list_host_profile_catalog_entries([catalog_path], [filter])`
+    - Lists structured host-profile catalog entries for construct-reasoning host/strain lookup.
+17. `list_ensembl_installable_genomes([collection], [filter])`
+    - Lists current Ensembl candidates where both FASTA and GTF species listings exist.
+18. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-17. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+19. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-18. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+20. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-19. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+21. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-20. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+22. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 21. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
@@ -1268,6 +1292,7 @@ Shared shell command:
     - `agents list [--catalog PATH]`
     - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `genomes list [--catalog PATH]`
+    - `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
@@ -1280,7 +1305,9 @@ Shared shell command:
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
+    - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
     - `helpers validate-catalog [--catalog PATH]`
+    - `hosts list [--catalog PATH] [--filter TEXT]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
@@ -1998,6 +2025,9 @@ Genome convenience commands:
 
 - `genomes list [--catalog PATH]`
   - Lists available genomes in the catalog.
+- `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
+  - Lists Ensembl species directories that currently look installable because both FASTA and GTF listings are present.
+  - Returns a read-only discovery report with current listing URLs and latest release numbers seen per collection.
 - `genomes validate-catalog [--catalog PATH]`
   - Verifies catalog JSON schema/entry rules and that each entry resolves usable
     sequence/annotation source definitions.
@@ -2086,6 +2116,8 @@ Helper convenience commands:
   - Helper `entries[]` rows now also include an optional normalized
     `interpretation` record so ClawBio/agents/planners can consume one shared
     helper-meaning layer instead of reparsing raw catalog prose.
+- `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
+  - Same discovery report shape as `genomes ensembl-available`, but exposed under the helper-family command tree for contract symmetry across adapters.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
 - `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
@@ -2093,6 +2125,12 @@ Helper convenience commands:
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes status`, with helper-catalog default
     (including length/mass metadata fields).
+
+Host convenience commands:
+
+- `hosts list [--catalog PATH] [--filter TEXT]`
+  - Lists structured host/strain profile rows used by construct-reasoning host-fit logic.
+  - Default catalog is the bundled starter catalog at `assets/host_profiles.json`.
   - Output now also includes the same optional normalized `interpretation`
     record for helper rows that carry structured helper semantics.
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`

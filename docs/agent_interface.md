@@ -68,6 +68,8 @@ Current MCP tool families include:
 - catalog/introspection tools:
   - `reference_catalog_entries`
   - `helper_catalog_entries`
+  - `host_profile_catalog_entries`
+  - `ensembl_installable_genomes`
   - `helper_interpretation`
 - UI-intent tools:
   - `ui_intents`

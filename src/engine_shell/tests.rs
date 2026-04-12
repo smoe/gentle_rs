@@ -9796,6 +9796,40 @@ fn parse_helpers_list_with_filter() {
 }
 
 #[test]
+fn parse_hosts_list_with_filter() {
+    let cmd = parse_shell_line("hosts list --catalog assets/host_profiles.json --filter deoR")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::HostsList {
+            catalog_path,
+            filter,
+        } => {
+            assert_eq!(catalog_path, Some("assets/host_profiles.json".to_string()));
+            assert_eq!(filter, Some("deoR".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_genomes_ensembl_available_with_filter() {
+    let cmd = parse_shell_line("genomes ensembl-available --collection vertebrates --filter human")
+        .expect("parse command");
+    match cmd {
+        ShellCommand::ReferenceEnsemblAvailable {
+            helper_mode,
+            collection,
+            filter,
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(collection, Some("vertebrates".to_string()));
+            assert_eq!(filter, Some("human".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn helper_operation_catalog_path_defaults_to_discovery_token() {
     assert_eq!(
         operation_catalog_path(&None, true),
@@ -10131,6 +10165,62 @@ fn execute_helpers_status_includes_normalized_interpretation() {
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>(),
         vec!["ampicillin_selection", "insert_cloning", "selection"]
+    );
+}
+
+#[test]
+fn execute_hosts_list_filters_trait_metadata() {
+    let td = tempdir().expect("tempdir");
+    let catalog = td.path().join("host_profiles.json");
+    fs::write(
+        &catalog,
+        r#"{
+  "schema": "gentle.host_profile_catalog.v1",
+  "profiles": [
+    {
+      "profile_id": "ecoli_dh5alpha",
+      "species": "Escherichia coli",
+      "strain": "DH5alpha",
+      "aliases": ["DH5α"],
+      "genotype_tags": ["hsdR17", "deoR", "relA1"],
+      "phenotype_tags": ["cloning_host", "large_insert_friendly"],
+      "notes": ["Routine cloning host with deoR-associated large-insert friendliness."],
+      "source_notes": ["Synthetic test fixture"]
+    },
+    {
+      "profile_id": "ecoli_k12_restriction_positive",
+      "species": "Escherichia coli",
+      "strain": "K-12 restriction-positive background",
+      "aliases": ["E. coli K-12"],
+      "genotype_tags": ["hsdR+", "hsdM+"],
+      "phenotype_tags": ["type_i_restriction_barrier"],
+      "notes": ["Restriction-positive route review host."],
+      "source_notes": ["Synthetic test fixture"]
+    }
+  ]
+}"#,
+    )
+    .expect("write host catalog");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::HostsList {
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            filter: Some("deoR".to_string()),
+        },
+    )
+    .expect("execute hosts list");
+
+    assert!(!out.state_changed);
+    assert_eq!(out.output["profile_count"].as_u64(), Some(1));
+    assert_eq!(
+        out.output["profile_ids"][0].as_str(),
+        Some("ecoli_dh5alpha")
+    );
+    assert_eq!(
+        out.output["entries"][0]["phenotype_tags"][0].as_str(),
+        Some("cloning_host")
     );
 }
 

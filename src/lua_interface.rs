@@ -106,6 +106,12 @@ impl LuaInterface {
             "  - list_helper_catalog_entries([catalog_path], [filter]): Lists structured helper catalog entries"
         );
         println!(
+            "  - list_host_profile_catalog_entries([catalog_path], [filter]): Lists structured host-profile catalog entries"
+        );
+        println!(
+            "  - list_ensembl_installable_genomes([collection], [filter]): Lists Ensembl species directories that currently appear installable"
+        );
+        println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
         );
         println!(
@@ -253,6 +259,32 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_helper_catalog_entries(catalog_path, filter)
+            .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_host_profile_catalog_entries(
+        catalog_path: Option<String>,
+        filter: Option<String>,
+    ) -> LuaResult<Vec<crate::engine::HostProfileRecord>> {
+        let catalog_path = catalog_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        GentleEngine::list_host_profile_catalog_entries(catalog_path, filter)
+            .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_ensembl_installable_genomes(
+        collection: Option<String>,
+        filter: Option<String>,
+    ) -> LuaResult<crate::genomes::EnsemblInstallableGenomeCatalog> {
+        let collection = collection
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        GentleEngine::discover_ensembl_installable_genomes(collection, filter)
             .map_err(|e| Self::err(&e.to_string()))
     }
 
@@ -651,6 +683,26 @@ impl LuaInterface {
                 |lua, (catalog_path, filter): (Option<String>, Option<String>)| {
                     let entries = Self::list_helper_catalog_entries(catalog_path, filter)?;
                     lua.to_value(&entries)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_host_profile_catalog_entries",
+            self.lua.create_function(
+                |lua, (catalog_path, filter): (Option<String>, Option<String>)| {
+                    let entries = Self::list_host_profile_catalog_entries(catalog_path, filter)?;
+                    lua.to_value(&entries)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_ensembl_installable_genomes",
+            self.lua.create_function(
+                |lua, (collection, filter): (Option<String>, Option<String>)| {
+                    let report = Self::list_ensembl_installable_genomes(collection, filter)?;
+                    lua.to_value(&report)
                 },
             )?,
         )?;
@@ -1826,7 +1878,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -1888,6 +1940,49 @@ mod tests {
                 .offered_functions
                 .contains(&"fusion_tagging".to_string())
         );
+    }
+
+    #[test]
+    fn lua_host_profile_catalog_entry_wrapper_lists_rows() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("host_profiles.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.host_profile_catalog.v1",
+  "profiles": [
+    {
+      "profile_id": "ecoli_dh5alpha",
+      "species": "Escherichia coli",
+      "strain": "DH5alpha",
+      "aliases": ["DH5α"],
+      "genotype_tags": ["deoR", "endA1"],
+      "phenotype_tags": ["large_insert_friendly"],
+      "notes": ["Common cloning host"],
+      "source_notes": ["Synthetic regression fixture"]
+    }
+  ]
+}"#,
+        )
+        .expect("write host profile catalog");
+
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set("catalog_path", catalog_path.to_string_lossy().to_string())
+            .expect("set catalog path");
+        lua.lua()
+            .load(
+                r#"
+                    rows = list_host_profile_catalog_entries(catalog_path, "deoR")
+                    assert(#rows == 1)
+                    assert(rows[1].profile_id == "ecoli_dh5alpha")
+                "#,
+            )
+            .exec()
+            .expect("list host profile catalog entries");
     }
 
     #[test]
