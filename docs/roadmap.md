@@ -3139,6 +3139,9 @@ Repeated multi-tool gaps to prioritize:
          target spans, evidence spans, uncovered gaps, variant loci, and
          selected-evidence discrepancy spans can be inspected at construct
          scale and clicked to sync the detailed review panes
+       - clicked uncovered gaps now remain inspectable as their own review
+         focus, with a dedicated unsupported-region summary even if no explicit
+         target overlaps the gap yet
      - sequencing-primer overlays are now available through the same shared
        engine/shell path and exposed in the GUI specialist:
        - `SuggestSequencingPrimers` suggests exact-3'-anneal primer hits on the

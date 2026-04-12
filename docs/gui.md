@@ -1276,6 +1276,8 @@ Patterns menu:
     - clicking the overview synchronizes the target, variant, evidence, and
       trace-backed inspection panes; clicking a coverage gap jumps to the most
       relevant insufficient/contradicted target when possible
+    - a clicked coverage gap now also stays highlighted and opens a dedicated
+      unsupported-region summary, even when no explicit target overlaps it yet
     - an optional unresolved-first review mode keeps contradicted or
       insufficient rows at the top of the target/variant inspection queue
     - the evidence table itself is now the focus picker for alignment and
@@ -2697,6 +2699,8 @@ Report review surface:
   - selected-evidence discrepancy spans
   - clickable sync into the detailed review panes
 - optional unresolved-first review mode for target and variant ordering
+- selected coverage-gap summary for unsupported regions that are not yet tied
+  to an explicit target
 - per-target table with kind, span, support counts, and reason
 - per-evidence table with sequence-vs-trace kind, chosen orientation,
   usability, identity, and coverage

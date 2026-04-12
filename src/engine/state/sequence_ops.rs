@@ -1301,9 +1301,7 @@ impl GentleEngine {
         score.local_fit_score = score
             .local_fit_score
             .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
-        score.composite_meta_score = score
-            .composite_meta_score
-            .filter(|value| value.is_finite());
+        score.composite_meta_score = score.composite_meta_score.filter(|value| value.is_finite());
         score.routine_family_alignment_bonus = score
             .routine_family_alignment_bonus
             .filter(|value| value.is_finite());
