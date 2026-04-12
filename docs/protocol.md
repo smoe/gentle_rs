@@ -2458,9 +2458,28 @@ Construct reasoning graph foundation (implemented first slice):
 - Current engine-backed scope:
   - project metadata key: `construct_reasoning`
   - objective upsert/store round-trip
-  - deterministic read-only graph build from existing sequence facts:
-    restriction sites plus sequence-feature spans such as exon/CDS/gene/
-    transcript/UTR/promoter/TFBS when present
+  - construct-objective schema now reserves additive host/helper context
+    fields:
+    - `propagation_host_profile_id`
+    - `expression_host_profile_id`
+    - `host_route[]`
+    - `medium_conditions[]`
+    - `helper_profile_id`
+    - `required_host_traits[]`
+    - `forbidden_host_traits[]`
+  - design-evidence schema now also reserves additive non-sequence context
+    fields:
+    - `scope`
+    - `host_profile_id`
+    - `host_route_step_id`
+    - `helper_profile_id`
+    - `medium_condition_id`
+  - deterministic read-only graph build from:
+    - construct-objective context such as selected propagation/expression host
+      profiles, helper profile, host-route steps, medium conditions, and
+      required/forbidden host traits
+    - existing sequence facts: restriction sites plus sequence-feature spans
+      such as exon/CDS/gene/transcript/UTR/promoter/TFBS when present
   - active-sequence graph refresh helper that reuses the existing graph/objective
     identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph
@@ -2477,6 +2496,16 @@ Construct reasoning graph foundation (implemented first slice):
     `hard_fact`
   - imported/derived sequence annotations => `reliable_annotation`
   - TFBS-style annotations => `soft_hypothesis`
+- Current evidence-scope behavior:
+  - graph builds now emit both:
+    - `sequence_span` evidence for mapped restriction/annotation features
+    - non-sequence construct-objective context evidence
+      (`host_profile`, `host_transition`, `medium_condition`,
+      `helper_profile`, `whole_construct`) when the objective carries those
+      fields
+  - GUI DNA overlays intentionally keep rendering only `sequence_span`
+    evidence; non-sequence evidence stays in the portable graph payload rather
+    than being faked as coordinate spans
 - Not in this first slice yet:
   - derived facts/decision-node population beyond raw evidence capture
   - construct-candidate ranking

@@ -169,6 +169,77 @@ impl EditableStatus {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Where one evidence node primarily applies.
+pub enum EvidenceScope {
+    #[default]
+    SequenceSpan,
+    WholeConstruct,
+    HostProfile,
+    HostTransition,
+    MediumCondition,
+    HelperProfile,
+}
+
+impl EvidenceScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SequenceSpan => "sequence_span",
+            Self::WholeConstruct => "whole_construct",
+            Self::HostProfile => "host_profile",
+            Self::HostTransition => "host_transition",
+            Self::MediumCondition => "medium_condition",
+            Self::HelperProfile => "helper_profile",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Lifecycle role for one host step in a construct workflow.
+pub enum HostLifecycleRole {
+    #[default]
+    Propagation,
+    Expression,
+    Intermediate,
+    Storage,
+}
+
+impl HostLifecycleRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Propagation => "propagation",
+            Self::Expression => "expression",
+            Self::Intermediate => "intermediate",
+            Self::Storage => "storage",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// One planned host step for propagation, transfer, or expression.
+pub struct HostRouteStep {
+    pub step_id: String,
+    pub host_profile_id: String,
+    pub role: HostLifecycleRole,
+    pub rationale: String,
+    pub notes: Vec<String>,
+}
+
+impl Default for HostRouteStep {
+    fn default() -> Self {
+        Self {
+            step_id: String::new(),
+            host_profile_id: String::new(),
+            role: HostLifecycleRole::Propagation,
+            rationale: String::new(),
+            notes: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Target outcome used to interpret evidence and derive construct candidates.
@@ -183,6 +254,13 @@ pub struct ConstructObjective {
     pub tissue: Option<String>,
     pub organelle: Option<String>,
     pub expression_intent: Option<String>,
+    pub propagation_host_profile_id: Option<String>,
+    pub expression_host_profile_id: Option<String>,
+    pub host_route: Vec<HostRouteStep>,
+    pub medium_conditions: Vec<String>,
+    pub helper_profile_id: Option<String>,
+    pub required_host_traits: Vec<String>,
+    pub forbidden_host_traits: Vec<String>,
     pub required_roles: Vec<ConstructRole>,
     pub forbidden_roles: Vec<ConstructRole>,
     pub preferred_routine_families: Vec<String>,
@@ -201,6 +279,13 @@ impl Default for ConstructObjective {
             tissue: None,
             organelle: None,
             expression_intent: None,
+            propagation_host_profile_id: None,
+            expression_host_profile_id: None,
+            host_route: vec![],
+            medium_conditions: vec![],
+            helper_profile_id: None,
+            required_host_traits: vec![],
+            forbidden_host_traits: vec![],
             required_roles: vec![],
             forbidden_roles: vec![],
             preferred_routine_families: vec![],
@@ -217,9 +302,14 @@ pub struct DesignEvidence {
     pub schema: String,
     pub evidence_id: String,
     pub seq_id: SeqId,
+    pub scope: EvidenceScope,
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub strand: Option<String>,
+    pub host_profile_id: Option<String>,
+    pub host_route_step_id: Option<String>,
+    pub helper_profile_id: Option<String>,
+    pub medium_condition_id: Option<String>,
     pub role: ConstructRole,
     pub evidence_class: EvidenceClass,
     pub label: String,
@@ -242,9 +332,14 @@ impl Default for DesignEvidence {
             schema: default_design_evidence_schema(),
             evidence_id: String::new(),
             seq_id: String::new(),
+            scope: EvidenceScope::SequenceSpan,
             start_0based: 0,
             end_0based_exclusive: 0,
             strand: None,
+            host_profile_id: None,
+            host_route_step_id: None,
+            helper_profile_id: None,
+            medium_condition_id: None,
             role: ConstructRole::Other,
             evidence_class: EvidenceClass::ReliableAnnotation,
             label: String::new(),
@@ -259,6 +354,64 @@ impl Default for DesignEvidence {
             editable_status: EditableStatus::Draft,
             warnings: vec![],
             notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Curated host/strain record used by construct reasoning.
+pub struct HostProfileRecord {
+    pub profile_id: String,
+    pub species: String,
+    pub strain: String,
+    pub aliases: Vec<String>,
+    pub genotype_tags: Vec<String>,
+    pub phenotype_tags: Vec<String>,
+    pub notes: Vec<String>,
+    pub source_notes: Vec<String>,
+}
+
+impl Default for HostProfileRecord {
+    fn default() -> Self {
+        Self {
+            profile_id: String::new(),
+            species: String::new(),
+            strain: String::new(),
+            aliases: vec![],
+            genotype_tags: vec![],
+            phenotype_tags: vec![],
+            notes: vec![],
+            source_notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Curated helper/vector profile used by construct reasoning.
+pub struct HelperConstructProfile {
+    pub profile_id: String,
+    pub helper_seq_id: Option<String>,
+    pub helper_genome_id: Option<String>,
+    pub vector_family: Option<String>,
+    pub backbone_roles: Vec<String>,
+    pub host_compatibility_tags: Vec<String>,
+    pub notes: Vec<String>,
+    pub source_notes: Vec<String>,
+}
+
+impl Default for HelperConstructProfile {
+    fn default() -> Self {
+        Self {
+            profile_id: String::new(),
+            helper_seq_id: None,
+            helper_genome_id: None,
+            vector_family: None,
+            backbone_roles: vec![],
+            host_compatibility_tags: vec![],
+            notes: vec![],
+            source_notes: vec![],
         }
     }
 }
@@ -442,9 +595,20 @@ mod tests {
         graph.seq_id = "seq1".to_string();
         graph.objective.objective_id = "obj1".to_string();
         graph.objective.goal = "demo".to_string();
+        graph.objective.propagation_host_profile_id = Some("ecoli_k12".to_string());
+        graph.objective.host_route.push(HostRouteStep {
+            step_id: "step1".to_string(),
+            host_profile_id: "ecoli_k12".to_string(),
+            role: HostLifecycleRole::Propagation,
+            rationale: "initial propagation".to_string(),
+            ..HostRouteStep::default()
+        });
         graph.evidence.push(DesignEvidence {
             evidence_id: "ev1".to_string(),
             seq_id: "seq1".to_string(),
+            scope: EvidenceScope::HostTransition,
+            host_profile_id: Some("ecoli_k12".to_string()),
+            host_route_step_id: Some("step1".to_string()),
             role: ConstructRole::RestrictionSite,
             evidence_class: EvidenceClass::HardFact,
             label: "EcoRI".to_string(),
@@ -458,5 +622,15 @@ mod tests {
         assert_eq!(round_trip.schema, CONSTRUCT_REASONING_GRAPH_SCHEMA);
         assert_eq!(round_trip.objective.schema, CONSTRUCT_OBJECTIVE_SCHEMA);
         assert_eq!(round_trip.evidence[0].schema, DESIGN_EVIDENCE_SCHEMA);
+        assert_eq!(
+            round_trip.objective.propagation_host_profile_id.as_deref(),
+            Some("ecoli_k12")
+        );
+        assert_eq!(round_trip.objective.host_route.len(), 1);
+        assert_eq!(round_trip.evidence[0].scope, EvidenceScope::HostTransition);
+        assert_eq!(
+            round_trip.evidence[0].host_profile_id.as_deref(),
+            Some("ecoli_k12")
+        );
     }
 }

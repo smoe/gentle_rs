@@ -9122,6 +9122,43 @@ impl GentleEngine {
             .collect();
     }
 
+    fn normalize_optional_id_token_text(value: Option<String>) -> Option<String> {
+        value
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(|value| Self::normalize_id_token(&value))
+    }
+
+    fn normalize_tag_like_text(values: &mut Vec<String>) {
+        let mut seen: HashSet<String> = HashSet::new();
+        *values = values
+            .drain(..)
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .filter(|value| seen.insert(value.clone()))
+            .collect();
+    }
+
+    fn normalize_host_route_steps(steps: &mut Vec<HostRouteStep>) {
+        for (idx, step) in steps.iter_mut().enumerate() {
+            step.step_id = if step.step_id.trim().is_empty() {
+                format!("host_step_{}", idx.saturating_add(1))
+            } else {
+                Self::normalize_id_token(step.step_id.trim())
+            };
+            step.host_profile_id = if step.host_profile_id.trim().is_empty() {
+                String::new()
+            } else {
+                Self::normalize_id_token(step.host_profile_id.trim())
+            };
+            step.rationale = step.rationale.trim().to_string();
+            Self::normalize_optional_note_text(&mut step.notes);
+        }
+        steps.retain(|step| !step.host_profile_id.is_empty() || !step.rationale.is_empty());
+        let mut seen: HashSet<String> = HashSet::new();
+        steps.retain(|step| seen.insert(step.step_id.clone()));
+    }
+
     fn normalize_construct_objective(mut objective: ConstructObjective) -> ConstructObjective {
         objective.schema = CONSTRUCT_OBJECTIVE_SCHEMA.to_string();
         objective.objective_id = if !objective.objective_id.trim().is_empty() {
@@ -9166,6 +9203,16 @@ impl GentleEngine {
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        objective.propagation_host_profile_id =
+            Self::normalize_optional_id_token_text(objective.propagation_host_profile_id.take());
+        objective.expression_host_profile_id =
+            Self::normalize_optional_id_token_text(objective.expression_host_profile_id.take());
+        objective.helper_profile_id =
+            Self::normalize_optional_id_token_text(objective.helper_profile_id.take());
+        Self::normalize_host_route_steps(&mut objective.host_route);
+        Self::normalize_tag_like_text(&mut objective.medium_conditions);
+        Self::normalize_tag_like_text(&mut objective.required_host_traits);
+        Self::normalize_tag_like_text(&mut objective.forbidden_host_traits);
         Self::normalize_role_list(&mut objective.required_roles);
         Self::normalize_role_list(&mut objective.forbidden_roles);
         objective.preferred_routine_families = objective
@@ -9191,13 +9238,21 @@ impl GentleEngine {
     fn normalize_design_evidence(mut evidence: DesignEvidence, idx: usize) -> DesignEvidence {
         evidence.schema = DESIGN_EVIDENCE_SCHEMA.to_string();
         evidence.evidence_id = if evidence.evidence_id.trim().is_empty() {
-            format!(
-                "evidence_{}_{}_{}_{}",
-                evidence.role.as_str(),
-                evidence.start_0based,
-                evidence.end_0based_exclusive,
-                idx
-            )
+            match evidence.scope {
+                EvidenceScope::SequenceSpan => format!(
+                    "evidence_{}_{}_{}_{}",
+                    evidence.role.as_str(),
+                    evidence.start_0based,
+                    evidence.end_0based_exclusive,
+                    idx
+                ),
+                _ => format!(
+                    "evidence_{}_{}_{}",
+                    evidence.role.as_str(),
+                    evidence.scope.as_str(),
+                    idx
+                ),
+            }
         } else {
             evidence.evidence_id.trim().to_string()
         };
@@ -9213,6 +9268,14 @@ impl GentleEngine {
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        evidence.host_profile_id =
+            Self::normalize_optional_id_token_text(evidence.host_profile_id.take());
+        evidence.host_route_step_id =
+            Self::normalize_optional_id_token_text(evidence.host_route_step_id.take());
+        evidence.helper_profile_id =
+            Self::normalize_optional_id_token_text(evidence.helper_profile_id.take());
+        evidence.medium_condition_id =
+            Self::normalize_optional_id_token_text(evidence.medium_condition_id.take());
         evidence.label = evidence.label.trim().to_string();
         evidence.rationale = evidence.rationale.trim().to_string();
         evidence.score = Self::normalize_optional_score(evidence.score);
@@ -9737,7 +9800,236 @@ impl GentleEngine {
         )
     }
 
-    fn build_construct_reasoning_evidence(
+    fn push_construct_reasoning_objective_context_evidence(
+        evidence: &mut Vec<DesignEvidence>,
+        seq_id: &str,
+        objective: &ConstructObjective,
+        scope: EvidenceScope,
+        label: String,
+        rationale: String,
+        host_profile_id: Option<String>,
+        host_route_step_id: Option<String>,
+        helper_profile_id: Option<String>,
+        medium_condition_id: Option<String>,
+        mut context_tags: Vec<String>,
+        mut provenance_refs: Vec<String>,
+        notes: Vec<String>,
+    ) {
+        context_tags.push("construct_objective".to_string());
+        context_tags.sort();
+        context_tags.dedup();
+        provenance_refs.insert(0, objective.objective_id.clone());
+        provenance_refs.sort();
+        provenance_refs.dedup();
+        evidence.push(DesignEvidence {
+            seq_id: seq_id.to_string(),
+            scope,
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            host_profile_id,
+            host_route_step_id,
+            helper_profile_id,
+            medium_condition_id,
+            role: ConstructRole::ContextBaggage,
+            evidence_class: EvidenceClass::UserOverride,
+            label,
+            rationale,
+            confidence: Some(1.0),
+            context_tags,
+            provenance_kind: "construct_objective".to_string(),
+            provenance_refs,
+            notes,
+            ..DesignEvidence::default()
+        });
+    }
+
+    fn build_construct_reasoning_objective_context_evidence(
+        seq_id: &str,
+        objective: &ConstructObjective,
+    ) -> Vec<DesignEvidence> {
+        let mut evidence: Vec<DesignEvidence> = vec![];
+
+        if let Some(profile_id) = objective.propagation_host_profile_id.as_ref() {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::HostProfile,
+                format!("Propagation host: {profile_id}"),
+                format!(
+                    "Construct objective explicitly selects host profile '{profile_id}' for construct propagation."
+                ),
+                Some(profile_id.clone()),
+                None,
+                None,
+                None,
+                vec!["host_profile".to_string(), "propagation_host".to_string()],
+                vec![profile_id.clone()],
+                vec![],
+            );
+        }
+        if let Some(profile_id) = objective.expression_host_profile_id.as_ref() {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::HostProfile,
+                format!("Expression host: {profile_id}"),
+                format!(
+                    "Construct objective explicitly selects host profile '{profile_id}' for downstream expression."
+                ),
+                Some(profile_id.clone()),
+                None,
+                None,
+                None,
+                vec!["expression_host".to_string(), "host_profile".to_string()],
+                vec![profile_id.clone()],
+                vec![],
+            );
+        }
+        if let Some(helper_profile_id) = objective.helper_profile_id.as_ref() {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::HelperProfile,
+                format!("Helper profile: {helper_profile_id}"),
+                format!(
+                    "Construct objective explicitly selects helper/vector profile '{helper_profile_id}'."
+                ),
+                None,
+                None,
+                Some(helper_profile_id.clone()),
+                None,
+                vec!["helper_profile".to_string()],
+                vec![helper_profile_id.clone()],
+                vec![],
+            );
+        }
+        for step in &objective.host_route {
+            let rationale = if step.rationale.is_empty() {
+                format!(
+                    "Construct objective explicitly records a {} host transition step through '{}'.",
+                    step.role.as_str(),
+                    step.host_profile_id
+                )
+            } else {
+                step.rationale.clone()
+            };
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::HostTransition,
+                format!(
+                    "Host route ({}): {}",
+                    step.role.as_str(),
+                    step.host_profile_id
+                ),
+                rationale,
+                Some(step.host_profile_id.clone()),
+                Some(step.step_id.clone()),
+                None,
+                None,
+                vec![
+                    "host_transition".to_string(),
+                    step.role.as_str().to_string(),
+                ],
+                vec![step.host_profile_id.clone(), step.step_id.clone()],
+                step.notes.clone(),
+            );
+        }
+        for condition in &objective.medium_conditions {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::MediumCondition,
+                format!("Medium condition: {condition}"),
+                format!(
+                    "Construct objective explicitly records medium/selection condition '{condition}'."
+                ),
+                None,
+                None,
+                None,
+                Some(condition.clone()),
+                vec!["medium_condition".to_string()],
+                vec![condition.clone()],
+                vec![],
+            );
+        }
+        for trait_tag in &objective.required_host_traits {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::WholeConstruct,
+                format!("Required host trait: {trait_tag}"),
+                format!("Construct objective explicitly requires host trait/tag '{trait_tag}'."),
+                None,
+                None,
+                None,
+                None,
+                vec!["host_trait".to_string(), "required_host_trait".to_string()],
+                vec![trait_tag.clone()],
+                vec![],
+            );
+        }
+        for trait_tag in &objective.forbidden_host_traits {
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::WholeConstruct,
+                format!("Forbidden host trait: {trait_tag}"),
+                format!("Construct objective explicitly forbids host trait/tag '{trait_tag}'."),
+                None,
+                None,
+                None,
+                None,
+                vec!["forbidden_host_trait".to_string(), "host_trait".to_string()],
+                vec![trait_tag.clone()],
+                vec![],
+            );
+        }
+        for (label, value, tag) in [
+            (
+                "Host species",
+                objective.host_species.as_ref(),
+                "host_species",
+            ),
+            ("Cell type", objective.cell_type.as_ref(), "cell_type"),
+            ("Tissue", objective.tissue.as_ref(), "tissue"),
+            ("Organelle", objective.organelle.as_ref(), "organelle"),
+            (
+                "Expression intent",
+                objective.expression_intent.as_ref(),
+                "expression_intent",
+            ),
+        ] {
+            if let Some(value) = value {
+                Self::push_construct_reasoning_objective_context_evidence(
+                    &mut evidence,
+                    seq_id,
+                    objective,
+                    EvidenceScope::WholeConstruct,
+                    format!("{label}: {value}"),
+                    format!("Construct objective explicitly records {tag} context '{value}'."),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![tag.to_string()],
+                    vec![value.clone()],
+                    vec![],
+                );
+            }
+        }
+
+        evidence
+    }
+
+    fn build_construct_reasoning_sequence_evidence(
         &self,
         seq_id: &str,
         dna: &DNAsequence,
@@ -9908,6 +10200,10 @@ impl GentleEngine {
             Self::construct_reasoning_default_objective(seq_id, dna)
         };
 
+        let mut evidence =
+            Self::build_construct_reasoning_objective_context_evidence(seq_id, &objective);
+        evidence.extend(self.build_construct_reasoning_sequence_evidence(seq_id, dna));
+
         let graph = ConstructReasoningGraph {
             graph_id: graph_id
                 .map(str::trim)
@@ -9919,13 +10215,13 @@ impl GentleEngine {
                         Self::normalize_id_token(seq_id),
                         Self::normalize_id_token(&objective.objective_id)
                     )
-                }),
+            }),
             seq_id: seq_id.to_string(),
             objective,
             generated_at_unix_ms: Self::now_unix_ms(),
-            evidence: self.build_construct_reasoning_evidence(seq_id, dna),
+            evidence,
             notes: vec![
-                "v1 deterministic evidence extraction includes restriction sites and sequence annotations."
+                "v1 deterministic evidence extraction includes construct-objective context, restriction sites, and sequence annotations."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

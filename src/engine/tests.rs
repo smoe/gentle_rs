@@ -21137,6 +21137,19 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
             title: " Mammalian reporter ".to_string(),
             goal: " Choose promoter and CDS ".to_string(),
             host_species: Some(" Homo sapiens ".to_string()),
+            propagation_host_profile_id: Some(" Ecoli K12 ".to_string()),
+            expression_host_profile_id: Some("  CHO Susp ".to_string()),
+            helper_profile_id: Some(" pUC19 Carrier ".to_string()),
+            medium_conditions: vec![" LB + Amp ".to_string(), "lb + amp".to_string()],
+            required_host_traits: vec![" EndA- ".to_string(), "enda-".to_string()],
+            forbidden_host_traits: vec![" mdrs+ ".to_string(), "MDRS+".to_string()],
+            host_route: vec![HostRouteStep {
+                step_id: " First Step ".to_string(),
+                host_profile_id: " Ecoli K12 ".to_string(),
+                role: HostLifecycleRole::Propagation,
+                rationale: " initial propagation ".to_string(),
+                notes: vec![" keep methylase context ".to_string()],
+            }],
             preferred_routine_families: vec![
                 " Gibson ".to_string(),
                 "gibson".to_string(),
@@ -21158,6 +21171,26 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
     assert_eq!(stored.goal, "Choose promoter and CDS");
     assert_eq!(stored.host_species.as_deref(), Some("Homo sapiens"));
     assert_eq!(
+        stored.propagation_host_profile_id.as_deref(),
+        Some("ecolik12")
+    );
+    assert_eq!(
+        stored.expression_host_profile_id.as_deref(),
+        Some("chosusp")
+    );
+    assert_eq!(stored.helper_profile_id.as_deref(), Some("puc19carrier"));
+    assert_eq!(stored.medium_conditions, vec!["lb + amp".to_string()]);
+    assert_eq!(stored.required_host_traits, vec!["enda-".to_string()]);
+    assert_eq!(stored.forbidden_host_traits, vec!["mdrs+".to_string()]);
+    assert_eq!(stored.host_route.len(), 1);
+    assert_eq!(stored.host_route[0].step_id, "firststep");
+    assert_eq!(stored.host_route[0].host_profile_id, "ecolik12");
+    assert_eq!(stored.host_route[0].rationale, "initial propagation");
+    assert_eq!(
+        stored.host_route[0].notes,
+        vec!["keep methylase context".to_string()]
+    );
+    assert_eq!(
         stored.preferred_routine_families,
         vec!["gibson".to_string(), "golden gate".to_string()]
     );
@@ -21177,6 +21210,46 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
             .metadata
             .contains_key(CONSTRUCT_REASONING_METADATA_KEY)
     );
+}
+
+#[test]
+fn upsert_construct_reasoning_graph_normalizes_host_context_evidence_fields() {
+    let mut engine = GentleEngine::new();
+    let graph = engine
+        .upsert_construct_reasoning_graph(ConstructReasoningGraph {
+            graph_id: "graph_host_context".to_string(),
+            seq_id: "demo".to_string(),
+            objective: ConstructObjective {
+                objective_id: "obj_host_context".to_string(),
+                goal: "Inspect host route".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![DesignEvidence {
+                seq_id: " demo ".to_string(),
+                scope: EvidenceScope::HostTransition,
+                host_profile_id: Some(" Ecoli K12 ".to_string()),
+                host_route_step_id: Some(" First Step ".to_string()),
+                helper_profile_id: Some(" pUC19 Carrier ".to_string()),
+                medium_condition_id: Some(" LB + Amp ".to_string()),
+                role: ConstructRole::RestrictionSite,
+                evidence_class: EvidenceClass::ContextEvidence,
+                label: " host transfer ".to_string(),
+                rationale: " methylation context matters ".to_string(),
+                ..DesignEvidence::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        })
+        .expect("store graph");
+
+    assert_eq!(graph.evidence.len(), 1);
+    let evidence = &graph.evidence[0];
+    assert_eq!(evidence.scope, EvidenceScope::HostTransition);
+    assert_eq!(evidence.host_profile_id.as_deref(), Some("ecolik12"));
+    assert_eq!(evidence.host_route_step_id.as_deref(), Some("firststep"));
+    assert_eq!(evidence.helper_profile_id.as_deref(), Some("puc19carrier"));
+    assert_eq!(evidence.medium_condition_id.as_deref(), Some("lbamp"));
+    assert_eq!(evidence.label, "host transfer");
+    assert_eq!(evidence.rationale, "methylation context matters");
 }
 
 #[test]
@@ -21264,6 +21337,86 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
         .expect("persisted graph");
     assert_eq!(persisted.graph_id, graph.graph_id);
     assert_eq!(persisted.evidence.len(), graph.evidence.len());
+}
+
+#[test]
+fn build_construct_reasoning_graph_includes_objective_host_and_helper_context_evidence() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("context_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Host-aware cloning".to_string(),
+            goal: "Keep host and helper context inspectable".to_string(),
+            host_species: Some("Escherichia coli".to_string()),
+            propagation_host_profile_id: Some("ecoli_k12".to_string()),
+            expression_host_profile_id: Some("cho_k1".to_string()),
+            helper_profile_id: Some("puc19_carrier".to_string()),
+            medium_conditions: vec!["lb_amp".to_string()],
+            required_host_traits: vec!["enda".to_string()],
+            forbidden_host_traits: vec!["mdrs".to_string()],
+            host_route: vec![HostRouteStep {
+                step_id: "first_transfer".to_string(),
+                host_profile_id: "ecoli_k12".to_string(),
+                role: HostLifecycleRole::Intermediate,
+                rationale: "Preserve methylation context for later transfer.".to_string(),
+                notes: vec!["hsdR-sensitive intermediate".to_string()],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph("context_demo", Some(&objective.objective_id), None)
+        .expect("build graph");
+
+    let non_sequence: Vec<_> = graph
+        .evidence
+        .iter()
+        .filter(|row| row.scope != EvidenceScope::SequenceSpan)
+        .collect();
+    assert_eq!(non_sequence.len(), 8);
+    assert!(non_sequence.iter().all(|row| {
+        row.role == ConstructRole::ContextBaggage
+            && row.evidence_class == EvidenceClass::UserOverride
+            && row.provenance_kind == "construct_objective"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::HostProfile
+            && row.host_profile_id.as_deref() == Some("ecoli_k12")
+            && row.label == "Propagation host: ecoli_k12"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::HostProfile
+            && row.host_profile_id.as_deref() == Some("cho_k1")
+            && row.label == "Expression host: cho_k1"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::HelperProfile
+            && row.helper_profile_id.as_deref() == Some("puc19_carrier")
+            && row.label == "Helper profile: puc19_carrier"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::HostTransition
+            && row.host_route_step_id.as_deref() == Some("first_transfer")
+            && row.host_profile_id.as_deref() == Some("ecoli_k12")
+            && row.notes == vec!["hsdR-sensitive intermediate".to_string()]
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::MediumCondition
+            && row.medium_condition_id.as_deref() == Some("lb_amp")
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::WholeConstruct && row.label == "Required host trait: enda"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::WholeConstruct && row.label == "Forbidden host trait: mdrs"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.scope == EvidenceScope::WholeConstruct && row.label == "Host species: Escherichia coli"
+    }));
 }
 
 #[test]

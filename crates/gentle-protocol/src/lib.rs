@@ -16,7 +16,8 @@ pub use construct_reasoning::{
     CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate, ConstructObjective,
     ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
     DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
-    DesignFact, EditableStatus, EvidenceClass,
+    DesignFact, EditableStatus, EvidenceClass, EvidenceScope, HelperConstructProfile,
+    HostLifecycleRole, HostProfileRecord, HostRouteStep,
 };
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,

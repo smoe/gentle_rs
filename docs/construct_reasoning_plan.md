@@ -1,6 +1,6 @@
 # Construct Reasoning Graph Plan
 
-Last updated: 2026-04-09
+Last updated: 2026-04-11
 
 Purpose: define an engine-owned, sequence-linked construct-planning layer that
 captures why GENtle proposes one genomic window, transcript/CDS span, fusion
@@ -51,6 +51,17 @@ The graph is not a black box. It is intended to be:
 - portable across GUI/CLI/JS/Lua/MCP/ClawBio,
 - storable in project metadata and run bundles,
 - usable offline.
+
+Sequence-linked does not mean sequence-only.
+
+- Some reasoning inputs map directly to sequence coordinates and belong on the
+  DNA overlay.
+- Other inputs are construct-level or host-level facts and must remain visible
+  as graph nodes without pretending to be one sequence span.
+- The same graph therefore needs both:
+  - sequence-backed evidence
+  - non-sequence evidence such as host genotype, host-transition steps,
+    helper-vector profile properties, and medium/selection conditions
 
 ## 3. Evidence model
 
@@ -145,10 +156,32 @@ Suggested enums:
   - `accepted`
   - `rejected`
   - `locked`
+- `EvidenceScope`
+  - `sequence_span`
+  - `whole_construct`
+  - `host_profile`
+  - `host_transition`
+  - `medium_condition`
+  - `helper_profile`
+- `HostLifecycleRole`
+  - `propagation`
+  - `expression`
+  - `intermediate`
+  - `storage`
 
 ### Rust skeletons
 
 ```rust
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HostRouteStep {
+    pub step_id: String,
+    pub host_profile_id: String,
+    pub role: HostLifecycleRole,
+    pub rationale: String,
+    pub notes: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ConstructObjective {
@@ -161,6 +194,13 @@ pub struct ConstructObjective {
     pub tissue: Option<String>,
     pub organelle: Option<String>,
     pub expression_intent: Option<String>,
+    pub propagation_host_profile_id: Option<String>,
+    pub expression_host_profile_id: Option<String>,
+    pub host_route: Vec<HostRouteStep>,
+    pub medium_conditions: Vec<String>,
+    pub helper_profile_id: Option<String>,
+    pub required_host_traits: Vec<String>,
+    pub forbidden_host_traits: Vec<String>,
     pub required_roles: Vec<ConstructRole>,
     pub forbidden_roles: Vec<ConstructRole>,
     pub preferred_routine_families: Vec<String>,
@@ -172,9 +212,14 @@ pub struct ConstructObjective {
 pub struct DesignEvidence {
     pub evidence_id: String,
     pub seq_id: SeqId,
-    pub start_0based: usize,
-    pub end_0based_exclusive: usize,
+    pub scope: EvidenceScope,
+    pub start_0based: Option<usize>,
+    pub end_0based_exclusive: Option<usize>,
     pub strand: Option<String>,
+    pub host_profile_id: Option<String>,
+    pub host_route_step_id: Option<String>,
+    pub helper_profile_id: Option<String>,
+    pub medium_condition_id: Option<String>,
     pub role: ConstructRole,
     pub evidence_class: EvidenceClass,
     pub label: String,
@@ -250,6 +295,47 @@ pub struct ConstructReasoningGraph {
 }
 ```
 
+### Companion catalog records
+
+The reasoning graph should not hardcode host/vector/strain lore into engine
+logic. Keep inspectable catalog records alongside the graph:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HostProfileRecord {
+    pub profile_id: String,
+    pub species: String,
+    pub strain: String,
+    pub aliases: Vec<String>,
+    pub genotype_tags: Vec<String>,
+    pub phenotype_tags: Vec<String>,
+    pub notes: Vec<String>,
+    pub source_notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HelperConstructProfile {
+    pub profile_id: String,
+    pub helper_seq_id: Option<String>,
+    pub helper_genome_id: Option<String>,
+    pub vector_family: Option<String>,
+    pub backbone_roles: Vec<String>,
+    pub host_compatibility_tags: Vec<String>,
+    pub notes: Vec<String>,
+    pub source_notes: Vec<String>,
+}
+```
+
+Suggested data files:
+
+- `assets/host_profiles.json`
+- `assets/helper_construct_profiles.json`
+
+These records should remain human-editable and source-noted rather than hidden
+inside one compiled matcher.
+
 ## 5. File placement
 
 ### Protocol crate
@@ -321,6 +407,37 @@ V1 should reuse existing GENtle outputs before introducing any external model:
 5. TFBS
    - source: existing TFBS hits
    - classification: `soft_hypothesis`
+6. helper-vector / host compatibility
+   - source:
+     - helper construct profile catalog
+     - host profile catalog
+     - construct objective (`propagation_host`, `expression_host`,
+       `host_route`, medium conditions)
+   - examples:
+     - propagation host must match vector/backbone expectations
+     - named host mutations such as `endA`, `relA`, `tonA`, `deoR`
+     - restriction/methylation systems such as `hsdR/hsdM` or MDRS
+   - classification:
+     - curated host/helper profile entries: `reliable_annotation`
+     - route-specific host fit or incompatibility conclusions:
+       `context_evidence`
+7. complementation / host-essential rescue carried on construct
+   - source: annotated plasmid genes or curated helper profile roles
+   - examples:
+     - `proA`, `proB`, or similar growth-rescue markers under defined medium
+   - classification:
+     - exact carried gene interval: `hard_fact` or `reliable_annotation`
+     - growth-selection usefulness under one medium condition:
+       `context_evidence`
+8. inversion / rearrangement risk
+   - source:
+     - existing self-dotplot path
+     - local repeat / inverted-repeat extraction on the construct
+   - examples:
+     - plasmid-local self-similarity suggesting inversion-prone architecture
+   - classification:
+     - exact repeat windows: `hard_fact`
+     - inversion-risk assessment: `context_evidence` or `soft_hypothesis`
 
 ## 7. Decision-node model
 
@@ -335,6 +452,12 @@ Decision nodes should initially support:
 - `evaluate_fusion_boundary`
 - `derive_construct_candidate`
 - `suggest_routine_family`
+- `evaluate_propagation_host_fit`
+- `evaluate_expression_host_fit`
+- `evaluate_host_transition_risk`
+- `evaluate_methylation_restriction_risk`
+- `evaluate_selection_or_complementation_fit`
+- `evaluate_repeat_inversion_risk`
 
 Fuzzy logic belongs only where soft thresholds are meaningful, for example:
 
@@ -391,6 +514,17 @@ Sequence overlay rules:
 - dashed border = soft hypothesis,
 - muted/struck style = rejected,
 - lock badge = human-locked fact.
+
+Overlay scoping rules:
+
+- sequence-backed evidence stays on the DNA overlay:
+  - restriction/methylation-sensitive motifs,
+  - complementation genes carried on the construct,
+  - repeat or inverted-repeat windows from self-dotplot/repeat analysis.
+- host-only or medium-only facts do not become fake spans:
+  - they belong in the graph inspector / candidate explanation surface,
+  - they may be shown as badges, side-panel nodes, or connected decision
+    nodes instead.
 
 Interaction rules:
 
@@ -471,6 +605,22 @@ Acceptance:
 - edits persist in metadata
 - reload reproduces the same graph state
 
+### Phase 4.5: host/helper context integration
+
+- add host profile and helper-construct profile catalogs
+- extend objective/evidence contracts for non-sequence construct context
+- derive host-fit, host-transition, methylation/restriction, complementation,
+  and inversion-risk facts
+- map only sequence-backed consequences onto the DNA overlay
+
+Acceptance:
+
+- one saved objective can name distinct propagation and expression hosts
+- one serial host route can emit a deterministic incompatibility warning
+- one self-dotplot/repeat analysis can contribute inversion-risk evidence
+- one helper/vector profile can influence candidate explanation without GUI- or
+  adapter-local biology logic
+
 ### Phase 5: construct candidates + routine handoff
 
 - derive `construct_candidate` rows
@@ -504,6 +654,13 @@ The smallest useful milestone is:
   - TFBS,
 - one read-only DNA overlay,
 - one JSON export/import path.
+
+The next concrete milestone after that should be:
+
+- one propagation-host aware objective,
+- one helper/vector profile catalog,
+- one host-transition risk decision,
+- one inversion-risk evidence path from self-dotplot/repeat analysis.
 
 That is enough to prove:
 

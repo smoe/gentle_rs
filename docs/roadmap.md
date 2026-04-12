@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-11
+Last updated: 2026-04-12
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -3758,6 +3758,24 @@ Post-baseline follow-ups:
     hover/click inspection, side-panel evidence details, and GUI-only role /
     evidence-class filters through the adjacent `Why` menu without duplicating
     or mutating the underlying engine-owned graph.
+  - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
+    contracts now reserve additive host/helper context fields
+    (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,
+    host/helper/medium evidence references, and evidence `scope`) so the next
+    host/vector reasoning slices can land without forking adapter contracts.
+  - Done (2026-04-12, context evidence landing): graph builds now emit
+    objective-derived non-sequence evidence for host/helper/medium context and
+    keep the DNA overlay sequence-honest by rendering only `sequence_span`
+    evidence.
+  - Next concrete slice (planned): extend the graph beyond pure sequence
+    annotation with helper/vector and host-context reasoning:
+    - host-route and methylation/restriction compatibility decisions
+    - host/helper profile catalogs with inspectable source notes
+    - complementation/selection reasoning for construct-carried host-essential
+      genes or markers
+    - inversion-risk evidence derived from self-dotplot/repeat analysis
+    - only sequence-backed consequences render as DNA overlays; host-only facts
+      stay as graph/inspector nodes
   - Next: derive facts/decision nodes/construct candidates on top of that
     foundation, deepen the overlay beyond raw evidence spans, and add the
     editable decision/inspection surface.

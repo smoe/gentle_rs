@@ -2,7 +2,7 @@
 
 use crate::{
     engine::{
-        ConstructReasoningGraph, ConstructRole, EditableStatus, EvidenceClass,
+        ConstructReasoningGraph, ConstructRole, EditableStatus, EvidenceClass, EvidenceScope,
         LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
     },
     enzymes::default_preferred_restriction_enzyme_names,
@@ -183,6 +183,7 @@ impl ConstructReasoningOverlay {
         let mut evidence = graph
             .evidence
             .iter()
+            .filter(|entry| entry.scope == EvidenceScope::SequenceSpan)
             .map(|entry| ConstructReasoningOverlaySpan {
                 evidence_id: entry.evidence_id.clone(),
                 start_0based: entry.start_0based,
@@ -1155,5 +1156,52 @@ impl Default for DnaDisplay {
             linear_external_feature_label_font_size: 11.0,
             linear_external_feature_label_background_opacity: 0.9,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::{ConstructObjective, DesignEvidence};
+
+    #[test]
+    fn construct_reasoning_overlay_from_graph_only_keeps_sequence_spans() {
+        let overlay = ConstructReasoningOverlay::from_graph(&ConstructReasoningGraph {
+            graph_id: "graph_demo".to_string(),
+            seq_id: "demo".to_string(),
+            objective: ConstructObjective {
+                title: "Reasoning demo".to_string(),
+                goal: "Inspect mapped evidence".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![
+                DesignEvidence {
+                    evidence_id: "host_ctx".to_string(),
+                    scope: EvidenceScope::HostProfile,
+                    role: ConstructRole::ContextBaggage,
+                    evidence_class: EvidenceClass::UserOverride,
+                    label: "Propagation host: ecoli_k12".to_string(),
+                    rationale: "Objective-selected propagation host".to_string(),
+                    ..DesignEvidence::default()
+                },
+                DesignEvidence {
+                    evidence_id: "cds_span".to_string(),
+                    seq_id: "demo".to_string(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based: 12,
+                    end_0based_exclusive: 48,
+                    role: ConstructRole::Cds,
+                    evidence_class: EvidenceClass::ReliableAnnotation,
+                    label: "Reporter CDS".to_string(),
+                    rationale: "Imported CDS annotation".to_string(),
+                    ..DesignEvidence::default()
+                },
+            ],
+            ..ConstructReasoningGraph::default()
+        });
+
+        assert_eq!(overlay.evidence.len(), 1);
+        assert_eq!(overlay.evidence[0].evidence_id, "cds_span");
+        assert_eq!(overlay.evidence[0].label, "Reporter CDS");
     }
 }

@@ -1029,6 +1029,17 @@ Sequence-linked construct reasoning graph direction:
   - genomic/transcript spans stay visible on sequence coordinates,
   - decision nodes derive reusable facts/candidates from those spans,
   - humans can accept/reject/lock or boundary-edit those nodes explicitly.
+- Not every reasoning input is itself a sequence span:
+  - host-strain genotype/phenotype, host-transition steps, helper-vector
+    profile traits, and medium/selection conditions must remain first-class
+    reasoning nodes in the same portable graph even when they do not map to
+    one coordinate interval on the plasmid or genome.
+  - only sequence-backed consequences of those nodes (for example exact
+    methylation-sensitive motifs, complementation genes carried on the
+    construct, or repeat/self-similarity windows) should render as DNA-window
+    overlays.
+  - frontends must not fake non-sequence host facts as anonymous sequence spans
+    just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque
   confidence value:
   - `hard_fact`
