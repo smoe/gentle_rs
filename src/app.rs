@@ -2591,6 +2591,10 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Help Viewport")
     }
 
+    fn hosted_help_window_id() -> egui::Id {
+        egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
+    }
+
     fn legacy_root_help_layer_ids(title: &str) -> [egui::LayerId; 1] {
         [egui::LayerId::new(
             egui::Order::Middle,
@@ -36145,7 +36149,10 @@ Error: `{err}`"
                     "Configuration first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                self.show_configuration_dialog = open;
+                self.show_configuration_dialog = Self::reconcile_embedded_window_open_state(
+                    self.show_configuration_dialog,
+                    open,
+                );
                 return;
             }
 
@@ -37277,6 +37284,10 @@ Error: `{err}`"
         }
     }
 
+    fn reconcile_embedded_window_open_state(content_open: bool, window_open: bool) -> bool {
+        content_open && window_open
+    }
+
     fn clamp_configuration_backdrop_path_field_width(available_width: f32) -> f32 {
         if available_width.is_finite() {
             (available_width * 0.45).clamp(180.0, 260.0)
@@ -37322,8 +37333,8 @@ Error: `{err}`"
                     default_size,
                 );
                 let mut open = self.show_help_dialog;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(("hosted_help_window", viewport_id)))
+                egui::Window::new("Help")
+                    .id(Self::hosted_help_window_id())
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
@@ -37340,7 +37351,11 @@ Error: `{err}`"
                     "Help first-frame render",
                     render_started.elapsed().as_millis(),
                 );
-                self.show_help_dialog = open;
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+                self.show_help_dialog =
+                    Self::reconcile_embedded_window_open_state(self.show_help_dialog, open);
                 return;
             }
 
@@ -42562,6 +42577,20 @@ mod tests {
     }
 
     #[test]
+    fn embedded_window_open_state_respects_internal_close_actions() {
+        assert!(GENtleApp::reconcile_embedded_window_open_state(true, true));
+        assert!(!GENtleApp::reconcile_embedded_window_open_state(
+            false, true
+        ));
+        assert!(!GENtleApp::reconcile_embedded_window_open_state(
+            true, false
+        ));
+        assert!(!GENtleApp::reconcile_embedded_window_open_state(
+            false, false
+        ));
+    }
+
+    #[test]
     fn help_markdown_max_image_width_tracks_available_width() {
         assert_eq!(GENtleApp::help_markdown_max_image_width(200.0), 220);
         assert_eq!(GENtleApp::help_markdown_max_image_width(400.0), 300);
@@ -44280,9 +44309,35 @@ mod tests {
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
         let hosted_help_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())),
+            GENtleApp::hosted_help_window_id(),
         );
         let stale_title_layer_id = GENtleApp::stale_help_title_layer_id("Help - GUI Manual");
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_help_dialog(&ctx);
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn embedded_help_tutorial_viewport_renders_without_second_title_bar_window() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_help_dialog = true;
+        app.help_doc = HelpDoc::Tutorial;
+        app.help_tutorial_title = "Load pGEX and digest with BamHI/EcoRI".to_string();
+        app.help_tutorial_markdown = "# Load pGEX and digest with BamHI/EcoRI\n\nTutorial."
+            .to_string();
+        app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
+        let hosted_help_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            GENtleApp::hosted_help_window_id(),
+        );
+        let stale_title_layer_id = GENtleApp::stale_help_title_layer_id(
+            "Help - Load pGEX and digest with BamHI/EcoRI",
+        );
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
@@ -44356,15 +44411,12 @@ mod tests {
         let title = "Help - Gibson Arrangements Tutorial";
         let hosted_help_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_help_window", GENtleApp::help_viewport_id())),
+            GENtleApp::hosted_help_window_id(),
         );
 
         ctx.begin_pass(egui::RawInput::default());
-        egui::Window::new(title)
-            .id(egui::Id::new((
-                "hosted_help_window",
-                GENtleApp::help_viewport_id(),
-            )))
+        egui::Window::new("Help")
+            .id(GENtleApp::hosted_help_window_id())
             .show(&ctx, |ui| {
                 ui.label("stable hosted help window");
             });

@@ -1659,6 +1659,11 @@ order. Durable architecture constraints and decisions remain in
   - hosted/macOS Configuration rendering now clamps to the workspace safe area,
     and the Graphics tab no longer requests runaway horizontal growth from its
     backdrop-path controls/action rows
+  - embedded Configuration `Close`/`Cancel` actions now correctly dismiss the
+    dialog instead of being overwritten by the hosted-window `open` flag
+  - embedded/macOS Help rendering now uses the same regular hosted working
+    window shell as other auxiliary windows instead of occupying the full
+    child viewport surface
 
 ### High-level parity snapshot
 

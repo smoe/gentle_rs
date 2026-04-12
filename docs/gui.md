@@ -87,8 +87,12 @@ macOS auxiliary-window stability note:
 - The hosted Configuration window now uses the same safe-area clamping, and
   its Graphics-tab control rows wrap/bound their width instead of expanding
   horizontally without limit.
-- The Help/Tutorial viewport now uses a stable hosted child-window id on macOS
-  instead of deriving its identity from the visible help topic title.
+- In hosted/macOS mode, the Configuration window's `Close` and `Cancel`
+  buttons now dismiss the dialog correctly instead of being overridden by the
+  embedded window shell state.
+- The Help/Tutorial viewport now uses the same regular hosted working-window
+  shell as other macOS embedded windows instead of taking over the full child
+  viewport surface.
 - When older legacy help-window layers are still visible, GENtle now resets
   those stale area states both in the hosted help viewport and in the main/root
   workspace so stray detached help title bars self-heal on reopen.
