@@ -3796,12 +3796,20 @@ Post-baseline follow-ups:
     and normalized helper-profile interpretation, so helper semantics such as
     `AmpR` / `ampicillin_selection` can support the same deterministic
     `selection_context` fact without adapter-local logic.
+  - Done (2026-04-12, growth-condition interpretation): medium/growth
+    conditions are now normalized into engine-owned condition signals
+    (`growth_condition_context`), including nutrient omission, antibiotic
+    selection agent, heat-shock/cold-shock, and parsed Celsius temperature
+    signals, and the selection/complementation rule layer now matches against
+    those canonical signals instead of raw free-text substrings.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
     - host-route and methylation/restriction compatibility decisions
     - host/helper profile catalogs with inspectable source notes
     - broaden complementation/selection reasoning beyond the current
       small built-in rule seed set
+    - broaden growth-condition interpretation beyond the current nutrient /
+      antibiotic / temperature seed set
     - inversion-risk evidence derived from self-dotplot/repeat analysis
     - only sequence-backed consequences render as DNA overlays; host-only facts
       stay as graph/inspector nodes

@@ -436,6 +436,20 @@ V1 should reuse existing GENtle outputs before introducing any external model:
      - exact carried gene interval: `hard_fact` or `reliable_annotation`
      - growth-selection usefulness under one medium condition:
        `context_evidence`
+7a. growth / medium / temperature context
+   - source: construct-objective medium/growth condition strings normalized by
+     the engine into inspectable canonical signals
+   - examples:
+     - `proline-free medium` -> `proline_omission`
+     - `ampicillin` -> `ampicillin_selection`
+     - `42 C heat shock` -> `heat_shock`, `temperature_42c`,
+       `high_temperature`
+   - implementation note:
+     - downstream rules should match against canonical condition signals rather
+       than reparsing free-text condition strings in multiple places
+   - classification:
+     - normalized condition signal from explicit user objective text:
+       `context_evidence`
 8. inversion / rearrangement risk
    - source:
      - existing self-dotplot path

@@ -99,11 +99,22 @@ struct ConstructSelectionRule {
     label: &'static str,
     category: &'static str,
     feature_match_tokens: &'static [&'static str],
-    medium_match_terms: &'static [&'static str],
+    condition_signal_tokens: &'static [&'static str],
     helper_offered_function_tokens: &'static [&'static str],
     helper_component_kind_tokens: &'static [&'static str],
     helper_component_tag_tokens: &'static [&'static str],
     helper_component_attribute_terms: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructConditionSignal {
+    category: String,
+    token: String,
+    label: String,
+    source_condition: String,
+    matched_terms: Vec<String>,
+    temperature_celsius: Option<f64>,
+    notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -114,6 +125,7 @@ struct ConstructSelectionRuleMatch {
     status: String,
     matched_medium_conditions: Vec<String>,
     matched_medium_terms: Vec<String>,
+    matched_condition_signal_tokens: Vec<String>,
     candidate_labels: Vec<String>,
     candidate_evidence_ids: Vec<String>,
     candidate_match_tokens: Vec<String>,
@@ -10201,9 +10213,10 @@ impl GentleEngine {
     fn construct_reasoning_selection_rules() -> &'static [ConstructSelectionRule] {
         const EMPTY: &[&str] = &[];
         const PROLINE_MATCH_TOKENS: &[&str] = &["proa", "prob"];
-        const PROLINE_MEDIUM_TERMS: &[&str] = &["proline", "-pro"];
+        const PROLINE_CONDITION_SIGNALS: &[&str] = &["proline_omission"];
         const AMPICILLIN_FEATURE_TOKENS: &[&str] = &["ampr", "bla", "betalactamase"];
-        const AMPICILLIN_MEDIUM_TERMS: &[&str] = &["ampicillin", "carbenicillin"];
+        const AMPICILLIN_CONDITION_SIGNALS: &[&str] =
+            &["ampicillin_selection", "carbenicillin_selection"];
         const AMPICILLIN_HELPER_FUNCTIONS: &[&str] = &["ampicillin_selection"];
         const AMPICILLIN_HELPER_COMPONENT_KINDS: &[&str] = &["selectable_marker"];
         const AMPICILLIN_HELPER_COMPONENT_TAGS: &[&str] = &["selection"];
@@ -10214,7 +10227,7 @@ impl GentleEngine {
                 label: "Proline complementation",
                 category: "complementation",
                 feature_match_tokens: PROLINE_MATCH_TOKENS,
-                medium_match_terms: PROLINE_MEDIUM_TERMS,
+                condition_signal_tokens: PROLINE_CONDITION_SIGNALS,
                 helper_offered_function_tokens: EMPTY,
                 helper_component_kind_tokens: EMPTY,
                 helper_component_tag_tokens: EMPTY,
@@ -10225,7 +10238,7 @@ impl GentleEngine {
                 label: "Ampicillin vector selection",
                 category: "selection",
                 feature_match_tokens: AMPICILLIN_FEATURE_TOKENS,
-                medium_match_terms: AMPICILLIN_MEDIUM_TERMS,
+                condition_signal_tokens: AMPICILLIN_CONDITION_SIGNALS,
                 helper_offered_function_tokens: AMPICILLIN_HELPER_FUNCTIONS,
                 helper_component_kind_tokens: AMPICILLIN_HELPER_COMPONENT_KINDS,
                 helper_component_tag_tokens: AMPICILLIN_HELPER_COMPONENT_TAGS,
@@ -10235,7 +10248,10 @@ impl GentleEngine {
         RULES
     }
 
-    fn construct_reasoning_medium_terms_matching(condition: &str, terms: &[&str]) -> Vec<String> {
+    fn construct_reasoning_condition_terms_matching(
+        condition: &str,
+        terms: &[&str],
+    ) -> Vec<String> {
         let lower = condition.to_ascii_lowercase();
         let mut matches = terms
             .iter()
@@ -10260,6 +10276,198 @@ impl GentleEngine {
         } else {
             "context_recorded"
         }
+    }
+
+    fn construct_reasoning_push_condition_signal(
+        signals: &mut Vec<ConstructConditionSignal>,
+        seen: &mut HashSet<String>,
+        category: &str,
+        token: &str,
+        label: &str,
+        source_condition: &str,
+        matched_terms: Vec<String>,
+        temperature_celsius: Option<f64>,
+        notes: Vec<String>,
+    ) {
+        let key = format!(
+            "{}|{}|{}|{}",
+            category,
+            token,
+            source_condition,
+            temperature_celsius
+                .map(|value| format!("{value:.2}"))
+                .unwrap_or_default()
+        );
+        if !seen.insert(key) {
+            return;
+        }
+        signals.push(ConstructConditionSignal {
+            category: category.to_string(),
+            token: token.to_string(),
+            label: label.to_string(),
+            source_condition: source_condition.to_string(),
+            matched_terms,
+            temperature_celsius,
+            notes,
+        });
+    }
+
+    fn construct_reasoning_extract_temperature_celsius(condition: &str) -> Option<f64> {
+        let regex = Regex::new(r"(?i)(-?\d+(?:\.\d+)?)\s*°?\s*c\b").ok()?;
+        let captures = regex.captures(condition)?;
+        captures.get(1)?.as_str().parse::<f64>().ok()
+    }
+
+    fn construct_reasoning_temperature_signal_token(temp_celsius: f64) -> String {
+        if (temp_celsius.fract()).abs() < 0.01 {
+            format!("temperature_{:.0}c", temp_celsius)
+        } else {
+            format!(
+                "temperature_{}c",
+                temp_celsius.to_string().replace('.', "_")
+            )
+        }
+    }
+
+    fn construct_reasoning_interpret_medium_conditions(
+        objective: &ConstructObjective,
+    ) -> Vec<ConstructConditionSignal> {
+        let mut signals = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        for condition in &objective.medium_conditions {
+            let proline_terms = Self::construct_reasoning_condition_terms_matching(
+                condition,
+                &[
+                    "proline-free",
+                    "without proline",
+                    "no proline",
+                    "-pro",
+                    "dropout proline",
+                ],
+            );
+            if !proline_terms.is_empty() {
+                Self::construct_reasoning_push_condition_signal(
+                    &mut signals,
+                    &mut seen,
+                    "nutrient_condition",
+                    "proline_omission",
+                    "Proline omitted",
+                    condition,
+                    proline_terms,
+                    None,
+                    vec![],
+                );
+            }
+
+            for (token, label, terms) in [
+                (
+                    "ampicillin_selection",
+                    "Ampicillin selection",
+                    vec!["ampicillin"],
+                ),
+                (
+                    "carbenicillin_selection",
+                    "Carbenicillin selection",
+                    vec!["carbenicillin"],
+                ),
+            ] {
+                let matched_terms =
+                    Self::construct_reasoning_condition_terms_matching(condition, &terms);
+                if matched_terms.is_empty() {
+                    continue;
+                }
+                Self::construct_reasoning_push_condition_signal(
+                    &mut signals,
+                    &mut seen,
+                    "selection_agent",
+                    token,
+                    label,
+                    condition,
+                    matched_terms,
+                    None,
+                    vec![],
+                );
+            }
+
+            for (token, label, terms) in [
+                ("heat_shock", "Heat shock", vec!["heat shock"]),
+                ("cold_shock", "Cold shock", vec!["cold shock"]),
+            ] {
+                let matched_terms =
+                    Self::construct_reasoning_condition_terms_matching(condition, &terms);
+                if matched_terms.is_empty() {
+                    continue;
+                }
+                Self::construct_reasoning_push_condition_signal(
+                    &mut signals,
+                    &mut seen,
+                    "temperature_process",
+                    token,
+                    label,
+                    condition,
+                    matched_terms,
+                    None,
+                    vec![],
+                );
+            }
+
+            if let Some(temp_celsius) =
+                Self::construct_reasoning_extract_temperature_celsius(condition)
+            {
+                let exact_token = Self::construct_reasoning_temperature_signal_token(temp_celsius);
+                Self::construct_reasoning_push_condition_signal(
+                    &mut signals,
+                    &mut seen,
+                    "temperature",
+                    &exact_token,
+                    &format!("{temp_celsius:.0} C"),
+                    condition,
+                    vec![format!("{temp_celsius:.0}c")],
+                    Some(temp_celsius),
+                    vec!["temperature parsed from free-text condition".to_string()],
+                );
+                if temp_celsius >= 40.0 {
+                    Self::construct_reasoning_push_condition_signal(
+                        &mut signals,
+                        &mut seen,
+                        "temperature",
+                        "high_temperature",
+                        "High temperature",
+                        condition,
+                        vec![format!("{temp_celsius:.0}c")],
+                        Some(temp_celsius),
+                        vec![],
+                    );
+                }
+                if temp_celsius <= 20.0 {
+                    Self::construct_reasoning_push_condition_signal(
+                        &mut signals,
+                        &mut seen,
+                        "temperature",
+                        "low_temperature",
+                        "Low temperature",
+                        condition,
+                        vec![format!("{temp_celsius:.0}c")],
+                        Some(temp_celsius),
+                        vec![],
+                    );
+                }
+            }
+        }
+
+        signals.sort_by(|left, right| {
+            (
+                left.category.as_str(),
+                left.token.as_str(),
+                left.source_condition.as_str(),
+            )
+                .cmp(&(
+                    right.category.as_str(),
+                    right.token.as_str(),
+                    right.source_condition.as_str(),
+                ))
+        });
+        signals
     }
 
     fn construct_reasoning_value_matches_tokens(value: &str, tokens: &[&str]) -> bool {
@@ -10287,25 +10495,27 @@ impl GentleEngine {
 
     fn construct_reasoning_build_selection_rule_match(
         rule: &ConstructSelectionRule,
-        objective: &ConstructObjective,
+        condition_signals: &[ConstructConditionSignal],
         evidence: &[DesignEvidence],
         helper_interpretation: Option<&HelperConstructInterpretation>,
     ) -> Option<ConstructSelectionRuleMatch> {
         let mut matched_medium_conditions = vec![];
         let mut matched_medium_terms = vec![];
-        for condition in &objective.medium_conditions {
-            let terms =
-                Self::construct_reasoning_medium_terms_matching(condition, rule.medium_match_terms);
-            if terms.is_empty() {
-                continue;
-            }
-            matched_medium_conditions.push(condition.clone());
-            matched_medium_terms.extend(terms);
+        let mut matched_condition_signal_tokens = vec![];
+        for signal in condition_signals.iter().filter(|signal| {
+            rule.condition_signal_tokens
+                .contains(&signal.token.as_str())
+        }) {
+            matched_medium_conditions.push(signal.source_condition.clone());
+            matched_medium_terms.extend(signal.matched_terms.clone());
+            matched_condition_signal_tokens.push(signal.token.clone());
         }
         matched_medium_conditions.sort();
         matched_medium_conditions.dedup();
         matched_medium_terms.sort();
         matched_medium_terms.dedup();
+        matched_condition_signal_tokens.sort();
+        matched_condition_signal_tokens.dedup();
 
         let mut candidate_labels = vec![];
         let mut candidate_evidence_ids = vec![];
@@ -10430,6 +10640,7 @@ impl GentleEngine {
             .to_string(),
             matched_medium_conditions,
             matched_medium_terms,
+            matched_condition_signal_tokens,
             candidate_labels,
             candidate_evidence_ids,
             candidate_match_tokens,
@@ -10536,6 +10747,7 @@ impl GentleEngine {
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
                 row.scope == EvidenceScope::MediumCondition
             });
+        let condition_signals = Self::construct_reasoning_interpret_medium_conditions(objective);
         let host_constraint_evidence_ids =
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
                 row.scope == EvidenceScope::WholeConstruct
@@ -10764,6 +10976,68 @@ impl GentleEngine {
             ));
         }
 
+        if !objective.medium_conditions.is_empty() {
+            let signal_categories = condition_signals
+                .iter()
+                .map(|signal| signal.category.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let temperature_celsius_values = condition_signals
+                .iter()
+                .filter_map(|signal| signal.temperature_celsius)
+                .map(|value| format!("{value:.2}"))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .filter_map(|value| value.parse::<f64>().ok())
+                .collect::<Vec<_>>();
+            let growth_label = if condition_signals.is_empty() {
+                "Growth/condition context recorded".to_string()
+            } else {
+                "Growth/condition context interpreted".to_string()
+            };
+            let growth_rationale = if condition_signals.is_empty() {
+                "Construct objective records medium/growth conditions, but the current deterministic interpreter did not yet classify any canonical condition signals from them.".to_string()
+            } else {
+                format!(
+                    "Construct objective records medium/growth conditions that the deterministic condition interpreter normalizes into inspectable signal(s): {}.",
+                    condition_signals
+                        .iter()
+                        .map(|signal| signal.label.clone())
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_growth_condition_context",
+                "growth_condition_context",
+                growth_label,
+                growth_rationale.clone(),
+                medium_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "medium_conditions": objective.medium_conditions.clone(),
+                    "condition_signals": condition_signals.clone(),
+                    "signal_categories": signal_categories.clone(),
+                    "temperature_celsius_values": temperature_celsius_values.clone(),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_growth_condition_context",
+                "evaluate_growth_condition_context",
+                "Evaluate Growth/Condition Context".to_string(),
+                growth_rationale,
+                medium_evidence_ids.clone(),
+                vec!["fact_growth_condition_context".to_string()],
+                json!({
+                    "signal_count": condition_signals.len(),
+                    "signal_categories": signal_categories,
+                }),
+            ));
+        }
+
         let helper_mcs_feature_labels = dna
             .features()
             .iter()
@@ -10859,7 +11133,7 @@ impl GentleEngine {
             .filter_map(|rule| {
                 Self::construct_reasoning_build_selection_rule_match(
                     rule,
-                    objective,
+                    &condition_signals,
                     evidence,
                     helper_interpretation,
                 )
@@ -11062,7 +11336,7 @@ impl GentleEngine {
             facts,
             decisions,
             notes: vec![
-                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, and first hard-rule host/helper summary decisions."
+                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, interpreted growth-condition signals, and first hard-rule host/helper/selection summary decisions."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

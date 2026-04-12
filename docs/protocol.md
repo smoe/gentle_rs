@@ -2520,6 +2520,9 @@ Construct reasoning graph foundation (implemented first slice):
     - propagation-host context
     - expression-host context
     - host-transition status
+    - growth/condition context from structured medium-condition interpretation
+      (for example nutrient omission, antibiotic selection agent, heat shock,
+      and temperature signals)
     - helper/MCS context
     - selection/complementation context built from engine-owned
       selection/complementation rules, currently seeded with:

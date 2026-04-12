@@ -21461,8 +21461,8 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
         )
         .expect("build graph");
 
-    assert_eq!(graph.facts.len(), 5);
-    assert_eq!(graph.decisions.len(), 5);
+    assert_eq!(graph.facts.len(), 6);
+    assert_eq!(graph.decisions.len(), 6);
 
     let propagation = graph
         .facts
@@ -21512,6 +21512,21 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
             .map(|rows| rows.iter().any(|row| row.as_str() == Some("MCS (pUC19)")))
             .unwrap_or(false)
     );
+    let growth = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "growth_condition_context")
+        .expect("growth fact");
+    assert!(
+        growth
+            .value_json
+            .get("condition_signals")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("token").and_then(serde_json::Value::as_str) == Some("proline_omission")
+            }))
+            .unwrap_or(false)
+    );
 
     let selection = graph
         .facts
@@ -21559,6 +21574,13 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
                 .output_fact_ids
                 .iter()
                 .any(|fact_id| fact_id == "fact_host_transition_context")
+    }));
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "evaluate_growth_condition_context"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_growth_condition_context")
     }));
     assert!(graph.decisions.iter().any(|node| {
         node.decision_type == "evaluate_selection_or_complementation_fit"
@@ -21659,6 +21681,69 @@ fn build_construct_reasoning_graph_uses_helper_profile_selection_semantics() {
                 .map(|rows| rows.iter().any(|value| value.as_str() == Some("AmpR")))
                 .unwrap_or(false)
     }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_interprets_growth_condition_signals() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("growth_condition_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Growth condition reasoning".to_string(),
+            goal: "Normalize heat and medium conditions".to_string(),
+            medium_conditions: vec![
+                "42 C heat shock".to_string(),
+                "ampicillin".to_string(),
+                "proline-free medium".to_string(),
+            ],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "growth_condition_demo",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let growth = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "growth_condition_context")
+        .expect("growth fact");
+    let signals = growth
+        .value_json
+        .get("condition_signals")
+        .and_then(serde_json::Value::as_array)
+        .expect("condition signals");
+    for token in [
+        "heat_shock",
+        "temperature_42c",
+        "high_temperature",
+        "ampicillin_selection",
+        "proline_omission",
+    ] {
+        assert!(
+            signals
+                .iter()
+                .any(|row| { row.get("token").and_then(serde_json::Value::as_str) == Some(token) })
+        );
+    }
+    assert!(
+        growth
+            .value_json
+            .get("temperature_celsius_values")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_f64() == Some(42.0)))
+            .unwrap_or(false)
+    );
 }
 
 #[test]
