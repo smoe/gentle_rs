@@ -30,6 +30,11 @@ Current status:
 - the extracted slice now also includes the shared DNA/RNA ladder catalog
   types and built-in default ladder sets, again with root-crate shims keeping
   the old import paths stable;
+- the extracted slice now also includes the persistent lineage/container/rack
+  state layer:
+  `SequenceOrigin`, lineage-node/edge and macro-instance records,
+  `Container` / `Arrangement` / `Rack` state, and the built-in rack-profile /
+  label-sheet / fill-direction / physical-template enums and helpers;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 - `crates/gentle-render` is no longer only a placeholder:

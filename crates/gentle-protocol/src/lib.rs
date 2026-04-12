@@ -9,7 +9,11 @@ pub mod construct_reasoning;
 pub mod dna_ladder;
 
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+    fmt,
+};
 
 pub use construct_reasoning::{
     CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
@@ -34,6 +38,429 @@ pub type RunId = String;
 pub type NodeId = String;
 /// Stable identifier for one wet-lab-style container record.
 pub type ContainerId = String;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// High-level provenance class for how a sequence entered or was derived in
+/// the project graph.
+pub enum SequenceOrigin {
+    ImportedGenomic,
+    ImportedCdna,
+    ImportedSynthetic,
+    ImportedUnknown,
+    Derived,
+    InSilicoSelection,
+    Branch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One sequence node in the persisted lineage DAG.
+pub struct LineageNode {
+    pub node_id: NodeId,
+    pub seq_id: SeqId,
+    pub created_by_op: Option<OpId>,
+    pub origin: SequenceOrigin,
+    pub created_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Directed lineage edge linking one parent node to one derived node.
+pub struct LineageEdge {
+    pub from_node_id: NodeId,
+    pub to_node_id: NodeId,
+    pub op_id: OpId,
+    pub run_id: RunId,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Terminal status for one recorded macro instance expansion.
+pub enum MacroInstanceStatus {
+    #[default]
+    Ok,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Captured binding payload for one typed macro input/output port.
+pub struct LineageMacroPortBinding {
+    pub port_id: String,
+    pub kind: String,
+    pub required: bool,
+    pub cardinality: String,
+    pub values: Vec<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persistent lineage record for one macro execution attempt.
+///
+/// Stored in project state for audit/debug and graph visualization across GUI,
+/// CLI, and agent adapters.
+pub struct LineageMacroInstance {
+    pub macro_instance_id: String,
+    pub routine_id: Option<String>,
+    pub routine_title: Option<String>,
+    pub template_name: Option<String>,
+    pub run_id: String,
+    pub created_at_unix_ms: u128,
+    pub bound_inputs: Vec<LineageMacroPortBinding>,
+    pub bound_outputs: Vec<LineageMacroPortBinding>,
+    pub expanded_op_ids: Vec<String>,
+    pub status: MacroInstanceStatus,
+    pub status_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted lineage DAG plus macro-instance audit trail.
+pub struct LineageGraph {
+    pub nodes: HashMap<NodeId, LineageNode>,
+    pub seq_to_node: HashMap<SeqId, NodeId>,
+    pub edges: Vec<LineageEdge>,
+    pub macro_instances: Vec<LineageMacroInstance>,
+    pub next_node_counter: u64,
+    pub next_macro_instance_counter: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Container semantic class used by container-aware operations.
+pub enum ContainerKind {
+    Singleton,
+    Pool,
+    Selection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Group of sequence ids participating in container-aware workflows.
+pub struct Container {
+    pub container_id: ContainerId,
+    pub kind: ContainerKind,
+    pub name: Option<String>,
+    pub members: Vec<SeqId>,
+    #[serde(default = "default_true")]
+    pub declared_contents_exclusive: bool,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Arrangement layout mode for gel-style or plate-style workflows.
+pub enum ArrangementMode {
+    Serial,
+    Plate,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Built-in physical carrier shapes for rack/plate placement.
+pub enum RackProfileKind {
+    #[default]
+    SmallTube4x6,
+    Plate96,
+    Plate384,
+    Custom,
+}
+
+impl RackProfileKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SmallTube4x6 => "small_tube_4x6",
+            Self::Plate96 => "plate_96",
+            Self::Plate384 => "plate_384",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub fn dimensions(self) -> (usize, usize) {
+        match self {
+            Self::SmallTube4x6 => (4, 6),
+            Self::Plate96 => (8, 12),
+            Self::Plate384 => (16, 24),
+            Self::Custom => (0, 0),
+        }
+    }
+
+    pub fn capacity(self) -> usize {
+        let (rows, columns) = self.dimensions();
+        rows * columns
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Deterministic SVG sheet layouts for rack/arrangement label export.
+pub enum RackLabelSheetPreset {
+    #[default]
+    CompactCards,
+    PrintA4,
+    WideCards,
+}
+
+impl RackLabelSheetPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CompactCards => "compact_cards",
+            Self::PrintA4 => "print_a4",
+            Self::WideCards => "wide_cards",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Deterministic SVG layouts for carrier-matched front-strip/module label export.
+pub enum RackCarrierLabelPreset {
+    #[default]
+    FrontStripAndCards,
+    FrontStripOnly,
+    ModuleCardsOnly,
+}
+
+impl RackCarrierLabelPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FrontStripAndCards => "front_strip_and_cards",
+            Self::FrontStripOnly => "front_strip_only",
+            Self::ModuleCardsOnly => "module_cards_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Built-in printable physical carrier families layered on top of rack placement.
+pub enum RackPhysicalTemplateKind {
+    #[default]
+    StoragePcrTubeRack,
+    PipettingPcrTubeRack,
+}
+
+impl RackPhysicalTemplateKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StoragePcrTubeRack => "storage_pcr_tube_rack",
+            Self::PipettingPcrTubeRack => "pipetting_pcr_tube_rack",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Physical handling intent for printable carrier exports.
+pub enum RackPhysicalTemplateFamily {
+    Storage,
+    Pipetting,
+}
+
+impl RackPhysicalTemplateFamily {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Storage => "storage",
+            Self::Pipetting => "pipetting",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Deterministic printable/fabrication geometry derived from one rack snapshot.
+pub struct RackPhysicalTemplateSpec {
+    pub kind: RackPhysicalTemplateKind,
+    pub family: RackPhysicalTemplateFamily,
+    pub container_format: String,
+    pub rows: usize,
+    pub columns: usize,
+    pub pitch_x_mm: f32,
+    pub pitch_y_mm: f32,
+    pub opening_diameter_mm: f32,
+    pub inner_wall_mm: f32,
+    pub outer_wall_mm: f32,
+    pub floor_thickness_mm: f32,
+    pub rack_height_mm: f32,
+    pub edge_margin_mm: f32,
+    pub corner_radius_mm: f32,
+    pub front_top_clearance_mm: f32,
+    pub front_label_strip_depth_mm: f32,
+    pub front_label_strip_recess_mm: f32,
+    pub overall_width_mm: f32,
+    pub overall_depth_mm: f32,
+}
+
+impl Default for RackPhysicalTemplateSpec {
+    fn default() -> Self {
+        Self {
+            kind: RackPhysicalTemplateKind::StoragePcrTubeRack,
+            family: RackPhysicalTemplateFamily::Storage,
+            container_format: "pcr_tube_0_2ml".to_string(),
+            rows: 0,
+            columns: 0,
+            pitch_x_mm: 0.0,
+            pitch_y_mm: 0.0,
+            opening_diameter_mm: 0.0,
+            inner_wall_mm: 0.0,
+            outer_wall_mm: 0.0,
+            floor_thickness_mm: 0.0,
+            rack_height_mm: 0.0,
+            edge_margin_mm: 0.0,
+            corner_radius_mm: 0.0,
+            front_top_clearance_mm: 0.0,
+            front_label_strip_depth_mm: 0.0,
+            front_label_strip_recess_mm: 0.0,
+            overall_width_mm: 0.0,
+            overall_depth_mm: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Engine-owned quick authoring templates for common rack/plate setup styles.
+pub enum RackAuthoringTemplate {
+    #[default]
+    BenchRows,
+    PlateColumns,
+    PlateEdgeAvoidance,
+}
+
+impl RackAuthoringTemplate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BenchRows => "bench_rows",
+            Self::PlateColumns => "plate_columns",
+            Self::PlateEdgeAvoidance => "plate_edge_avoidance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Deterministic fill policy for physical rack/plate placement.
+pub enum RackFillDirection {
+    #[default]
+    RowMajor,
+    ColumnMajor,
+}
+
+impl RackFillDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RowMajor => "row_major",
+            Self::ColumnMajor => "column_major",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+/// Snapshot of the physical carrier profile used when a rack was created.
+pub struct RackProfileSnapshot {
+    pub kind: RackProfileKind,
+    pub rows: usize,
+    pub columns: usize,
+    pub coordinate_scheme: String,
+    pub fill_direction: RackFillDirection,
+    pub blocked_coordinates: Vec<String>,
+}
+
+impl Default for RackProfileSnapshot {
+    fn default() -> Self {
+        Self::from_kind(RackProfileKind::SmallTube4x6)
+    }
+}
+
+impl RackProfileSnapshot {
+    pub fn from_kind(kind: RackProfileKind) -> Self {
+        let (rows, columns) = kind.dimensions();
+        Self {
+            kind,
+            rows,
+            columns,
+            coordinate_scheme: "a1".to_string(),
+            fill_direction: RackFillDirection::RowMajor,
+            blocked_coordinates: vec![],
+        }
+    }
+
+    pub fn custom(rows: usize, columns: usize) -> Self {
+        Self {
+            kind: RackProfileKind::Custom,
+            rows,
+            columns,
+            coordinate_scheme: "a1".to_string(),
+            fill_direction: RackFillDirection::RowMajor,
+            blocked_coordinates: vec![],
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.rows.saturating_mul(self.columns)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+/// Physical occupant placed in one rack coordinate.
+pub enum RackOccupant {
+    Container { container_id: ContainerId },
+    LadderReference { ladder_name: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// One occupied physical coordinate in a saved rack.
+pub struct RackPlacementEntry {
+    pub coordinate: String,
+    pub occupant: Option<RackOccupant>,
+    pub arrangement_id: String,
+    pub order_index: usize,
+    pub role_label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+/// Saved physical rack/plate draft that can host one or more arrangements.
+pub struct Rack {
+    pub rack_id: String,
+    pub name: String,
+    pub profile: RackProfileSnapshot,
+    pub placements: Vec<RackPlacementEntry>,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Named arrangement definition referencing container lanes.
+pub struct Arrangement {
+    pub arrangement_id: String,
+    pub mode: ArrangementMode,
+    pub name: Option<String>,
+    pub lane_container_ids: Vec<ContainerId>,
+    #[serde(default)]
+    pub ladders: Vec<String>,
+    #[serde(default)]
+    pub lane_role_labels: Vec<String>,
+    #[serde(default)]
+    pub default_rack_id: Option<String>,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Container/arrangement/rack state persisted with the project.
+pub struct ContainerState {
+    pub containers: HashMap<ContainerId, Container>,
+    pub arrangements: HashMap<String, Arrangement>,
+    pub racks: HashMap<String, Rack>,
+    pub seq_to_latest_container: HashMap<SeqId, ContainerId>,
+    pub next_container_counter: u64,
+    pub next_arrangement_counter: u64,
+    pub next_rack_counter: u64,
+}
 
 pub const TFBS_EXPERT_INSTRUCTION: &str = "TFBS expert view: each column is one PSSM position. Bar height is information content (2 - entropy in bits) from column base frequencies. Colored segments show A/C/G/T relative frequencies; the black polyline marks the matched base across positions.";
 

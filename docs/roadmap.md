@@ -133,6 +133,11 @@ order. Durable architecture constraints and decisions remain in
     - the portable workflow/candidate macro template records now also live
       there so template authoring, listing, and shell/MCP helper surfaces share
       one stable schema layer while template execution stays in `src/engine.rs`
+    - the persistent lineage/container/rack state contracts now also live
+      there:
+      `SequenceOrigin`, lineage-node/edge and macro-instance records,
+      `Container` / `Arrangement` / `Rack` state, plus the built-in rack
+      profile, label-sheet, fill-direction, and physical-template enums
     - the existing engine surface re-exports them so callers do not need an
       all-at-once import rewrite
   - first-wave split deliberately avoids per-feature micro-crates
