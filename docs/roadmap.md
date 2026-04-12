@@ -1997,9 +1997,15 @@ Planned work:
      shared synthesized `routine_preference_context` for:
      - routine ranking (`routines list`, `routines compare`)
      - construct-reasoning `routine_planning_context` facts/decisions
-   - next planner-facing step: let routine-decision traces / macro suggestion
-     layers proactively consume that synthesized context instead of only
-     exposing it in estimates and construct-reasoning facts
+   - planner-facing baseline now also persists that synthesized context into
+     routine-decision traces (`routine_preference_context`,
+     `candidate_planning_scores`) and uses it for engine-owned macro-template
+     suggestions surfaced in the GUI Routine Assistant.
+   - next planner-facing step: let routine-decision traces and macro-suggestion
+     layers drive stronger automatic follow-on behavior (for example macro
+     prefill/binding suggestions, decision-rationale reuse, and more proactive
+     routine/macro handoff scoring) instead of stopping at visibility plus
+     ranking context.
 4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
    - Bootstrap plus first follow-on examples are now in place; keep expanding

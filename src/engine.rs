@@ -8839,6 +8839,27 @@ impl GentleEngine {
         }
     }
 
+    fn routine_preference_context_record(
+        context: &RoutinePreferenceContext,
+    ) -> RoutinePreferenceContextRecord {
+        RoutinePreferenceContextRecord {
+            helper_profile_id: context.helper_profile_id.clone(),
+            helper_resolution_status: context.helper_resolution_status.clone(),
+            explicit_preferred_routine_families: context
+                .explicit_preferred_routine_families
+                .clone(),
+            helper_derived_preferred_routine_families: context
+                .helper_derived_preferred_routine_families
+                .clone(),
+            effective_preferred_routine_families: context
+                .effective_preferred_routine_families
+                .clone(),
+            helper_offered_functions: context.helper_offered_functions.clone(),
+            helper_component_labels: context.helper_component_labels.clone(),
+            rationale: context.rationale.clone(),
+        }
+    }
+
     pub(crate) fn planning_objective_routine_preference_context(
         objective: &PlanningObjective,
     ) -> RoutinePreferenceContext {
@@ -8913,6 +8934,229 @@ impl GentleEngine {
             helper_resolution_status,
             helper_resolution_note,
         )
+    }
+
+    fn macro_template_family_match_terms(family: &str) -> Vec<String> {
+        let normalized = Self::normalize_routine_family_token(family);
+        let mut terms = BTreeSet::new();
+        if !normalized.is_empty() {
+            terms.insert(normalized.clone());
+            terms.insert(normalized.replace('_', " "));
+        }
+        match normalized.as_str() {
+            "golden_gate" => {
+                terms.insert("golden gate".to_string());
+                terms.insert("type_iis".to_string());
+                terms.insert("type iis".to_string());
+            }
+            "gibson" => {
+                terms.insert("gibson".to_string());
+                terms.insert("overlap assembly".to_string());
+            }
+            "restriction" => {
+                terms.insert("restriction".to_string());
+                terms.insert("digest".to_string());
+                terms.insert("ligation".to_string());
+            }
+            "gateway" => {
+                terms.insert("gateway".to_string());
+                terms.insert("clonase".to_string());
+                terms.insert("attl".to_string());
+                terms.insert("attr".to_string());
+            }
+            "infusion" => {
+                terms.insert("in-fusion".to_string());
+                terms.insert("infusion".to_string());
+            }
+            "nebuilder_hifi" => {
+                terms.insert("nebuilder".to_string());
+                terms.insert("hifi".to_string());
+                terms.insert("hi fi".to_string());
+            }
+            "topo" => {
+                terms.insert("topo".to_string());
+                terms.insert("topo cloning".to_string());
+            }
+            "ta_gc" => {
+                terms.insert("ta cloning".to_string());
+                terms.insert("t overhang".to_string());
+                terms.insert("a overhang".to_string());
+            }
+            _ => {}
+        }
+        terms.into_iter().collect()
+    }
+
+    fn macro_template_suggestion_haystack(
+        name: &str,
+        description: Option<&str>,
+        script: &str,
+    ) -> String {
+        format!(
+            "{} {} {}",
+            name.trim(),
+            description.unwrap_or_default().trim(),
+            script.trim()
+        )
+        .to_ascii_lowercase()
+    }
+
+    fn routine_macro_id_match_terms(routine_id: &str) -> Vec<String> {
+        let compact = routine_id.trim();
+        if compact.is_empty() {
+            return vec![];
+        }
+        let mut terms = BTreeSet::new();
+        terms.insert(compact.to_ascii_lowercase());
+        terms.insert(compact.replace('.', "_").to_ascii_lowercase());
+        terms.insert(compact.replace('.', " ").replace('_', " ").to_ascii_lowercase());
+        terms.into_iter().collect()
+    }
+
+    fn score_macro_template_suggestion(
+        macro_kind: &str,
+        template_name: &str,
+        description: Option<&str>,
+        details_url: Option<&str>,
+        script: &str,
+        selected_routine_id: Option<&str>,
+        selected_routine_family: Option<&str>,
+        context: &RoutinePreferenceContext,
+    ) -> Option<MacroTemplateSuggestion> {
+        let haystack = Self::macro_template_suggestion_haystack(template_name, description, script);
+        let mut score = 0.0;
+        let mut matched_routine_families = BTreeSet::new();
+        let mut matched_terms = BTreeSet::new();
+        let mut rationale = BTreeSet::new();
+
+        if let Some(selected_family) = selected_routine_family {
+            let normalized_selected_family = Self::normalize_routine_family_token(selected_family);
+            let family_terms = Self::macro_template_family_match_terms(&normalized_selected_family);
+            let family_hits = family_terms
+                .iter()
+                .filter(|term| haystack.contains(term.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            if !family_hits.is_empty() {
+                score += 0.60;
+                matched_routine_families.insert(normalized_selected_family.clone());
+                matched_terms.extend(family_hits.clone());
+                rationale.insert(format!(
+                    "{} macro template matches selected routine family '{}'.",
+                    macro_kind, normalized_selected_family
+                ));
+            }
+        }
+
+        for family in &context.effective_preferred_routine_families {
+            let family_terms = Self::macro_template_family_match_terms(family);
+            let family_hits = family_terms
+                .iter()
+                .filter(|term| haystack.contains(term.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            if family_hits.is_empty() {
+                continue;
+            }
+            score += 0.25;
+            matched_routine_families.insert(family.clone());
+            matched_terms.extend(family_hits);
+            rationale.insert(format!(
+                "{} macro template aligns with synthesized preferred routine family '{}'.",
+                macro_kind, family
+            ));
+        }
+
+        if let Some(routine_id) = selected_routine_id {
+            let matched_id_terms = Self::routine_macro_id_match_terms(routine_id)
+                .into_iter()
+                .filter(|term| haystack.contains(term))
+                .collect::<Vec<_>>();
+            if !matched_id_terms.is_empty() {
+                score += 0.15;
+                matched_terms.extend(matched_id_terms);
+                rationale.insert(format!(
+                    "{} macro template references selected routine '{}'.",
+                    macro_kind, routine_id
+                ));
+            }
+        }
+
+        if score <= 0.0 {
+            return None;
+        }
+
+        Some(MacroTemplateSuggestion {
+            macro_kind: macro_kind.to_string(),
+            template_name: template_name.to_string(),
+            description: description.map(|value| value.to_string()),
+            details_url: details_url.map(|value| value.to_string()),
+            score,
+            matched_routine_families: matched_routine_families.into_iter().collect(),
+            matched_terms: matched_terms.into_iter().collect(),
+            rationale: rationale.into_iter().collect(),
+        })
+    }
+
+    pub fn planning_routine_preference_context_record(&self) -> RoutinePreferenceContextRecord {
+        let objective = self.planning_objective();
+        let context = Self::planning_objective_routine_preference_context(&objective);
+        Self::routine_preference_context_record(&context)
+    }
+
+    pub fn suggest_macro_templates_for_routine(
+        &self,
+        selected_routine_id: Option<&str>,
+        selected_routine_family: Option<&str>,
+        limit: usize,
+    ) -> Vec<MacroTemplateSuggestion> {
+        let objective = self.planning_objective();
+        let context = Self::planning_objective_routine_preference_context(&objective);
+        let mut suggestions = vec![];
+
+        let workflow_store = self.read_workflow_macro_template_store();
+        for template in workflow_store.templates.values() {
+            if let Some(suggestion) = Self::score_macro_template_suggestion(
+                "workflow",
+                &template.name,
+                template.description.as_deref(),
+                template.details_url.as_deref(),
+                &template.script,
+                selected_routine_id,
+                selected_routine_family,
+                &context,
+            ) {
+                suggestions.push(suggestion);
+            }
+        }
+
+        let candidate_store = self.read_candidate_macro_template_store();
+        for template in candidate_store.templates.values() {
+            if let Some(suggestion) = Self::score_macro_template_suggestion(
+                "candidate",
+                &template.name,
+                template.description.as_deref(),
+                template.details_url.as_deref(),
+                &template.script,
+                selected_routine_id,
+                selected_routine_family,
+                &context,
+            ) {
+                suggestions.push(suggestion);
+            }
+        }
+
+        suggestions.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then_with(|| left.macro_kind.cmp(&right.macro_kind))
+                .then_with(|| left.template_name.cmp(&right.template_name))
+        });
+        if limit > 0 && suggestions.len() > limit {
+            suggestions.truncate(limit);
+        }
+        suggestions
     }
 
     fn merge_planning_profile(base: &mut PlanningProfile, overlay: &PlanningProfile) {

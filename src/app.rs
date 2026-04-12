@@ -69,16 +69,17 @@ use crate::{
         FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
         GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
         GenomeTrackSyncReport, GentleEngine, HostProfileRecord, LineageMacroPortBinding,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult, Operation,
+        OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
         RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
-        RoutineDecisionTraceComparison, RoutineDecisionTraceDisambiguationAnswer,
-        RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTraceExportEvent,
-        RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
-        SequenceGenomeAnchorSummary,
+        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+        RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
+        RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -953,6 +954,8 @@ pub struct GENtleApp {
     routine_assistant_goal: String,
     routine_assistant_query: String,
     routine_assistant_candidates: Vec<CloningRoutineCatalogRow>,
+    routine_assistant_preference_context: Option<RoutinePreferenceContextRecord>,
+    routine_assistant_macro_suggestions: Vec<MacroTemplateSuggestion>,
     routine_assistant_selected_routine_id: String,
     routine_assistant_compare_routine_id: String,
     routine_assistant_bindings: BTreeMap<String, String>,
@@ -2012,6 +2015,11 @@ struct CloningRoutineCatalogRow {
     template_path: Option<String>,
     input_ports: Vec<serde_json::Value>,
     output_ports: Vec<serde_json::Value>,
+    estimated_time_hours: Option<f64>,
+    estimated_cost: Option<f64>,
+    local_fit_score: Option<f64>,
+    composite_meta_score: Option<f64>,
+    planning_estimate: Option<PlanningEstimate>,
 }
 
 #[derive(Clone, Debug)]
@@ -2498,6 +2506,8 @@ impl Default for GENtleApp {
             routine_assistant_goal: String::new(),
             routine_assistant_query: String::new(),
             routine_assistant_candidates: vec![],
+            routine_assistant_preference_context: None,
+            routine_assistant_macro_suggestions: vec![],
             routine_assistant_selected_routine_id: String::new(),
             routine_assistant_compare_routine_id: String::new(),
             routine_assistant_bindings: BTreeMap::new(),
@@ -5953,6 +5963,8 @@ Error: `{err}`"
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
         self.routine_assistant_candidates.clear();
+        self.routine_assistant_preference_context = None;
+        self.routine_assistant_macro_suggestions.clear();
         self.routine_assistant_selected_routine_id.clear();
         self.routine_assistant_compare_routine_id.clear();
         self.routine_assistant_bindings.clear();
@@ -23893,6 +23905,10 @@ Error: `{err}`"
                     }
                 });
                 ui.separator();
+                self.render_routine_assistant_planning_context_strip(ui);
+                if self.routine_assistant_preference_context.is_some() {
+                    ui.separator();
+                }
                 if self.routine_assistant_candidates.is_empty() {
                     ui.small("No routine candidates loaded. Use 'Find Candidates'.");
                 } else {
@@ -23927,6 +23943,44 @@ Error: `{err}`"
                                     if let Some(purpose) = routine.purpose.as_deref() {
                                         ui.small(format!("purpose: {purpose}"));
                                     }
+                                    if let Some(score) = routine.composite_meta_score {
+                                        ui.small(format!(
+                                            "planning score: {:.3} | fit: {:.3} | time: {:.2} h | cost: {:.2}",
+                                            score,
+                                            routine.local_fit_score.unwrap_or_default(),
+                                            routine.estimated_time_hours.unwrap_or_default(),
+                                            routine.estimated_cost.unwrap_or_default()
+                                        ));
+                                    }
+                                    if let Some(estimate) = routine.planning_estimate.as_ref() {
+                                        let bonus = estimate
+                                            .explanation
+                                            .get("routine_family_alignment_bonus")
+                                            .and_then(|value| value.as_f64())
+                                            .unwrap_or(0.0);
+                                        if bonus > 0.0 {
+                                            let sources = estimate
+                                                .explanation
+                                                .get("routine_family_alignment_sources")
+                                                .and_then(|value| value.as_array())
+                                                .map(|rows| {
+                                                    rows.iter()
+                                                        .filter_map(|row| row.as_str())
+                                                        .collect::<Vec<_>>()
+                                                        .join(", ")
+                                                })
+                                                .unwrap_or_default();
+                                            ui.small(format!(
+                                                "family-alignment bonus: +{:.2}{}",
+                                                bonus,
+                                                if sources.is_empty() {
+                                                    String::new()
+                                                } else {
+                                                    format!(" ({sources})")
+                                                }
+                                            ));
+                                        }
+                                    }
                                 });
                             }
                         });
@@ -23956,6 +24010,7 @@ Error: `{err}`"
                 if let Some(summary) = routine.summary.as_deref() {
                     ui.small(summary);
                 }
+                self.render_routine_assistant_macro_suggestions(ui);
                 ui.horizontal(|ui| {
                     if ui
                         .button("Reload Explanation")
@@ -24137,6 +24192,7 @@ Error: `{err}`"
                         ui.small(format!("- {req}"));
                     }
                 }
+                self.render_routine_assistant_macro_suggestions(ui);
                 self.render_routine_assistant_gibson_linearization_notice(ui, &routine);
                 ui.separator();
                 egui::Grid::new("routine_assistant_bindings_grid")
@@ -25409,6 +25465,113 @@ Error: `{err}`"
         out
     }
 
+    fn routine_assistant_candidate_planning_scores_snapshot(
+        &self,
+    ) -> Vec<RoutineDecisionTraceCandidateScore> {
+        let mut out = self
+            .routine_assistant_candidates
+            .iter()
+            .map(|row| {
+                let (routine_family_alignment_bonus, routine_family_alignment_sources) = row
+                    .planning_estimate
+                    .as_ref()
+                    .map(|estimate| {
+                        let bonus = estimate
+                            .explanation
+                            .get("routine_family_alignment_bonus")
+                            .and_then(|value| value.as_f64());
+                        let sources = estimate
+                            .explanation
+                            .get("routine_family_alignment_sources")
+                            .and_then(|value| value.as_array())
+                            .map(|rows| {
+                                rows.iter()
+                                    .filter_map(|row| row.as_str())
+                                    .map(str::trim)
+                                    .filter(|value| !value.is_empty())
+                                    .map(|value| value.to_string())
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        (bonus, sources)
+                    })
+                    .unwrap_or((None, vec![]));
+                RoutineDecisionTraceCandidateScore {
+                    routine_id: row.routine_id.clone(),
+                    routine_title: Some(row.title.clone()).filter(|value| !value.is_empty()),
+                    routine_family: row.family.clone(),
+                    passes_guardrails: row
+                        .planning_estimate
+                        .as_ref()
+                        .map(|estimate| estimate.passes_guardrails)
+                        .unwrap_or(false),
+                    estimated_time_hours: row.estimated_time_hours,
+                    estimated_cost: row.estimated_cost,
+                    local_fit_score: row.local_fit_score,
+                    composite_meta_score: row.composite_meta_score,
+                    routine_family_alignment_bonus,
+                    routine_family_alignment_sources,
+                }
+            })
+            .collect::<Vec<_>>();
+        out.sort_by(|left, right| {
+            right
+                .passes_guardrails
+                .cmp(&left.passes_guardrails)
+                .then_with(|| {
+                    right
+                        .composite_meta_score
+                        .unwrap_or(f64::NEG_INFINITY)
+                        .total_cmp(&left.composite_meta_score.unwrap_or(f64::NEG_INFINITY))
+                })
+                .then_with(|| left.routine_family.cmp(&right.routine_family))
+                .then_with(|| left.routine_id.cmp(&right.routine_id))
+        });
+        out
+    }
+
+    fn routine_assistant_planning_trace_artifacts(
+        &self,
+        selected_routine: Option<&CloningRoutineCatalogRow>,
+    ) -> (
+        Option<RoutinePreferenceContextRecord>,
+        Vec<RoutineDecisionTraceCandidateScore>,
+        Vec<MacroTemplateSuggestion>,
+    ) {
+        let selected_routine_id = selected_routine
+            .map(|row| row.routine_id.trim().to_string())
+            .or_else(|| {
+                let value = self.routine_assistant_selected_routine_id.trim();
+                (!value.is_empty()).then_some(value.to_string())
+            });
+        let selected_routine_family = selected_routine
+            .map(|row| row.family.trim().to_string())
+            .or_else(|| {
+                self.routine_assistant_decision_trace
+                    .as_ref()
+                    .and_then(|trace| trace.selected_routine_family.as_deref())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+            });
+        let (preference_context, macro_suggestions) = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| {
+                let context = engine.planning_routine_preference_context_record();
+                let suggestions = engine.suggest_macro_templates_for_routine(
+                    selected_routine_id.as_deref(),
+                    selected_routine_family.as_deref(),
+                    6,
+                );
+                (Some(context), suggestions)
+            })
+            .unwrap_or_else(|| (None, vec![]));
+        let candidate_planning_scores = self.routine_assistant_candidate_planning_scores_snapshot();
+        (preference_context, candidate_planning_scores, macro_suggestions)
+    }
+
     fn routine_assistant_bindings_snapshot(&self) -> BTreeMap<String, String> {
         let mut out: BTreeMap<String, String> = BTreeMap::new();
         for (key, value) in &self.routine_assistant_bindings {
@@ -25527,6 +25690,107 @@ Error: `{err}`"
             .collect::<Vec<_>>()
     }
 
+    fn normalize_routine_preference_context_for_gui(
+        mut context: RoutinePreferenceContextRecord,
+    ) -> RoutinePreferenceContextRecord {
+        context.helper_profile_id = context
+            .helper_profile_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        context.helper_resolution_status = context.helper_resolution_status.trim().to_string();
+        if context.helper_resolution_status.is_empty() {
+            context.helper_resolution_status = "not_requested".to_string();
+        }
+        let normalize_vec = |values: &mut Vec<String>| {
+            let mut normalized = vec![];
+            for value in std::mem::take(values) {
+                Self::push_unique_trace_token(&mut normalized, &value);
+            }
+            *values = normalized;
+        };
+        normalize_vec(&mut context.explicit_preferred_routine_families);
+        normalize_vec(&mut context.helper_derived_preferred_routine_families);
+        normalize_vec(&mut context.effective_preferred_routine_families);
+        normalize_vec(&mut context.helper_offered_functions);
+        normalize_vec(&mut context.helper_component_labels);
+        normalize_vec(&mut context.rationale);
+        context
+    }
+
+    fn normalize_routine_decision_trace_candidate_score_for_gui(
+        mut score: RoutineDecisionTraceCandidateScore,
+    ) -> Option<RoutineDecisionTraceCandidateScore> {
+        score.routine_id = score.routine_id.trim().to_string();
+        if score.routine_id.is_empty() {
+            return None;
+        }
+        score.routine_title = score
+            .routine_title
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        score.routine_family = score.routine_family.trim().to_string();
+        score.estimated_time_hours = score
+            .estimated_time_hours
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        score.estimated_cost = score
+            .estimated_cost
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        score.local_fit_score = score
+            .local_fit_score
+            .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
+        score.composite_meta_score = score
+            .composite_meta_score
+            .filter(|value| value.is_finite());
+        score.routine_family_alignment_bonus = score
+            .routine_family_alignment_bonus
+            .filter(|value| value.is_finite());
+        let mut sources = vec![];
+        for source in std::mem::take(&mut score.routine_family_alignment_sources) {
+            Self::push_unique_trace_token(&mut sources, &source);
+        }
+        score.routine_family_alignment_sources = sources;
+        Some(score)
+    }
+
+    fn normalize_macro_template_suggestion_for_gui(
+        mut suggestion: MacroTemplateSuggestion,
+    ) -> Option<MacroTemplateSuggestion> {
+        suggestion.macro_kind = suggestion.macro_kind.trim().to_string();
+        if suggestion.macro_kind.is_empty() {
+            return None;
+        }
+        suggestion.template_name = suggestion.template_name.trim().to_string();
+        if suggestion.template_name.is_empty() {
+            return None;
+        }
+        suggestion.description = suggestion
+            .description
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        suggestion.details_url = suggestion
+            .details_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if !suggestion.score.is_finite() || suggestion.score < 0.0 {
+            suggestion.score = 0.0;
+        }
+        let normalize_vec = |values: &mut Vec<String>| {
+            let mut normalized = vec![];
+            for value in std::mem::take(values) {
+                Self::push_unique_trace_token(&mut normalized, &value);
+            }
+            *values = normalized;
+        };
+        normalize_vec(&mut suggestion.matched_routine_families);
+        normalize_vec(&mut suggestion.matched_terms);
+        normalize_vec(&mut suggestion.rationale);
+        Some(suggestion)
+    }
+
     fn normalize_routine_decision_trace_for_gui(
         mut trace: RoutineDecisionTrace,
     ) -> Option<RoutineDecisionTrace> {
@@ -25570,6 +25834,10 @@ Error: `{err}`"
         normalize_opt(&mut trace.selected_routine_family);
         normalize_opt(&mut trace.macro_instance_id);
         normalize_opt(&mut trace.execution_error);
+        trace.routine_preference_context = trace
+            .routine_preference_context
+            .take()
+            .map(Self::normalize_routine_preference_context_for_gui);
 
         let mut normalized_candidates = vec![];
         for token in std::mem::take(&mut trace.candidate_routine_ids) {
@@ -25577,11 +25845,63 @@ Error: `{err}`"
         }
         trace.candidate_routine_ids = normalized_candidates;
 
+        let mut candidate_scores: Vec<RoutineDecisionTraceCandidateScore> = vec![];
+        let mut seen_candidate_ids: HashSet<String> = HashSet::new();
+        for row in std::mem::take(&mut trace.candidate_planning_scores) {
+            let Some(row) = Self::normalize_routine_decision_trace_candidate_score_for_gui(row)
+            else {
+                continue;
+            };
+            if !seen_candidate_ids.insert(row.routine_id.to_ascii_lowercase()) {
+                continue;
+            }
+            candidate_scores.push(row);
+        }
+        candidate_scores.sort_by(|left, right| {
+            right
+                .passes_guardrails
+                .cmp(&left.passes_guardrails)
+                .then_with(|| {
+                    right
+                        .composite_meta_score
+                        .unwrap_or(f64::NEG_INFINITY)
+                        .total_cmp(&left.composite_meta_score.unwrap_or(f64::NEG_INFINITY))
+                })
+                .then_with(|| left.routine_family.cmp(&right.routine_family))
+                .then_with(|| left.routine_id.cmp(&right.routine_id))
+        });
+        trace.candidate_planning_scores = candidate_scores;
+
         let mut normalized_alternatives = vec![];
         for token in std::mem::take(&mut trace.alternatives_presented) {
             Self::push_unique_trace_token(&mut normalized_alternatives, &token);
         }
         trace.alternatives_presented = normalized_alternatives;
+
+        let mut macro_suggestions: Vec<MacroTemplateSuggestion> = vec![];
+        let mut seen_macro_keys: HashSet<String> = HashSet::new();
+        for row in std::mem::take(&mut trace.macro_suggestions) {
+            let Some(row) = Self::normalize_macro_template_suggestion_for_gui(row) else {
+                continue;
+            };
+            let key = format!(
+                "{}\u{1f}{}",
+                row.macro_kind.to_ascii_lowercase(),
+                row.template_name.to_ascii_lowercase()
+            );
+            if !seen_macro_keys.insert(key) {
+                continue;
+            }
+            macro_suggestions.push(row);
+        }
+        macro_suggestions.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then_with(|| left.macro_kind.cmp(&right.macro_kind))
+                .then_with(|| left.template_name.cmp(&right.template_name))
+        });
+        trace.macro_suggestions = macro_suggestions;
 
         let mut normalized_questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
         let mut used_question_ids: HashMap<String, usize> = HashMap::new();
@@ -25828,6 +26148,11 @@ Error: `{err}`"
             return;
         }
         let now = Self::now_unix_ms();
+        let selected_routine = self.routine_assistant_selected_routine();
+        let (routine_preference_context, candidate_planning_scores, macro_suggestions) =
+            self.routine_assistant_planning_trace_artifacts(selected_routine.as_ref());
+        self.routine_assistant_preference_context = routine_preference_context.clone();
+        self.routine_assistant_macro_suggestions = macro_suggestions.clone();
         let trace = RoutineDecisionTrace {
             schema: ROUTINE_DECISION_TRACE_SCHEMA.to_string(),
             trace_id: self.next_routine_assistant_trace_id(),
@@ -25838,6 +26163,9 @@ Error: `{err}`"
             goal_text: self.routine_assistant_goal.trim().to_string(),
             query_text: self.routine_assistant_query.trim().to_string(),
             candidate_routine_ids: self.routine_assistant_candidate_ids_snapshot(),
+            routine_preference_context,
+            candidate_planning_scores,
+            macro_suggestions,
             ..RoutineDecisionTrace::default()
         };
         self.routine_assistant_decision_trace = Some(trace);
@@ -25852,12 +26180,20 @@ Error: `{err}`"
         let goal_text = self.routine_assistant_goal.trim().to_string();
         let query_text = self.routine_assistant_query.trim().to_string();
         let candidate_routine_ids = self.routine_assistant_candidate_ids_snapshot();
+        let selected_routine = self.routine_assistant_selected_routine();
+        let (routine_preference_context, candidate_planning_scores, macro_suggestions) =
+            self.routine_assistant_planning_trace_artifacts(selected_routine.as_ref());
+        self.routine_assistant_preference_context = routine_preference_context.clone();
+        self.routine_assistant_macro_suggestions = macro_suggestions.clone();
         let now = Self::now_unix_ms();
         if let Some(trace) = self.routine_assistant_decision_trace.as_mut() {
             updater(trace);
             trace.goal_text = goal_text;
             trace.query_text = query_text;
             trace.candidate_routine_ids = candidate_routine_ids;
+            trace.routine_preference_context = routine_preference_context;
+            trace.candidate_planning_scores = candidate_planning_scores;
+            trace.macro_suggestions = macro_suggestions;
             trace.updated_at_unix_ms = now;
         }
         self.persist_routine_assistant_decision_trace();
@@ -26216,6 +26552,69 @@ Error: `{err}`"
             return Some(row.clone());
         }
         circular_inputs.into_iter().next()
+    }
+
+    fn render_routine_assistant_planning_context_strip(&self, ui: &mut Ui) {
+        let Some(context) = self.routine_assistant_preference_context.as_ref() else {
+            return;
+        };
+        if context.helper_profile_id.is_none()
+            && context.effective_preferred_routine_families.is_empty()
+            && context.rationale.is_empty()
+        {
+            return;
+        }
+        ui.group(|ui| {
+            ui.strong("Planning Context");
+            if let Some(helper_profile_id) = context.helper_profile_id.as_deref() {
+                ui.small(format!(
+                    "helper profile: {} [{}]",
+                    helper_profile_id, context.helper_resolution_status
+                ));
+            }
+            if !context.effective_preferred_routine_families.is_empty() {
+                ui.small(format!(
+                    "preferred routine families: {}",
+                    context.effective_preferred_routine_families.join(", ")
+                ));
+            }
+            if let Some(line) = context.rationale.first() {
+                ui.small(line);
+            }
+        });
+    }
+
+    fn render_routine_assistant_macro_suggestions(&self, ui: &mut Ui) {
+        if self.routine_assistant_macro_suggestions.is_empty() {
+            return;
+        }
+        ui.group(|ui| {
+            ui.strong("Suggested Macros");
+            for suggestion in &self.routine_assistant_macro_suggestions {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!(
+                        "{}: {} (score {:.2})",
+                        suggestion.macro_kind, suggestion.template_name, suggestion.score
+                    ));
+                    if let Some(details_url) = suggestion.details_url.as_deref() {
+                        ui.hyperlink_to("docs", details_url);
+                    }
+                });
+                if let Some(description) = suggestion.description.as_deref() {
+                    ui.small(description);
+                }
+                if !suggestion.matched_routine_families.is_empty() {
+                    ui.small(format!(
+                        "matched families: {}",
+                        suggestion.matched_routine_families.join(", ")
+                    ));
+                }
+                if let Some(line) = suggestion.rationale.first() {
+                    ui.small(line);
+                }
+                ui.add_space(4.0);
+            }
+        });
     }
 
     fn render_routine_assistant_gibson_linearization_notice(
@@ -38452,10 +38851,11 @@ mod tests {
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
             LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            ProjectState, Rack, RackAuthoringTemplate, RackFillDirection, RackProfileKind,
-            RackProfileSnapshot, RenderSvgMode, RestrictionEnzymeDisplayMode,
-            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
-            RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
+            PlanningEstimate, PlanningObjective, ProjectState, Rack, RackAuthoringTemplate,
+            RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
+            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
+            RoutineDecisionTraceStore, SequenceOrigin, PLANNING_ESTIMATE_SCHEMA,
         },
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
@@ -40215,6 +40615,103 @@ mod tests {
             .and_then(|value| value.as_array())
             .expect("trace rows");
         assert_eq!(traces.len(), 1);
+    }
+
+    #[test]
+    fn routine_assistant_trace_persists_planning_context_candidate_scores_and_macro_suggestions() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().expect("engine write");
+            engine
+                .set_planning_objective(Some(PlanningObjective {
+                    helper_profile_id: Some("pUC19".to_string()),
+                    preferred_routine_families: vec!["restriction".to_string()],
+                    ..PlanningObjective::default()
+                }))
+                .expect("set planning objective");
+            engine
+                .apply(Operation::UpsertWorkflowMacroTemplate {
+                    name: "restriction_setup".to_string(),
+                    description: Some("Restriction digest and ligation setup".to_string()),
+                    details_url: Some("https://example.org/macros/restriction".to_string()),
+                    parameters: vec![],
+                    input_ports: vec![],
+                    output_ports: vec![],
+                    script: "op {\"Note\":{\"message\":\"restriction digest ligation\"}}"
+                        .to_string(),
+                })
+                .expect("upsert workflow template");
+        }
+        app.routine_assistant_goal = "Subclone reporter into pUC19".to_string();
+        app.routine_assistant_query = "restriction cloning".to_string();
+        app.routine_assistant_selected_routine_id = "restriction.demo_subcloning".to_string();
+        app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+            routine_id: "restriction.demo_subcloning".to_string(),
+            title: "Restriction Digest and Ligation".to_string(),
+            family: "restriction".to_string(),
+            status: "implemented".to_string(),
+            estimated_time_hours: Some(6.0),
+            estimated_cost: Some(20.0),
+            local_fit_score: Some(0.7),
+            composite_meta_score: Some(0.9),
+            planning_estimate: Some(PlanningEstimate {
+                schema: PLANNING_ESTIMATE_SCHEMA.to_string(),
+                estimated_time_hours: 6.0,
+                estimated_cost: 20.0,
+                local_fit_score: 0.7,
+                composite_meta_score: 0.9,
+                passes_guardrails: true,
+                guardrail_failures: vec![],
+                explanation: serde_json::json!({
+                    "routine_family_alignment_bonus": 0.25,
+                    "routine_family_alignment_sources": ["helper profile"]
+                }),
+            }),
+            ..Default::default()
+        }];
+
+        app.open_routine_assistant_dialog();
+
+        let trace = app
+            .routine_assistant_decision_trace
+            .as_ref()
+            .expect("routine assistant trace");
+        assert_eq!(
+            trace
+                .routine_preference_context
+                .as_ref()
+                .and_then(|row| row.helper_profile_id.as_deref()),
+            Some("puc19")
+        );
+        assert_eq!(trace.candidate_planning_scores.len(), 1);
+        assert_eq!(
+            trace.candidate_planning_scores[0].routine_family_alignment_bonus,
+            Some(0.25)
+        );
+        assert_eq!(trace.macro_suggestions.len(), 1);
+        assert_eq!(trace.macro_suggestions[0].template_name, "restriction_setup");
+
+        let store = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(ROUTINE_DECISION_TRACES_METADATA_KEY)
+            .cloned()
+            .expect("trace store metadata");
+        let persisted = serde_json::from_value::<RoutineDecisionTraceStore>(store)
+            .expect("deserialize routine trace store");
+        assert_eq!(persisted.traces.len(), 1);
+        assert_eq!(
+            persisted.traces[0]
+                .routine_preference_context
+                .as_ref()
+                .and_then(|row| row.helper_profile_id.as_deref()),
+            Some("puc19")
+        );
+        assert_eq!(persisted.traces[0].candidate_planning_scores.len(), 1);
+        assert_eq!(persisted.traces[0].macro_suggestions.len(), 1);
     }
 
     #[test]

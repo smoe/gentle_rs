@@ -1251,6 +1251,107 @@ impl GentleEngine {
         }
     }
 
+    fn normalize_routine_preference_context_record(
+        mut context: RoutinePreferenceContextRecord,
+    ) -> RoutinePreferenceContextRecord {
+        context.helper_profile_id = context
+            .helper_profile_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        context.helper_resolution_status = context.helper_resolution_status.trim().to_string();
+        if context.helper_resolution_status.is_empty() {
+            context.helper_resolution_status = "not_requested".to_string();
+        }
+        let normalize_vec = |values: &mut Vec<String>| {
+            let mut normalized = vec![];
+            for value in std::mem::take(values) {
+                Self::push_unique_token(&mut normalized, &value);
+            }
+            *values = normalized;
+        };
+        normalize_vec(&mut context.explicit_preferred_routine_families);
+        normalize_vec(&mut context.helper_derived_preferred_routine_families);
+        normalize_vec(&mut context.effective_preferred_routine_families);
+        normalize_vec(&mut context.helper_offered_functions);
+        normalize_vec(&mut context.helper_component_labels);
+        normalize_vec(&mut context.rationale);
+        context
+    }
+
+    fn normalize_routine_decision_trace_candidate_score(
+        mut score: RoutineDecisionTraceCandidateScore,
+    ) -> Option<RoutineDecisionTraceCandidateScore> {
+        score.routine_id = score.routine_id.trim().to_string();
+        if score.routine_id.is_empty() {
+            return None;
+        }
+        score.routine_title = score
+            .routine_title
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        score.routine_family = score.routine_family.trim().to_string();
+        score.estimated_time_hours = score
+            .estimated_time_hours
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        score.estimated_cost = score
+            .estimated_cost
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        score.local_fit_score = score
+            .local_fit_score
+            .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
+        score.composite_meta_score = score
+            .composite_meta_score
+            .filter(|value| value.is_finite());
+        score.routine_family_alignment_bonus = score
+            .routine_family_alignment_bonus
+            .filter(|value| value.is_finite());
+        let mut sources = vec![];
+        for source in std::mem::take(&mut score.routine_family_alignment_sources) {
+            Self::push_unique_token(&mut sources, &source);
+        }
+        score.routine_family_alignment_sources = sources;
+        Some(score)
+    }
+
+    fn normalize_macro_template_suggestion(
+        mut suggestion: MacroTemplateSuggestion,
+    ) -> Option<MacroTemplateSuggestion> {
+        suggestion.macro_kind = suggestion.macro_kind.trim().to_string();
+        if suggestion.macro_kind.is_empty() {
+            return None;
+        }
+        suggestion.template_name = suggestion.template_name.trim().to_string();
+        if suggestion.template_name.is_empty() {
+            return None;
+        }
+        suggestion.description = suggestion
+            .description
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        suggestion.details_url = suggestion
+            .details_url
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if !suggestion.score.is_finite() || suggestion.score < 0.0 {
+            suggestion.score = 0.0;
+        }
+        let normalize_vec = |values: &mut Vec<String>| {
+            let mut normalized = vec![];
+            for value in std::mem::take(values) {
+                Self::push_unique_token(&mut normalized, &value);
+            }
+            *values = normalized;
+        };
+        normalize_vec(&mut suggestion.matched_routine_families);
+        normalize_vec(&mut suggestion.matched_terms);
+        normalize_vec(&mut suggestion.rationale);
+        Some(suggestion)
+    }
+
     fn normalize_routine_decision_trace(
         mut trace: RoutineDecisionTrace,
     ) -> Option<RoutineDecisionTrace> {
@@ -1295,6 +1396,10 @@ impl GentleEngine {
         normalize_opt(&mut trace.selected_routine_family);
         normalize_opt(&mut trace.macro_instance_id);
         normalize_opt(&mut trace.execution_error);
+        trace.routine_preference_context = trace
+            .routine_preference_context
+            .take()
+            .map(Self::normalize_routine_preference_context_record);
 
         let mut dedup_candidates = vec![];
         for token in std::mem::take(&mut trace.candidate_routine_ids) {
@@ -1302,11 +1407,62 @@ impl GentleEngine {
         }
         trace.candidate_routine_ids = dedup_candidates;
 
+        let mut candidate_scores: Vec<RoutineDecisionTraceCandidateScore> = vec![];
+        let mut seen_candidate_ids: HashSet<String> = HashSet::new();
+        for row in std::mem::take(&mut trace.candidate_planning_scores) {
+            let Some(row) = Self::normalize_routine_decision_trace_candidate_score(row) else {
+                continue;
+            };
+            if !seen_candidate_ids.insert(row.routine_id.to_ascii_lowercase()) {
+                continue;
+            }
+            candidate_scores.push(row);
+        }
+        candidate_scores.sort_by(|left, right| {
+            right
+                .passes_guardrails
+                .cmp(&left.passes_guardrails)
+                .then_with(|| {
+                    right
+                        .composite_meta_score
+                        .unwrap_or(f64::NEG_INFINITY)
+                        .total_cmp(&left.composite_meta_score.unwrap_or(f64::NEG_INFINITY))
+                })
+                .then_with(|| left.routine_family.cmp(&right.routine_family))
+                .then_with(|| left.routine_id.cmp(&right.routine_id))
+        });
+        trace.candidate_planning_scores = candidate_scores;
+
         let mut dedup_alternatives = vec![];
         for token in std::mem::take(&mut trace.alternatives_presented) {
             Self::push_unique_token(&mut dedup_alternatives, &token);
         }
         trace.alternatives_presented = dedup_alternatives;
+
+        let mut macro_suggestions: Vec<MacroTemplateSuggestion> = vec![];
+        let mut seen_macro_keys: HashSet<String> = HashSet::new();
+        for row in std::mem::take(&mut trace.macro_suggestions) {
+            let Some(row) = Self::normalize_macro_template_suggestion(row) else {
+                continue;
+            };
+            let key = format!(
+                "{}\u{1f}{}",
+                row.macro_kind.to_ascii_lowercase(),
+                row.template_name.to_ascii_lowercase()
+            );
+            if !seen_macro_keys.insert(key) {
+                continue;
+            }
+            macro_suggestions.push(row);
+        }
+        macro_suggestions.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then_with(|| left.macro_kind.cmp(&right.macro_kind))
+                .then_with(|| left.template_name.cmp(&right.template_name))
+        });
+        trace.macro_suggestions = macro_suggestions;
 
         let mut normalized_questions: Vec<RoutineDecisionTraceDisambiguationQuestion> = vec![];
         let mut used_question_ids: HashMap<String, usize> = HashMap::new();

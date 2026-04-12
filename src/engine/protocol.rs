@@ -2081,6 +2081,50 @@ pub struct CandidateMacroTemplateSummary {
     pub updated_at_unix_ms: u128,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Engine-owned helper/objective-derived routine preference context.
+pub struct RoutinePreferenceContextRecord {
+    pub helper_profile_id: Option<String>,
+    pub helper_resolution_status: String,
+    pub explicit_preferred_routine_families: Vec<String>,
+    pub helper_derived_preferred_routine_families: Vec<String>,
+    pub effective_preferred_routine_families: Vec<String>,
+    pub helper_offered_functions: Vec<String>,
+    pub helper_component_labels: Vec<String>,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Candidate routine score snapshot captured in routine-decision traces.
+pub struct RoutineDecisionTraceCandidateScore {
+    pub routine_id: String,
+    pub routine_title: Option<String>,
+    pub routine_family: String,
+    pub passes_guardrails: bool,
+    pub estimated_time_hours: Option<f64>,
+    pub estimated_cost: Option<f64>,
+    pub local_fit_score: Option<f64>,
+    pub composite_meta_score: Option<f64>,
+    pub routine_family_alignment_bonus: Option<f64>,
+    pub routine_family_alignment_sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Suggested workflow/candidate macro template aligned to current planning context.
+pub struct MacroTemplateSuggestion {
+    pub macro_kind: String,
+    pub template_name: String,
+    pub description: Option<String>,
+    pub details_url: Option<String>,
+    pub score: f64,
+    pub matched_routine_families: Vec<String>,
+    pub matched_terms: Vec<String>,
+    pub rationale: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct IsoformPanelDomainSpec {
@@ -2308,9 +2352,12 @@ pub struct RoutineDecisionTrace {
     pub goal_text: String,
     pub query_text: String,
     pub candidate_routine_ids: Vec<String>,
+    pub routine_preference_context: Option<RoutinePreferenceContextRecord>,
+    pub candidate_planning_scores: Vec<RoutineDecisionTraceCandidateScore>,
     pub selected_routine_id: Option<String>,
     pub selected_routine_title: Option<String>,
     pub selected_routine_family: Option<String>,
+    pub macro_suggestions: Vec<MacroTemplateSuggestion>,
     pub alternatives_presented: Vec<String>,
     pub comparisons: Vec<RoutineDecisionTraceComparison>,
     pub disambiguation_questions_presented: Vec<RoutineDecisionTraceDisambiguationQuestion>,

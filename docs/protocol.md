@@ -1497,6 +1497,9 @@ Adapter-equivalence guarantee for UI-intent tools:
     - optional `preferred_routine_families[]`
   - when present, routine-ranking routes synthesize helper-aware
     `routine_preference_context` and apply a transparent family-alignment bonus
+  - the same synthesized context is now also reused by routine-decision traces
+    and engine-owned macro-template suggestions so planner-facing adapters do
+    not need their own helper-specific heuristics
 - `planning objective set JSON_OR_@FILE`
   - set/replace planning objective
 - `planning objective clear`
@@ -2515,8 +2518,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
       (`gentle.routine_decision_trace.v1`) captured in project metadata and
       exported for routine-selection reproducibility (`trace_id`, selected
       routine/alternatives, disambiguation questions/answers, binding snapshot,
-      ordered `preflight_history`, canonical `preflight_snapshot`, execution
-      outcome, export events)
+      helper-aware `routine_preference_context`, candidate planning-score
+      snapshots, suggested macro templates, ordered `preflight_history`,
+      canonical `preflight_snapshot`, execution outcome, export events)
   - `operation_log`:
     - selected immutable operation records (`run_id`, operation payload, result)
   - `outputs`:

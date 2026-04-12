@@ -8580,9 +8580,47 @@ fn test_export_process_run_bundle_operation() {
                 goal_text: "Assemble reporter".to_string(),
                 query_text: "golden gate".to_string(),
                 candidate_routine_ids: vec!["golden_gate.type_iis_single_insert".to_string()],
+                routine_preference_context: Some(RoutinePreferenceContextRecord {
+                    helper_profile_id: Some("puc19".to_string()),
+                    helper_resolution_status: "resolved".to_string(),
+                    explicit_preferred_routine_families: vec!["golden_gate".to_string()],
+                    helper_derived_preferred_routine_families: vec!["restriction".to_string()],
+                    effective_preferred_routine_families: vec![
+                        "golden_gate".to_string(),
+                        "restriction".to_string(),
+                    ],
+                    helper_offered_functions: vec!["mcs_cloning".to_string()],
+                    helper_component_labels: vec!["MCS".to_string()],
+                    rationale: vec!["pUC19 contributes a polylinker.".to_string()],
+                }),
+                candidate_planning_scores: vec![RoutineDecisionTraceCandidateScore {
+                    routine_id: "golden_gate.type_iis_single_insert".to_string(),
+                    routine_title: Some("Golden Gate Type IIS Single Insert".to_string()),
+                    routine_family: "golden_gate".to_string(),
+                    passes_guardrails: true,
+                    estimated_time_hours: Some(4.5),
+                    estimated_cost: Some(18.0),
+                    local_fit_score: Some(0.72),
+                    composite_meta_score: Some(0.88),
+                    routine_family_alignment_bonus: Some(0.25),
+                    routine_family_alignment_sources: vec![
+                        "explicit preference".to_string(),
+                        "helper profile".to_string(),
+                    ],
+                }],
                 selected_routine_id: Some("golden_gate.type_iis_single_insert".to_string()),
                 selected_routine_title: Some("Golden Gate Type IIS Single Insert".to_string()),
                 selected_routine_family: Some("golden_gate".to_string()),
+                macro_suggestions: vec![MacroTemplateSuggestion {
+                    macro_kind: "workflow".to_string(),
+                    template_name: "golden_gate_setup".to_string(),
+                    description: Some("Golden Gate setup helper".to_string()),
+                    details_url: Some("https://example.org/macros/golden_gate_setup".to_string()),
+                    score: 0.85,
+                    matched_routine_families: vec!["golden_gate".to_string()],
+                    matched_terms: vec!["golden gate".to_string()],
+                    rationale: vec!["Matches selected routine family.".to_string()],
+                }],
                 alternatives_presented: vec!["gibson.two_fragment_overlap_preview".to_string()],
                 comparisons: vec![RoutineDecisionTraceComparison {
                     left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
@@ -8708,6 +8746,23 @@ fn test_export_process_run_bundle_operation() {
     );
     assert_eq!(bundle.decision_traces[0].disambiguation_answers.len(), 1);
     assert_eq!(bundle.decision_traces[0].preflight_history.len(), 1);
+    assert_eq!(
+        bundle.decision_traces[0]
+            .routine_preference_context
+            .as_ref()
+            .and_then(|row| row.helper_profile_id.as_deref()),
+        Some("puc19")
+    );
+    assert_eq!(bundle.decision_traces[0].candidate_planning_scores.len(), 1);
+    assert_eq!(
+        bundle.decision_traces[0].candidate_planning_scores[0].routine_family_alignment_bonus,
+        Some(0.25)
+    );
+    assert_eq!(bundle.decision_traces[0].macro_suggestions.len(), 1);
+    assert_eq!(
+        bundle.decision_traces[0].macro_suggestions[0].template_name,
+        "golden_gate_setup"
+    );
     assert_eq!(
         bundle.decision_traces[0]
             .preflight_snapshot
@@ -21368,6 +21423,65 @@ fn set_planning_objective_normalizes_helper_profile_and_preferred_routine_famili
     assert_eq!(
         objective.preferred_routine_families,
         vec!["gibson".to_string(), "golden_gate".to_string()]
+    );
+}
+
+#[test]
+fn suggest_macro_templates_for_routine_prefers_helper_and_family_aligned_templates() {
+    let mut engine = GentleEngine::new();
+    engine
+        .set_planning_objective(Some(PlanningObjective {
+            helper_profile_id: Some("pUC19".to_string()),
+            preferred_routine_families: vec!["restriction".to_string()],
+            ..PlanningObjective::default()
+        }))
+        .expect("set planning objective");
+    engine
+        .apply(Operation::UpsertWorkflowMacroTemplate {
+            name: "restriction_subclone_workflow".to_string(),
+            description: Some("Restriction digest and ligation setup".to_string()),
+            details_url: Some("https://example.org/macros/restriction".to_string()),
+            parameters: vec![],
+            input_ports: vec![],
+            output_ports: vec![],
+            script: "op {\"Note\":{\"message\":\"restriction digest ligation\"}}".to_string(),
+        })
+        .expect("upsert restriction workflow template");
+    engine
+        .apply(Operation::UpsertCandidateMacroTemplate {
+            name: "gibson_overlap_scan".to_string(),
+            description: Some("Gibson overlap scouting helper".to_string()),
+            details_url: Some("https://example.org/macros/gibson".to_string()),
+            parameters: vec![],
+            script: "report gibson overlap assembly windows".to_string(),
+        })
+        .expect("upsert gibson candidate template");
+
+    let suggestions = engine.suggest_macro_templates_for_routine(
+        Some("restriction.demo_subcloning"),
+        Some("restriction"),
+        5,
+    );
+
+    assert!(!suggestions.is_empty(), "expected at least one suggestion");
+    assert_eq!(suggestions[0].template_name, "restriction_subclone_workflow");
+    assert_eq!(suggestions[0].macro_kind, "workflow");
+    assert!(
+        suggestions[0]
+            .matched_routine_families
+            .iter()
+            .any(|value| value == "restriction")
+    );
+    assert!(
+        suggestions[0]
+            .rationale
+            .iter()
+            .any(|line| line.contains("selected routine family"))
+    );
+    assert!(
+        suggestions
+            .iter()
+            .all(|row| row.template_name != "gibson_overlap_scan")
     );
 }
 

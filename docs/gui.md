@@ -1051,6 +1051,13 @@ Patterns menu:
   - compare stage includes explicit disambiguation question prompts from
     routine explain/compare payloads and records user-entered answers in
     routine decision traces.
+  - when planning context is active, the goal stage now shows a compact
+    helper-aware planning context strip plus candidate planning metrics
+    (guardrail pass state, score/fit/time/cost, family-alignment bonus).
+  - compare/parameter stages now surface engine-owned macro-template
+    suggestions derived from the selected routine plus the synthesized
+    `routine_preference_context`, so users see reusable next-step automation
+    ideas without adapter-local heuristics.
   - explainability and comparison data are loaded via shared shell commands:
     - `routines explain ROUTINE_ID`
     - `routines compare ROUTINE_A ROUTINE_B`
@@ -1065,6 +1072,10 @@ Patterns menu:
       and auto-rebinds that routine input
   - export stage uses shared process artifact route:
     - `export-run-bundle OUTPUT.run_bundle.json`
+  - persisted routine decision traces now retain the helper-aware planning
+    context, candidate planning-score snapshot, and macro suggestions that were
+    visible during the assistant flow, so exported run bundles preserve why a
+    routine and follow-on automation were favored.
 - `Patterns -> Gibson...`
   - opens a dedicated destination-first Gibson specialist window for one or
     more inserts into one destination.
