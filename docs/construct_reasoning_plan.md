@@ -429,6 +429,9 @@ V1 should reuse existing GENtle outputs before introducing any external model:
      - keep this behind engine-owned complementation rule records so the first
        deterministic baseline can stay inspectable and later broaden into a
        curated rescue-marker catalog without rewriting the fact model
+     - allow the same rule layer to consume normalized helper-profile
+       semantics as well, so selectable markers or helper-carried rescue roles
+       can support the same inspectable `selection_context` facts
    - classification:
      - exact carried gene interval: `hard_fact` or `reliable_annotation`
      - growth-selection usefulness under one medium condition:

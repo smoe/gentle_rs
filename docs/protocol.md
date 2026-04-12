@@ -2522,9 +2522,12 @@ Construct reasoning graph foundation (implemented first slice):
     - host-transition status
     - helper/MCS context
     - selection/complementation context built from engine-owned
-      complementation rules, currently seeded with the proline-rescue baseline
-      (`proA`/`proB`-style annotated construct features plus proline-style
-      medium conditions)
+      selection/complementation rules, currently seeded with:
+      - the proline-rescue baseline (`proA`/`proB`-style annotated construct
+        features plus proline-style medium conditions)
+      - helper-backed selectable-marker context from normalized helper-profile
+        interpretation (for example helper semantics such as `AmpR` /
+        `ampicillin_selection`)
   - active-sequence graph refresh helper that reuses the existing graph/objective
     identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph

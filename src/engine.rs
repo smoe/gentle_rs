@@ -94,23 +94,36 @@ enum PrepareReferenceGenomeMode {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ConstructComplementationRule {
+struct ConstructSelectionRule {
     rule_id: &'static str,
     label: &'static str,
+    category: &'static str,
     feature_match_tokens: &'static [&'static str],
     medium_match_terms: &'static [&'static str],
+    helper_offered_function_tokens: &'static [&'static str],
+    helper_component_kind_tokens: &'static [&'static str],
+    helper_component_tag_tokens: &'static [&'static str],
+    helper_component_attribute_terms: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
-struct ConstructComplementationRuleMatch {
+struct ConstructSelectionRuleMatch {
     rule_id: String,
     label: String,
+    category: String,
     status: String,
     matched_medium_conditions: Vec<String>,
     matched_medium_terms: Vec<String>,
     candidate_labels: Vec<String>,
     candidate_evidence_ids: Vec<String>,
     candidate_match_tokens: Vec<String>,
+    helper_profile_id: Option<String>,
+    helper_offered_function_matches: Vec<String>,
+    helper_component_ids: Vec<String>,
+    helper_component_labels: Vec<String>,
+    helper_component_kind_matches: Vec<String>,
+    helper_component_tag_matches: Vec<String>,
+    helper_component_attribute_matches: Vec<String>,
 }
 
 pub use crate::feature_expert::{
@@ -10185,15 +10198,40 @@ impl GentleEngine {
         Self::normalize_id_token(base)
     }
 
-    fn construct_reasoning_complementation_rules() -> &'static [ConstructComplementationRule] {
+    fn construct_reasoning_selection_rules() -> &'static [ConstructSelectionRule] {
+        const EMPTY: &[&str] = &[];
         const PROLINE_MATCH_TOKENS: &[&str] = &["proa", "prob"];
         const PROLINE_MEDIUM_TERMS: &[&str] = &["proline", "-pro"];
-        const RULES: &[ConstructComplementationRule] = &[ConstructComplementationRule {
-            rule_id: "proline_auxotrophy_rescue",
-            label: "Proline complementation",
-            feature_match_tokens: PROLINE_MATCH_TOKENS,
-            medium_match_terms: PROLINE_MEDIUM_TERMS,
-        }];
+        const AMPICILLIN_FEATURE_TOKENS: &[&str] = &["ampr", "bla", "betalactamase"];
+        const AMPICILLIN_MEDIUM_TERMS: &[&str] = &["ampicillin", "carbenicillin"];
+        const AMPICILLIN_HELPER_FUNCTIONS: &[&str] = &["ampicillin_selection"];
+        const AMPICILLIN_HELPER_COMPONENT_KINDS: &[&str] = &["selectable_marker"];
+        const AMPICILLIN_HELPER_COMPONENT_TAGS: &[&str] = &["selection"];
+        const AMPICILLIN_HELPER_COMPONENT_ATTRIBUTES: &[&str] = &["ampicillin", "carbenicillin"];
+        const RULES: &[ConstructSelectionRule] = &[
+            ConstructSelectionRule {
+                rule_id: "proline_auxotrophy_rescue",
+                label: "Proline complementation",
+                category: "complementation",
+                feature_match_tokens: PROLINE_MATCH_TOKENS,
+                medium_match_terms: PROLINE_MEDIUM_TERMS,
+                helper_offered_function_tokens: EMPTY,
+                helper_component_kind_tokens: EMPTY,
+                helper_component_tag_tokens: EMPTY,
+                helper_component_attribute_terms: EMPTY,
+            },
+            ConstructSelectionRule {
+                rule_id: "ampicillin_vector_selection",
+                label: "Ampicillin vector selection",
+                category: "selection",
+                feature_match_tokens: AMPICILLIN_FEATURE_TOKENS,
+                medium_match_terms: AMPICILLIN_MEDIUM_TERMS,
+                helper_offered_function_tokens: AMPICILLIN_HELPER_FUNCTIONS,
+                helper_component_kind_tokens: AMPICILLIN_HELPER_COMPONENT_KINDS,
+                helper_component_tag_tokens: AMPICILLIN_HELPER_COMPONENT_TAGS,
+                helper_component_attribute_terms: AMPICILLIN_HELPER_COMPONENT_ATTRIBUTES,
+            },
+        ];
         RULES
     }
 
@@ -10224,11 +10262,35 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_build_complementation_rule_match(
-        rule: &ConstructComplementationRule,
+    fn construct_reasoning_value_matches_tokens(value: &str, tokens: &[&str]) -> bool {
+        if tokens.is_empty() {
+            return false;
+        }
+        let token = Self::normalize_id_token(value);
+        tokens.contains(&token.as_str())
+    }
+
+    fn construct_reasoning_value_contains_any_term(value: &str, terms: &[&str]) -> Vec<String> {
+        if terms.is_empty() {
+            return vec![];
+        }
+        let lower = value.to_ascii_lowercase();
+        let mut matches = terms
+            .iter()
+            .filter(|term| lower.contains(**term))
+            .map(|term| (*term).to_string())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        matches
+    }
+
+    fn construct_reasoning_build_selection_rule_match(
+        rule: &ConstructSelectionRule,
         objective: &ConstructObjective,
         evidence: &[DesignEvidence],
-    ) -> Option<ConstructComplementationRuleMatch> {
+        helper_interpretation: Option<&HelperConstructInterpretation>,
+    ) -> Option<ConstructSelectionRuleMatch> {
         let mut matched_medium_conditions = vec![];
         let mut matched_medium_terms = vec![];
         for condition in &objective.medium_conditions {
@@ -10267,16 +10329,103 @@ impl GentleEngine {
         candidate_match_tokens.sort();
         candidate_match_tokens.dedup();
 
-        if matched_medium_conditions.is_empty() && candidate_labels.is_empty() {
+        let mut helper_offered_function_matches = vec![];
+        let mut helper_component_ids = vec![];
+        let mut helper_component_labels = vec![];
+        let mut helper_component_kind_matches = vec![];
+        let mut helper_component_tag_matches = vec![];
+        let mut helper_component_attribute_matches = vec![];
+        if let Some(helper_interpretation) = helper_interpretation {
+            for function in &helper_interpretation.offered_functions {
+                if Self::construct_reasoning_value_matches_tokens(
+                    function,
+                    rule.helper_offered_function_tokens,
+                ) {
+                    helper_offered_function_matches.push(function.clone());
+                }
+            }
+            for component in &helper_interpretation.components {
+                let kind_matched = Self::construct_reasoning_value_matches_tokens(
+                    &component.kind,
+                    rule.helper_component_kind_tokens,
+                );
+                let tag_matches = component
+                    .tags
+                    .iter()
+                    .filter(|tag| {
+                        Self::construct_reasoning_value_matches_tokens(
+                            tag,
+                            rule.helper_component_tag_tokens,
+                        )
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let mut attribute_matches = component
+                    .attributes
+                    .iter()
+                    .flat_map(|(_, value)| {
+                        Self::construct_reasoning_value_contains_any_term(
+                            value,
+                            rule.helper_component_attribute_terms,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                attribute_matches.sort();
+                attribute_matches.dedup();
+
+                if !(kind_matched || !tag_matches.is_empty() || !attribute_matches.is_empty()) {
+                    continue;
+                }
+
+                helper_component_ids.push(component.id.clone());
+                helper_component_labels.push(
+                    component
+                        .label
+                        .clone()
+                        .unwrap_or_else(|| component.id.clone()),
+                );
+                if kind_matched {
+                    helper_component_kind_matches.push(component.kind.clone());
+                }
+                helper_component_tag_matches.extend(tag_matches);
+                helper_component_attribute_matches.extend(attribute_matches);
+            }
+        }
+        helper_offered_function_matches.sort();
+        helper_offered_function_matches.dedup();
+        helper_component_ids.sort();
+        helper_component_ids.dedup();
+        helper_component_labels.sort();
+        helper_component_labels.dedup();
+        helper_component_kind_matches.sort();
+        helper_component_kind_matches.dedup();
+        helper_component_tag_matches.sort();
+        helper_component_tag_matches.dedup();
+        helper_component_attribute_matches.sort();
+        helper_component_attribute_matches.dedup();
+
+        if let Some(helper_interpretation) = helper_interpretation {
+            for label in &helper_component_labels {
+                candidate_labels.push(format!("{}: {}", helper_interpretation.helper_id, label));
+            }
+        }
+        candidate_labels.sort();
+        candidate_labels.dedup();
+
+        if matched_medium_conditions.is_empty()
+            && candidate_labels.is_empty()
+            && helper_offered_function_matches.is_empty()
+        {
             return None;
         }
 
-        Some(ConstructComplementationRuleMatch {
+        Some(ConstructSelectionRuleMatch {
             rule_id: rule.rule_id.to_string(),
             label: rule.label.to_string(),
+            category: rule.category.to_string(),
             status: Self::construct_reasoning_selection_status_from_match(
                 !matched_medium_conditions.is_empty(),
-                !candidate_labels.is_empty(),
+                !candidate_labels.is_empty() || !helper_offered_function_matches.is_empty(),
             )
             .to_string(),
             matched_medium_conditions,
@@ -10284,6 +10433,13 @@ impl GentleEngine {
             candidate_labels,
             candidate_evidence_ids,
             candidate_match_tokens,
+            helper_profile_id: helper_interpretation.map(|row| row.helper_id.clone()),
+            helper_offered_function_matches,
+            helper_component_ids,
+            helper_component_labels,
+            helper_component_kind_matches,
+            helper_component_tag_matches,
+            helper_component_attribute_matches,
         })
     }
 
@@ -10353,6 +10509,7 @@ impl GentleEngine {
         dna: &DNAsequence,
         objective: &ConstructObjective,
         evidence: &[DesignEvidence],
+        helper_interpretation: Option<&HelperConstructInterpretation>,
     ) -> (Vec<DesignFact>, Vec<DesignDecisionNode>) {
         let mut facts: Vec<DesignFact> = vec![];
         let mut decisions: Vec<DesignDecisionNode> = vec![];
@@ -10614,6 +10771,25 @@ impl GentleEngine {
             .filter(|(_, feature)| Self::feature_looks_like_mcs(feature))
             .map(|(feature_id, feature)| Self::feature_display_label(feature, feature_id))
             .collect::<Vec<_>>();
+        let helper_offered_functions = helper_interpretation
+            .map(|row| row.offered_functions.clone())
+            .unwrap_or_default();
+        let helper_constraints = helper_interpretation
+            .map(|row| row.constraints.clone())
+            .unwrap_or_default();
+        let helper_component_labels = helper_interpretation
+            .map(|row| {
+                row.components
+                    .iter()
+                    .map(|component| {
+                        component
+                            .label
+                            .clone()
+                            .unwrap_or_else(|| component.id.clone())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         if objective.helper_profile_id.is_some() || !helper_mcs_feature_labels.is_empty() {
             let helper_status = match (
                 objective.helper_profile_id.as_ref(),
@@ -10660,6 +10836,9 @@ impl GentleEngine {
                     "status": helper_status,
                     "helper_profile_id": objective.helper_profile_id.clone(),
                     "mcs_feature_labels": helper_mcs_feature_labels,
+                    "helper_offered_functions": helper_offered_functions,
+                    "helper_constraints": helper_constraints,
+                    "helper_component_labels": helper_component_labels,
                 }),
             ));
             decisions.push(Self::construct_reasoning_build_decision(
@@ -10667,7 +10846,7 @@ impl GentleEngine {
                 "evaluate_helper_profile_context",
                 "Evaluate Helper Profile Context".to_string(),
                 helper_rationale,
-                helper_evidence_ids,
+                helper_evidence_ids.clone(),
                 vec!["fact_helper_context".to_string()],
                 json!({
                     "status": helper_status,
@@ -10675,45 +10854,57 @@ impl GentleEngine {
             ));
         }
 
-        let complementation_rule_matches = Self::construct_reasoning_complementation_rules()
+        let selection_rule_matches = Self::construct_reasoning_selection_rules()
             .iter()
             .filter_map(|rule| {
-                Self::construct_reasoning_build_complementation_rule_match(
-                    rule, objective, evidence,
+                Self::construct_reasoning_build_selection_rule_match(
+                    rule,
+                    objective,
+                    evidence,
+                    helper_interpretation,
                 )
             })
             .collect::<Vec<_>>();
-        let complementation_candidates = complementation_rule_matches
+        let selection_candidates = selection_rule_matches
             .iter()
             .flat_map(|row| row.candidate_labels.iter().cloned())
             .collect::<BTreeSet<_>>();
-        let complementation_candidate_ids = complementation_rule_matches
+        let selection_candidate_ids = selection_rule_matches
             .iter()
             .flat_map(|row| row.candidate_evidence_ids.iter().cloned())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        let matching_medium_conditions = complementation_rule_matches
+        let matching_medium_conditions = selection_rule_matches
             .iter()
             .flat_map(|row| row.matched_medium_conditions.iter().cloned())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        let medium_mentions_proline = complementation_rule_matches.iter().any(|row| {
-            row.rule_id == "proline_auxotrophy_rescue" && !row.matched_medium_conditions.is_empty()
+        let matching_rule_ids = selection_rule_matches
+            .iter()
+            .map(|row| row.rule_id.clone())
+            .collect::<Vec<_>>();
+        let helper_backed_selection_present = selection_rule_matches.iter().any(|row| {
+            row.helper_profile_id.is_some()
+                || !row.helper_offered_function_matches.is_empty()
+                || !row.helper_component_ids.is_empty()
         });
-        if !objective.medium_conditions.is_empty() || !complementation_candidates.is_empty() {
-            let selection_status = if complementation_rule_matches
+        if !objective.medium_conditions.is_empty()
+            || !selection_candidates.is_empty()
+            || !selection_rule_matches.is_empty()
+        {
+            let selection_status = if selection_rule_matches
                 .iter()
                 .any(|row| row.status == "supported")
             {
                 "supported"
-            } else if complementation_rule_matches
+            } else if selection_rule_matches
                 .iter()
                 .any(|row| row.status == "review_needed")
             {
                 "review_needed"
-            } else if complementation_rule_matches
+            } else if selection_rule_matches
                 .iter()
                 .any(|row| row.status == "candidates_detected")
             {
@@ -10724,23 +10915,25 @@ impl GentleEngine {
             let selection_label = match selection_status {
                 "supported" => "Selection/complementation context supported".to_string(),
                 "review_needed" => "Selection/complementation context requires review".to_string(),
-                "candidates_detected" => "Complementation candidates detected".to_string(),
+                "candidates_detected" => {
+                    "Selection/complementation candidates detected".to_string()
+                }
                 _ => "Selection context recorded".to_string(),
             };
             let selection_rationale = match selection_status {
                 "supported" => format!(
-                    "Recorded medium conditions match engine-owned complementation rule(s): {}. Annotated construct features include candidate(s): {}.",
-                    complementation_rule_matches
+                    "Recorded medium conditions match engine-owned selection/complementation rule(s): {}. Construct or helper context includes candidate(s): {}.",
+                    selection_rule_matches
                         .iter()
                         .filter(|row| row.status == "supported")
                         .map(|row| row.label.clone())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
+                    selection_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
                 "review_needed" => format!(
-                    "Recorded medium conditions match engine-owned complementation rule(s): {}. No annotated construct features match those rescue candidates on the construct yet.",
-                    complementation_rule_matches
+                    "Recorded medium conditions match engine-owned selection/complementation rule(s): {}. No matching construct or helper candidates were found yet.",
+                    selection_rule_matches
                         .iter()
                         .filter(|row| row.status == "review_needed")
                         .map(|row| row.label.clone())
@@ -10748,13 +10941,16 @@ impl GentleEngine {
                         .join(", ")
                 ),
                 "candidates_detected" => format!(
-                    "Annotated construct features match engine-owned complementation rule candidate(s): {}. No matching medium condition is recorded yet, so current deterministic reasoning keeps this as inspectable context rather than claiming a selection strategy.",
-                    complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
+                    "Construct or helper context matches engine-owned selection/complementation candidate(s): {}. No matching medium condition is recorded yet, so current deterministic reasoning keeps this as inspectable context rather than claiming a selection strategy.",
+                    selection_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
-                _ => "Construct objective records medium/selection conditions, but none currently match the available engine-owned complementation rules.".to_string(),
+                _ => "Construct objective records medium/selection conditions, but none currently match the available engine-owned selection/complementation rules.".to_string(),
             };
             let mut selection_evidence_ids = medium_evidence_ids.clone();
-            selection_evidence_ids.extend(complementation_candidate_ids);
+            selection_evidence_ids.extend(selection_candidate_ids);
+            if helper_backed_selection_present {
+                selection_evidence_ids.extend(helper_evidence_ids.clone());
+            }
             selection_evidence_ids.sort();
             selection_evidence_ids.dedup();
             facts.push(Self::construct_reasoning_build_fact(
@@ -10768,9 +10964,8 @@ impl GentleEngine {
                     "status": selection_status,
                     "medium_conditions": objective.medium_conditions.clone(),
                     "matching_medium_conditions": matching_medium_conditions,
-                    "medium_mentions_proline": medium_mentions_proline,
-                    "complementation_candidates": complementation_candidates.iter().cloned().collect::<Vec<_>>(),
-                    "complementation_rule_matches": complementation_rule_matches,
+                    "selection_candidates": selection_candidates.iter().cloned().collect::<Vec<_>>(),
+                    "selection_rule_matches": selection_rule_matches,
                 }),
             ));
             decisions.push(Self::construct_reasoning_build_decision(
@@ -10782,11 +10977,7 @@ impl GentleEngine {
                 vec!["fact_selection_context".to_string()],
                 json!({
                     "status": selection_status,
-                    "medium_mentions_proline": medium_mentions_proline,
-                    "matching_rule_ids": Self::construct_reasoning_complementation_rules()
-                        .iter()
-                        .map(|rule| rule.rule_id.to_string())
-                        .collect::<Vec<_>>(),
+                    "matching_rule_ids": matching_rule_ids,
                 }),
             ));
         }
@@ -10839,8 +11030,18 @@ impl GentleEngine {
             Self::build_construct_reasoning_objective_context_evidence(seq_id, &objective);
         evidence.extend(self.build_construct_reasoning_sequence_evidence(seq_id, dna));
 
-        let (facts, decisions) =
-            Self::build_construct_reasoning_facts_and_decisions(seq_id, dna, &objective, &evidence);
+        let helper_interpretation = objective.helper_profile_id.as_ref().and_then(|profile_id| {
+            Self::interpret_helper_genome(profile_id, None)
+                .ok()
+                .flatten()
+        });
+        let (facts, decisions) = Self::build_construct_reasoning_facts_and_decisions(
+            seq_id,
+            dna,
+            &objective,
+            &evidence,
+            helper_interpretation.as_ref(),
+        );
 
         let graph = ConstructReasoningGraph {
             graph_id: graph_id

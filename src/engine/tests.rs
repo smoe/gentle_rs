@@ -21528,7 +21528,7 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
     assert!(
         selection
             .value_json
-            .get("complementation_candidates")
+            .get("selection_candidates")
             .and_then(serde_json::Value::as_array)
             .map(|rows| rows.iter().any(|row| row.as_str() == Some("proA")))
             .unwrap_or(false)
@@ -21545,9 +21545,9 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
     );
     let rule_matches = selection
         .value_json
-        .get("complementation_rule_matches")
+        .get("selection_rule_matches")
         .and_then(serde_json::Value::as_array)
-        .expect("complementation rule matches");
+        .expect("selection rule matches");
     assert!(rule_matches.iter().any(|row| {
         row.get("rule_id").and_then(serde_json::Value::as_str) == Some("proline_auxotrophy_rescue")
             && row.get("status").and_then(serde_json::Value::as_str) == Some("supported")
@@ -21566,6 +21566,98 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
                 .output_fact_ids
                 .iter()
                 .any(|fact_id| fact_id == "fact_selection_context")
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_uses_helper_profile_selection_semantics() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("helper_selection_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Helper selection reasoning".to_string(),
+            goal: "Use helper profile semantics for selectable markers".to_string(),
+            helper_profile_id: Some("pUC19".to_string()),
+            medium_conditions: vec!["ampicillin".to_string()],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "helper_selection_demo",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let helper = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "helper_context")
+        .expect("helper fact");
+    assert!(
+        helper
+            .value_json
+            .get("helper_offered_functions")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("ampicillin_selection")))
+            .unwrap_or(false)
+    );
+    assert!(
+        helper
+            .value_json
+            .get("helper_component_labels")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("AmpR")))
+            .unwrap_or(false)
+    );
+
+    let selection = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "selection_context")
+        .expect("selection fact");
+    assert_eq!(
+        selection
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("supported")
+    );
+    assert!(
+        selection
+            .value_json
+            .get("selection_candidates")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .any(|row| row.contains("AmpR"))
+            })
+            .unwrap_or(false)
+    );
+    let rule_matches = selection
+        .value_json
+        .get("selection_rule_matches")
+        .and_then(serde_json::Value::as_array)
+        .expect("selection rule matches");
+    assert!(rule_matches.iter().any(|row| {
+        row.get("rule_id").and_then(serde_json::Value::as_str)
+            == Some("ampicillin_vector_selection")
+            && row.get("status").and_then(serde_json::Value::as_str) == Some("supported")
+            && row
+                .get("helper_component_labels")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| rows.iter().any(|value| value.as_str() == Some("AmpR")))
+                .unwrap_or(false)
     }));
 }
 
