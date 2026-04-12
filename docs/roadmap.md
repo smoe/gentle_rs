@@ -3767,18 +3767,23 @@ Post-baseline follow-ups:
     objective-derived non-sequence evidence for host/helper/medium context and
     keep the DNA overlay sequence-honest by rendering only `sequence_span`
     evidence.
+  - Done (2026-04-12, hard-rule reasoning slice): graph builds now also derive
+    first decision/fact records for propagation host, expression host,
+    host-transition status, helper/MCS context, and simple
+    selection/complementation review based on recorded medium conditions plus
+    annotated `proA`/`proB`-style construct features.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
     - host-route and methylation/restriction compatibility decisions
     - host/helper profile catalogs with inspectable source notes
-    - complementation/selection reasoning for construct-carried host-essential
-      genes or markers
+    - broaden complementation/selection reasoning beyond the current
+      deterministic `proA`/`proB` baseline
     - inversion-risk evidence derived from self-dotplot/repeat analysis
     - only sequence-backed consequences render as DNA overlays; host-only facts
       stay as graph/inspector nodes
-  - Next: derive facts/decision nodes/construct candidates on top of that
-    foundation, deepen the overlay beyond raw evidence spans, and add the
-    editable decision/inspection surface.
+  - Next: derive construct candidates on top of that foundation, deepen the
+    overlay/inspector beyond raw evidence spans, and add the editable
+    decision/inspection surface.
   - feed resulting construct candidates into Routine Assistant instead of
     forcing protocol selection before construct reasoning exists
   - detailed design note:

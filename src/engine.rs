@@ -10159,6 +10159,487 @@ impl GentleEngine {
         evidence
     }
 
+    fn construct_reasoning_label_match_token(label: &str) -> String {
+        let base = label.split(" (part ").next().unwrap_or(label).trim();
+        Self::normalize_id_token(base)
+    }
+
+    fn construct_reasoning_evidence_ids_matching<F>(
+        evidence: &[DesignEvidence],
+        mut predicate: F,
+    ) -> Vec<String>
+    where
+        F: FnMut(&DesignEvidence) -> bool,
+    {
+        let mut ids = evidence
+            .iter()
+            .filter(|row| predicate(row))
+            .map(|row| row.evidence_id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    fn construct_reasoning_build_fact(
+        fact_id: &str,
+        fact_type: &str,
+        label: String,
+        rationale: String,
+        based_on_evidence_ids: Vec<String>,
+        value_json: serde_json::Value,
+    ) -> DesignFact {
+        DesignFact {
+            fact_id: fact_id.to_string(),
+            fact_type: fact_type.to_string(),
+            label,
+            rationale,
+            based_on_evidence_ids,
+            value_json,
+            confidence: Some(1.0),
+            editable_status: EditableStatus::Draft,
+            ..DesignFact::default()
+        }
+    }
+
+    fn construct_reasoning_build_decision(
+        decision_id: &str,
+        decision_type: &str,
+        title: String,
+        rationale: String,
+        input_evidence_ids: Vec<String>,
+        output_fact_ids: Vec<String>,
+        parameters_json: serde_json::Value,
+    ) -> DesignDecisionNode {
+        DesignDecisionNode {
+            decision_id: decision_id.to_string(),
+            decision_type: decision_type.to_string(),
+            method: DecisionMethod::HardRule,
+            title,
+            rationale,
+            input_evidence_ids,
+            output_fact_ids,
+            parameters_json,
+            editable_status: EditableStatus::Draft,
+            ..DesignDecisionNode::default()
+        }
+    }
+
+    fn build_construct_reasoning_facts_and_decisions(
+        seq_id: &str,
+        dna: &DNAsequence,
+        objective: &ConstructObjective,
+        evidence: &[DesignEvidence],
+    ) -> (Vec<DesignFact>, Vec<DesignDecisionNode>) {
+        let mut facts: Vec<DesignFact> = vec![];
+        let mut decisions: Vec<DesignDecisionNode> = vec![];
+
+        let propagation_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::HostProfile
+                    && row.context_tags.iter().any(|tag| tag == "propagation_host")
+            });
+        let expression_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::HostProfile
+                    && row.context_tags.iter().any(|tag| tag == "expression_host")
+            });
+        let host_route_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::HostTransition
+            });
+        let helper_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::HelperProfile
+            });
+        let medium_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::MediumCondition
+            });
+        let host_constraint_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::WholeConstruct
+                    && row.context_tags.iter().any(|tag| {
+                        matches!(
+                            tag.as_str(),
+                            "required_host_trait"
+                                | "forbidden_host_trait"
+                                | "host_species"
+                                | "cell_type"
+                                | "tissue"
+                                | "organelle"
+                                | "expression_intent"
+                        )
+                    })
+            });
+        let host_fit_context_present = objective.propagation_host_profile_id.is_some()
+            || objective.expression_host_profile_id.is_some()
+            || !objective.host_route.is_empty()
+            || !objective.required_host_traits.is_empty()
+            || !objective.forbidden_host_traits.is_empty()
+            || objective.host_species.is_some()
+            || objective.cell_type.is_some()
+            || objective.tissue.is_some()
+            || objective.organelle.is_some()
+            || objective.expression_intent.is_some();
+
+        if host_fit_context_present {
+            let propagation_status = if objective.propagation_host_profile_id.is_some() {
+                "specified"
+            } else {
+                "unspecified"
+            };
+            let propagation_label =
+                if let Some(profile_id) = objective.propagation_host_profile_id.as_ref() {
+                    format!("Propagation host specified: {profile_id}")
+                } else {
+                    "Propagation host unspecified".to_string()
+                };
+            let propagation_rationale = if let Some(profile_id) =
+                objective.propagation_host_profile_id.as_ref()
+            {
+                format!(
+                    "Construct objective explicitly selects propagation host profile '{profile_id}'. Current deterministic host-fit reasoning records the choice and the stated host constraints without yet consulting a curated strain catalog."
+                )
+            } else {
+                "Construct objective does not yet select a dedicated propagation host profile. Current deterministic host-fit reasoning treats this as an inspectable gap rather than guessing a host.".to_string()
+            };
+            let propagation_fact = Self::construct_reasoning_build_fact(
+                "fact_propagation_host_context",
+                "propagation_host_context",
+                propagation_label,
+                propagation_rationale.clone(),
+                propagation_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": propagation_status,
+                    "profile_id": objective.propagation_host_profile_id.clone(),
+                    "required_host_traits": objective.required_host_traits.clone(),
+                    "forbidden_host_traits": objective.forbidden_host_traits.clone(),
+                }),
+            );
+            facts.push(propagation_fact);
+            let mut propagation_input_ids = propagation_evidence_ids.clone();
+            propagation_input_ids.extend(host_constraint_evidence_ids.clone());
+            propagation_input_ids.sort();
+            propagation_input_ids.dedup();
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_propagation_host_fit",
+                "evaluate_propagation_host_fit",
+                "Evaluate Propagation Host Fit".to_string(),
+                propagation_rationale,
+                propagation_input_ids,
+                vec!["fact_propagation_host_context".to_string()],
+                json!({
+                    "status": propagation_status,
+                    "profile_id": objective.propagation_host_profile_id.clone(),
+                }),
+            ));
+
+            let expression_status = if objective.expression_host_profile_id.is_some() {
+                "specified"
+            } else {
+                "unspecified"
+            };
+            let expression_label =
+                if let Some(profile_id) = objective.expression_host_profile_id.as_ref() {
+                    format!("Expression host specified: {profile_id}")
+                } else {
+                    "Expression host unspecified".to_string()
+                };
+            let expression_rationale = if let Some(profile_id) =
+                objective.expression_host_profile_id.as_ref()
+            {
+                format!(
+                    "Construct objective explicitly selects expression host profile '{profile_id}'. Current deterministic host-fit reasoning records the downstream host together with the stated species/cell/tissue context without yet applying catalog-based suitability scoring."
+                )
+            } else {
+                "Construct objective does not yet select a dedicated expression host profile. Current deterministic host-fit reasoning keeps that gap explicit so later host/cell-type evaluation can stay inspectable.".to_string()
+            };
+            let expression_fact = Self::construct_reasoning_build_fact(
+                "fact_expression_host_context",
+                "expression_host_context",
+                expression_label,
+                expression_rationale.clone(),
+                expression_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": expression_status,
+                    "profile_id": objective.expression_host_profile_id.clone(),
+                    "host_species": objective.host_species.clone(),
+                    "cell_type": objective.cell_type.clone(),
+                    "tissue": objective.tissue.clone(),
+                    "organelle": objective.organelle.clone(),
+                    "expression_intent": objective.expression_intent.clone(),
+                }),
+            );
+            facts.push(expression_fact);
+            let mut expression_input_ids = expression_evidence_ids.clone();
+            expression_input_ids.extend(host_constraint_evidence_ids.clone());
+            expression_input_ids.sort();
+            expression_input_ids.dedup();
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_expression_host_fit",
+                "evaluate_expression_host_fit",
+                "Evaluate Expression Host Fit".to_string(),
+                expression_rationale,
+                expression_input_ids,
+                vec!["fact_expression_host_context".to_string()],
+                json!({
+                    "status": expression_status,
+                    "profile_id": objective.expression_host_profile_id.clone(),
+                }),
+            ));
+        }
+
+        if objective.propagation_host_profile_id.is_some()
+            || objective.expression_host_profile_id.is_some()
+            || !objective.host_route.is_empty()
+        {
+            let mut ordered_hosts: Vec<String> = vec![];
+            if let Some(profile_id) = objective.propagation_host_profile_id.as_ref() {
+                ordered_hosts.push(profile_id.clone());
+            }
+            ordered_hosts.extend(
+                objective
+                    .host_route
+                    .iter()
+                    .map(|step| step.host_profile_id.clone()),
+            );
+            if let Some(profile_id) = objective.expression_host_profile_id.as_ref() {
+                ordered_hosts.push(profile_id.clone());
+            }
+            let distinct_host_profiles = ordered_hosts.iter().cloned().collect::<BTreeSet<_>>();
+            let transition_status = match (
+                objective.propagation_host_profile_id.as_ref(),
+                objective.expression_host_profile_id.as_ref(),
+                objective.host_route.is_empty(),
+            ) {
+                (Some(left), Some(right), true) if left == right => "same_host",
+                (Some(left), Some(right), false) if left == right => "explicit_route",
+                (Some(left), Some(right), true) if left != right => "review_needed",
+                (Some(_), Some(_), false) => "explicit_route",
+                (None, None, false) | (Some(_), None, false) | (None, Some(_), false) => {
+                    "partial_route_only"
+                }
+                (Some(_), None, true) | (None, Some(_), true) => "one_endpoint_only",
+                _ => "unspecified",
+            };
+            let transition_label = match transition_status {
+                "same_host" => "Host transition stays on one host".to_string(),
+                "explicit_route" => "Host transition route recorded".to_string(),
+                "review_needed" => "Host transition requires review".to_string(),
+                "partial_route_only" => "Partial host route recorded".to_string(),
+                "one_endpoint_only" => "Host transition only partially specified".to_string(),
+                _ => "Host transition unspecified".to_string(),
+            };
+            let transition_rationale = match transition_status {
+                "same_host" => {
+                    "Propagation and expression currently point to the same host profile, so no inter-host transfer step is required by the recorded objective context.".to_string()
+                }
+                "explicit_route" => format!(
+                    "Construct objective records a host route with {} explicit step(s), so inter-host transfer context is inspectable instead of implicit.",
+                    objective.host_route.len()
+                ),
+                "review_needed" => "Propagation and expression point to different host profiles, but no explicit host route is recorded yet. Current deterministic reasoning flags that missing transition documentation for review rather than inventing one.".to_string(),
+                "partial_route_only" => format!(
+                    "Construct objective records {} host-route step(s) but does not fully anchor them with both propagation and expression endpoints.",
+                    objective.host_route.len()
+                ),
+                "one_endpoint_only" => "Construct objective records only one host endpoint and no explicit intermediate route, so host transfer intent remains only partially documented.".to_string(),
+                _ => "Construct objective does not yet provide host-transition context.".to_string(),
+            };
+            let mut transition_evidence_ids = propagation_evidence_ids.clone();
+            transition_evidence_ids.extend(expression_evidence_ids.clone());
+            transition_evidence_ids.extend(host_route_evidence_ids.clone());
+            transition_evidence_ids.sort();
+            transition_evidence_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_host_transition_context",
+                "host_transition_context",
+                transition_label,
+                transition_rationale.clone(),
+                transition_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": transition_status,
+                    "propagation_host_profile_id": objective.propagation_host_profile_id.clone(),
+                    "expression_host_profile_id": objective.expression_host_profile_id.clone(),
+                    "host_route_step_count": objective.host_route.len(),
+                    "ordered_host_profile_ids": ordered_hosts,
+                    "distinct_host_profile_count": distinct_host_profiles.len(),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_host_transition_risk",
+                "evaluate_host_transition_risk",
+                "Evaluate Host Transition Risk".to_string(),
+                transition_rationale,
+                transition_evidence_ids,
+                vec!["fact_host_transition_context".to_string()],
+                json!({
+                    "status": transition_status,
+                    "host_route_step_count": objective.host_route.len(),
+                }),
+            ));
+        }
+
+        let helper_mcs_feature_labels = dna
+            .features()
+            .iter()
+            .enumerate()
+            .filter(|(_, feature)| Self::feature_looks_like_mcs(feature))
+            .map(|(feature_id, feature)| Self::feature_display_label(feature, feature_id))
+            .collect::<Vec<_>>();
+        if objective.helper_profile_id.is_some() || !helper_mcs_feature_labels.is_empty() {
+            let helper_status = match (
+                objective.helper_profile_id.as_ref(),
+                helper_mcs_feature_labels.is_empty(),
+            ) {
+                (Some(_), false) => "helper_profile_with_mcs_hint",
+                (Some(_), true) => "helper_profile_selected",
+                (None, false) => "mcs_feature_detected",
+                (None, true) => "unspecified",
+            };
+            let helper_label = match helper_status {
+                "helper_profile_with_mcs_hint" => {
+                    "Helper context documented with MCS hint".to_string()
+                }
+                "helper_profile_selected" => "Helper context documented".to_string(),
+                "mcs_feature_detected" => "Helper-like sequence context detected".to_string(),
+                _ => "Helper context unspecified".to_string(),
+            };
+            let helper_rationale = match (
+                objective.helper_profile_id.as_ref(),
+                helper_mcs_feature_labels.is_empty(),
+            ) {
+                (Some(profile_id), false) => format!(
+                    "Construct objective selects helper/vector profile '{profile_id}', and sequence feature inspection also sees MCS-style annotation(s): {}.",
+                    helper_mcs_feature_labels.join(", ")
+                ),
+                (Some(profile_id), true) => format!(
+                    "Construct objective selects helper/vector profile '{profile_id}'. Current deterministic helper reasoning records that explicit choice even when no MCS-style sequence annotation is visible yet."
+                ),
+                (None, false) => format!(
+                    "Sequence feature inspection sees MCS-style annotation(s): {}. Current deterministic reasoning records this as helper-like context even without an explicit helper profile selection.",
+                    helper_mcs_feature_labels.join(", ")
+                ),
+                (None, true) => "Helper context is not yet specified.".to_string(),
+            };
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_helper_context",
+                "helper_context",
+                helper_label,
+                helper_rationale.clone(),
+                helper_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": helper_status,
+                    "helper_profile_id": objective.helper_profile_id.clone(),
+                    "mcs_feature_labels": helper_mcs_feature_labels,
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_helper_profile_context",
+                "evaluate_helper_profile_context",
+                "Evaluate Helper Profile Context".to_string(),
+                helper_rationale,
+                helper_evidence_ids,
+                vec!["fact_helper_context".to_string()],
+                json!({
+                    "status": helper_status,
+                }),
+            ));
+        }
+
+        let complementation_candidates = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && matches!(row.role, ConstructRole::Gene | ConstructRole::Cds)
+            })
+            .filter_map(|row| {
+                let token = Self::construct_reasoning_label_match_token(&row.label);
+                matches!(token.as_str(), "proa" | "prob").then(|| row.label.clone())
+            })
+            .collect::<BTreeSet<_>>();
+        let complementation_candidate_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && matches!(row.role, ConstructRole::Gene | ConstructRole::Cds)
+                    && matches!(
+                        Self::construct_reasoning_label_match_token(&row.label).as_str(),
+                        "proa" | "prob"
+                    )
+            });
+        let medium_mentions_proline = objective.medium_conditions.iter().any(|condition| {
+            let lower = condition.to_ascii_lowercase();
+            lower.contains("proline") || lower.contains("-pro")
+        });
+        if !objective.medium_conditions.is_empty() || !complementation_candidates.is_empty() {
+            let selection_status =
+                if medium_mentions_proline && !complementation_candidates.is_empty() {
+                    "supported"
+                } else if medium_mentions_proline {
+                    "review_needed"
+                } else if !complementation_candidates.is_empty() {
+                    "candidates_detected"
+                } else {
+                    "context_recorded"
+                };
+            let selection_label = match selection_status {
+                "supported" => "Selection/complementation context supported".to_string(),
+                "review_needed" => "Selection/complementation context requires review".to_string(),
+                "candidates_detected" => "Complementation candidates detected".to_string(),
+                _ => "Selection context recorded".to_string(),
+            };
+            let selection_rationale = match selection_status {
+                "supported" => format!(
+                    "Recorded medium conditions mention proline-style selection, and annotated construct features include complementation candidate(s): {}.",
+                    complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
+                ),
+                "review_needed" => "Recorded medium conditions mention proline-style selection, but no annotated proA/proB-style complementation candidates were found on the construct yet.".to_string(),
+                "candidates_detected" => format!(
+                    "Annotated construct features include potential complementation candidate(s): {}. No explicit proline-style medium condition is recorded yet, so current deterministic reasoning keeps this as inspectable context rather than claiming a selection strategy.",
+                    complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
+                ),
+                _ => "Construct objective records medium/selection conditions, but no proA/proB-style complementation candidates are currently annotated on the construct.".to_string(),
+            };
+            let mut selection_evidence_ids = medium_evidence_ids.clone();
+            selection_evidence_ids.extend(complementation_candidate_ids);
+            selection_evidence_ids.sort();
+            selection_evidence_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_selection_context",
+                "selection_context",
+                selection_label,
+                selection_rationale.clone(),
+                selection_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": selection_status,
+                    "medium_conditions": objective.medium_conditions.clone(),
+                    "medium_mentions_proline": medium_mentions_proline,
+                    "complementation_candidates": complementation_candidates.iter().cloned().collect::<Vec<_>>(),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_selection_or_complementation_fit",
+                "evaluate_selection_or_complementation_fit",
+                "Evaluate Selection/Complementation Fit".to_string(),
+                selection_rationale,
+                selection_evidence_ids,
+                vec!["fact_selection_context".to_string()],
+                json!({
+                    "status": selection_status,
+                    "medium_mentions_proline": medium_mentions_proline,
+                }),
+            ));
+        }
+
+        (facts, decisions)
+    }
+
     pub fn build_construct_reasoning_graph(
         &mut self,
         seq_id: &str,
@@ -10204,6 +10685,9 @@ impl GentleEngine {
             Self::build_construct_reasoning_objective_context_evidence(seq_id, &objective);
         evidence.extend(self.build_construct_reasoning_sequence_evidence(seq_id, dna));
 
+        let (facts, decisions) =
+            Self::build_construct_reasoning_facts_and_decisions(seq_id, dna, &objective, &evidence);
+
         let graph = ConstructReasoningGraph {
             graph_id: graph_id
                 .map(str::trim)
@@ -10220,8 +10704,10 @@ impl GentleEngine {
             objective,
             generated_at_unix_ms: Self::now_unix_ms(),
             evidence,
+            facts,
+            decisions,
             notes: vec![
-                "v1 deterministic evidence extraction includes construct-objective context, restriction sites, and sequence annotations."
+                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, and first hard-rule host/helper summary decisions."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

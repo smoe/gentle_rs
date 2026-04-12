@@ -21420,6 +21420,137 @@ fn build_construct_reasoning_graph_includes_objective_host_and_helper_context_ev
 }
 
 #[test]
+fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
+    let mut dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(2, 12),
+        qualifiers: vec![("label".into(), Some("proA".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "misc_feature".into(),
+        location: gb_io::seq::Location::simple_range(12, 18),
+        qualifiers: vec![("label".into(), Some("MCS (pUC19)".to_string()))],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("derived_context_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Host/helper reasoning".to_string(),
+            goal: "Capture helper and host context as decisions".to_string(),
+            host_species: Some("Homo sapiens".to_string()),
+            propagation_host_profile_id: Some("ecoli_k12".to_string()),
+            expression_host_profile_id: Some("cho_k1".to_string()),
+            helper_profile_id: Some("puc19_carrier".to_string()),
+            medium_conditions: vec!["proline-free medium".to_string()],
+            required_host_traits: vec!["enda".to_string()],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "derived_context_demo",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    assert_eq!(graph.facts.len(), 5);
+    assert_eq!(graph.decisions.len(), 5);
+
+    let propagation = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "propagation_host_context")
+        .expect("propagation fact");
+    assert_eq!(propagation.label, "Propagation host specified: ecoli_k12");
+    assert_eq!(
+        propagation
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("specified")
+    );
+
+    let transition = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "host_transition_context")
+        .expect("transition fact");
+    assert_eq!(
+        transition
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("review_needed")
+    );
+    assert_eq!(transition.label, "Host transition requires review");
+
+    let helper = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "helper_context")
+        .expect("helper fact");
+    assert_eq!(
+        helper
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("helper_profile_with_mcs_hint")
+    );
+    assert!(
+        helper
+            .value_json
+            .get("mcs_feature_labels")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("MCS (pUC19)")))
+            .unwrap_or(false)
+    );
+
+    let selection = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "selection_context")
+        .expect("selection fact");
+    assert_eq!(
+        selection
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("supported")
+    );
+    assert!(
+        selection
+            .value_json
+            .get("complementation_candidates")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("proA")))
+            .unwrap_or(false)
+    );
+
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "evaluate_host_transition_risk"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_host_transition_context")
+    }));
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "evaluate_selection_or_complementation_fit"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_selection_context")
+    }));
+}
+
+#[test]
 fn refresh_construct_reasoning_graph_for_seq_id_reuses_graph_id_and_rebuilds_evidence() {
     let mut dna = DNAsequence::from_sequence("GAATTCATGGCCATGAAATTTCCCGGG").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

@@ -2480,6 +2480,13 @@ Construct reasoning graph foundation (implemented first slice):
       required/forbidden host traits
     - existing sequence facts: restriction sites plus sequence-feature spans
       such as exon/CDS/gene/transcript/UTR/promoter/TFBS when present
+  - deterministic hard-rule fact/decision population for:
+    - propagation-host context
+    - expression-host context
+    - host-transition status
+    - helper/MCS context
+    - simple selection/complementation context from recorded medium conditions
+      plus annotated `proA`/`proB`-style construct features
   - active-sequence graph refresh helper that reuses the existing graph/objective
     identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph
@@ -2506,9 +2513,10 @@ Construct reasoning graph foundation (implemented first slice):
   - GUI DNA overlays intentionally keep rendering only `sequence_span`
     evidence; non-sequence evidence stays in the portable graph payload rather
     than being faked as coordinate spans
-- Not in this first slice yet:
-  - derived facts/decision-node population beyond raw evidence capture
+- Not in this slice yet:
   - construct-candidate ranking
+  - curated host/helper profile catalog loading and biological compatibility
+    scoring against those catalogs
   - editable reasoning/decision GUI surfaces beyond the current read-only span overlay
   - process-run-bundle export integration for construct reasoning graphs
 
