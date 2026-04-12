@@ -20,9 +20,67 @@
 
   "Plasmid pUC19 (online)": {
     "description": "High-copy E. coli cloning backbone (AmpR, MCS)",
+    "summary": "High-copy E. coli cloning vector for small insert cloning and blue/white screening.",
     "genbank_accession": "L09137",
     "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/L09137",
-    "cache_dir": "data/helper_genomes"
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pUC19"],
+    "tags": ["cloning", "high_copy", "ampicillin", "mcs", "blue_white_screening"],
+    "search_terms": ["lacZ alpha", "AmpR", "multi cloning site", "E. coli cloning vector"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "insert_cloning",
+        "ampicillin_selection",
+        "blue_white_screening"
+      ],
+      "constraints": [
+        "insert_design_should_respect_mcs_context"
+      ],
+      "components": [
+        {
+          "id": "pmb1_origin",
+          "kind": "origin",
+          "label": "pMB1/ColE1-like origin",
+          "tags": ["high_copy"]
+        },
+        {
+          "id": "bla",
+          "kind": "selectable_marker",
+          "label": "AmpR",
+          "tags": ["selection"],
+          "attributes": {
+            "agent": "ampicillin"
+          }
+        },
+        {
+          "id": "lacza_fragment",
+          "kind": "screening_marker",
+          "label": "lacZ alpha",
+          "tags": ["blue_white_screening"]
+        },
+        {
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "MCS",
+          "tags": ["insert_cloning"],
+          "attributes": {
+            "context": "lacZ_alpha"
+          }
+        }
+      ],
+      "relationships": [
+        {
+          "subject": "mcs",
+          "predicate": "embedded_in",
+          "object": "lacza_fragment",
+          "note": "Insertion into the MCS disrupts lacZ alpha screening context."
+        }
+      ]
+    }
   },
   "Plasmid pUC18 (online)": {
     "description": "High-copy E. coli cloning backbone (AmpR, MCS; reverse MCS orientation vs pUC19)",

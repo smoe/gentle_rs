@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json",
+  "timeout_secs": 1800
+}

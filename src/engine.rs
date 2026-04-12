@@ -33,10 +33,11 @@ use crate::{
         DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
         EnsemblCatalogUpdateReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
-        GenomeSourcePlan, GenomeTranscriptRecord, PrepareGenomePlan, PrepareGenomeProgress,
-        PrepareGenomeReport, PreparedCacheCleanupReport, PreparedCacheCleanupRequest,
-        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
-        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation, PrepareGenomePlan,
+        PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
+        PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
+        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
+        PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, inspect_prepared_cache_roots, is_prepare_cancelled_error,
         validate_genbank_accession,
@@ -5021,6 +5022,22 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Could not resolve source plan for helper '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn interpret_helper_genome(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+    ) -> Result<Option<HelperConstructInterpretation>, EngineError> {
+        let (catalog, catalog_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .helper_construct_interpretation(genome_id)
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not interpret helper '{}' in catalog '{}': {}",
                     genome_id, catalog_path, e
                 ),
             })

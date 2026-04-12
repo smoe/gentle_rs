@@ -35,6 +35,7 @@ class Request:
     operation: Any = None
     workflow: Any = None
     workflow_path: str | None = None
+    expected_artifacts: list[str] | None = None
 
 
 @dataclasses.dataclass
@@ -77,6 +78,39 @@ def _find_repo_root(script_path: Path) -> Path | None:
     return None
 
 
+def _request_path_candidates(raw_path: str, script_path: Path) -> list[Path]:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return [path]
+
+    candidates: list[Path] = [Path.cwd() / path]
+    configured_repo_root = os.environ.get("GENTLE_REPO_ROOT", "").strip()
+    if configured_repo_root:
+        candidates.append(Path(configured_repo_root) / path)
+    repo_root = _find_repo_root(script_path)
+    if repo_root is not None:
+        candidates.append(repo_root / path)
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _resolve_request_path(raw_path: str, script_path: Path) -> str:
+    trimmed = raw_path.strip()
+    if not trimmed:
+        return raw_path
+    for candidate in _request_path_candidates(trimmed, script_path):
+        if candidate.exists():
+            return str(candidate.resolve())
+    return raw_path
+
+
 def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
     if explicit:
         return CliResolution(
@@ -107,7 +141,9 @@ def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
         )
     raise SkillError(
         "Could not resolve gentle_cli executable. "
-        "Recommended: set GENTLE_CLI_CMD to a Docker/OCI or "
+        "Recommended: set GENTLE_CLI_CMD to the included "
+        "'./gentle_local_checkout_cli.sh' launcher (typically with "
+        "GENTLE_REPO_ROOT=/absolute/path/to/GENtle), or to a Docker/OCI or "
         "Apptainer/Singularity command such as "
         "'docker run --rm -i -v \"$PWD\":/work -w /work "
         "ghcr.io/smoe/gentle_rs:cli' or "
@@ -138,7 +174,13 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         operation=payload.get("operation"),
         workflow=payload.get("workflow"),
         workflow_path=payload.get("workflow_path"),
+        expected_artifacts=payload.get("expected_artifacts"),
     )
+    if request.expected_artifacts is not None:
+        if not isinstance(request.expected_artifacts, list):
+            raise SkillError("expected_artifacts must be a string array when present")
+        if not all(isinstance(v, str) and v.strip() for v in request.expected_artifacts):
+            raise SkillError("expected_artifacts must contain non-empty strings")
     if request.mode == "raw":
         if not isinstance(request.raw_args, list) or not request.raw_args:
             raise SkillError("mode=raw requires non-empty string array 'raw_args'")
@@ -167,7 +209,61 @@ def _json_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
 
 
-def _build_cli_args(request: Request) -> list[str]:
+def _execution_cwd(resolution: CliResolution | None) -> Path:
+    return Path(resolution.cwd) if resolution and resolution.cwd else Path.cwd()
+
+
+def _resolve_expected_artifact(raw_path: str, execution_cwd: Path) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return execution_cwd / path
+
+
+def _safe_artifact_destination(raw_path: str) -> Path:
+    normalized = raw_path.replace("\\", "/")
+    parts: list[str] = []
+    for part in Path(normalized).parts:
+        if part in ("", ".", "..", "/", "\\"):
+            continue
+        if part.endswith(":"):
+            continue
+        parts.append(part)
+    if not parts:
+        return Path("artifact")
+    return Path(*parts)
+
+
+def _copy_collected_artifacts(
+    request: Request,
+    output_dir: Path,
+    resolution: CliResolution | None,
+) -> list[dict[str, str]]:
+    collected: list[dict[str, str]] = []
+    if not request.expected_artifacts:
+        return collected
+
+    generated_dir = output_dir / "generated"
+    execution_cwd = _execution_cwd(resolution)
+    for raw_path in request.expected_artifacts:
+        source_path = _resolve_expected_artifact(raw_path, execution_cwd)
+        if not source_path.exists() or not source_path.is_file():
+            continue
+
+        destination = generated_dir / _safe_artifact_destination(raw_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination)
+        collected.append(
+            {
+                "declared_path": raw_path,
+                "source_path": str(source_path.resolve()),
+                "copied_path": str(destination.resolve()),
+            }
+        )
+    return collected
+
+
+def _build_cli_args(request: Request, script_path: Path) -> list[str]:
     args: list[str] = []
     if request.state_path:
         args.extend(["--state", request.state_path])
@@ -181,7 +277,8 @@ def _build_cli_args(request: Request) -> list[str]:
         args.extend(["op", _json_arg(request.operation)])
     elif request.mode == "workflow":
         if request.workflow_path:
-            args.extend(["workflow", f"@{request.workflow_path}"])
+            resolved_workflow_path = _resolve_request_path(request.workflow_path, script_path)
+            args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
     elif request.mode == "raw":
@@ -220,6 +317,7 @@ def _write_report(
     resolution: CliResolution | None,
     command: list[str] | None,
     run_result: subprocess.CompletedProcess[str] | None,
+    collected_artifacts: list[dict[str, str]],
     started_utc: str,
     ended_utc: str,
     status: str,
@@ -246,6 +344,12 @@ def _write_report(
         lines.append(f"- Exit code: `{exit_code}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
+    if collected_artifacts:
+        lines.append("- Collected artifacts:")
+        for artifact in collected_artifacts:
+            lines.append(
+                f"  - `{artifact['declared_path']}` -> `{artifact['copied_path']}`"
+            )
     lines.extend(
         [
             "",
@@ -306,6 +410,7 @@ def main() -> int:
     resolution: CliResolution | None = None
     status = "failed"
     error_message: str | None = None
+    collected_artifacts: list[dict[str, str]] = []
 
     try:
         if args.demo:
@@ -326,7 +431,7 @@ def main() -> int:
                 raise
             raise
 
-        cli_args = _build_cli_args(request)
+        cli_args = _build_cli_args(request, Path(__file__))
         command = resolution.argv_prefix + cli_args
         run_result = subprocess.run(
             command,
@@ -341,6 +446,7 @@ def main() -> int:
             error_message = (
                 f"gentle_cli exited with {run_result.returncode}; inspect stderr in report.md"
             )
+        collected_artifacts = _copy_collected_artifacts(request, output_dir, resolution)
     except subprocess.TimeoutExpired as e:
         request = request if "request" in locals() else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
@@ -369,6 +475,7 @@ def main() -> int:
         resolution=resolution,
         command=command,
         run_result=run_result,
+        collected_artifacts=collected_artifacts,
         started_utc=started,
         ended_utc=ended,
         status=status,
@@ -409,6 +516,7 @@ def main() -> int:
             "repro_commands": str(commands_path),
             "repro_environment": str(env_path),
             "repro_checksums": str(checksums_path),
+            "collected": collected_artifacts,
         },
     }
     result_path.write_text(

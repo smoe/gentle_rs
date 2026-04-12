@@ -1329,6 +1329,19 @@ order. Durable architecture constraints and decisions remain in
     - helper status/prepare (`Plasmid pUC19 (online)`)
     so new remote installs can start from "prepare what you need locally"
     instead of only from `capabilities`
+  - the example request pack now also includes follow-on routes for:
+    - reference extraction (`TP53`)
+    - helper BLAST (`pUC19`)
+    - one planning workflow replay (`VKORC1` luciferase planning)
+    - one graphics/export preparation route
+      (`protocol-cartoon render-svg gibson.two_fragment ...`)
+      - the wrapper now supports declared `expected_artifacts[]`, and the
+        shipped graphics example copies the generated SVG into the ClawBio
+        output bundle instead of leaving it only in the execution cwd
+  - copied workflow example requests now resolve relative `workflow_path`
+    through `GENTLE_REPO_ROOT` when present, so a copied ClawBio skill can
+    still replay canonical GENtle workflow examples from the source checkout
+    without rewriting the request JSON
   - container publishing now splits into:
     - `ghcr.io/...:cli` for headless CLI/MCP/Apptainer use
     - `ghcr.io/...:gui` for explicit browser-served GUI use
@@ -1677,11 +1690,12 @@ Notes:
    - the planned terminology move to `helper constructs` should be one atomic
      operation, performed only when no parallel feature work would otherwise
      create mixed protocol/API/docs terminology
-   - structured semantic helper metadata is only at the foundation stage:
-     search/list support now understands fields like `aliases`, `tags`,
-     `search_terms`, `helper_kind`, `host_system`, `procurement`, and
-     `semantics`, but the shared interpretation layer over those fields is not
-     yet engine-owned
+   - structured semantic helper metadata is now joined by an initial
+     engine-owned normalized interpretation layer:
+     helper list/status surfaces can emit stable `interpretation` records
+     (`helper_kinds`, `host_systems`, `offered_functions`, `constraints`,
+     procurement channels, components, relationships), but derivation depth is
+     still intentionally shallow and needs broader route adoption
    - the emerging reasoning/constraint engine needs this catalog direction to
      stay portable:
      - helper/vector knowledge should resolve into engine-owned affordance /
@@ -1701,6 +1715,9 @@ Notes:
      `genomes/helpers status|prepare` request examples, but upstream ClawBio
      distributions still need to carry the current runtime skill registration
      so older installs do not stop at `Unknown skill 'gentle-cloning'`
+   - the docs now call out that regenerating `skills/catalog.json` alone is
+     insufficient for that stale-install case; the runtime `clawbio.py`
+     registry must also carry `gentle-cloning`
 2. Cloning routine standardization is incomplete:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
@@ -1919,6 +1936,9 @@ Current baseline:
 - `genomes list` / `helpers list` now support metadata search via `--filter`
 - helper rows can now start carrying richer semantic/procurement metadata
   without disturbing the preparation/indexing pipeline
+- helper list/status routes now also expose an initial normalized
+  `interpretation` record so downstream adapters can start consuming one
+  portable helper-meaning layer
 
 Planned work:
 
@@ -1929,14 +1949,16 @@ Planned work:
    - procurement/order metadata
    - affordances and constraints
    - functional components and typed relationships
-3. Add engine-owned normalized helper-interpretation records so GUI/CLI/MCP/
-   ClawBio/planner routes all consume one portable meaning layer instead of
-   reparsing catalog prose.
+3. Broaden the normalized helper-interpretation layer so more routes consume
+   it directly and derivation becomes richer.
+   - Current baseline now emits deterministic `interpretation` records from
+     helper list/status surfaces, but GUI/MCP/planner adoption and richer
+     function derivation are still pending.
 4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
-   common inspect/extract/BLAST and planning workflows.
-   - Bootstrap is now in place (`genomes/helpers status|prepare` plus the
-     local-checkout launcher); the next step is expanding the example library
-     once fresh remote installs no longer need hand-crafted setup steps.
+   richer inspect/extract/BLAST, planning, and graphics/export workflows.
+   - Bootstrap plus first follow-on examples are now in place; the next step
+     is expanding the example library so common stateful figure-generation and
+     planning/report flows no longer require hand-crafted request JSON.
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

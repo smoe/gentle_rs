@@ -1055,6 +1055,10 @@ Sequence-linked construct reasoning graph direction:
   - helper/vector semantics should normalize into engine-owned portable records
     (affordances, constraints, functional components, and typed relationships)
     rather than living only in adapter prompts or free-text notes
+  - helper list/status surfaces now carry the first normalized helper
+    `interpretation` record; new adapters and future planner routes should
+    extend that shared record instead of inventing parallel helper-meaning
+    payloads
   - the emerging reasoning/constraint engine should consume those normalized
     records so catalog-backed helper knowledge, planner suggestions, and future
     ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing

@@ -9949,7 +9949,14 @@ fn execute_helpers_list_filters_semantic_metadata() {
     "search_terms": ["factor xa", "affinity purification"],
     "semantics": {
       "schema": "gentle.helper_semantics.v1",
-      "affordances": ["bacterial_expression", "protease_tag_removal"]
+      "affordances": ["bacterial_expression", "protease_tag_removal"],
+      "components": [
+        {
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "MCS"
+        }
+      ]
     }
   },
   "neutral_backbone": {
@@ -9976,6 +9983,82 @@ fn execute_helpers_list_filters_semantic_metadata() {
     assert_eq!(
         out.output["entries"][0]["helper_kind"].as_str(),
         Some("plasmid_vector")
+    );
+    let offered_functions = out.output["entries"][0]["interpretation"]["offered_functions"]
+        .as_array()
+        .expect("interpretation functions");
+    assert_eq!(
+        offered_functions
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "bacterial_expression",
+            "insert_cloning",
+            "protease_tag_removal"
+        ]
+    );
+}
+
+#[test]
+fn execute_helpers_status_includes_normalized_interpretation() {
+    let td = tempdir().expect("tempdir");
+    let catalog = td.path().join("helpers.json");
+    fs::write(
+        &catalog,
+        r#"{
+  "Plasmid pUC19 (online)": {
+    "sequence_remote": "https://example.invalid/puc19.fa.gz",
+    "annotations_remote": "https://example.invalid/puc19.gb.gz",
+    "summary": "High-copy cloning vector",
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["insert_cloning", "ampicillin_selection"],
+      "components": [
+        {
+          "id": "bla",
+          "kind": "selectable_marker",
+          "label": "AmpR",
+          "attributes": {"agent": "ampicillin"}
+        }
+      ]
+    }
+  }
+}"#,
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceStatus {
+            helper_mode: true,
+            genome_id: "Plasmid pUC19 (online)".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+        },
+    )
+    .expect("execute helpers status");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["interpretation"]["helper_kinds"][0].as_str(),
+        Some("plasmid_vector")
+    );
+    assert_eq!(
+        out.output["interpretation"]["host_systems"][0].as_str(),
+        Some("Escherichia coli")
+    );
+    assert_eq!(
+        out.output["interpretation"]["offered_functions"]
+            .as_array()
+            .expect("offered functions")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ampicillin_selection", "insert_cloning", "selection"]
     );
 }
 

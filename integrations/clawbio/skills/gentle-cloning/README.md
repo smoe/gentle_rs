@@ -9,7 +9,7 @@ This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 - `gentle_local_checkout_cli.sh`: local-checkout launcher for `cargo run --bin gentle_cli --`
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
-- `examples/*.json`: request payload examples, including first-run reference/helper preparation
+- `examples/*.json`: request payload examples, including bootstrap, extract/BLAST, planning, and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
 ## Recommended first-time route: local GENtle checkout
@@ -30,6 +30,10 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
 `gentle_local_checkout_cli.sh` defaults these paths when they are unset:
@@ -81,6 +85,12 @@ Mode-specific fields:
 - `workflow`: `workflow` or `workflow_path`
 - `raw`: `raw_args[]`
 
+Relative `workflow_path` values are resolved in this order:
+
+1. current working directory
+2. `GENTLE_REPO_ROOT` when set
+3. the local GENtle repo containing the copied scaffold, when discoverable
+
 Included first-run bootstrap requests:
 
 - `examples/request_genomes_list_human.json`
@@ -88,3 +98,22 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_prepare_grch38.json`
 - `examples/request_helpers_status_puc19.json`
 - `examples/request_helpers_prepare_puc19.json`
+
+Included follow-on analysis/planning/graphics requests:
+
+- `examples/request_genomes_extract_gene_tp53.json`
+- `examples/request_helpers_blast_puc19_short.json`
+- `examples/request_workflow_vkorc1_planning.json`
+- `examples/request_protocol_cartoon_gibson_svg.json`
+  - uses `expected_artifacts[]` so the generated SVG is copied into the
+    wrapper output bundle under `generated/...`
+
+## Troubleshooting
+
+- If `python clawbio.py run gentle-cloning ...` says `Unknown skill 'gentle-cloning'`, your
+  ClawBio runtime registry is older than the scaffold.
+- Check `python clawbio.py list | grep gentle-cloning`.
+- Rebuilding `skills/catalog.json` alone is not enough when the runtime
+  `clawbio.py` registry does not yet carry the `gentle-cloning` entry.
+- Update the ClawBio checkout or add the current `gentle-cloning` runtime
+  registration block before retrying.

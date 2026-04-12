@@ -14631,6 +14631,12 @@ fn execute_reference_and_track_command(
                 )
             }
             .map_err(|e| e.to_string())?;
+            let interpretation = if *helper_mode {
+                GentleEngine::interpret_helper_genome(genome_id, resolved_catalog)
+                    .map_err(|e| e.to_string())?
+            } else {
+                None
+            };
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             let cli_label = if *helper_mode { "helpers" } else { "genomes" };
             let effective_cache_arg = cache_dir
@@ -14695,6 +14701,7 @@ fn execute_reference_and_track_command(
                     "nucleotide_length_bp": source_plan.nucleotide_length_bp,
                     "molecular_mass_da": source_plan.molecular_mass_da,
                     "molecular_mass_source": source_plan.molecular_mass_source,
+                    "interpretation": interpretation,
                 }),
             })
         }

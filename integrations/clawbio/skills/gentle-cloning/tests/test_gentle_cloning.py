@@ -170,7 +170,182 @@ def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None
     ]
 
 
-def test_bootstrap_example_requests_cover_status_and_prepare_routes() -> None:
+def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:
+    fake_repo = tmp_path / "GENtle"
+    workflow_rel = Path("docs/examples/workflows/demo_workflow.json")
+    workflow_abs = fake_repo / workflow_rel
+    workflow_abs.parent.mkdir(parents=True)
+    workflow_abs.write_text('{"schema":"gentle.workflow.v1"}\n', encoding="utf-8")
+
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "workflow",
+                "workflow_path": str(workflow_rel),
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "capture_cli.sh"
+    capture_path = tmp_path / "captured_args.txt"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$FAKE_CAPTURE_ARGS\"\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    run_cwd = tmp_path / "ClawBio" / "skills" / "gentle-cloning"
+    run_cwd.mkdir(parents=True)
+    output_dir = tmp_path / "out"
+
+    env = dict(os.environ)
+    env["GENTLE_REPO_ROOT"] = str(fake_repo)
+    env["FAKE_CAPTURE_ARGS"] = str(capture_path)
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=run_cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    assert capture_path.read_text(encoding="utf-8").splitlines() == [
+        "workflow",
+        f"@{workflow_abs.resolve()}",
+    ]
+
+
+def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "protocol-cartoon render-svg gibson.two_fragment artifacts/demo.protocol.svg",
+                "expected_artifacts": ["artifacts/demo.protocol.svg"],
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "set -- $2\n"
+        "output_path=$4\n"
+        "mkdir -p \"$(dirname \"$output_path\")\"\n"
+        "printf '<svg>demo</svg>\\n' > \"$output_path\"\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    collected = result["artifacts"]["collected"]
+    assert len(collected) == 1
+    assert collected[0]["declared_path"] == "artifacts/demo.protocol.svg"
+    copied_path = Path(collected[0]["copied_path"])
+    assert copied_path.exists()
+    assert copied_path.read_text(encoding="utf-8") == "<svg>demo</svg>\n"
+
+
+def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "protocol-cartoon render-svg gibson.two_fragment ../outside/demo.protocol.svg",
+                "expected_artifacts": ["../outside/demo.protocol.svg"],
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "set -- $2\n"
+        "output_path=$4\n"
+        "mkdir -p \"$(dirname \"$output_path\")\"\n"
+        "printf '<svg>demo</svg>\\n' > \"$output_path\"\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    run_cwd = tmp_path / "skill"
+    run_cwd.mkdir(parents=True)
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=run_cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    copied_path = Path(result["artifacts"]["collected"][0]["copied_path"])
+    generated_root = (output_dir / "generated").resolve()
+    assert copied_path.exists()
+    assert copied_path.is_relative_to(generated_root)
+    assert copied_path == generated_root / "outside" / "demo.protocol.svg"
+
+
+def test_example_requests_cover_bootstrap_analysis_and_graphics_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
         "request_genomes_list_human.json": (
@@ -198,6 +373,21 @@ def test_bootstrap_example_requests_cover_status_and_prepare_routes() -> None:
             'helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800',
             2100,
         ),
+        "request_genomes_extract_gene_tp53.json": (
+            "shell",
+            'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
+            600,
+        ),
+        "request_helpers_blast_puc19_short.json": (
+            "shell",
+            'helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10',
+            300,
+        ),
+        "request_protocol_cartoon_gibson_svg.json": (
+            "shell",
+            "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
+            180,
+        ),
     }
 
     for name, (mode, shell_line, timeout_secs) in expected.items():
@@ -206,3 +396,21 @@ def test_bootstrap_example_requests_cover_status_and_prepare_routes() -> None:
         assert payload["mode"] == mode
         assert payload["shell_line"] == shell_line
         assert payload["timeout_secs"] == timeout_secs
+        if name == "request_protocol_cartoon_gibson_svg.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/gibson.two_fragment.protocol.svg"
+            ]
+
+    planning_payload = json.loads(
+        (examples_dir / "request_workflow_vkorc1_planning.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert planning_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert planning_payload["mode"] == "workflow"
+    assert planning_payload["state_path"] == ".gentle_state.json"
+    assert (
+        planning_payload["workflow_path"]
+        == "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"
+    )
+    assert planning_payload["timeout_secs"] == 1800

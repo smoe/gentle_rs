@@ -1662,6 +1662,9 @@ Status output note:
 - `genomes status` / `helpers status` include optional
   `nucleotide_length_bp`, `molecular_mass_da`, and `molecular_mass_source`
   alongside source-type/source-path fields.
+- `helpers status` may also include an engine-owned `interpretation` record for
+  helpers with structured semantics, so GUI/ClawBio/planner flows can share
+  one normalized helper-meaning layer.
 - The same status payload now also includes `effective_cache_dir`,
   compatibility hints, and a ready-to-run `prepare_command` when the selected
   genome is not prepared yet.

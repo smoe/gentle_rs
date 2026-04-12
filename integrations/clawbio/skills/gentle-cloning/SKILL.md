@@ -102,6 +102,9 @@ task:
    `cargo run --quiet --bin gentle_cli --` fallback.
 3. **Canonicalize the request**: convert the request into one deterministic CLI
    argument vector.
+   - Relative `workflow_path` values resolve first from the current working
+     directory, then from `GENTLE_REPO_ROOT`, then from the local GENtle repo
+     containing the scaffold when discoverable.
 4. **Execute exactly once**: run the command with the declared timeout and no
    hidden retries or silent fallback behavior beyond the resolver order above.
 5. **Capture provenance**: record resolver metadata, full command, timestamps,
@@ -134,6 +137,18 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json \
   --output /tmp/gentle_clawbio_prepare_puc19
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json \
+  --output /tmp/gentle_clawbio_extract_tp53
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json \
+  --output /tmp/gentle_clawbio_puc19_blast
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json \
+  --output /tmp/gentle_clawbio_vkorc1_planning
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json \
+  --output /tmp/gentle_clawbio_gibson_graphics
 ```
 
 Container-backed alternative:
@@ -210,6 +225,17 @@ reproducibility directory. If GENtle is not resolvable on that machine, the
 skill should still emit a degraded-demo bundle that clearly explains the missing
 resolver instead of failing silently.
 
+## Troubleshooting
+
+- If `python clawbio.py run gentle-cloning ...` reports
+  `Unknown skill 'gentle-cloning'`, the copied scaffold is newer than the
+  runtime `clawbio.py` registry on that machine.
+- Regenerating `skills/catalog.json` alone is not sufficient when the runtime
+  registry still lacks `gentle-cloning`.
+- Confirm with `python clawbio.py list | grep gentle-cloning` and then update
+  the ClawBio checkout or add the current runtime registration block before
+  retrying.
+
 ## Algorithm / Methodology
 
 This skill should be usable by an AI agent even without the Python wrapper.
@@ -254,6 +280,13 @@ Apply the following methodology:
   - `examples/request_genomes_prepare_grch38.json`
   - `examples/request_helpers_status_puc19.json`
   - `examples/request_helpers_prepare_puc19.json`
+- Included follow-on request examples:
+  - `examples/request_genomes_extract_gene_tp53.json`
+  - `examples/request_helpers_blast_puc19_short.json`
+  - `examples/request_workflow_vkorc1_planning.json`
+  - `examples/request_protocol_cartoon_gibson_svg.json`
+    - declares `expected_artifacts[]` so the generated SVG is copied into the
+      wrapper output bundle under `generated/...`
 
 ## Example Queries
 

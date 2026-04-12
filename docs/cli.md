@@ -109,6 +109,10 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
@@ -120,6 +124,12 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 That keeps both builds and prepared caches inside the local GENtle checkout, so
 first-run ClawBio preparation does not depend on the shared worktree target
 layout used by Codex development checkouts.
+
+Relative `workflow_path` values inside the wrapper resolve in this order:
+
+1. current working directory
+2. `GENTLE_REPO_ROOT` when set
+3. the local GENtle repo containing the scaffold, when discoverable
 
 Quick scaffold usage (inside the scaffold directory):
 
@@ -156,6 +166,23 @@ Included first-run bootstrap request examples:
 - `request_genomes_prepare_grch38.json`
 - `request_helpers_status_puc19.json`
 - `request_helpers_prepare_puc19.json`
+
+Included follow-on analysis/planning/graphics examples:
+
+- `request_genomes_extract_gene_tp53.json`
+- `request_helpers_blast_puc19_short.json`
+- `request_workflow_vkorc1_planning.json`
+- `request_protocol_cartoon_gibson_svg.json`
+  - declares `expected_artifacts[]` so the generated SVG is copied into the
+    ClawBio output bundle under `generated/...`
+
+ClawBio troubleshooting note:
+
+- If `python clawbio.py run gentle-cloning ...` reports `Unknown skill 'gentle-cloning'`,
+  the copied scaffold is newer than the runtime `clawbio.py` registry on that
+  machine.
+- Regenerating `skills/catalog.json` alone is not enough when `clawbio.py`
+  still lacks the `gentle-cloning` entry.
 
 ## Python module wrapper (`gentle_py`)
 
@@ -1998,6 +2025,9 @@ Helper convenience commands:
 
 - `helpers list [--catalog PATH]`
   - Same behavior as `genomes list`, but defaults to `assets/helper_genomes.json`.
+  - Helper `entries[]` rows now also include an optional normalized
+    `interpretation` record so ClawBio/agents/planners can consume one shared
+    helper-meaning layer instead of reparsing raw catalog prose.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
 - `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
@@ -2005,6 +2035,8 @@ Helper convenience commands:
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes status`, with helper-catalog default
     (including length/mass metadata fields).
+  - Output now also includes the same optional normalized `interpretation`
+    record for helper rows that carry structured helper semantics.
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Same behavior as `genomes genes`, with helper-catalog default.
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`

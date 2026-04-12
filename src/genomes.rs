@@ -42,7 +42,7 @@ use flate2::read::MultiGzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -355,6 +355,10 @@ pub struct GenomeCatalogEntry {
 }
 
 /// Search/list projection for one catalog entry.
+///
+/// Helper rows may also include a normalized `interpretation` projection so
+/// downstream adapters can consume one shared meaning layer without reparsing
+/// raw helper semantics on every route.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenomeCatalogListEntry {
     pub genome_id: String,
@@ -373,6 +377,8 @@ pub struct GenomeCatalogListEntry {
     pub procurement: Option<CatalogProcurementInfo>,
     #[serde(default)]
     pub semantics: Option<HelperConstructSemantics>,
+    #[serde(default)]
+    pub interpretation: Option<HelperConstructInterpretation>,
 }
 
 /// Ensembl-specific template metadata used to derive refreshable remote URLs.
@@ -430,6 +436,48 @@ pub struct HelperConstructSemantics {
     pub constraints: Vec<String>,
     #[serde(default)]
     pub components: Vec<HelperConstructComponent>,
+    #[serde(default)]
+    pub relationships: Vec<HelperConstructRelationship>,
+}
+
+/// Deterministic component projection for planning/agent/helper interpretation.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructInterpretationComponent {
+    pub id: String,
+    pub kind: String,
+    pub label: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, String>,
+}
+
+/// Engine-owned normalized helper-construct meaning record.
+///
+/// This sits above raw catalog metadata so GUI/CLI/MCP/ClawBio/planner routes
+/// can consume one portable meaning layer instead of reparsing prose or
+/// adapter-local prompts.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructInterpretation {
+    pub helper_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub helper_kinds: Vec<String>,
+    #[serde(default)]
+    pub host_systems: Vec<String>,
+    #[serde(default)]
+    pub offered_functions: Vec<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    #[serde(default)]
+    pub procurement_channels: Vec<String>,
+    pub local_variant_unpublished: bool,
+    #[serde(default)]
+    pub components: Vec<HelperConstructInterpretationComponent>,
     #[serde(default)]
     pub relationships: Vec<HelperConstructRelationship>,
 }
@@ -1376,6 +1424,9 @@ impl GenomeCatalog {
             if !self.entry_matches_filter(&genome_id, entry, filter) {
                 continue;
             }
+            let interpretation = self
+                .helper_construct_interpretation(&genome_id)
+                .unwrap_or(None);
             rows.push(GenomeCatalogListEntry {
                 genome_id,
                 description: entry.description.clone(),
@@ -1388,9 +1439,24 @@ impl GenomeCatalog {
                 host_system: entry.host_system.clone(),
                 procurement: entry.procurement.clone(),
                 semantics: entry.semantics.clone(),
+                interpretation,
             });
         }
         rows
+    }
+
+    /// Return the normalized helper-construct interpretation for one catalog
+    /// entry when helper semantics are available.
+    pub fn helper_construct_interpretation(
+        &self,
+        genome_id: &str,
+    ) -> Result<Option<HelperConstructInterpretation>, String> {
+        let entry = self.entry(genome_id)?;
+        Ok(Self::interpret_helper_construct_entry(
+            genome_id,
+            entry,
+            &self.entry_aliases(entry),
+        ))
     }
 
     fn list_genomes_unfiltered(&self) -> Vec<String> {
@@ -1457,6 +1523,203 @@ impl GenomeCatalog {
         aliases.sort_unstable();
         aliases.dedup();
         aliases
+    }
+
+    fn interpret_helper_construct_entry(
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+        aliases: &[String],
+    ) -> Option<HelperConstructInterpretation> {
+        if !Self::entry_has_helper_interpretation(entry) {
+            return None;
+        }
+
+        let helper_kinds = entry
+            .helper_kind
+            .as_ref()
+            .map(|value| vec![value.clone()])
+            .unwrap_or_default();
+        let host_systems = entry
+            .host_system
+            .as_ref()
+            .map(|value| vec![value.clone()])
+            .unwrap_or_default();
+        let constraints = entry
+            .semantics
+            .as_ref()
+            .map(|semantics| Self::dedup_sorted_strings(semantics.constraints.clone()))
+            .unwrap_or_default();
+        let procurement_channels = Self::helper_construct_procurement_channels(entry);
+        let components = entry
+            .semantics
+            .as_ref()
+            .map(|semantics| {
+                let mut components: Vec<HelperConstructInterpretationComponent> = semantics
+                    .components
+                    .iter()
+                    .map(Self::normalize_interpretation_component)
+                    .collect();
+                components.sort_by(|left, right| {
+                    (
+                        left.kind.as_str(),
+                        left.label.as_deref().unwrap_or(""),
+                        left.id.as_str(),
+                    )
+                        .cmp(&(
+                            right.kind.as_str(),
+                            right.label.as_deref().unwrap_or(""),
+                            right.id.as_str(),
+                        ))
+                });
+                components
+            })
+            .unwrap_or_default();
+        let relationships = entry
+            .semantics
+            .as_ref()
+            .map(|semantics| {
+                let mut relationships = semantics.relationships.clone();
+                relationships.sort_by(|left, right| {
+                    (
+                        left.predicate.as_str(),
+                        left.subject.as_str(),
+                        left.object.as_str(),
+                        left.note.as_deref().unwrap_or(""),
+                    )
+                        .cmp(&(
+                            right.predicate.as_str(),
+                            right.subject.as_str(),
+                            right.object.as_str(),
+                            right.note.as_deref().unwrap_or(""),
+                        ))
+                });
+                relationships.dedup();
+                relationships
+            })
+            .unwrap_or_default();
+
+        Some(HelperConstructInterpretation {
+            helper_id: genome_id.to_string(),
+            description: entry.description.clone(),
+            summary: entry.summary.clone(),
+            aliases: aliases.to_vec(),
+            helper_kinds,
+            host_systems,
+            offered_functions: Self::derive_helper_construct_offered_functions(entry),
+            constraints,
+            procurement_channels,
+            local_variant_unpublished: entry.local_variant_unpublished.unwrap_or(false),
+            components,
+            relationships,
+        })
+    }
+
+    fn entry_has_helper_interpretation(entry: &GenomeCatalogEntry) -> bool {
+        entry.helper_kind.is_some()
+            || entry.host_system.is_some()
+            || entry.procurement.is_some()
+            || entry.semantics.is_some()
+            || entry.local_variant_unpublished.unwrap_or(false)
+    }
+
+    fn normalize_interpretation_component(
+        component: &HelperConstructComponent,
+    ) -> HelperConstructInterpretationComponent {
+        HelperConstructInterpretationComponent {
+            id: component.id.clone(),
+            kind: component.kind.clone(),
+            label: component.label.clone(),
+            description: component.description.clone(),
+            tags: Self::dedup_sorted_strings(component.tags.clone()),
+            attributes: component
+                .attributes
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+        }
+    }
+
+    fn helper_construct_procurement_channels(entry: &GenomeCatalogEntry) -> Vec<String> {
+        let mut channels = BTreeSet::new();
+        if entry.local_variant_unpublished.unwrap_or(false) {
+            channels.insert("lab_local_unpublished".to_string());
+        }
+        if let Some(procurement) = entry.procurement.as_ref() {
+            if procurement.vendor_name.is_some() {
+                channels.insert("vendor_named".to_string());
+            }
+            if procurement.vendor_name.is_some() && procurement.catalog_number.is_some() {
+                channels.insert("vendor_catalog".to_string());
+            }
+            if procurement.order_url.is_some() {
+                channels.insert("order_url_available".to_string());
+            }
+            if procurement.reference_url.is_some() {
+                channels.insert("reference_url_available".to_string());
+            }
+        }
+        channels.into_iter().collect()
+    }
+
+    fn helper_component_kind_default_function(kind: &str) -> Option<&'static str> {
+        match kind.trim().to_ascii_lowercase().as_str() {
+            "fusion_tag" => Some("fusion_tagging"),
+            "protease_site" => Some("protease_cleavage"),
+            "cloning_site" => Some("insert_cloning"),
+            "selectable_marker" => Some("selection"),
+            "screening_marker" => Some("screening"),
+            "reporter" => Some("reporting"),
+            "origin" => Some("replication"),
+            "promoter" => Some("expression_control"),
+            "terminator" => Some("transcription_termination"),
+            _ => None,
+        }
+    }
+
+    fn relationship_default_function(predicate: &str) -> Option<&'static str> {
+        match predicate.trim().to_ascii_lowercase().as_str() {
+            "in_frame_with" => Some("in_frame_fusion_design"),
+            "cleaved_by" => Some("protease_cleavage"),
+            _ => None,
+        }
+    }
+
+    fn derive_helper_construct_offered_functions(entry: &GenomeCatalogEntry) -> Vec<String> {
+        let mut functions = BTreeSet::new();
+        if let Some(semantics) = entry.semantics.as_ref() {
+            for affordance in &semantics.affordances {
+                let trimmed = affordance.trim();
+                if !trimmed.is_empty() {
+                    functions.insert(trimmed.to_string());
+                }
+            }
+            for component in &semantics.components {
+                if let Some(function) =
+                    Self::helper_component_kind_default_function(component.kind.as_str())
+                {
+                    functions.insert(function.to_string());
+                }
+            }
+            for relationship in &semantics.relationships {
+                if let Some(function) =
+                    Self::relationship_default_function(relationship.predicate.as_str())
+                {
+                    functions.insert(function.to_string());
+                }
+            }
+        }
+        functions.into_iter().collect()
+    }
+
+    fn dedup_sorted_strings(values: Vec<String>) -> Vec<String> {
+        let mut seen = BTreeSet::new();
+        for value in values {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                seen.insert(trimmed.to_string());
+            }
+        }
+        seen.into_iter().collect()
     }
 
     fn entry_search_terms(&self, genome_id: &str, entry: &GenomeCatalogEntry) -> Vec<String> {
@@ -10456,11 +10719,48 @@ mod tests {
         };
 
         assert_eq!(catalog.list_entries(Some("pGEX")).len(), 1);
-        assert_eq!(catalog.list_entries(Some("factor xa")).len(), 1);
+        let factor_rows = catalog.list_entries(Some("factor xa"));
+        assert_eq!(factor_rows.len(), 1);
         assert_eq!(catalog.list_entries(Some("affinity purification")).len(), 1);
         assert_eq!(catalog.list_entries(Some("Escherichia coli")).len(), 1);
         assert_eq!(catalog.list_entries(Some("PGEX-001")).len(), 1);
         assert!(catalog.list_entries(Some("yeast secretion")).is_empty());
+
+        let interpretation = factor_rows[0]
+            .interpretation
+            .as_ref()
+            .expect("normalized interpretation");
+        assert_eq!(
+            interpretation.helper_kinds,
+            vec!["plasmid_vector".to_string()]
+        );
+        assert_eq!(
+            interpretation.host_systems,
+            vec!["Escherichia coli".to_string()]
+        );
+        assert_eq!(
+            interpretation.offered_functions,
+            vec![
+                "affinity_purification".to_string(),
+                "bacterial_expression".to_string(),
+                "fusion_tagging".to_string(),
+                "protease_cleavage".to_string(),
+                "protease_tag_removal".to_string(),
+            ]
+        );
+        assert_eq!(
+            interpretation.procurement_channels,
+            vec![
+                "order_url_available".to_string(),
+                "vendor_catalog".to_string(),
+                "vendor_named".to_string(),
+            ]
+        );
+        assert_eq!(interpretation.components.len(), 2);
+        assert_eq!(
+            interpretation.components[0].attributes.get("position"),
+            Some(&"n_terminal".to_string())
+        );
     }
 
     #[test]

@@ -1412,6 +1412,12 @@ fn run() -> Result<(), String> {
                         )
                     }
                     .map_err(|e| e.to_string())?;
+                    let interpretation = if helper_mode {
+                        GentleEngine::interpret_helper_genome(&genome_id, resolved_catalog)
+                            .map_err(|e| e.to_string())?
+                    } else {
+                        None
+                    };
                     let effective_catalog = effective_catalog_label(&catalog_path, helper_mode);
                     print_json(&json!({
                         "genome_id": genome_id,
@@ -1425,6 +1431,7 @@ fn run() -> Result<(), String> {
                         "nucleotide_length_bp": source_plan.nucleotide_length_bp,
                         "molecular_mass_da": source_plan.molecular_mass_da,
                         "molecular_mass_source": source_plan.molecular_mass_source,
+                        "interpretation": interpretation,
                     }))
                 }
                 "genes" => {

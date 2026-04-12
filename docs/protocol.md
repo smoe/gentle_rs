@@ -939,6 +939,14 @@ Catalog-backed reference/helper discovery notes:
 - helper/reference catalog entries may now carry typed discovery metadata such
   as `summary`, `aliases`, `tags`, `search_terms`, `species`, `helper_kind`,
   `host_system`, `procurement`, and optional structured `semantics`
+- helper-list/status routes may now also expose an engine-owned normalized
+  `interpretation` record derived from those helper fields:
+  - `helper_id`
+  - `description`, `summary`, `aliases`
+  - `helper_kinds`, `host_systems`
+  - `offered_functions`, `constraints`
+  - `procurement_channels`, `local_variant_unpublished`
+  - deterministic `components[]` and `relationships[]`
 - that metadata is intended to stay compatible with the emerging
   reasoning/constraint engine and with later ontology-backed helper/vector
   descriptions rather than forcing a future rewrite of catalog records
@@ -1599,15 +1607,24 @@ ClawBio/OpenClaw integration scaffold schemas:
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
   - `mode`: `capabilities|state-summary|shell|op|workflow|raw`
   - optional: `state_path`, `timeout_secs`
+  - optional: `expected_artifacts[]`
+    - wrapper-declared output files to copy into the ClawBio output bundle
+      after command execution
+    - relative paths resolve from the actual execution working directory
   - mode-specific:
     - `shell`: `shell_line`
     - `op`: `operation` (JSON object/string)
     - `workflow`: `workflow` or `workflow_path`
+      - relative `workflow_path` resolves via current working directory, then
+        `GENTLE_REPO_ROOT`, then the local GENtle repo containing the scaffold
+        when discoverable
     - `raw`: `raw_args[]`
 - wrapper result schema: `gentle.clawbio_skill_result.v1`
   - `status`: `ok|command_failed|timeout|failed|degraded_demo`
   - includes resolver details, executed command, exit code, stdout/stderr, and
     generated artifact paths
+  - `artifacts.collected[]` may enumerate declared output files copied into the
+    wrapper bundle with `declared_path`, `source_path`, and `copied_path`
 - reproducibility outputs:
   - `report.md`
   - `result.json`
@@ -1620,6 +1637,13 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `request_genomes_prepare_grch38.json`
   - `request_helpers_status_puc19.json`
   - `request_helpers_prepare_puc19.json`
+- included follow-on example requests:
+  - `request_genomes_extract_gene_tp53.json`
+  - `request_helpers_blast_puc19_short.json`
+  - `request_workflow_vkorc1_planning.json`
+  - `request_protocol_cartoon_gibson_svg.json`
+    - declares `expected_artifacts[]` so the generated SVG is copied into the
+      output bundle under `generated/...`
 
 Planned operation refinements:
 
