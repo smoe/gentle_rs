@@ -9,6 +9,7 @@ use crate::{
     about,
     engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
     engine_shell::{ShellExecutionOptions, execute_shell_command_with_options, parse_shell_tokens},
+    genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -273,6 +274,64 @@ fn tool_list() -> Value {
                         ]
                     }
                 },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "reference_catalog_entries",
+            "title": "Reference Catalog Entries",
+            "description": "Return structured reference catalog entries via the shared `genomes list` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "catalog_path": {
+                        "type": "string",
+                        "description": "Optional catalog file/directory path or default-discovery token."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional metadata filter matching ids, aliases, tags, summaries, and search terms."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "helper_catalog_entries",
+            "title": "Helper Catalog Entries",
+            "description": "Return structured helper catalog entries, including normalized helper interpretations when available.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "catalog_path": {
+                        "type": "string",
+                        "description": "Optional catalog file/directory path or default-discovery token."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional metadata filter matching ids, aliases, tags, summaries, procurement fields, and helper semantics."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "helper_interpretation",
+            "title": "Helper Interpretation",
+            "description": "Return the normalized helper-construct interpretation for one helper id or alias.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "helper_id": {
+                        "type": "string",
+                        "description": "Helper id or alias to interpret."
+                    },
+                    "catalog_path": {
+                        "type": "string",
+                        "description": "Optional catalog file/directory path or default-discovery token."
+                    }
+                },
+                "required": ["helper_id"],
                 "additionalProperties": false
             }
         },
@@ -751,6 +810,81 @@ fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String
     if let Some(value) = value {
         tokens.push(flag.to_string());
         tokens.push(value);
+    }
+}
+
+fn effective_catalog_path(catalog_path: Option<&str>, helper_mode: bool) -> String {
+    catalog_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            if value == default_catalog_discovery_token(false) {
+                default_catalog_discovery_label(false).to_string()
+            } else if value == default_catalog_discovery_token(true) {
+                default_catalog_discovery_label(true).to_string()
+            } else {
+                value.to_string()
+            }
+        })
+        .unwrap_or_else(|| default_catalog_discovery_label(helper_mode).to_string())
+}
+
+fn catalog_entries_tool_result(arguments: &Value, helper_mode: bool) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let entries = if helper_mode {
+        GentleEngine::list_helper_catalog_entries(catalog_path.as_deref(), filter.as_deref())
+    } else {
+        GentleEngine::list_reference_catalog_entries(catalog_path.as_deref(), filter.as_deref())
+    };
+    match entries {
+        Ok(entries) => {
+            let genomes = entries
+                .iter()
+                .map(|entry| entry.genome_id.clone())
+                .collect::<Vec<_>>();
+            tool_result_json(
+                json!({
+                    "catalog_path": effective_catalog_path(catalog_path.as_deref(), helper_mode),
+                    "filter": filter,
+                    "genome_count": genomes.len(),
+                    "genomes": genomes,
+                    "entries": entries,
+                }),
+                false,
+            )
+        }
+        Err(err) => tool_result_text(err.to_string(), "text", true),
+    }
+}
+
+fn helper_interpretation_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_id = match required_string_arg(&args, "helper_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match GentleEngine::interpret_helper_genome(&helper_id, catalog_path.as_deref()) {
+        Ok(interpretation) => tool_result_json(
+            json!({
+                "query": helper_id,
+                "catalog_path": effective_catalog_path(catalog_path.as_deref(), true),
+                "interpretation": interpretation,
+            }),
+            false,
+        ),
+        Err(err) => tool_result_text(err.to_string(), "text", true),
     }
 }
 
@@ -1269,6 +1403,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 ),
             }
         }
+        "reference_catalog_entries" => catalog_entries_tool_result(&params.arguments, false),
+        "helper_catalog_entries" => catalog_entries_tool_result(&params.arguments, true),
+        "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
         "help" => help_tool_result(&params.arguments),
@@ -1428,7 +1565,7 @@ mod tests {
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
     };
-    use std::{fs, io::Cursor, thread, time::Duration};
+    use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
 
     fn frame(value: &Value) -> Vec<u8> {
@@ -1488,6 +1625,94 @@ mod tests {
         let run =
             execute_shell_command(&mut engine, &command).expect("execute shared shell command");
         run.output
+    }
+
+    fn write_reference_catalog_fixture(dir: &Path) -> String {
+        let human_fasta = dir.join("human.fa");
+        let human_gtf = dir.join("human.gtf");
+        let yeast_fasta = dir.join("yeast.fa");
+        let yeast_gtf = dir.join("yeast.gtf");
+        fs::write(&human_fasta, ">chr1\nACGTACGT\n").expect("write human fasta");
+        fs::write(
+            &human_gtf,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"HUMAN1\"; gene_name \"TP53\";\n",
+        )
+        .expect("write human gtf");
+        fs::write(&yeast_fasta, ">chrI\nACGT\n").expect("write yeast fasta");
+        fs::write(
+            &yeast_gtf,
+            "chrI\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"YEAST1\"; gene_name \"CDC28\";\n",
+        )
+        .expect("write yeast gtf");
+
+        let catalog_path = dir.join("reference_catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Human GRCh38 Demo": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "species": "Homo sapiens",
+    "summary": "Human demonstration genome"
+  }},
+  "Yeast R64 Demo": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "species": "Saccharomyces cerevisiae",
+    "summary": "Yeast demonstration genome"
+  }}
+}}"#,
+                human_fasta.display(),
+                human_gtf.display(),
+                yeast_fasta.display(),
+                yeast_gtf.display()
+            ),
+        )
+        .expect("write reference catalog");
+        catalog_path.to_string_lossy().to_string()
+    }
+
+    fn write_helper_catalog_fixture(dir: &Path) -> String {
+        let catalog_path = dir.join("helper_catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "pGEX_like_vector": {
+    "sequence_remote": "https://example.invalid/pgex.fa.gz",
+    "annotations_remote": "https://example.invalid/pgex.gb.gz",
+    "summary": "GST fusion vector with Factor Xa cleavage site",
+    "aliases": ["pGEX"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "search_terms": ["factor xa", "affinity purification"],
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["bacterial_expression", "protease_tag_removal"],
+      "constraints": ["reading_frame_must_be_preserved"],
+      "components": [
+        {
+          "id": "gst",
+          "kind": "fusion_tag",
+          "label": "GST"
+        },
+        {
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "MCS"
+        }
+      ]
+    }
+  },
+  "neutral_backbone": {
+    "sequence_remote": "https://example.invalid/neutral.fa.gz",
+    "annotations_remote": "https://example.invalid/neutral.gb.gz",
+    "summary": "Simple backbone"
+  }
+}"#,
+        )
+        .expect("write helper catalog");
+        catalog_path.to_string_lossy().to_string()
     }
 
     #[test]
@@ -2050,5 +2275,90 @@ mod tests {
         );
         assert_eq!(mcp_status["result"]["structuredContent"], expected_status);
         crate::engine_shell::clear_blast_async_jobs_for_test();
+    }
+
+    #[test]
+    fn mcp_catalog_entry_tools_match_shared_shell_contracts() {
+        let td = tempdir().expect("tempdir");
+        let reference_catalog_path = write_reference_catalog_fixture(td.path());
+        let helper_catalog_path = write_helper_catalog_fixture(td.path());
+
+        let mcp_reference = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "reference_catalog_entries",
+            json!({
+                "catalog_path": reference_catalog_path.clone(),
+                "filter": "human"
+            }),
+        );
+        assert_eq!(
+            mcp_reference
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_reference = run_shared_shell_command(vec![
+            "genomes".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            reference_catalog_path.clone(),
+            "--filter".to_string(),
+            "human".to_string(),
+        ]);
+        assert_eq!(
+            mcp_reference["result"]["structuredContent"],
+            expected_reference
+        );
+
+        let mcp_helper = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "helper_catalog_entries",
+            json!({
+                "catalog_path": helper_catalog_path.clone(),
+                "filter": "factor xa"
+            }),
+        );
+        assert_eq!(
+            mcp_helper
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_helper = run_shared_shell_command(vec![
+            "helpers".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            helper_catalog_path.clone(),
+            "--filter".to_string(),
+            "factor xa".to_string(),
+        ]);
+        assert_eq!(mcp_helper["result"]["structuredContent"], expected_helper);
+    }
+
+    #[test]
+    fn mcp_helper_interpretation_matches_engine_projection() {
+        let td = tempdir().expect("tempdir");
+        let helper_catalog_path = write_helper_catalog_fixture(td.path());
+        let mcp_response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "helper_interpretation",
+            json!({
+                "catalog_path": helper_catalog_path.clone(),
+                "helper_id": "pGEX"
+            }),
+        );
+        assert_eq!(
+            mcp_response
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected = json!({
+            "query": "pGEX",
+            "catalog_path": helper_catalog_path,
+            "interpretation": GentleEngine::interpret_helper_genome("pGEX", Some(helper_catalog_path.as_str()))
+                .expect("engine helper interpretation"),
+        });
+        assert_eq!(mcp_response["result"]["structuredContent"], expected);
     }
 }

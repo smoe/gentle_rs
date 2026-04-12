@@ -1196,6 +1196,9 @@ external coding agent runtime, see:
     - `op` (apply one `Operation`; requires explicit `confirm=true`)
     - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
     - `help`
+    - `reference_catalog_entries` (shared `genomes list` catalog contract)
+    - `helper_catalog_entries` (shared `helpers list` catalog contract)
+    - `helper_interpretation` (direct helper-construct interpretation lookup)
     - `ui_intents` (shared `ui intents` catalog)
     - `ui_intent` (shared `ui open|focus ...` resolution path)
     - `ui_prepared_genomes` (shared `ui prepared-genomes ...` query path)
@@ -1214,7 +1217,40 @@ external coding agent runtime, see:
     - `tools/call` params are strict (`name`, optional `arguments` only)
     - `tools/call.arguments` must be a JSON object
 
-MCP UI-intent tool contracts (current):
+MCP query/introspection tool contracts (current):
+
+- `reference_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `genomes list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
+
+- `helper_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `helpers list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
+    - helper `entries[]` may carry normalized `interpretation` records
+
+- `helper_interpretation`
+  - arguments:
+    - required: `helper_id` (id or alias)
+    - optional: `catalog_path`
+  - behavior:
+    - resolves one helper entry through the shared catalog/alias lookup logic
+      and returns the normalized helper-construct interpretation if semantics
+      are available
+  - result:
+    - `query`
+    - `catalog_path`
+    - `interpretation` (`null` when the entry exists but carries no structured
+      helper semantics)
 
 - `ui_intents`
   - arguments:

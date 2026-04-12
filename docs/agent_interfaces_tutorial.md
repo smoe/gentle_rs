@@ -235,9 +235,10 @@ Client calls `gentle_mcp` tools (abbreviated concept flow):
 
 1. `tools/list`
 2. `tools/call(name="capabilities", arguments={...})`
-3. `tools/call(name="op", arguments={..., "confirm": true})` for mutating ops
-4. `tools/call(name="blast_async_start", ...)`
-5. poll `blast_async_status`
+3. `tools/call(name="helper_catalog_entries", arguments={...})` or `tools/call(name="helper_interpretation", arguments={...})` for structured helper discovery
+4. `tools/call(name="op", arguments={..., "confirm": true})` for mutating ops
+5. `tools/call(name="blast_async_start", ...)`
+6. poll `blast_async_status`
 
 Who executes: MCP client orchestrator.
 

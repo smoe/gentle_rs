@@ -734,6 +734,9 @@ Current tools:
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
+- `reference_catalog_entries` (structured reference catalog rows via the shared `genomes list` contract)
+- `helper_catalog_entries` (structured helper catalog rows with normalized helper `interpretation` when available)
+- `helper_interpretation` (direct helper-construct interpretation lookup by id or alias)
 - `ui_intents` (discover deterministic UI-intent contracts)
 - `ui_intent` (run deterministic `ui open|focus` intent resolution path)
 - `ui_prepared_genomes` (run deterministic prepared-genome query path)
@@ -839,6 +842,19 @@ Minimum MCP JSON-RPC flow:
 - required: `species`
 - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`
 
+`reference_catalog_entries` arguments:
+
+- optional: `catalog_path`, `filter`
+
+`helper_catalog_entries` arguments:
+
+- optional: `catalog_path`, `filter`
+
+`helper_interpretation` arguments:
+
+- required: `helper_id` (catalog id or alias)
+- optional: `catalog_path`
+
 `blast_async_start` arguments:
 
 - required: `genome_id`, `query_sequence`
@@ -873,6 +889,16 @@ MCP tool result envelope behavior:
   - `gentle.ui_intent.v1`
   - `gentle.ui_prepared_genomes.v1`
   - `gentle.ui_latest_prepared.v1`
+- catalog-entry MCP tools match the shared shell list payload shape:
+  - `catalog_path`
+  - `filter`
+  - `genome_count`
+  - `genomes[]`
+  - `entries[]`
+- `helper_interpretation` returns:
+  - `query`
+  - `catalog_path`
+  - `interpretation` (`null` when the helper exists but has no structured semantics)
 
 Mutating tool safety:
 

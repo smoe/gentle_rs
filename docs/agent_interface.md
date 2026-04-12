@@ -65,6 +65,10 @@ Current MCP tool families include:
   - `op` (requires `confirm=true`)
   - `workflow` (requires `confirm=true`)
   - `help`
+- catalog/introspection tools:
+  - `reference_catalog_entries`
+  - `helper_catalog_entries`
+  - `helper_interpretation`
 - UI-intent tools:
   - `ui_intents`
   - `ui_intent`

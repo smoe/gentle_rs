@@ -1942,6 +1942,10 @@ Current baseline:
 - JS/Lua adapters now also expose structured reference/helper catalog-entry
   helpers so agents/scripts can consume catalog metadata and helper
   `interpretation` records without reparsing shell JSON
+- `gentle_mcp` now also exposes structured `reference_catalog_entries`,
+  `helper_catalog_entries`, and targeted `helper_interpretation` tools so
+  MCP-native agents can consume the same catalog/interpretation layer without
+  going through shell-command text
 
 Planned work:
 
@@ -1955,8 +1959,8 @@ Planned work:
 3. Broaden the normalized helper-interpretation layer so more routes consume
    it directly and derivation becomes richer.
    - Current baseline now emits deterministic `interpretation` records from
-     helper list/status surfaces, but GUI/MCP/planner adoption and richer
-     function derivation are still pending.
+     helper list/status surfaces, and JS/Lua/MCP now consume them directly;
+     GUI/planner adoption and richer function derivation are still pending.
 4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
    - Bootstrap plus first follow-on examples are now in place; the next step
