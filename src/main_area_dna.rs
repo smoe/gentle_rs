@@ -628,6 +628,7 @@ enum SequencingConfirmationOverviewSelection {
     Target(String),
     Evidence(String),
     Variant(String),
+    CoverageGap(usize, usize),
 }
 
 #[derive(Clone, Debug)]
@@ -1018,7 +1019,8 @@ struct EngineOpsUiState {
 mod tests {
     use super::{
         DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTask,
-        RnaReadTaskMessage, RnaReadTaskOutcome, ViewSvgExportProfile,
+        RnaReadTaskMessage, RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
+        ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -1858,6 +1860,44 @@ mod tests {
             "variant_b"
         );
         assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
+    }
+
+    #[test]
+    fn sequencing_confirmation_apply_overview_selection_coverage_gap_selects_gap_target() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        let report = SequencingConfirmationReport {
+            targets: vec![
+                SequencingConfirmationTargetResult {
+                    target_id: "confirmed_target".to_string(),
+                    label: "Confirmed".to_string(),
+                    status: SequencingConfirmationStatus::Confirmed,
+                    start_0based: 0,
+                    end_0based_exclusive: 8,
+                    ..Default::default()
+                },
+                SequencingConfirmationTargetResult {
+                    target_id: "gap_target".to_string(),
+                    label: "Gap target".to_string(),
+                    status: SequencingConfirmationStatus::InsufficientEvidence,
+                    start_0based: 10,
+                    end_0based_exclusive: 18,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let applied = area.sequencing_confirmation_apply_overview_selection(
+            &report,
+            SequencingConfirmationOverviewSelection::CoverageGap(11, 16),
+        );
+
+        assert!(applied);
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_target_id,
+            "gap_target"
+        );
     }
 
     #[test]
@@ -29197,6 +29237,101 @@ impl MainAreaDna {
         )
     }
 
+    fn sequencing_confirmation_merged_evidence_spans(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+    ) -> Vec<(usize, usize)> {
+        if sequence_length == 0 {
+            return Vec::new();
+        }
+        let mut spans = report
+            .reads
+            .iter()
+            .filter_map(|row| {
+                let start = row
+                    .best_alignment
+                    .aligned_target_start_0based
+                    .min(sequence_length);
+                let end = row
+                    .best_alignment
+                    .aligned_target_end_0based_exclusive
+                    .min(sequence_length);
+                (end > start).then_some((start, end))
+            })
+            .collect::<Vec<_>>();
+        spans.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for (start, end) in spans {
+            if let Some(last) = merged.last_mut()
+                && start <= last.1
+            {
+                last.1 = last.1.max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        merged
+    }
+
+    fn sequencing_confirmation_uncovered_spans(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+    ) -> Vec<(usize, usize)> {
+        if sequence_length == 0 {
+            return Vec::new();
+        }
+        let merged = Self::sequencing_confirmation_merged_evidence_spans(report, sequence_length);
+        if merged.is_empty() {
+            return vec![(0, sequence_length)];
+        }
+        let mut uncovered = Vec::new();
+        let mut cursor = 0usize;
+        for (start, end) in merged {
+            if start > cursor {
+                uncovered.push((cursor, start));
+            }
+            cursor = cursor.max(end);
+        }
+        if cursor < sequence_length {
+            uncovered.push((cursor, sequence_length));
+        }
+        uncovered
+    }
+
+    fn sequencing_confirmation_target_intersects_span(
+        target: &SequencingConfirmationTargetResult,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> bool {
+        target.start_0based < end_0based_exclusive && start_0based < target.end_0based_exclusive
+    }
+
+    fn sequencing_confirmation_select_target_for_gap(
+        report: &SequencingConfirmationReport,
+        gap_start: usize,
+        gap_end: usize,
+    ) -> Option<String> {
+        report
+            .targets
+            .iter()
+            .filter(|row| {
+                Self::sequencing_confirmation_target_intersects_span(row, gap_start, gap_end)
+            })
+            .min_by(|a, b| {
+                Self::sequencing_confirmation_target_priority(a.status)
+                    .cmp(&Self::sequencing_confirmation_target_priority(b.status))
+                    .then(a.start_0based.cmp(&b.start_0based))
+            })
+            .map(|row| row.target_id.clone())
+            .or_else(|| {
+                report
+                    .targets
+                    .iter()
+                    .min_by_key(|row| row.start_0based.abs_diff(gap_start))
+                    .map(|row| row.target_id.clone())
+            })
+    }
+
     fn sequencing_confirmation_overview_x(
         rect: egui::Rect,
         sequence_length: usize,
@@ -29348,6 +29483,42 @@ impl MainAreaDna {
         }
     }
 
+    fn sequencing_confirmation_apply_overview_selection(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        selection: SequencingConfirmationOverviewSelection,
+    ) -> bool {
+        match selection {
+            SequencingConfirmationOverviewSelection::Target(target_id) => {
+                self.sequencing_confirmation_sync_target_selection(report, &target_id);
+                true
+            }
+            SequencingConfirmationOverviewSelection::Evidence(evidence_id) => {
+                self.sequencing_confirmation_sync_evidence_selection(report, &evidence_id);
+                true
+            }
+            SequencingConfirmationOverviewSelection::Variant(variant_id) => {
+                self.sequencing_confirmation_sync_variant_selection(report, &variant_id);
+                true
+            }
+            SequencingConfirmationOverviewSelection::CoverageGap(
+                start_0based,
+                end_0based_exclusive,
+            ) => {
+                if let Some(target_id) = Self::sequencing_confirmation_select_target_for_gap(
+                    report,
+                    start_0based,
+                    end_0based_exclusive,
+                ) {
+                    self.sequencing_confirmation_sync_target_selection(report, &target_id);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
     fn render_sequencing_confirmation_construct_overview(
         ui: &mut egui::Ui,
         report: &SequencingConfirmationReport,
@@ -29364,7 +29535,7 @@ impl MainAreaDna {
         }
         let mut selection = None;
         ui.small(
-            "Click a target span, evidence span, or variant marker to sync the detailed review panes below.",
+            "Click a target span, evidence span, coverage gap, or variant marker to sync the detailed review panes below.",
         );
         ui.horizontal_wrapped(|ui| {
             ui.small(format!("1"));
@@ -29502,6 +29673,64 @@ impl MainAreaDna {
                     selection = Some(SequencingConfirmationOverviewSelection::Evidence(
                         read.evidence_id.clone(),
                     ));
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized([label_width, 18.0], egui::Label::new("Coverage gaps"));
+            let desired_size = egui::vec2(ui.available_width().max(260.0), 20.0);
+            let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 3.0, egui::Color32::from_rgb(235, 248, 239));
+            painter.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::StrokeKind::Outside,
+            );
+            let uncovered_spans =
+                Self::sequencing_confirmation_uncovered_spans(report, sequence_length);
+            for (start, end) in &uncovered_spans {
+                let gap_rect = Self::sequencing_confirmation_overview_span_rect(
+                    rect,
+                    sequence_length,
+                    *start,
+                    *end,
+                )
+                .shrink2(egui::vec2(0.0, 4.0));
+                painter.rect_filled(
+                    gap_rect,
+                    1.0,
+                    egui::Color32::from_rgb(180, 83, 9).gamma_multiply(0.9),
+                );
+            }
+            if uncovered_spans.is_empty() {
+                painter.text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "full evidence coverage",
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    egui::Color32::from_rgb(21, 128, 61),
+                );
+            }
+            if response.clicked()
+                && let Some(pointer) = response.interact_pointer_pos()
+            {
+                for (start, end) in uncovered_spans.iter().rev() {
+                    let gap_rect = Self::sequencing_confirmation_overview_span_rect(
+                        rect,
+                        sequence_length,
+                        *start,
+                        *end,
+                    )
+                    .shrink2(egui::vec2(0.0, 4.0));
+                    if gap_rect.contains(pointer) {
+                        selection = Some(SequencingConfirmationOverviewSelection::CoverageGap(
+                            *start, *end,
+                        ));
+                        break;
+                    }
                 }
             }
         });
@@ -31216,24 +31445,11 @@ impl MainAreaDna {
                         &self.sequencing_confirmation_ui.selected_evidence_id,
                         &self.sequencing_confirmation_ui.selected_variant_id,
                     ) {
-                        match selection {
-                            SequencingConfirmationOverviewSelection::Target(target_id) => {
-                                self.sequencing_confirmation_sync_target_selection(report, &target_id);
-                            }
-                            SequencingConfirmationOverviewSelection::Evidence(evidence_id) => {
-                                self.sequencing_confirmation_sync_evidence_selection(
-                                    report,
-                                    &evidence_id,
-                                );
-                            }
-                            SequencingConfirmationOverviewSelection::Variant(variant_id) => {
-                                self.sequencing_confirmation_sync_variant_selection(
-                                    report,
-                                    &variant_id,
-                                );
-                            }
+                        if self
+                            .sequencing_confirmation_apply_overview_selection(report, selection)
+                        {
+                            self.save_engine_ops_state();
                         }
-                        self.save_engine_ops_state();
                     }
                     let unresolved_targets = report
                         .targets

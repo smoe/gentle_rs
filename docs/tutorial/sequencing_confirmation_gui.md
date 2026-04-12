@@ -226,10 +226,12 @@ What to verify:
 - opening it returns you to the sequencing-confirmation specialist
 - the specialist reloads the stored report rather than starting from scratch
 - the saved report now also shows a construct overview strip:
-  targets, evidence spans, and variant loci should all line up on the expected
-  construct ruler
+  targets, evidence spans, uncovered gaps, and variant loci should all line up
+  on the expected construct ruler
 - clicking the inferred expected-edit marker or the evidence span in that
   overview should keep the chromatogram and alignment panes in sync
+- clicking a coverage gap should jump the review focus to the closest
+  insufficient-evidence target when one overlaps that unsupported region
 
 ## Optional Negative Control
 

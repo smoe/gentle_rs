@@ -1255,11 +1255,13 @@ Patterns menu:
     - choose a persisted report for the current expected construct
     - inspect overall status, target-level outcomes, evidence-level outcomes,
       per-variant rows, and a selected-evidence alignment snapshot
-    - a construct overview strip now projects targets, evidence spans, variant
-      loci, and selected-evidence discrepancies onto the expected construct
-      span so review can start from the construct rather than from one table
+    - a construct overview strip now projects targets, evidence spans, coverage
+      gaps, variant loci, and selected-evidence discrepancies onto the expected
+      construct span so review can start from the construct rather than from
+      one table
     - clicking the overview synchronizes the target, variant, evidence, and
-      trace-backed inspection panes
+      trace-backed inspection panes; clicking a coverage gap jumps to the most
+      relevant insufficient/contradicted target when possible
     - an optional unresolved-first review mode keeps contradicted or
       insufficient rows at the top of the target/variant inspection queue
     - the evidence table itself is now the focus picker for alignment and
@@ -2676,6 +2678,7 @@ Report review surface:
 - construct overview strip for the whole expected sequence:
   - target spans
   - evidence spans
+  - uncovered coverage gaps
   - variant loci
   - selected-evidence discrepancy spans
   - clickable sync into the detailed review panes
