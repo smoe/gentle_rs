@@ -21464,7 +21464,10 @@ fn suggest_macro_templates_for_routine_prefers_helper_and_family_aligned_templat
     );
 
     assert!(!suggestions.is_empty(), "expected at least one suggestion");
-    assert_eq!(suggestions[0].template_name, "restriction_subclone_workflow");
+    assert_eq!(
+        suggestions[0].template_name,
+        "restriction_subclone_workflow"
+    );
     assert_eq!(suggestions[0].macro_kind, "workflow");
     assert!(
         suggestions[0]

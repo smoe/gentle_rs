@@ -2221,18 +2221,17 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
             let x1 = x_for_aa(domain_start);
             let x2 = x_for_aa(domain_end);
             let fill = domain.color_hex.as_deref().unwrap_or("#7c3aed");
-            doc = doc
-                .add(
-                    Rectangle::new()
-                        .set("x", x1)
-                        .set("y", y - PROTEIN_DOMAIN_HALF_HEIGHT)
-                        .set("width", (x2 - x1).max(1.0))
-                        .set("height", PROTEIN_DOMAIN_HALF_HEIGHT * 2.0)
-                        .set("fill", fill)
-                        .set("fill-opacity", 0.82)
-                        .set("stroke", "#1f2937")
-                        .set("stroke-width", 0.5),
-                );
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", x1)
+                    .set("y", y - PROTEIN_DOMAIN_HALF_HEIGHT)
+                    .set("width", (x2 - x1).max(1.0))
+                    .set("height", PROTEIN_DOMAIN_HALF_HEIGHT * 2.0)
+                    .set("fill", fill)
+                    .set("fill-opacity", 0.82)
+                    .set("stroke", "#1f2937")
+                    .set("stroke-width", 0.5),
+            );
             if let Some(label) = layout.placements.get(domain_idx) {
                 let label_band_top =
                     y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP;
@@ -2558,10 +2557,26 @@ mod tests {
     fn isoform_renderer_staggers_dense_protein_domain_labels_across_rows() {
         let dense_layout = layout_protein_domain_labels(
             &[
-                (420.0, 450.0, "label alpha domain segment with long annotation text".to_string()),
-                (420.0, 450.0, "label beta overlapping segment with long annotation text".to_string()),
-                (420.0, 450.0, "label gamma dense segment with long annotation text".to_string()),
-                (420.0, 450.0, "label delta dense segment with long annotation text".to_string()),
+                (
+                    420.0,
+                    450.0,
+                    "label alpha domain segment with long annotation text".to_string(),
+                ),
+                (
+                    420.0,
+                    450.0,
+                    "label beta overlapping segment with long annotation text".to_string(),
+                ),
+                (
+                    420.0,
+                    450.0,
+                    "label gamma dense segment with long annotation text".to_string(),
+                ),
+                (
+                    420.0,
+                    450.0,
+                    "label delta dense segment with long annotation text".to_string(),
+                ),
             ],
             340.0,
             1156.0,

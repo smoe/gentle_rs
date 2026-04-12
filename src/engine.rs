@@ -8623,7 +8623,10 @@ impl GentleEngine {
     ) -> String {
         let mut fields = vec![
             helper_interpretation.helper_id.as_str(),
-            helper_interpretation.description.as_deref().unwrap_or_default(),
+            helper_interpretation
+                .description
+                .as_deref()
+                .unwrap_or_default(),
             helper_interpretation.summary.as_deref().unwrap_or_default(),
         ];
         for alias in &helper_interpretation.aliases {
@@ -8661,7 +8664,9 @@ impl GentleEngine {
 
     fn helper_construct_haystack_contains_any(haystack: &str, terms: &[&str]) -> bool {
         let lower = haystack.to_ascii_lowercase();
-        terms.iter().any(|term| lower.contains(&term.to_ascii_lowercase()))
+        terms
+            .iter()
+            .any(|term| lower.contains(&term.to_ascii_lowercase()))
     }
 
     fn helper_construct_derived_routine_preferences(
@@ -8714,22 +8719,18 @@ impl GentleEngine {
                 "Helper interpretation mentions Type IIS / Golden Gate grammar, so Golden Gate routines are treated as a compatible fit.".to_string(),
             );
         }
-        if Self::helper_construct_haystack_contains_any(
-            &haystack,
-            &["gibson", "gibson assembly"],
-        ) {
+        if Self::helper_construct_haystack_contains_any(&haystack, &["gibson", "gibson assembly"]) {
             families.insert("gibson".to_string());
             rationale.insert(
-                "Helper interpretation explicitly mentions Gibson-style overlap assembly.".to_string(),
+                "Helper interpretation explicitly mentions Gibson-style overlap assembly."
+                    .to_string(),
             );
         }
-        if Self::helper_construct_haystack_contains_any(
-            &haystack,
-            &["in-fusion", "infusion"],
-        ) {
+        if Self::helper_construct_haystack_contains_any(&haystack, &["in-fusion", "infusion"]) {
             families.insert("infusion".to_string());
             rationale.insert(
-                "Helper interpretation explicitly mentions In-Fusion-style overlap assembly.".to_string(),
+                "Helper interpretation explicitly mentions In-Fusion-style overlap assembly."
+                    .to_string(),
             );
         }
         if Self::helper_construct_haystack_contains_any(
@@ -8738,17 +8739,15 @@ impl GentleEngine {
         ) {
             families.insert("nebuilder_hifi".to_string());
             rationale.insert(
-                "Helper interpretation explicitly mentions NEBuilder HiFi-style overlap assembly.".to_string(),
+                "Helper interpretation explicitly mentions NEBuilder HiFi-style overlap assembly."
+                    .to_string(),
             );
         }
-        if Self::helper_construct_haystack_contains_any(
-            &haystack,
-            &["topo cloning", "topo vector"],
-        ) {
+        if Self::helper_construct_haystack_contains_any(&haystack, &["topo cloning", "topo vector"])
+        {
             families.insert("topo".to_string());
-            rationale.insert(
-                "Helper interpretation mentions TOPO-style cloning semantics.".to_string(),
-            );
+            rationale
+                .insert("Helper interpretation mentions TOPO-style cloning semantics.".to_string());
         }
         if Self::helper_construct_haystack_contains_any(
             &haystack,
@@ -8768,7 +8767,13 @@ impl GentleEngine {
         if has_insert_cloning
             || Self::helper_construct_haystack_contains_any(
                 &haystack,
-                &["multiple cloning site", "mcs", "restriction", "digest", "ligation"],
+                &[
+                    "multiple cloning site",
+                    "mcs",
+                    "restriction",
+                    "digest",
+                    "ligation",
+                ],
             )
         {
             families.insert("restriction".to_string());
@@ -8785,7 +8790,10 @@ impl GentleEngine {
             );
         }
 
-        (families.into_iter().collect(), rationale.into_iter().collect())
+        (
+            families.into_iter().collect(),
+            rationale.into_iter().collect(),
+        )
     }
 
     fn build_routine_preference_context(
@@ -9022,7 +9030,12 @@ impl GentleEngine {
         let mut terms = BTreeSet::new();
         terms.insert(compact.to_ascii_lowercase());
         terms.insert(compact.replace('.', "_").to_ascii_lowercase());
-        terms.insert(compact.replace('.', " ").replace('_', " ").to_ascii_lowercase());
+        terms.insert(
+            compact
+                .replace('.', " ")
+                .replace('_', " ")
+                .to_ascii_lowercase(),
+        );
         terms.into_iter().collect()
     }
 
@@ -11988,8 +12001,9 @@ impl GentleEngine {
                     "Routine planning preferences synthesized".to_string()
                 }
                 "explicit_only" => "Routine planning preferences recorded".to_string(),
-                "helper_derived" => "Routine planning preferences derived from helper profile"
-                    .to_string(),
+                "helper_derived" => {
+                    "Routine planning preferences derived from helper profile".to_string()
+                }
                 "helper_resolution_error" => {
                     "Helper-derived routine planning context could not be resolved".to_string()
                 }

@@ -232,6 +232,8 @@ What to verify:
   overview should keep the chromatogram and alignment panes in sync
 - clicking a coverage gap should jump the review focus to the closest
   insufficient-evidence target when one overlaps that unsupported region
+- if no target overlaps the clicked gap, the saved-report pane should still
+  open an explicit unsupported-region summary for that interval
 
 ## Optional Negative Control
 

@@ -545,6 +545,8 @@ struct SequencingConfirmationUiState {
     selected_evidence_id: String,
     selected_trace_id: String,
     selected_variant_id: String,
+    selected_gap_start_0based: Option<usize>,
+    selected_gap_end_0based_exclusive: Option<usize>,
     review_unresolved_first: bool,
     primer_seq_ids_text: String,
     primer_min_3prime_anneal_bp: String,
@@ -583,6 +585,8 @@ impl Default for SequencingConfirmationUiState {
             selected_evidence_id: String::new(),
             selected_trace_id: String::new(),
             selected_variant_id: String::new(),
+            selected_gap_start_0based: None,
+            selected_gap_end_0based_exclusive: None,
             review_unresolved_first: false,
             primer_seq_ids_text: String::new(),
             primer_min_3prime_anneal_bp: "18".to_string(),
@@ -1897,6 +1901,44 @@ mod tests {
         assert_eq!(
             area.sequencing_confirmation_ui.selected_target_id,
             "gap_target"
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_gap_start_0based,
+            Some(11)
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui
+                .selected_gap_end_0based_exclusive,
+            Some(16)
+        );
+    }
+
+    #[test]
+    fn sequencing_confirmation_apply_overview_selection_coverage_gap_without_target_keeps_gap_focus()
+     {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        let report = SequencingConfirmationReport::default();
+
+        let applied = area.sequencing_confirmation_apply_overview_selection(
+            &report,
+            SequencingConfirmationOverviewSelection::CoverageGap(4, 12),
+        );
+
+        assert!(applied);
+        assert!(
+            area.sequencing_confirmation_ui
+                .selected_target_id
+                .is_empty()
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_gap_start_0based,
+            Some(4)
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui
+                .selected_gap_end_0based_exclusive,
+            Some(12)
         );
     }
 
@@ -29332,6 +29374,18 @@ impl MainAreaDna {
             })
     }
 
+    fn sequencing_confirmation_selected_coverage_gap(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+        selected_gap_start_0based: Option<usize>,
+        selected_gap_end_0based_exclusive: Option<usize>,
+    ) -> Option<(usize, usize)> {
+        let selected = selected_gap_start_0based.zip(selected_gap_end_0based_exclusive)?;
+        Self::sequencing_confirmation_uncovered_spans(report, sequence_length)
+            .into_iter()
+            .find(|row| *row == selected)
+    }
+
     fn sequencing_confirmation_overview_x(
         rect: egui::Rect,
         sequence_length: usize,
@@ -29385,6 +29439,9 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_evidence_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_gap_start_0based = None;
+        self.sequencing_confirmation_ui
+            .selected_gap_end_0based_exclusive = None;
         self.sequencing_confirmation_ui.selected_evidence_id = selected.evidence_id.clone();
         if let Some(trace_id) = selected.trace_id.as_deref() {
             self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
@@ -29421,6 +29478,9 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_variant_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_gap_start_0based = None;
+        self.sequencing_confirmation_ui
+            .selected_gap_end_0based_exclusive = None;
         self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
         if let Some(target_id) = variant.target_id.as_deref() {
             self.sequencing_confirmation_ui.selected_target_id = target_id.to_string();
@@ -29449,6 +29509,9 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_target_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_gap_start_0based = None;
+        self.sequencing_confirmation_ui
+            .selected_gap_end_0based_exclusive = None;
         self.sequencing_confirmation_ui.selected_target_id = target.target_id.clone();
         let preferred_variant = report.variants.iter().find(|row| {
             row.target_id
@@ -29505,15 +29568,21 @@ impl MainAreaDna {
                 start_0based,
                 end_0based_exclusive,
             ) => {
+                self.sequencing_confirmation_ui.selected_gap_start_0based = Some(start_0based);
+                self.sequencing_confirmation_ui
+                    .selected_gap_end_0based_exclusive = Some(end_0based_exclusive);
                 if let Some(target_id) = Self::sequencing_confirmation_select_target_for_gap(
                     report,
                     start_0based,
                     end_0based_exclusive,
                 ) {
                     self.sequencing_confirmation_sync_target_selection(report, &target_id);
+                    self.sequencing_confirmation_ui.selected_gap_start_0based = Some(start_0based);
+                    self.sequencing_confirmation_ui
+                        .selected_gap_end_0based_exclusive = Some(end_0based_exclusive);
                     true
                 } else {
-                    false
+                    true
                 }
             }
         }
@@ -29526,6 +29595,7 @@ impl MainAreaDna {
         selected_target_id: &str,
         selected_evidence_id: &str,
         selected_variant_id: &str,
+        selected_gap: Option<(usize, usize)>,
     ) -> Option<SequencingConfirmationOverviewSelection> {
         if sequence_length == 0 {
             ui.small(
@@ -29704,6 +29774,14 @@ impl MainAreaDna {
                     1.0,
                     egui::Color32::from_rgb(180, 83, 9).gamma_multiply(0.9),
                 );
+                if selected_gap == Some((*start, *end)) {
+                    painter.rect_stroke(
+                        gap_rect.expand(1.0),
+                        1.0,
+                        egui::Stroke::new(1.5, egui::Color32::BLACK),
+                        egui::StrokeKind::Outside,
+                    );
+                }
             }
             if uncovered_spans.is_empty() {
                 painter.text(
@@ -30005,6 +30083,33 @@ impl MainAreaDna {
             .and_then(|row| row.trace_id.as_deref())
             .and_then(|trace_id| self.sequencing_trace_record(trace_id));
         let expected_sequence_length = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
+        let report_sequence_length = selected_report
+            .as_ref()
+            .map(|report| {
+                Self::sequencing_confirmation_report_sequence_length(
+                    report,
+                    expected_sequence_length,
+                )
+            })
+            .unwrap_or(expected_sequence_length);
+        let selected_gap = selected_report.as_ref().and_then(|report| {
+            Self::sequencing_confirmation_selected_coverage_gap(
+                report,
+                report_sequence_length,
+                self.sequencing_confirmation_ui.selected_gap_start_0based,
+                self.sequencing_confirmation_ui
+                    .selected_gap_end_0based_exclusive,
+            )
+        });
+        if let Some((start_0based, end_0based_exclusive)) = selected_gap {
+            self.sequencing_confirmation_ui.selected_gap_start_0based = Some(start_0based);
+            self.sequencing_confirmation_ui
+                .selected_gap_end_0based_exclusive = Some(end_0based_exclusive);
+        } else {
+            self.sequencing_confirmation_ui.selected_gap_start_0based = None;
+            self.sequencing_confirmation_ui
+                .selected_gap_end_0based_exclusive = None;
+        }
         if let Some(trace) = selected_trace.as_ref() {
             let clamped = Self::sequencing_trace_clamp_base_index(
                 trace,
@@ -31437,13 +31542,11 @@ impl MainAreaDna {
                     if let Some(selection) = Self::render_sequencing_confirmation_construct_overview(
                         &mut columns[1],
                         report,
-                        Self::sequencing_confirmation_report_sequence_length(
-                            report,
-                            expected_sequence_length,
-                        ),
+                        report_sequence_length,
                         &self.sequencing_confirmation_ui.selected_target_id,
                         &self.sequencing_confirmation_ui.selected_evidence_id,
                         &self.sequencing_confirmation_ui.selected_variant_id,
+                        selected_gap,
                     ) {
                         if self
                             .sequencing_confirmation_apply_overview_selection(report, selection)
@@ -31542,6 +31645,58 @@ impl MainAreaDna {
                                 target.required
                             ));
                             ui.small(&target.reason);
+                        });
+                    }
+                    if let Some((gap_start, gap_end)) = selected_gap {
+                        let overlapping_targets = report
+                            .targets
+                            .iter()
+                            .filter(|row| {
+                                Self::sequencing_confirmation_target_intersects_span(
+                                    row, gap_start, gap_end,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        columns[1].group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new("Selected coverage gap").strong());
+                                ui.separator();
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(180, 83, 9),
+                                    format!(
+                                        "{}..{} ({} bp)",
+                                        gap_start,
+                                        gap_end,
+                                        gap_end.saturating_sub(gap_start)
+                                    ),
+                                );
+                            });
+                            if overlapping_targets.is_empty() {
+                                ui.small(
+                                    "No explicit confirmation target overlaps this unsupported region yet.",
+                                );
+                            } else {
+                                ui.small(format!(
+                                    "Overlapping targets: {}",
+                                    overlapping_targets
+                                        .iter()
+                                        .map(|row| row.label.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ));
+                            }
+                            if let Some(target_id) = Self::sequencing_confirmation_select_target_for_gap(
+                                report,
+                                gap_start,
+                                gap_end,
+                            ) {
+                                ui.small(format!(
+                                    "Closest review focus: {target_id}"
+                                ));
+                            }
+                            ui.small(
+                                "This interval currently lacks evidence-span coverage in the saved report.",
+                            );
                         });
                     }
                     columns[1].separator();

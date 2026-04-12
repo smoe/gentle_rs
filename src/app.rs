@@ -25569,7 +25569,11 @@ Error: `{err}`"
             })
             .unwrap_or_else(|| (None, vec![]));
         let candidate_planning_scores = self.routine_assistant_candidate_planning_scores_snapshot();
-        (preference_context, candidate_planning_scores, macro_suggestions)
+        (
+            preference_context,
+            candidate_planning_scores,
+            macro_suggestions,
+        )
     }
 
     fn routine_assistant_bindings_snapshot(&self) -> BTreeMap<String, String> {
@@ -25740,9 +25744,7 @@ Error: `{err}`"
         score.local_fit_score = score
             .local_fit_score
             .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
-        score.composite_meta_score = score
-            .composite_meta_score
-            .filter(|value| value.is_finite());
+        score.composite_meta_score = score.composite_meta_score.filter(|value| value.is_finite());
         score.routine_family_alignment_bonus = score
             .routine_family_alignment_bonus
             .filter(|value| value.is_finite());
@@ -38850,12 +38852,12 @@ mod tests {
             Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            PlanningEstimate, PlanningObjective, ProjectState, Rack, RackAuthoringTemplate,
-            RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
+            PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, ProjectState, Rack,
+            RackAuthoringTemplate, RackFillDirection, RackProfileKind, RackProfileSnapshot,
+            RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            RoutineDecisionTraceStore, SequenceOrigin, PLANNING_ESTIMATE_SCHEMA,
+            RoutineDecisionTraceStore, SequenceOrigin,
         },
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
@@ -40689,7 +40691,10 @@ mod tests {
             Some(0.25)
         );
         assert_eq!(trace.macro_suggestions.len(), 1);
-        assert_eq!(trace.macro_suggestions[0].template_name, "restriction_setup");
+        assert_eq!(
+            trace.macro_suggestions[0].template_name,
+            "restriction_setup"
+        );
 
         let store = app
             .engine
