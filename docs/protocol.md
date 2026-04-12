@@ -1260,6 +1260,28 @@ MCP query/introspection tool contracts (current):
     - `collection_filter`, `availability_basis`,
       `collection_latest_releases{}`, `candidates[]`, `warnings[]`
 
+Shell/engine quick-install contracts:
+
+- `genomes install-ensembl SPECIES_DIR ...`
+- `helpers install-ensembl SPECIES_DIR ...`
+  - behavior:
+    - resolve current Ensembl FASTA/GTF files for one species directory
+    - derive or accept an explicit target `genome_id`
+    - write a real catalog entry before preparation starts
+    - choose between two safe write modes:
+      - `full_catalog`: update one writable JSON catalog file in place or as a standalone copy
+      - `overlay_entry`: write only the new entry into an overlay fragment/file so default discovery does not duplicate built-in ids
+    - run the existing prepare pipeline after the catalog write succeeds
+  - result:
+    - `preview.collection`, `preview.species_dir`, `preview.display_name`
+    - `preview.file_stem`, `preview.release`
+    - `preview.genome_id`
+    - `preview.output_catalog_path`
+    - `preview.catalog_write_mode`
+    - `preview.catalog_entry_action`
+    - `preview.sequence_remote`, `preview.annotations_remote`
+    - `prepare_report`
+
 - `helper_interpretation`
   - arguments:
     - required: `helper_id` (id or alias)

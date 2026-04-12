@@ -921,6 +921,16 @@ pub enum ShellCommand {
         collection: Option<String>,
         filter: Option<String>,
     },
+    ReferenceInstallEnsembl {
+        helper_mode: bool,
+        species_dir: String,
+        collection: Option<String>,
+        catalog_path: Option<String>,
+        output_catalog_path: Option<String>,
+        genome_id: Option<String>,
+        cache_dir: Option<String>,
+        timeout_seconds: Option<u64>,
+    },
     ReferenceValidateCatalog {
         helper_mode: bool,
         catalog_path: Option<String>,
@@ -5338,6 +5348,36 @@ impl ShellCommand {
                         .unwrap_or_default()
                 )
             }
+            Self::ReferenceInstallEnsembl {
+                helper_mode,
+                species_dir,
+                collection,
+                catalog_path,
+                output_catalog_path,
+                genome_id,
+                cache_dir,
+                timeout_seconds,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let collection = collection
+                    .clone()
+                    .unwrap_or_else(|| "vertebrates".to_string());
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let output_catalog = output_catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                let genome_id = genome_id.clone().unwrap_or_else(|| "-".to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let timeout = timeout_seconds
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "quick-install Ensembl {label} '{}' (collection='{}', catalog='{}', output_catalog='{}', genome_id='{}', cache='{}', timeout='{}')",
+                    species_dir, collection, catalog, output_catalog, genome_id, cache, timeout
+                )
+            }
             Self::ReferenceValidateCatalog {
                 helper_mode,
                 catalog_path,
@@ -7037,6 +7077,7 @@ impl ShellCommand {
             self,
             Self::LoadProject { .. }
                 | Self::ImportPool { .. }
+                | Self::ReferenceInstallEnsembl { .. }
                 | Self::ReferencePrepare { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
@@ -8645,6 +8686,73 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 filter,
             })
         }
+        "install-ensembl" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} install-ensembl requires SPECIES_DIR [--collection NAME] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]"
+                ));
+            }
+            let species_dir = tokens[2].clone();
+            let mut collection: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut output_catalog_path: Option<String> = None;
+            let mut genome_id: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut timeout_seconds: Option<u64> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--collection" => {
+                        collection =
+                            Some(parse_option_path(tokens, &mut idx, "--collection", label)?)
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--output-catalog" => {
+                        output_catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-catalog",
+                            label,
+                        )?)
+                    }
+                    "--genome-id" => {
+                        genome_id = Some(parse_option_path(tokens, &mut idx, "--genome-id", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--timeout-secs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--timeout-secs", label)?;
+                        let parsed = raw
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid --timeout-secs value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            timeout_seconds = None;
+                        } else {
+                            timeout_seconds = Some(parsed);
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} install-ensembl"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceInstallEnsembl {
+                helper_mode,
+                species_dir,
+                collection,
+                catalog_path,
+                output_catalog_path,
+                genome_id,
+                cache_dir,
+                timeout_seconds,
+            })
+        }
         "validate-catalog" => {
             let mut catalog_path: Option<String> = None;
             let mut idx = 2usize;
@@ -9610,7 +9718,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected ensembl-available, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -14635,6 +14743,50 @@ fn execute_reference_and_track_command(
                 }),
             })
         }
+        ShellCommand::ReferenceInstallEnsembl {
+            helper_mode,
+            species_dir,
+            collection,
+            catalog_path,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            timeout_seconds,
+        } => {
+            let collection_name = collection.as_deref().unwrap_or("vertebrates");
+            let mut noop = |_progress: crate::genomes::PrepareGenomeProgress| true;
+            let report = if *helper_mode {
+                GentleEngine::quick_install_helper_genome_from_ensembl(
+                    resolved_catalog_path(catalog_path, *helper_mode),
+                    collection_name,
+                    species_dir,
+                    output_catalog_path.as_deref(),
+                    genome_id.as_deref(),
+                    cache_dir.as_deref(),
+                    *timeout_seconds,
+                    &mut noop,
+                )
+            } else {
+                GentleEngine::quick_install_reference_genome_from_ensembl(
+                    resolved_catalog_path(catalog_path, *helper_mode),
+                    collection_name,
+                    species_dir,
+                    output_catalog_path.as_deref(),
+                    genome_id.as_deref(),
+                    cache_dir.as_deref(),
+                    *timeout_seconds,
+                    &mut noop,
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "scope": if *helper_mode { "helpers" } else { "genomes" },
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::ReferenceValidateCatalog {
             helper_mode,
             catalog_path,
@@ -18221,6 +18373,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
+            | ShellCommand::ReferenceInstallEnsembl { .. }
             | ShellCommand::ReferenceValidateCatalog { .. }
             | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
             | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
@@ -19597,6 +19750,7 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::HostsList { .. }
         | ShellCommand::ReferenceList { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
+        | ShellCommand::ReferenceInstallEnsembl { .. }
         | ShellCommand::ReferenceValidateCatalog { .. }
         | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
         | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }

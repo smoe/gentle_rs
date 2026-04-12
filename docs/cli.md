@@ -1293,6 +1293,7 @@ Shared shell command:
     - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `genomes list [--catalog PATH]`
     - `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
+    - `genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
@@ -1306,6 +1307,7 @@ Shared shell command:
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
     - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
+    - `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
     - `helpers validate-catalog [--catalog PATH]`
     - `hosts list [--catalog PATH] [--filter TEXT]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -2028,6 +2030,12 @@ Genome convenience commands:
 - `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
   - Lists Ensembl species directories that currently look installable because both FASTA and GTF listings are present.
   - Returns a read-only discovery report with current listing URLs and latest release numbers seen per collection.
+- `genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
+  - Resolves concrete current Ensembl FASTA/GTF URLs for one species directory, writes a real catalog entry, and immediately runs the normal prepare workflow.
+  - When the active catalog is a writable single JSON file, GENtle updates that file in place.
+  - When the active catalog comes from discovery/overlay mode, GENtle writes only the new entry into an overlay fragment instead of copying the whole merged catalog.
+  - `--output-catalog PATH` can point to a catalog JSON file or to a directory where a fragment file should be created.
+  - `--genome-id ID` overrides the default deterministic id derived from species + assembly + release.
 - `genomes validate-catalog [--catalog PATH]`
   - Verifies catalog JSON schema/entry rules and that each entry resolves usable
     sequence/annotation source definitions.
@@ -2118,6 +2126,8 @@ Helper convenience commands:
     helper-meaning layer instead of reparsing raw catalog prose.
 - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
   - Same discovery report shape as `genomes ensembl-available`, but exposed under the helper-family command tree for contract symmetry across adapters.
+- `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
+  - Same quick-install contract as `genomes install-ensembl`, but targeting the helper-catalog/cache defaults.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
 - `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`

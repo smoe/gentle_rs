@@ -1946,6 +1946,12 @@ Current baseline:
 - a shared `genomes|helpers ensembl-available` discovery route now reports
   which current Ensembl species directories appear installable because both
   FASTA and GTF listings are present, without mutating local catalogs
+- Ensembl discovery now also has a real quick-install path:
+  - shared shell/CLI commands `genomes|helpers install-ensembl SPECIES_DIR ...`
+  - GUI candidate browser confirmation with resolved release/file stem/URLs
+  - safe catalog-write modes that distinguish full single-file updates from
+    overlay-entry writes so default discovery does not duplicate built-in ids
+  - ClawBio/OpenClaw can use the same quick-install route through `shell_line`
 - helper list/status routes now also expose an initial normalized
   `interpretation` record so downstream adapters can start consuming one
   portable helper-meaning layer
@@ -1967,8 +1973,9 @@ Current baseline:
   - the Planning window now includes a searchable helper-construct browser
     backed by shared catalog-entry + interpretation projections
 - the Planning window now also includes a searchable host-profile browser, and
-  the prepare dialog exposes a read-only `Browse Ensembl Candidates...` window
-  so current installability can be inspected without editing catalogs
+  the prepare dialog exposes a current Ensembl candidate browser with
+  confirmation-driven quick install so installability can be inspected and then
+  promoted into a real catalog row without leaving the prepare workflow
 
 Planned work:
 

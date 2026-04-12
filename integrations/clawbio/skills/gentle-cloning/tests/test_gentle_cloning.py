@@ -368,6 +368,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "genomes ensembl-available --collection vertebrates --filter human",
             300,
         ),
+        "request_genomes_install_ensembl_mouse.json": (
+            "shell",
+            "genomes install-ensembl mus_musculus --collection vertebrates",
+            1800,
+        ),
         "request_shell_state_summary.json": (
             "shell",
             "state-summary",

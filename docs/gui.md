@@ -2885,7 +2885,8 @@ Recommended flow:
      - inspects current Ensembl/Ensembl Metazoa FASTA + GTF species-directory listings
      - reports candidates where both listing types are present
      - shows collection, species directory, and the current listing URLs
-     - does not edit the local catalog; it is meant to answer "what looks installable right now?"
+     - each candidate now offers `Quick Install...`, which opens a confirmation dialog showing the resolved release, file stem, concrete FASTA/GTF URLs, the target catalog write mode, and the chosen output catalog path before the normal prepare workflow starts
+     - discovery itself still does not edit the catalog until `Install + Prepare` is confirmed
    - helper-scope dialogs (`Prepare Helper Genome...`, `Retrieve Helper Sequence...`,
      `BLAST Helper Sequence...`, and the prepared-reference inspector while
      helper scope is active) now also show a normalized helper-construct

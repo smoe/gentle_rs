@@ -88,12 +88,13 @@ use crate::{
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, EnsemblCatalogUpdatePreview,
-        EnsemblInstallableGenomeCatalog, GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry,
-        GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan, HelperConstructInterpretation,
-        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
-        PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-        PreparedCacheArtifactGroup, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
-        PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
+        EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview, GenomeBlastReport,
+        GenomeCatalog, GenomeCatalogListEntry, GenomeChromosomeRecord, GenomeGeneRecord,
+        GenomeSourcePlan, HelperConstructInterpretation, MAKEBLASTDB_ENV_BIN,
+        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan, PrepareGenomePlanStep,
+        PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
+        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PreparedCacheInspectionEntry,
+        PreparedCacheInspectionReport, PreparedGenomeInspection,
         configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
     },
     gibson_planning::{
@@ -767,6 +768,7 @@ pub struct GENtleApp {
     pending_prepared_genome_reinstall: Option<PreparedGenomeReinstallRequest>,
     pending_ensembl_catalog_update: Option<PendingEnsemblCatalogUpdateDialog>,
     pending_ensembl_installable_genomes: Option<PendingEnsemblInstallableGenomeDialog>,
+    pending_ensembl_quick_install: Option<PendingEnsemblQuickInstallDialog>,
     pending_prepared_genome_removal: Option<PendingPreparedGenomeRemovalRequest>,
     pending_genome_catalog_entry_removal: Option<PendingGenomeCatalogEntryRemovalRequest>,
     show_reference_genome_prepare_dialog: bool,
@@ -1489,6 +1491,16 @@ struct PendingEnsemblInstallableGenomeDialog {
     collection_filter: String,
     filter: String,
     report: EnsemblInstallableGenomeCatalog,
+}
+
+#[derive(Debug, Clone)]
+struct PendingEnsemblQuickInstallDialog {
+    scope: GenomeDialogScope,
+    collection: String,
+    species_dir: String,
+    preview: EnsemblQuickInstallPreview,
+    genome_id: String,
+    output_catalog_path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -2301,6 +2313,7 @@ impl Default for GENtleApp {
             pending_prepared_genome_reinstall: None,
             pending_ensembl_catalog_update: None,
             pending_ensembl_installable_genomes: None,
+            pending_ensembl_quick_install: None,
             pending_prepared_genome_removal: None,
             pending_genome_catalog_entry_removal: None,
             show_reference_genome_prepare_dialog: false,
@@ -12617,9 +12630,119 @@ Error: `{err}`"
         }
     }
 
+    fn queue_ensembl_quick_install_preview(
+        &mut self,
+        scope: GenomeDialogScope,
+        collection: &str,
+        species_dir: &str,
+    ) {
+        let catalog_path = self.genome_catalog_path_opt();
+        let preview = match scope {
+            GenomeDialogScope::Reference => {
+                GentleEngine::preview_reference_genome_ensembl_quick_install(
+                    catalog_path.as_deref(),
+                    collection,
+                    species_dir,
+                    None,
+                    None,
+                )
+            }
+            GenomeDialogScope::Helper => GentleEngine::preview_helper_genome_ensembl_quick_install(
+                catalog_path.as_deref(),
+                collection,
+                species_dir,
+                None,
+                None,
+            ),
+        };
+        match preview {
+            Ok(preview) => {
+                self.pending_ensembl_quick_install = Some(PendingEnsemblQuickInstallDialog {
+                    scope,
+                    collection: collection.trim().to_string(),
+                    species_dir: species_dir.trim().to_string(),
+                    genome_id: preview.genome_id.clone(),
+                    output_catalog_path: preview.output_catalog_path.clone(),
+                    preview,
+                });
+                self.genome_prepare_status = format!(
+                    "Prepared Ensembl quick-install preview for '{}' ({})",
+                    species_dir, collection
+                );
+            }
+            Err(e) => {
+                self.pending_ensembl_quick_install = None;
+                self.genome_prepare_status = format!(
+                    "Could not preview Ensembl quick install for '{}' ({}): {}",
+                    species_dir, collection, e
+                );
+            }
+        }
+    }
+
+    fn apply_pending_ensembl_quick_install(&mut self) {
+        let Some(dialog) = self.pending_ensembl_quick_install.clone() else {
+            return;
+        };
+        let genome_id = dialog.genome_id.trim().to_string();
+        if genome_id.is_empty() {
+            self.genome_prepare_status =
+                "Choose a non-empty genome id for the Ensembl quick install.".to_string();
+            return;
+        }
+        let output_catalog_path = dialog.output_catalog_path.trim().to_string();
+        let catalog_path = self.genome_catalog_path_opt();
+        let write_report = match dialog.scope {
+            GenomeDialogScope::Reference => {
+                GentleEngine::apply_reference_genome_ensembl_quick_install(
+                    catalog_path.as_deref(),
+                    &dialog.collection,
+                    &dialog.species_dir,
+                    if output_catalog_path.is_empty() {
+                        None
+                    } else {
+                        Some(output_catalog_path.as_str())
+                    },
+                    Some(genome_id.as_str()),
+                )
+            }
+            GenomeDialogScope::Helper => GentleEngine::apply_helper_genome_ensembl_quick_install(
+                catalog_path.as_deref(),
+                &dialog.collection,
+                &dialog.species_dir,
+                if output_catalog_path.is_empty() {
+                    None
+                } else {
+                    Some(output_catalog_path.as_str())
+                },
+                Some(genome_id.as_str()),
+            ),
+        };
+        match write_report {
+            Ok(report) => {
+                self.pending_ensembl_quick_install = None;
+                self.genome_dialog_scope = dialog.scope;
+                self.genome_catalog_path = report.preview.output_catalog_path.clone();
+                self.genome_id = report.preview.genome_id.clone();
+                self.genome_prepare_status = format!(
+                    "Wrote Ensembl quick-install catalog entry '{}' to '{}'. Starting prepare.",
+                    report.preview.genome_id, report.preview.output_catalog_path
+                );
+                self.start_prepare_reference_genome_with_mode(GenomePrepareLaunchMode::Prepare);
+            }
+            Err(e) => {
+                self.genome_prepare_status = format!(
+                    "Could not apply Ensembl quick install for '{}' ({}): {}",
+                    dialog.species_dir, dialog.collection, e
+                );
+            }
+        }
+    }
+
     fn clear_prepare_dialog_ephemeral_state(&mut self) {
         self.pending_ensembl_catalog_update = None;
         self.pending_ensembl_installable_genomes = None;
+        self.pending_ensembl_quick_install = None;
         self.clear_prepare_step_state();
     }
 
@@ -17434,10 +17557,30 @@ Error: `{err}`"
                         } else {
                             for candidate in &dialog.report.candidates {
                                 ui.group(|ui| {
-                                    ui.label(format!(
-                                        "{} ({})",
-                                        candidate.display_name, candidate.collection
-                                    ));
+                                    ui.horizontal(|ui| {
+                                        ui.label(format!(
+                                            "{} ({})",
+                                            candidate.display_name, candidate.collection
+                                        ));
+                                        if ui
+                                            .add_enabled(
+                                                self.genome_prepare_task.is_none(),
+                                                egui::Button::new("Quick Install..."),
+                                            )
+                                            .on_hover_text(
+                                                "Resolve concrete Ensembl URLs for this species, write a local catalog entry, and then start the normal prepare workflow.",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.pending_ensembl_installable_genomes =
+                                                Some(dialog.clone());
+                                            self.queue_ensembl_quick_install_preview(
+                                                dialog.scope,
+                                                &candidate.collection,
+                                                &candidate.species_dir,
+                                            );
+                                        }
+                                    });
                                     ui.small(format!("species_dir: {}", candidate.species_dir));
                                     ui.small(format!("latest release seen: {}", candidate.latest_release));
                                     ui.small(format!(
@@ -17474,6 +17617,99 @@ Error: `{err}`"
             return;
         }
         self.pending_ensembl_installable_genomes = Some(dialog);
+    }
+
+    fn render_pending_ensembl_quick_install_dialog(&mut self, ctx: &egui::Context) {
+        let Some(mut dialog) = self.pending_ensembl_quick_install.clone() else {
+            return;
+        };
+        egui::Window::new("Quick Install Ensembl Candidate")
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .collapsible(false)
+            .movable(false)
+            .resizable(true)
+            .default_width(760.0)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Install '{}' from the current Ensembl {} listing?",
+                    dialog.preview.display_name, dialog.preview.collection
+                ));
+                ui.small(
+                    "This writes a real catalog entry first and then starts the normal prepare workflow. Downloads and indexing may take some time.",
+                );
+                ui.separator();
+                ui.label(format!("species_dir: {}", dialog.preview.species_dir));
+                ui.label(format!("resolved release: {}", dialog.preview.release));
+                ui.label(format!("file_stem: {}", dialog.preview.file_stem));
+                ui.horizontal(|ui| {
+                    ui.label("genome_id");
+                    ui.text_edit_singleline(&mut dialog.genome_id);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("output");
+                    ui.text_edit_singleline(&mut dialog.output_catalog_path);
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Choose a catalog file or overlay directory for the new entry")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new().save_file() {
+                            dialog.output_catalog_path = path.display().to_string();
+                        }
+                    }
+                });
+                ui.small(format!(
+                    "catalog origin: {}",
+                    dialog.preview.catalog_origin_label
+                ));
+                ui.small(format!(
+                    "catalog write mode: {} ({})",
+                    dialog.preview.catalog_write_mode, dialog.preview.catalog_entry_action
+                ));
+                ui.separator();
+                ui.small(format!("sequence: {}", dialog.preview.sequence_remote));
+                ui.small(format!("annotation: {}", dialog.preview.annotations_remote));
+                if !dialog.preview.warnings.is_empty() {
+                    ui.separator();
+                    ui.label("Warnings:");
+                    for warning in &dialog.preview.warnings {
+                        ui.small(warning);
+                    }
+                }
+                if self.genome_prepare_task.is_some() {
+                    ui.separator();
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "Another genome prepare task is already running. Finish or cancel it before starting a quick install.",
+                    );
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.genome_prepare_task.is_none(),
+                            egui::Button::new("Install + Prepare"),
+                        )
+                        .on_hover_text(
+                            "Write the catalog entry using the shown output path and launch the prepare workflow.",
+                        )
+                        .clicked()
+                    {
+                        self.pending_ensembl_quick_install = Some(dialog.clone());
+                        self.apply_pending_ensembl_quick_install();
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Close without writing a catalog entry")
+                        .clicked()
+                    {
+                        self.pending_ensembl_quick_install = None;
+                    }
+                });
+                if self.pending_ensembl_quick_install.is_some() {
+                    self.pending_ensembl_quick_install = Some(dialog);
+                }
+            });
     }
 
     fn render_pending_prepared_genome_removal_dialog(&mut self, ctx: &egui::Context) {
@@ -38112,6 +38348,7 @@ impl GENtleApp {
             );
             self.render_pending_ensembl_catalog_update_dialog(ctx);
             self.render_pending_ensembl_installable_genomes_dialog(ctx);
+            self.render_pending_ensembl_quick_install_dialog(ctx);
             self.render_pending_prepared_genome_removal_dialog(ctx);
             self.render_pending_catalog_entry_removal_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
@@ -38198,14 +38435,14 @@ mod tests {
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
         PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
-        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
-        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
-        PreparedGenomeReinstallRequest, ProjectAction, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
-        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage,
+        PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
+        PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
+        PrepareGenomeFailureRecovery, PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
+        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
+        RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -38222,11 +38459,11 @@ mod tests {
         },
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
-            HelperConstructInterpretation, PrepareGenomePlan, PrepareGenomePlanStep,
-            PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
-            PreparedCacheArtifactStat, PreparedCacheCleanupItemReport, PreparedCacheCleanupMode,
-            PreparedCacheCleanupReport, PreparedCacheEntryKind, PreparedCacheInspectionEntry,
-            PreparedCacheInspectionReport, PreparedGenomeInspection,
+            EnsemblQuickInstallPreview, HelperConstructInterpretation, PrepareGenomePlan,
+            PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
+            PreparedCacheArtifactGroup, PreparedCacheArtifactStat, PreparedCacheCleanupItemReport,
+            PreparedCacheCleanupMode, PreparedCacheCleanupReport, PreparedCacheEntryKind,
+            PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
         },
         gibson_planning::{
             GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonCartoonPreview,
@@ -46105,6 +46342,28 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             filter: "human".to_string(),
             report: EnsemblInstallableGenomeCatalog::default(),
         });
+        app.pending_ensembl_quick_install = Some(PendingEnsemblQuickInstallDialog {
+            scope: GenomeDialogScope::Reference,
+            collection: "vertebrates".to_string(),
+            species_dir: "mus_musculus".to_string(),
+            genome_id: "Mouse GRCm39 Ensembl 116".to_string(),
+            output_catalog_path: "data/genomes_overlay.json".to_string(),
+            preview: EnsemblQuickInstallPreview {
+                collection: "vertebrates".to_string(),
+                species_dir: "mus_musculus".to_string(),
+                display_name: "Mouse".to_string(),
+                file_stem: "Mus_musculus.GRCm39".to_string(),
+                release: 116,
+                genome_id: "Mouse GRCm39 Ensembl 116".to_string(),
+                catalog_origin_label: "assets/genomes.json".to_string(),
+                output_catalog_path: "data/genomes_overlay.json".to_string(),
+                catalog_write_mode: "overlay_entry".to_string(),
+                catalog_entry_action: "add_overlay_entry".to_string(),
+                sequence_remote: "https://example.invalid/mouse.fa.gz".to_string(),
+                annotations_remote: "https://example.invalid/mouse.gtf.gz".to_string(),
+                warnings: vec![],
+            },
+        });
         app.genome_prepare_steps = vec![PrepareGenomeUiStepState {
             step_id: PrepareGenomeStepId::Sequence,
             label: "Sequence".to_string(),
@@ -46123,6 +46382,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 
         assert!(app.pending_ensembl_catalog_update.is_none());
         assert!(app.pending_ensembl_installable_genomes.is_none());
+        assert!(app.pending_ensembl_quick_install.is_none());
         assert!(app.genome_prepare_steps.is_empty());
     }
 

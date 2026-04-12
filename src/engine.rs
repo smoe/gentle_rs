@@ -31,8 +31,10 @@ use crate::{
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
         DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN, EnsemblCatalogUpdatePreview,
-        EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog, GenomeBlastReport,
-        GenomeCatalog, GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
+        EnsemblCatalogUpdateReport, EnsemblInstallableGenomeCatalog,
+        EnsemblQuickInstallCatalogWriteReport, EnsemblQuickInstallPreview,
+        EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
+        GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation, PrepareGenomePlan,
         PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
         PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
@@ -4636,6 +4638,217 @@ impl GentleEngine {
                 code: ErrorCode::Io,
                 message: format!("Could not discover installable Ensembl genomes: {e}"),
             },
+        )
+    }
+
+    fn preview_ensembl_quick_install_with_scope(
+        helper_mode: bool,
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallPreview, EngineError> {
+        let (catalog, catalog_origin) =
+            Self::open_catalog_with_default_mode(catalog_path, helper_mode)?;
+        catalog
+            .preview_ensembl_quick_install(collection, species_dir, output_catalog_path, genome_id)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not preview Ensembl quick install for '{}' from '{}': {}",
+                    species_dir, catalog_origin, e
+                ),
+            })
+    }
+
+    fn apply_ensembl_quick_install_with_scope(
+        helper_mode: bool,
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, EngineError> {
+        let (catalog, catalog_origin) =
+            Self::open_catalog_with_default_mode(catalog_path, helper_mode)?;
+        catalog
+            .apply_ensembl_quick_install(collection, species_dir, output_catalog_path, genome_id)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not apply Ensembl quick install for '{}' from '{}': {}",
+                    species_dir, catalog_origin, e
+                ),
+            })
+    }
+
+    fn quick_install_ensembl_with_scope(
+        helper_mode: bool,
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<EnsemblQuickInstallReport, EngineError> {
+        let (catalog, catalog_origin) =
+            Self::open_catalog_with_default_mode(catalog_path, helper_mode)?;
+        let timeout = timeout_seconds.map(Duration::from_secs);
+        let started = Instant::now();
+        let mut timed_out = false;
+        let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
+            if let Some(limit) = timeout {
+                if started.elapsed() >= limit {
+                    timed_out = true;
+                    return false;
+                }
+            }
+            on_progress(progress)
+        };
+        catalog
+            .quick_install_ensembl_genome_once_with_progress(
+                collection,
+                species_dir,
+                output_catalog_path,
+                genome_id,
+                cache_dir,
+                &mut guarded_progress,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: if is_prepare_cancelled_error(&e) {
+                    if timed_out {
+                        format!(
+                            "Ensembl quick install timed out for '{}' after {} second(s)",
+                            species_dir,
+                            timeout_seconds.unwrap_or(0)
+                        )
+                    } else {
+                        format!("Ensembl quick install cancelled for '{}'", species_dir)
+                    }
+                } else {
+                    format!(
+                        "Could not quick-install Ensembl species '{}' from '{}': {}",
+                        species_dir, catalog_origin, e
+                    )
+                },
+            })
+    }
+
+    pub fn preview_reference_genome_ensembl_quick_install(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallPreview, EngineError> {
+        Self::preview_ensembl_quick_install_with_scope(
+            false,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub fn preview_helper_genome_ensembl_quick_install(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallPreview, EngineError> {
+        Self::preview_ensembl_quick_install_with_scope(
+            true,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub fn apply_reference_genome_ensembl_quick_install(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, EngineError> {
+        Self::apply_ensembl_quick_install_with_scope(
+            false,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub fn apply_helper_genome_ensembl_quick_install(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, EngineError> {
+        Self::apply_ensembl_quick_install_with_scope(
+            true,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub fn quick_install_reference_genome_from_ensembl(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<EnsemblQuickInstallReport, EngineError> {
+        Self::quick_install_ensembl_with_scope(
+            false,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            timeout_seconds,
+            on_progress,
+        )
+    }
+
+    pub fn quick_install_helper_genome_from_ensembl(
+        catalog_path: Option<&str>,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<EnsemblQuickInstallReport, EngineError> {
+        Self::quick_install_ensembl_with_scope(
+            true,
+            catalog_path,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            timeout_seconds,
+            on_progress,
         )
     }
 

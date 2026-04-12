@@ -1,5 +1,5 @@
 {
-   "command_count": 298,
+   "command_count": 300,
    "commands": [
       {
          "aliases": [
@@ -962,6 +962,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "genomes install-ensembl",
+         "summary": "Resolve one current Ensembl candidate into a real catalog entry and prepare it immediately.",
+         "usage": "genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "genomes validate-catalog",
          "summary": "Validate reference genome catalog entries.",
          "usage": "genomes validate-catalog [--catalog PATH]"
@@ -1204,6 +1216,18 @@
          "path": "helpers ensembl-available",
          "summary": "List current Ensembl candidates under the helper-family command tree.",
          "usage": "helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers install-ensembl",
+         "summary": "Resolve one current Ensembl candidate into a helper catalog entry and prepare it immediately.",
+         "usage": "helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]"
       },
       {
          "aliases": [],

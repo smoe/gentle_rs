@@ -646,6 +646,40 @@ pub struct EnsemblInstallableGenomeCatalog {
     pub warnings: Vec<String>,
 }
 
+/// Preview of promoting one current Ensembl candidate into a local catalog.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnsemblQuickInstallPreview {
+    pub collection: String,
+    pub species_dir: String,
+    pub display_name: String,
+    pub file_stem: String,
+    pub release: u32,
+    pub genome_id: String,
+    pub catalog_origin_label: String,
+    pub output_catalog_path: String,
+    pub catalog_write_mode: String,
+    pub catalog_entry_action: String,
+    pub sequence_remote: String,
+    pub annotations_remote: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// Result of writing one Ensembl candidate into a local catalog.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnsemblQuickInstallCatalogWriteReport {
+    pub preview: EnsemblQuickInstallPreview,
+    pub wrote_catalog: bool,
+}
+
+/// Result of writing and then preparing one Ensembl candidate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnsemblQuickInstallReport {
+    pub preview: EnsemblQuickInstallPreview,
+    pub wrote_catalog: bool,
+    pub prepare_report: PrepareGenomeReport,
+}
+
 /// Result of deleting one prepared install directory from a cache root.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedGenomeRemovalReport {
@@ -1874,6 +1908,216 @@ impl GenomeCatalog {
             filter,
             &fetch_http_text_with_retry,
         )
+    }
+
+    /// Preview how one Ensembl species directory would be promoted into this
+    /// catalog for a quick install.
+    pub fn preview_ensembl_quick_install(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallPreview, String> {
+        self.preview_ensembl_quick_install_with_fetcher(
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            &fetch_http_text_with_retry,
+        )
+    }
+
+    /// Materialize one Ensembl-discovered candidate into a catalog entry.
+    pub fn apply_ensembl_quick_install(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, String> {
+        self.apply_ensembl_quick_install_with_fetcher(
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            &fetch_http_text_with_retry,
+        )
+    }
+
+    /// Write and then prepare one Ensembl-discovered candidate.
+    pub fn quick_install_ensembl_genome_once_with_progress(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<EnsemblQuickInstallReport, String> {
+        self.quick_install_ensembl_genome_once_with_progress_and_fetcher(
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            on_progress,
+            &fetch_http_text_with_retry,
+        )
+    }
+
+    fn preview_ensembl_quick_install_with_fetcher(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        fetch_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<EnsemblQuickInstallPreview, String> {
+        let domain = guess_catalog_domain_from_origin(self.catalog_origin_label());
+        let resolved = resolve_current_ensembl_candidate(collection, species_dir, fetch_text)?;
+        let requested_genome_id = genome_id.map(str::trim).filter(|value| !value.is_empty());
+        let genome_id = requested_genome_id
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| {
+                default_ensembl_quick_install_genome_id(
+                    &resolved.display_name,
+                    &resolved.template.file_stem,
+                    resolved.template.release,
+                    &resolved.template.collection,
+                )
+            });
+        let write_mode = resolve_ensembl_quick_install_write_mode(
+            self,
+            output_catalog_path,
+            &genome_id,
+            domain,
+        )?;
+        let output_path = resolve_ensembl_quick_install_output_path(
+            self,
+            output_catalog_path,
+            &resolved.template,
+            domain,
+        )?;
+        validate_ensembl_quick_install_target(
+            self,
+            &output_path,
+            write_mode,
+            &genome_id,
+            &resolved.template,
+        )?;
+        let catalog_entry_action = if write_mode == EnsemblQuickInstallWriteMode::FullCatalog {
+            match self.entries.get(&genome_id) {
+                Some(_) => "refresh_existing_entry",
+                None => "add_new_entry",
+            }
+        } else {
+            match load_catalog_entries_from_optional_file(&output_path)?.contains_key(&genome_id) {
+                true => "refresh_overlay_entry",
+                false => "add_overlay_entry",
+            }
+        };
+        let mut warnings = vec![];
+        if write_mode == EnsemblQuickInstallWriteMode::OverlayEntry {
+            warnings.push(
+                "Current catalog source is discovery/overlay-based, so the quick install will write only the new Ensembl entry into an overlay catalog fragment.".to_string(),
+            );
+        }
+        Ok(EnsemblQuickInstallPreview {
+            collection: resolved.template.collection.clone(),
+            species_dir: resolved.template.species_dir.clone(),
+            display_name: resolved.display_name,
+            file_stem: resolved.template.file_stem.clone(),
+            release: resolved.template.release,
+            genome_id,
+            catalog_origin_label: self.catalog_origin_label().to_string(),
+            output_catalog_path: output_path.display().to_string(),
+            catalog_write_mode: write_mode.label().to_string(),
+            catalog_entry_action: catalog_entry_action.to_string(),
+            sequence_remote: resolved.sequence_remote,
+            annotations_remote: resolved.annotations_remote,
+            warnings,
+        })
+    }
+
+    fn apply_ensembl_quick_install_with_fetcher(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        fetch_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, String> {
+        let preview = self.preview_ensembl_quick_install_with_fetcher(
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            fetch_text,
+        )?;
+        let entry = build_ensembl_quick_install_catalog_entry(&preview);
+        let output_path = PathBuf::from(&preview.output_catalog_path);
+        match preview.catalog_write_mode.as_str() {
+            "full_catalog" => {
+                let mut next_entries = self.entries.clone();
+                next_entries.insert(preview.genome_id.clone(), entry);
+                let in_place = self
+                    .catalog_path()
+                    .map(|path| path == output_path.as_path())
+                    .unwrap_or(false);
+                write_catalog_entries_to_path(
+                    &output_path,
+                    &next_entries,
+                    in_place,
+                    self.catalog_path(),
+                )?;
+            }
+            "overlay_entry" => {
+                let mut next_entries = load_catalog_entries_from_optional_file(&output_path)?;
+                next_entries.insert(preview.genome_id.clone(), entry);
+                write_catalog_entries_to_path(&output_path, &next_entries, false, None)?;
+            }
+            other => {
+                return Err(format!(
+                    "Unsupported Ensembl quick-install write mode '{}'",
+                    other
+                ));
+            }
+        }
+        Ok(EnsemblQuickInstallCatalogWriteReport {
+            preview,
+            wrote_catalog: true,
+        })
+    }
+
+    fn quick_install_ensembl_genome_once_with_progress_and_fetcher(
+        &self,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+        fetch_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<EnsemblQuickInstallReport, String> {
+        let write_report = self.apply_ensembl_quick_install_with_fetcher(
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            fetch_text,
+        )?;
+        let catalog = GenomeCatalog::from_json_file(&write_report.preview.output_catalog_path)?;
+        let prepare_report = catalog.prepare_genome_once_with_progress(
+            &write_report.preview.genome_id,
+            cache_dir,
+            on_progress,
+        )?;
+        Ok(EnsemblQuickInstallReport {
+            preview: write_report.preview,
+            wrote_catalog: write_report.wrote_catalog,
+            prepare_report,
+        })
     }
 
     /// Remove one genome entry from the backing JSON catalog.
@@ -5570,6 +5814,29 @@ struct ResolvedCurrentEnsemblRemoteEntry {
     annotations_remote: String,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedCurrentEnsemblCandidate {
+    display_name: String,
+    template: EnsemblCatalogTemplate,
+    sequence_remote: String,
+    annotations_remote: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EnsemblQuickInstallWriteMode {
+    FullCatalog,
+    OverlayEntry,
+}
+
+impl EnsemblQuickInstallWriteMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::FullCatalog => "full_catalog",
+            Self::OverlayEntry => "overlay_entry",
+        }
+    }
+}
+
 fn ensembl_template_metadata(entry: &GenomeCatalogEntry) -> Option<EnsemblCatalogTemplate> {
     entry
         .ensembl_template
@@ -5896,6 +6163,346 @@ fn discover_ensembl_installable_genomes_with_fetcher(
         collection_latest_releases,
         candidates,
         warnings,
+    })
+}
+
+fn guess_catalog_domain_from_origin(origin_label: &str) -> CatalogDomain {
+    if origin_label.to_ascii_lowercase().contains("helper") {
+        CatalogDomain::Helper
+    } else {
+        CatalogDomain::Reference
+    }
+}
+
+fn extract_ensembl_fasta_stem(filename: &str) -> Option<String> {
+    for suffix in [
+        ".dna_sm.toplevel.fa.gz",
+        ".dna.toplevel.fa.gz",
+        ".dna_sm.primary_assembly.fa.gz",
+        ".dna.primary_assembly.fa.gz",
+    ] {
+        if let Some(prefix) = filename.strip_suffix(suffix) {
+            return Some(prefix.to_string());
+        }
+    }
+    None
+}
+
+fn extract_ensembl_gtf_stem_and_release(filename: &str) -> Option<(String, u32)> {
+    let regex = Regex::new(r#"^(.+)\.(\d+)\.gtf\.gz$"#).expect("valid Ensembl gtf stem regex");
+    let captures = regex.captures(filename)?;
+    let stem = captures.get(1)?.as_str().to_string();
+    let release = captures.get(2)?.as_str().parse::<u32>().ok()?;
+    Some((stem, release))
+}
+
+fn choose_current_ensembl_file_stem(
+    fasta_listing: &str,
+    gtf_listing: &str,
+) -> Result<(String, String, String, u32), String> {
+    let mut gtf_by_stem: HashMap<String, (String, u32)> = HashMap::new();
+    for value in parse_listing_href_values(gtf_listing) {
+        let Some((stem, release)) = extract_ensembl_gtf_stem_and_release(&value) else {
+            continue;
+        };
+        match gtf_by_stem.get(&stem) {
+            Some((_, best_release)) if *best_release >= release => {}
+            _ => {
+                gtf_by_stem.insert(stem, (value, release));
+            }
+        }
+    }
+    let mut fasta_candidates = parse_listing_href_values(fasta_listing)
+        .into_iter()
+        .filter_map(|value| {
+            let stem = extract_ensembl_fasta_stem(&value)?;
+            let (gtf_filename, release) = gtf_by_stem.get(&stem)?.clone();
+            Some((value, stem, gtf_filename, release))
+        })
+        .collect::<Vec<_>>();
+    fasta_candidates.sort_by(|left, right| {
+        ensembl_fasta_filename_rank(&left.0)
+            .cmp(&ensembl_fasta_filename_rank(&right.0))
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    fasta_candidates.into_iter().next().ok_or_else(|| {
+        "Could not derive a matching Ensembl FASTA/GTF file stem from the current listings"
+            .to_string()
+    })
+}
+
+fn default_ensembl_quick_install_genome_id(
+    display_name: &str,
+    file_stem: &str,
+    release: u32,
+    collection: &str,
+) -> String {
+    let assembly = file_stem
+        .split_once('.')
+        .map(|(_, suffix)| suffix.to_string())
+        .unwrap_or_else(|| file_stem.to_string());
+    if normalize_ensembl_collection(collection) == Some("metazoa") {
+        format!("{display_name} {assembly} Ensembl Metazoa {release}")
+    } else {
+        format!("{display_name} {assembly} Ensembl {release}")
+    }
+}
+
+fn build_ensembl_quick_install_fragment_filename(
+    template: &EnsemblCatalogTemplate,
+    release: u32,
+) -> String {
+    let assembly = template
+        .file_stem
+        .split_once('.')
+        .map(|(_, suffix)| suffix)
+        .unwrap_or(template.file_stem.as_str());
+    let assembly_slug = assembly
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!(
+        "ensembl_{}_{}_{}_{}.json",
+        template.collection,
+        template.species_dir,
+        assembly_slug.trim_matches('_'),
+        release
+    )
+}
+
+fn preferred_overlay_catalog_dir(domain: CatalogDomain) -> Option<PathBuf> {
+    if let Some(project_root) = configured_project_root() {
+        return Some(
+            project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join(domain.overlay_catalog_dir_name()),
+        );
+    }
+    configured_user_config_root().map(|root| {
+        root.join("catalogs")
+            .join(domain.overlay_catalog_dir_name())
+    })
+}
+
+fn resolve_ensembl_quick_install_output_path(
+    catalog: &GenomeCatalog,
+    output_catalog_path: Option<&str>,
+    template: &EnsemblCatalogTemplate,
+    domain: CatalogDomain,
+) -> Result<PathBuf, String> {
+    if let Some(requested) = output_catalog_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let requested_path = PathBuf::from(requested);
+        if requested_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("json"))
+            .unwrap_or(false)
+        {
+            return Ok(requested_path);
+        }
+        return Ok(
+            requested_path.join(build_ensembl_quick_install_fragment_filename(
+                template,
+                template.release,
+            )),
+        );
+    }
+    if let Some(source_path) = catalog.catalog_path() {
+        if catalog.catalog_file_is_writable() {
+            return Ok(source_path.to_path_buf());
+        }
+    }
+    if let Ok(origin_path) = fs::metadata(catalog.catalog_origin_label()) {
+        if origin_path.is_dir() {
+            return Ok(PathBuf::from(catalog.catalog_origin_label()).join(
+                build_ensembl_quick_install_fragment_filename(template, template.release),
+            ));
+        }
+    }
+    let Some(overlay_dir) = preferred_overlay_catalog_dir(domain) else {
+        return Err(
+            "Could not determine a writable overlay catalog location for Ensembl quick install"
+                .to_string(),
+        );
+    };
+    Ok(
+        overlay_dir.join(build_ensembl_quick_install_fragment_filename(
+            template,
+            template.release,
+        )),
+    )
+}
+
+fn resolve_ensembl_quick_install_write_mode(
+    catalog: &GenomeCatalog,
+    output_catalog_path: Option<&str>,
+    genome_id: &str,
+    domain: CatalogDomain,
+) -> Result<EnsemblQuickInstallWriteMode, String> {
+    let _ = (genome_id, domain);
+    if catalog.catalog_path().is_some() {
+        if output_catalog_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            if catalog.catalog_file_is_writable() {
+                return Ok(EnsemblQuickInstallWriteMode::FullCatalog);
+            }
+            return Ok(EnsemblQuickInstallWriteMode::OverlayEntry);
+        }
+        return Ok(EnsemblQuickInstallWriteMode::FullCatalog);
+    }
+    Ok(EnsemblQuickInstallWriteMode::OverlayEntry)
+}
+
+fn load_catalog_entries_from_optional_file(
+    path: &Path,
+) -> Result<HashMap<String, GenomeCatalogEntry>, String> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+    let text = fs::read_to_string(path)
+        .map_err(|e| format!("Could not read genome catalog '{}': {e}", path.display()))?;
+    serde_json::from_str::<HashMap<String, GenomeCatalogEntry>>(&text)
+        .map_err(|e| format!("Could not parse genome catalog '{}': {e}", path.display()))
+}
+
+fn ensembl_quick_install_entry_matches_template(
+    entry: &GenomeCatalogEntry,
+    template: &EnsemblCatalogTemplate,
+) -> bool {
+    entry
+        .ensembl_template
+        .as_ref()
+        .and_then(normalize_ensembl_template)
+        .map(|existing| {
+            existing.collection == template.collection
+                && existing.species_dir == template.species_dir
+                && existing.file_stem == template.file_stem
+        })
+        .unwrap_or(false)
+}
+
+fn validate_ensembl_quick_install_target(
+    catalog: &GenomeCatalog,
+    output_path: &Path,
+    write_mode: EnsemblQuickInstallWriteMode,
+    genome_id: &str,
+    template: &EnsemblCatalogTemplate,
+) -> Result<(), String> {
+    match write_mode {
+        EnsemblQuickInstallWriteMode::FullCatalog => {
+            if let Some(existing) = catalog.entries.get(genome_id) {
+                if !ensembl_quick_install_entry_matches_template(existing, template) {
+                    return Err(format!(
+                        "Genome id '{}' already exists in '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
+                        genome_id,
+                        catalog.catalog_origin_label()
+                    ));
+                }
+            }
+        }
+        EnsemblQuickInstallWriteMode::OverlayEntry => {
+            let output_entries = load_catalog_entries_from_optional_file(output_path)?;
+            if let Some(existing) = output_entries.get(genome_id) {
+                if !ensembl_quick_install_entry_matches_template(existing, template) {
+                    return Err(format!(
+                        "Genome id '{}' already exists in overlay catalog '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
+                        genome_id,
+                        output_path.display()
+                    ));
+                }
+            } else if catalog.entries.contains_key(genome_id) {
+                return Err(format!(
+                    "Genome id '{}' already exists in the active catalog discovery. Writing a new overlay entry would create a duplicate id; choose another genome id.",
+                    genome_id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn build_ensembl_quick_install_catalog_entry(
+    preview: &EnsemblQuickInstallPreview,
+) -> GenomeCatalogEntry {
+    GenomeCatalogEntry {
+        description: Some(preview.genome_id.clone()),
+        summary: Some(format!(
+            "Current Ensembl quick-install entry for {} ({})",
+            preview.display_name, preview.species_dir
+        )),
+        sequence_remote: Some(preview.sequence_remote.clone()),
+        annotations_remote: Some(preview.annotations_remote.clone()),
+        cache_dir: default_cache_dir(),
+        aliases: vec![preview.species_dir.clone(), preview.display_name.clone()],
+        search_terms: vec![
+            preview.collection.clone(),
+            preview.species_dir.clone(),
+            preview.file_stem.clone(),
+        ],
+        species: Some(preview.display_name.clone()),
+        ensembl_template: Some(EnsemblCatalogTemplate {
+            provider: "ensembl".to_string(),
+            collection: preview.collection.clone(),
+            species_dir: preview.species_dir.clone(),
+            file_stem: preview.file_stem.clone(),
+            release: preview.release,
+        }),
+        ..GenomeCatalogEntry::default()
+    }
+}
+
+fn resolve_current_ensembl_candidate(
+    collection: &str,
+    species_dir: &str,
+    fetch_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<ResolvedCurrentEnsemblCandidate, String> {
+    let normalized_collection = normalize_ensembl_collection(collection)
+        .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", collection))?;
+    let trimmed_species_dir = species_dir.trim();
+    if trimmed_species_dir.is_empty() {
+        return Err("Ensembl quick install requires a non-empty species directory".to_string());
+    }
+    let fasta_listing_url = format!(
+        "{}{}/dna/",
+        current_ensembl_collection_fasta_root_url(normalized_collection)
+            .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", normalized_collection))?,
+        trimmed_species_dir
+    );
+    let gtf_listing_url = format!(
+        "{}{}/",
+        current_ensembl_collection_gtf_root_url(normalized_collection)
+            .ok_or_else(|| format!("Unsupported Ensembl collection '{}'", normalized_collection))?,
+        trimmed_species_dir
+    );
+    let fasta_listing = fetch_text(&fasta_listing_url)?;
+    let gtf_listing = fetch_text(&gtf_listing_url)?;
+    let (fasta_filename, file_stem, gtf_filename, release) =
+        choose_current_ensembl_file_stem(&fasta_listing, &gtf_listing)?;
+    let template = EnsemblCatalogTemplate {
+        provider: "ensembl".to_string(),
+        collection: normalized_collection.to_string(),
+        species_dir: trimmed_species_dir.to_string(),
+        file_stem,
+        release,
+    };
+    Ok(ResolvedCurrentEnsemblCandidate {
+        display_name: ensembl_species_display_name(trimmed_species_dir),
+        sequence_remote: ensembl_release_fasta_url(&template, release, &fasta_filename),
+        annotations_remote: ensembl_release_gtf_url(&template, release, &gtf_filename),
+        template,
     })
 }
 
@@ -12145,6 +12752,182 @@ mod tests {
             output_catalog_path.display().to_string()
         );
         assert!(output_catalog_path.exists());
+    }
+
+    #[test]
+    fn test_ensembl_quick_install_updates_single_file_catalog_in_place() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Mouse GRCm39 Ensembl 115": {
+    "description": "Mouse GRCm39 Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/mus_musculus/Mus_musculus.GRCm39.115.gtf.gz",
+    "ensembl_template": {
+      "provider": "ensembl",
+      "collection": "vertebrates",
+      "species_dir": "mus_musculus",
+      "file_stem": "Mus_musculus.GRCm39",
+      "release": 115
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                    Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
+                }
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let preview = catalog
+            .preview_ensembl_quick_install_with_fetcher(
+                "vertebrates",
+                "mus_musculus",
+                None,
+                None,
+                &fetch,
+            )
+            .unwrap();
+        assert_eq!(preview.catalog_write_mode, "full_catalog");
+        assert_eq!(preview.catalog_entry_action, "add_new_entry");
+        assert_eq!(preview.genome_id, "Mus Musculus GRCm39 Ensembl 116");
+
+        let report = catalog
+            .apply_ensembl_quick_install_with_fetcher(
+                "vertebrates",
+                "mus_musculus",
+                None,
+                None,
+                &fetch,
+            )
+            .unwrap();
+        assert!(report.wrote_catalog);
+        let rewritten =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let names = rewritten.list_genomes();
+        assert!(names.iter().any(|name| name == "Mouse GRCm39 Ensembl 115"));
+        assert!(
+            names
+                .iter()
+                .any(|name| name == "Mus Musculus GRCm39 Ensembl 116")
+        );
+    }
+
+    #[test]
+    fn test_ensembl_quick_install_writes_overlay_entry_without_copying_discovery_catalog() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let overlay_path = root.join("genomes_overlay.json");
+        let mut entries = HashMap::new();
+        entries.insert(
+            "Human GRCh38 Ensembl 113".to_string(),
+            GenomeCatalogEntry {
+                description: Some("Human GRCh38 Ensembl 113".to_string()),
+                sequence_remote: Some("https://example.invalid/human.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/human.gtf.gz".to_string()),
+                ..GenomeCatalogEntry::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: root.to_path_buf(),
+            catalog_path: None,
+            catalog_origin_label: default_catalog_discovery_label(false).to_string(),
+        };
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                    Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
+                }
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let preview = catalog
+            .preview_ensembl_quick_install_with_fetcher(
+                "vertebrates",
+                "mus_musculus",
+                Some(overlay_path.to_string_lossy().as_ref()),
+                None,
+                &fetch,
+            )
+            .unwrap();
+        assert_eq!(preview.catalog_write_mode, "overlay_entry");
+
+        catalog
+            .apply_ensembl_quick_install_with_fetcher(
+                "vertebrates",
+                "mus_musculus",
+                Some(overlay_path.to_string_lossy().as_ref()),
+                None,
+                &fetch,
+            )
+            .unwrap();
+        let written: HashMap<String, GenomeCatalogEntry> =
+            serde_json::from_str(&fs::read_to_string(&overlay_path).unwrap()).unwrap();
+        assert_eq!(written.len(), 1);
+        assert!(written.contains_key("Mus Musculus GRCm39 Ensembl 116"));
+        assert!(!written.contains_key("Human GRCh38 Ensembl 113"));
+    }
+
+    #[test]
+    fn test_ensembl_quick_install_overlay_rejects_duplicate_base_catalog_id() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let overlay_path = root.join("genomes_overlay.json");
+        let mut entries = HashMap::new();
+        entries.insert(
+            "Mouse GRCm39 Ensembl 116".to_string(),
+            GenomeCatalogEntry {
+                description: Some("Mouse GRCm39 Ensembl 116".to_string()),
+                sequence_remote: Some("https://example.invalid/old.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/old.gtf.gz".to_string()),
+                ..GenomeCatalogEntry::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: root.to_path_buf(),
+            catalog_path: None,
+            catalog_origin_label: default_catalog_discovery_label(false).to_string(),
+        };
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                    Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
+                }
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        let err = catalog
+            .preview_ensembl_quick_install_with_fetcher(
+                "vertebrates",
+                "mus_musculus",
+                Some(overlay_path.to_string_lossy().as_ref()),
+                Some("Mouse GRCm39 Ensembl 116"),
+                &fetch,
+            )
+            .unwrap_err();
+        assert!(err.contains("duplicate id"));
     }
 
     #[test]

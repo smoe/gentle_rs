@@ -9830,6 +9830,39 @@ fn parse_genomes_ensembl_available_with_filter() {
 }
 
 #[test]
+fn parse_helpers_install_ensembl_with_overrides() {
+    let cmd = parse_shell_line(
+        "helpers install-ensembl drosophila_melanogaster --collection metazoa --catalog assets/helper_genomes.json --output-catalog data/helper_overlay.json --genome-id 'Drosophila helper' --cache-dir data/helper_genomes --timeout-secs 90",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::ReferenceInstallEnsembl {
+            helper_mode,
+            species_dir,
+            collection,
+            catalog_path,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            timeout_seconds,
+        } => {
+            assert!(helper_mode);
+            assert_eq!(species_dir, "drosophila_melanogaster");
+            assert_eq!(collection, Some("metazoa".to_string()));
+            assert_eq!(catalog_path, Some("assets/helper_genomes.json".to_string()));
+            assert_eq!(
+                output_catalog_path,
+                Some("data/helper_overlay.json".to_string())
+            );
+            assert_eq!(genome_id, Some("Drosophila helper".to_string()));
+            assert_eq!(cache_dir, Some("data/helper_genomes".to_string()));
+            assert_eq!(timeout_seconds, Some(90));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn helper_operation_catalog_path_defaults_to_discovery_token() {
     assert_eq!(
         operation_catalog_path(&None, true),
