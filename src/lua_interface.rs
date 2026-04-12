@@ -100,6 +100,12 @@ impl LuaInterface {
         );
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
         println!(
+            "  - list_reference_catalog_entries([catalog_path], [filter]): Lists structured reference catalog entries"
+        );
+        println!(
+            "  - list_helper_catalog_entries([catalog_path], [filter]): Lists structured helper catalog entries"
+        );
+        println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
         );
         println!(
@@ -222,6 +228,32 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         GentleEngine::list_reference_genomes(catalog_path).map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_reference_catalog_entries(
+        catalog_path: Option<String>,
+        filter: Option<String>,
+    ) -> LuaResult<Vec<crate::genomes::GenomeCatalogListEntry>> {
+        let catalog_path = catalog_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        GentleEngine::list_reference_catalog_entries(catalog_path, filter)
+            .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_helper_catalog_entries(
+        catalog_path: Option<String>,
+        filter: Option<String>,
+    ) -> LuaResult<Vec<crate::genomes::GenomeCatalogListEntry>> {
+        let catalog_path = catalog_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        GentleEngine::list_helper_catalog_entries(catalog_path, filter)
+            .map_err(|e| Self::err(&e.to_string()))
     }
 
     fn list_agent_systems(catalog_path: Option<String>) -> LuaResult<serde_json::Value> {
@@ -601,6 +633,26 @@ impl LuaInterface {
                     let genomes = Self::list_reference_genomes(catalog_path)?;
                     lua.to_value(&genomes)
                 })?,
+        )?;
+
+        self.lua.globals().set(
+            "list_reference_catalog_entries",
+            self.lua.create_function(
+                |lua, (catalog_path, filter): (Option<String>, Option<String>)| {
+                    let entries = Self::list_reference_catalog_entries(catalog_path, filter)?;
+                    lua.to_value(&entries)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_helper_catalog_entries",
+            self.lua.create_function(
+                |lua, (catalog_path, filter): (Option<String>, Option<String>)| {
+                    let entries = Self::list_helper_catalog_entries(catalog_path, filter)?;
+                    lua.to_value(&entries)
+                },
+            )?,
         )?;
 
         self.lua.globals().set(
@@ -1765,6 +1817,77 @@ mod tests {
             .load("assert(type(render_dotplot_svg) == 'function')")
             .exec()
             .expect("render_dotplot_svg wrapper should be registered");
+    }
+
+    #[test]
+    fn lua_reference_and_helper_catalog_entry_wrappers_are_registered() {
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .load(
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')",
+            )
+            .exec()
+            .expect("catalog entry wrappers should be registered");
+    }
+
+    #[test]
+    fn lua_helper_catalog_entry_wrapper_exposes_interpretation() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("helpers.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "pGEX-demo": {
+    "sequence_remote": "https://example.invalid/pgex.fa.gz",
+    "annotations_remote": "https://example.invalid/pgex.gb.gz",
+    "summary": "GST fusion expression vector",
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "search_terms": ["factor xa"],
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["affinity_purification", "protease_tag_removal"],
+      "components": [
+        {"id": "gst", "kind": "fusion_tag", "label": "GST"},
+        {"id": "mcs", "kind": "cloning_site", "label": "MCS"}
+      ]
+    }
+  }
+}"#,
+        )
+        .expect("write helpers catalog");
+
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set("catalog_path", catalog_path.to_string_lossy().to_string())
+            .expect("set catalog path");
+        lua.lua()
+            .load(
+                r#"
+                    rows = list_helper_catalog_entries(catalog_path, "factor xa")
+                    assert(#rows == 1)
+                    assert(rows[1].interpretation ~= nil)
+                    assert(rows[1].interpretation.helper_kinds[1] == "plasmid_vector")
+                "#,
+            )
+            .exec()
+            .expect("list helper catalog entries");
+        let rows_value: Value = lua.lua().globals().get("rows").expect("rows value");
+        let rows: Vec<crate::genomes::GenomeCatalogListEntry> =
+            lua.lua().from_value(rows_value).expect("rows decode");
+        assert!(
+            rows[0]
+                .interpretation
+                .as_ref()
+                .expect("interpretation")
+                .offered_functions
+                .contains(&"fusion_tagging".to_string())
+        );
     }
 
     #[test]

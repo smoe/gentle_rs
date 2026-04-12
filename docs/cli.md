@@ -232,8 +232,8 @@ Resource update capability status:
 Reference genome capability status:
 
 - `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`) and shell-level `genomes/helpers blast`
-- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
-- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
 Agent-assistant capability status:
 
@@ -664,27 +664,34 @@ Exit methods:
 13. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
     - `catalog_path` is optional (`null`/`""` uses default catalog).
-14. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+14. `list_reference_catalog_entries(catalog_path, filter)`
+    - Lists structured reference-catalog entries, including typed metadata.
+    - `filter` is optional and matches the same search surface as `genomes list --filter`.
+15. `list_helper_catalog_entries(catalog_path, filter)`
+    - Lists structured helper-catalog entries, including optional normalized
+      `interpretation` records.
+    - `filter` is optional and matches the same search surface as `helpers list --filter`.
+16. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-15. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+17. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-16. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+18. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-17. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+19. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+20. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
+21. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
     - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
-20. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
+22. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
-21. `set_parameter(state, name, value)`
+23. `set_parameter(state, name, value)`
     - Convenience wrapper for engine `SetParameter`.
-22. `set_vcf_display_filter(state, options)`
+24. `set_vcf_display_filter(state, options)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
-23. `list_agent_systems(catalog_path)`
+25. `list_agent_systems(catalog_path)`
     - Lists configured agent systems from catalog JSON.
     - `catalog_path` is optional (`null`/`""` uses `assets/agent_systems.json`).
 24. `ask_agent_system(state, system_id, prompt, options)`
@@ -921,27 +928,32 @@ Exit methods:
    - `output` is optional.
 13. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
-14. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+14. `list_reference_catalog_entries([catalog_path], [filter])`
+    - Lists structured reference-catalog entries, including typed metadata.
+15. `list_helper_catalog_entries([catalog_path], [filter])`
+    - Lists structured helper-catalog entries, including optional normalized
+      `interpretation` records.
+16. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-15. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+17. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-16. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+18. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-17. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+19. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+20. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
+21. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
     - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
-20. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
+22. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
-21. `set_parameter(project, name, value)`
+23. `set_parameter(project, name, value)`
     - Convenience wrapper for engine `SetParameter`.
-22. `set_vcf_display_filter(project, opts)`
+24. `set_vcf_display_filter(project, opts)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
-23. `list_agent_systems([catalog_path])`
+25. `list_agent_systems([catalog_path])`
     - Lists configured agent systems from catalog JSON.
     - `catalog_path` is optional (defaults to `assets/agent_systems.json`).
 24. `ask_agent_system(project, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary])`

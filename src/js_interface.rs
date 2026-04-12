@@ -363,6 +363,28 @@ fn list_reference_genomes(#[string] catalog_path: &str) -> Result<Vec<String>, J
 
 #[op2]
 #[serde]
+fn list_reference_catalog_entries(
+    #[string] catalog_path: &str,
+    #[string] filter: &str,
+) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
+    GentleEngine::list_reference_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
+        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
+}
+
+#[op2]
+#[serde]
+fn list_helper_catalog_entries(
+    #[string] catalog_path: &str,
+    #[string] filter: &str,
+) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
+    GentleEngine::list_helper_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
+        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
+}
+
+#[op2]
+#[serde]
 fn list_agent_systems(#[string] catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
@@ -545,6 +567,8 @@ impl JavaScriptInterface {
         const EXPORT_DNA_LADDERS: OpDecl = export_dna_ladders();
         const EXPORT_RNA_LADDERS: OpDecl = export_rna_ladders();
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
+        const LIST_REFERENCE_CATALOG_ENTRIES: OpDecl = list_reference_catalog_entries();
+        const LIST_HELPER_CATALOG_ENTRIES: OpDecl = list_helper_catalog_entries();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
@@ -571,6 +595,8 @@ impl JavaScriptInterface {
                 EXPORT_DNA_LADDERS,
                 EXPORT_RNA_LADDERS,
                 LIST_REFERENCE_GENOMES,
+                LIST_REFERENCE_CATALOG_ENTRIES,
+                LIST_HELPER_CATALOG_ENTRIES,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
                 IS_REFERENCE_GENOME_PREPARED,
@@ -620,6 +646,12 @@ impl JavaScriptInterface {
 		          	}
 			          	function list_reference_genomes(catalog_path) {
 			          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
+			          	}
+			          	function list_reference_catalog_entries(catalog_path, filter) {
+			          		return Deno.core.ops.list_reference_catalog_entries(catalog_path ?? "", filter ?? "");
+			          	}
+			          	function list_helper_catalog_entries(catalog_path, filter) {
+			          		return Deno.core.ops.list_helper_catalog_entries(catalog_path ?? "", filter ?? "");
 			          	}
 			          	function list_agent_systems(catalog_path) {
 			          		return Deno.core.ops.list_agent_systems(catalog_path ?? "");
@@ -1175,6 +1207,74 @@ mod tests {
             .to_string(),
         )
         .expect("render_dotplot_svg wrapper should be registered");
+    }
+
+    #[test]
+    fn js_reference_and_helper_catalog_entry_wrappers_are_registered() {
+        let mut js = JavaScriptInterface::default();
+        js.run_checked(
+            r#"
+                if (typeof list_reference_catalog_entries !== "function") {
+                    throw new Error("list_reference_catalog_entries wrapper is missing");
+                }
+                if (typeof list_helper_catalog_entries !== "function") {
+                    throw new Error("list_helper_catalog_entries wrapper is missing");
+                }
+            "#
+            .to_string(),
+        )
+        .expect("catalog entry wrappers should be registered");
+    }
+
+    #[test]
+    fn js_helper_catalog_entry_wrapper_exposes_interpretation() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("helpers.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "pGEX-demo": {
+    "sequence_remote": "https://example.invalid/pgex.fa.gz",
+    "annotations_remote": "https://example.invalid/pgex.gb.gz",
+    "summary": "GST fusion expression vector",
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "search_terms": ["factor xa"],
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["affinity_purification", "protease_tag_removal"],
+      "components": [
+        {"id": "gst", "kind": "fusion_tag", "label": "GST"},
+        {"id": "mcs", "kind": "cloning_site", "label": "MCS"}
+      ]
+    }
+  }
+}"#,
+        )
+        .expect("write helpers catalog");
+
+        let mut js = JavaScriptInterface::default();
+        let catalog_js = serde_json::to_string(catalog_path.to_string_lossy().as_ref())
+            .expect("serialize catalog path");
+        js.run_checked(format!(
+            r#"
+                const rows = list_helper_catalog_entries({catalog_js}, "factor xa");
+                if (rows.length !== 1) {{
+                    throw new Error(`expected one helper row, got ${{rows.length}}`);
+                }}
+                const interpretation = rows[0].interpretation;
+                if (!interpretation) {{
+                    throw new Error("missing interpretation");
+                }}
+                if (interpretation.helper_kinds[0] !== "plasmid_vector") {{
+                    throw new Error("missing helper kind");
+                }}
+                if (!interpretation.offered_functions.includes("fusion_tagging")) {{
+                    throw new Error("missing derived function");
+                }}
+            "#
+        ))
+        .expect("helper catalog entries via js");
     }
 
     #[test]

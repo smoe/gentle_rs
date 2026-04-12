@@ -1939,6 +1939,9 @@ Current baseline:
 - helper list/status routes now also expose an initial normalized
   `interpretation` record so downstream adapters can start consuming one
   portable helper-meaning layer
+- JS/Lua adapters now also expose structured reference/helper catalog-entry
+  helpers so agents/scripts can consume catalog metadata and helper
+  `interpretation` records without reparsing shell JSON
 
 Planned work:
 

@@ -3126,6 +3126,26 @@
          "interfaces": [
             "js"
          ],
+         "path": "list_reference_catalog_entries",
+         "summary": "List structured reference catalog entries, optionally filtered.",
+         "usage": "list_reference_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_helper_catalog_entries",
+         "summary": "List structured helper catalog entries, including optional interpretation metadata.",
+         "usage": "list_helper_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
          "path": "list_rna_ladders",
          "summary": "Alias for inspect_rna_ladders.",
          "usage": "list_rna_ladders([name_filter])"
@@ -3483,6 +3503,26 @@
          "path": "list_reference_genomes",
          "summary": "List reference genomes from catalog.",
          "usage": "list_reference_genomes([catalog_path])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_reference_catalog_entries",
+         "summary": "List structured reference catalog entries, optionally filtered.",
+         "usage": "list_reference_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_helper_catalog_entries",
+         "summary": "List structured helper catalog entries, including optional interpretation metadata.",
+         "usage": "list_helper_catalog_entries([catalog_path], [filter])"
       },
       {
          "aliases": [],
