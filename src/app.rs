@@ -87,11 +87,12 @@ use crate::{
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, EnsemblCatalogUpdatePreview,
-        GenomeBlastReport, GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord,
-        GenomeSourcePlan, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan,
-        PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-        PreparedCacheArtifactGroup, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
-        PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
+        GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeChromosomeRecord,
+        GenomeGeneRecord, GenomeSourcePlan, HelperConstructInterpretation, MAKEBLASTDB_ENV_BIN,
+        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan, PrepareGenomePlanStep,
+        PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
+        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PreparedCacheInspectionEntry,
+        PreparedCacheInspectionReport, PreparedGenomeInspection,
         configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
     },
     gibson_planning::{
@@ -970,6 +971,8 @@ pub struct GENtleApp {
     planning_sync_message: String,
     planning_rejection_reason: String,
     planning_suggestions_filter: Option<PlanningSuggestionStatus>,
+    planning_helper_filter: String,
+    planning_helper_selected_id: String,
     planning_status: String,
     next_background_job_id: u64,
     job_event_log: Vec<BackgroundJobEvent>,
@@ -2491,6 +2494,8 @@ impl Default for GENtleApp {
             planning_sync_message: String::new(),
             planning_rejection_reason: String::new(),
             planning_suggestions_filter: Some(PlanningSuggestionStatus::Pending),
+            planning_helper_filter: String::new(),
+            planning_helper_selected_id: String::new(),
             planning_status: String::new(),
             next_background_job_id: 1,
             job_event_log: vec![],
@@ -12746,6 +12751,259 @@ Error: `{err}`"
         Ok(Some(plan))
     }
 
+    fn helper_catalog_entries_for_catalog_path(
+        &self,
+        catalog_path: &str,
+        filter: Option<&str>,
+    ) -> Result<Vec<GenomeCatalogListEntry>, String> {
+        GentleEngine::list_helper_catalog_entries(Some(catalog_path), filter).map_err(|e| {
+            format!(
+                "Could not load helper catalog entries from '{}': {}",
+                catalog_path, e.message
+            )
+        })
+    }
+
+    fn helper_catalog_entries_for_scope(
+        &self,
+        scope: GenomeDialogScope,
+        filter: Option<&str>,
+    ) -> Result<Vec<GenomeCatalogListEntry>, String> {
+        if !matches!(scope, GenomeDialogScope::Helper) {
+            return Ok(vec![]);
+        }
+        let catalog_path = if scope == self.genome_dialog_scope {
+            self.genome_catalog_path_resolved()
+        } else {
+            self.scope_genome_paths_resolved(scope).0
+        };
+        self.helper_catalog_entries_for_catalog_path(&catalog_path, filter)
+    }
+
+    fn helper_catalog_entry_matches_selection(
+        entry: &GenomeCatalogListEntry,
+        selected: &str,
+    ) -> bool {
+        let needle = selected.trim();
+        if needle.is_empty() {
+            return false;
+        }
+        entry.genome_id.eq_ignore_ascii_case(needle)
+            || entry
+                .aliases
+                .iter()
+                .any(|alias| alias.eq_ignore_ascii_case(needle))
+    }
+
+    fn selected_helper_catalog_entry_for_scope(
+        &self,
+        scope: GenomeDialogScope,
+    ) -> Result<Option<GenomeCatalogListEntry>, String> {
+        if !matches!(scope, GenomeDialogScope::Helper) {
+            return Ok(None);
+        }
+        let selected = self.genome_id.trim();
+        if selected.is_empty() {
+            return Ok(None);
+        }
+        let entries = self.helper_catalog_entries_for_scope(scope, None)?;
+        Ok(entries
+            .into_iter()
+            .find(|entry| Self::helper_catalog_entry_matches_selection(entry, selected)))
+    }
+
+    fn format_helper_construct_interpretation_detail_lines(
+        interpretation: &HelperConstructInterpretation,
+    ) -> Vec<String> {
+        let mut lines = vec![format!("helper id: {}", interpretation.helper_id)];
+        if !interpretation.aliases.is_empty() {
+            lines.push(format!("aliases: {}", interpretation.aliases.join(", ")));
+        }
+        if !interpretation.helper_kinds.is_empty() {
+            lines.push(format!(
+                "helper kind: {}",
+                interpretation.helper_kinds.join(", ")
+            ));
+        }
+        if !interpretation.host_systems.is_empty() {
+            lines.push(format!(
+                "host system: {}",
+                interpretation.host_systems.join(", ")
+            ));
+        }
+        if !interpretation.offered_functions.is_empty() {
+            lines.push(format!(
+                "offered functions: {}",
+                interpretation.offered_functions.join(", ")
+            ));
+        }
+        if !interpretation.constraints.is_empty() {
+            lines.push(format!(
+                "constraints: {}",
+                interpretation.constraints.join(", ")
+            ));
+        }
+        if !interpretation.procurement_channels.is_empty() {
+            lines.push(format!(
+                "procurement channels: {}",
+                interpretation.procurement_channels.join(", ")
+            ));
+        }
+        if interpretation.local_variant_unpublished {
+            lines.push("local variant: unpublished".to_string());
+        }
+        lines
+    }
+
+    fn format_helper_component_summary(
+        component: &crate::genomes::HelperConstructInterpretationComponent,
+    ) -> String {
+        let title = component
+            .label
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(component.id.as_str());
+        let mut parts = vec![format!("{title} [{}]", component.kind)];
+        if title != component.id {
+            parts.push(format!("id={}", component.id));
+        }
+        if !component.tags.is_empty() {
+            parts.push(format!("tags={}", component.tags.join(",")));
+        }
+        if !component.attributes.is_empty() {
+            let attrs = component
+                .attributes
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!("attrs={attrs}"));
+        }
+        if let Some(description) = component
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(description.to_string());
+        }
+        parts.join(" | ")
+    }
+
+    fn format_helper_relationship_summary(
+        relationship: &crate::genomes::HelperConstructRelationship,
+    ) -> String {
+        let mut text = format!(
+            "{} --{}--> {}",
+            relationship.subject, relationship.predicate, relationship.object
+        );
+        if let Some(note) = relationship
+            .note
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            text.push_str(&format!(" ({note})"));
+        }
+        text
+    }
+
+    fn render_helper_catalog_entry_panel(
+        ui: &mut Ui,
+        entry: &GenomeCatalogListEntry,
+        heading: &str,
+    ) {
+        ui.separator();
+        ui.heading(heading);
+        if let Some(summary) = entry
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(summary);
+        }
+        if let Some(description) = entry
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let summary_trimmed = entry.summary.as_deref().map(str::trim).unwrap_or_default();
+            if description != summary_trimmed {
+                ui.small(description);
+            }
+        }
+        if let Some(procurement) = entry.procurement.as_ref() {
+            if let Some(vendor) = procurement
+                .vendor_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ui.small(format!("vendor: {vendor}"));
+            }
+            if let Some(catalog_number) = procurement
+                .catalog_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ui.small(format!("catalog number: {catalog_number}"));
+            }
+            if let Some(order_url) = procurement
+                .order_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ui.small(format!("order URL: {order_url}"));
+            }
+            if let Some(reference_url) = procurement
+                .reference_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ui.small(format!("reference URL: {reference_url}"));
+            }
+            if let Some(notes) = procurement
+                .notes
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                ui.small(format!("procurement notes: {notes}"));
+            }
+        }
+        match entry.interpretation.as_ref() {
+            Some(interpretation) => {
+                for line in
+                    Self::format_helper_construct_interpretation_detail_lines(interpretation)
+                {
+                    ui.small(line);
+                }
+                if !interpretation.components.is_empty() {
+                    ui.collapsing("Components", |ui| {
+                        for component in &interpretation.components {
+                            ui.monospace(Self::format_helper_component_summary(component));
+                        }
+                    });
+                }
+                if !interpretation.relationships.is_empty() {
+                    ui.collapsing("Relationships", |ui| {
+                        for relationship in &interpretation.relationships {
+                            ui.monospace(Self::format_helper_relationship_summary(relationship));
+                        }
+                    });
+                }
+            }
+            None => {
+                ui.small("No structured interpretation is available for this helper yet.");
+            }
+        }
+    }
+
     fn format_genome_source_plan_summary(plan: &GenomeSourcePlan) -> String {
         let mut parts = vec![format!(
             "sources: sequence={} | annotation={}",
@@ -16477,6 +16735,24 @@ Error: `{err}`"
                 );
             }
         }
+        if matches!(scope, GenomeDialogScope::Helper) {
+            match self.selected_helper_catalog_entry_for_scope(scope) {
+                Ok(Some(entry)) => {
+                    Self::render_helper_catalog_entry_panel(
+                        ui,
+                        &entry,
+                        "Helper Construct Interpretation",
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Helper interpretation error: {e}"),
+                    );
+                }
+            }
+        }
         if preparable_genomes.is_empty() {
             ui.label("All genomes in this catalog are already prepared.");
         }
@@ -17075,6 +17351,24 @@ Error: `{err}`"
                         egui::Color32::from_rgb(190, 70, 70),
                         format!("Source-plan error: {e}"),
                     );
+                }
+            }
+            if matches!(scope, GenomeDialogScope::Helper) {
+                match self.selected_helper_catalog_entry_for_scope(scope) {
+                    Ok(Some(entry)) => {
+                        Self::render_helper_catalog_entry_panel(
+                            ui,
+                            &entry,
+                            "Helper Construct Interpretation",
+                        );
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Helper interpretation error: {e}"),
+                        );
+                    }
                 }
             }
             if prepared_genomes.is_empty() {
@@ -17684,6 +17978,24 @@ Error: `{err}`"
                     egui::Color32::from_rgb(190, 70, 70),
                     format!("Source-plan error: {e}"),
                 );
+            }
+        }
+        if matches!(scope, GenomeDialogScope::Helper) {
+            match self.selected_helper_catalog_entry_for_scope(scope) {
+                Ok(Some(entry)) => {
+                    Self::render_helper_catalog_entry_panel(
+                        ui,
+                        &entry,
+                        "Helper Construct Interpretation",
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Helper interpretation error: {e}"),
+                    );
+                }
             }
         }
         if prepared_genomes.is_empty() {
@@ -18434,6 +18746,24 @@ Error: `{err}`"
                                         ui.colored_label(
                                             egui::Color32::from_rgb(190, 70, 70),
                                             format!("Chromosome inspector error: {e}"),
+                                        );
+                                    }
+                                }
+                            }
+                            if matches!(scope, GenomeDialogScope::Helper) {
+                                match self.selected_helper_catalog_entry_for_scope(scope) {
+                                    Ok(Some(entry)) => {
+                                        Self::render_helper_catalog_entry_panel(
+                                            ui,
+                                            &entry,
+                                            "Selected Helper Construct",
+                                        );
+                                    }
+                                    Ok(None) => {}
+                                    Err(e) => {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 70, 70),
+                                            format!("Helper interpretation error: {e}"),
                                         );
                                     }
                                 }
@@ -22556,6 +22886,93 @@ Error: `{err}`"
                 self.clear_planning_objective();
             }
         });
+
+        ui.separator();
+        ui.heading("Helper Construct Browser");
+        let (helper_catalog_path, _) = self.scope_genome_paths_resolved(GenomeDialogScope::Helper);
+        ui.small(format!(
+            "Browse helper semantics from the current helper catalog: {helper_catalog_path}"
+        ));
+        ui.horizontal(|ui| {
+            ui.label("filter");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_helper_filter)
+                    .desired_width(f32::INFINITY),
+            );
+            if ui
+                .button("Clear")
+                .on_hover_text("Clear the helper-construct browser filter")
+                .clicked()
+            {
+                self.planning_helper_filter.clear();
+            }
+        });
+        match self.helper_catalog_entries_for_catalog_path(
+            &helper_catalog_path,
+            Some(&self.planning_helper_filter),
+        ) {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    ui.small("No helper catalog entries matched the current filter.");
+                } else {
+                    if !entries.iter().any(|entry| {
+                        Self::helper_catalog_entry_matches_selection(
+                            entry,
+                            &self.planning_helper_selected_id,
+                        )
+                    }) {
+                        self.planning_helper_selected_id = entries[0].genome_id.clone();
+                    }
+                    ui.columns(2, |columns| {
+                        columns[0].label("Catalog entries");
+                        egui::ScrollArea::vertical()
+                            .id_salt("planning_helper_catalog_entries")
+                            .max_height(240.0)
+                            .show(&mut columns[0], |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                for entry in &entries {
+                                    let selected = Self::helper_catalog_entry_matches_selection(
+                                        entry,
+                                        &self.planning_helper_selected_id,
+                                    );
+                                    let label = entry
+                                        .summary
+                                        .as_deref()
+                                        .map(str::trim)
+                                        .filter(|value| !value.is_empty())
+                                        .map(|summary| format!("{} — {}", entry.genome_id, summary))
+                                        .unwrap_or_else(|| entry.genome_id.clone());
+                                    if ui.selectable_label(selected, label).clicked() {
+                                        self.planning_helper_selected_id = entry.genome_id.clone();
+                                    }
+                                }
+                            });
+                        columns[1].label("Selected helper");
+                        if let Some(entry) = entries.iter().find(|entry| {
+                            Self::helper_catalog_entry_matches_selection(
+                                entry,
+                                &self.planning_helper_selected_id,
+                            )
+                        }) {
+                            Self::render_helper_catalog_entry_panel(
+                                &mut columns[1],
+                                entry,
+                                "Selected Helper Construct",
+                            );
+                        }
+                    });
+                }
+            }
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Helper browser error: {e}"),
+                );
+            }
+        }
 
         ui.separator();
         ui.heading("Sync Suggestions");
@@ -37437,10 +37854,11 @@ mod tests {
             RoutineDecisionTracePreflightSnapshot, SequenceOrigin,
         },
         genomes::{
-            PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
-            PreparedCacheArtifactGroup, PreparedCacheArtifactStat, PreparedCacheCleanupItemReport,
-            PreparedCacheCleanupMode, PreparedCacheCleanupReport, PreparedCacheEntryKind,
-            PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
+            HelperConstructInterpretation, PrepareGenomePlan, PrepareGenomePlanStep,
+            PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
+            PreparedCacheArtifactStat, PreparedCacheCleanupItemReport, PreparedCacheCleanupMode,
+            PreparedCacheCleanupReport, PreparedCacheEntryKind, PreparedCacheInspectionEntry,
+            PreparedCacheInspectionReport, PreparedGenomeInspection,
         },
         gibson_planning::{
             GibsonAssemblyPlan, GibsonAssemblyPreview, GibsonCartoonPreview,
@@ -37513,6 +37931,112 @@ mod tests {
             catalog_path.display().to_string(),
             cache_dir.display().to_string(),
         )
+    }
+
+    fn write_app_test_helper_catalog(root: &std::path::Path) -> String {
+        let pgex_fasta = root.join("pgex.fa");
+        let pgex_ann = root.join("pgex.gb");
+        let neutral_fasta = root.join("neutral.fa");
+        let neutral_ann = root.join("neutral.gb");
+        let helper_cache_dir = root.join("helper_cache");
+        let catalog_path = root.join("helper_catalog.json");
+        fs::write(&pgex_fasta, ">pgex\nATGGGATCCGAACTCGAGTAA\n").expect("write pgex fasta");
+        fs::write(
+            &pgex_ann,
+            "LOCUS       pGEXTEST                  22 bp    DNA\n",
+        )
+        .expect("write pgex annotation");
+        fs::write(&neutral_fasta, ">neutral\nATGCGTACTGATCGATCGTA\n").expect("write neutral fasta");
+        fs::write(
+            &neutral_ann,
+            "LOCUS       NEUTRAL                  20 bp    DNA\n",
+        )
+        .expect("write neutral annotation");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "pGEX_like_vector": {{
+    "description": "GST affinity fusion vector",
+    "summary": "E. coli GST-tag fusion helper with Factor Xa cleavage before the MCS.",
+    "aliases": ["pGEX", "PGEX-001"],
+    "tags": ["expression", "purification"],
+    "search_terms": ["factor xa", "gst", "affinity purification"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "procurement": {{
+      "vendor_name": "ExampleBio",
+      "catalog_number": "PGEX-001",
+      "order_url": "https://example.invalid/pgex"
+    }},
+    "semantics": {{
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_expression",
+        "affinity_purification",
+        "fusion_tagging",
+        "protease_tag_removal"
+      ],
+      "constraints": ["reading_frame_must_be_preserved"],
+      "components": [
+        {{
+          "id": "gst_tag",
+          "kind": "fusion_tag",
+          "label": "GST",
+          "description": "Glutathione affinity tag",
+          "tags": ["purification"],
+          "attributes": {{"position": "n_terminal"}}
+        }},
+        {{
+          "id": "factor_xa_site",
+          "kind": "protease_site",
+          "label": "Factor Xa",
+          "description": "Protease cleavage site"
+        }},
+        {{
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "MCS",
+          "description": "In-frame coding insert window"
+        }}
+      ],
+      "relationships": [
+        {{
+          "subject": "gst_tag",
+          "predicate": "upstream_of",
+          "object": "factor_xa_site",
+          "note": "Tag removal before cloning window"
+        }},
+        {{
+          "subject": "factor_xa_site",
+          "predicate": "upstream_of",
+          "object": "mcs"
+        }}
+      ]
+    }},
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "NeutralBackbone": {{
+    "description": "Generic cloning backbone",
+    "summary": "Neutral helper without typed semantics.",
+    "aliases": ["NEUTRAL-1"],
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                pgex_fasta.display(),
+                pgex_ann.display(),
+                helper_cache_dir.display(),
+                neutral_fasta.display(),
+                neutral_ann.display(),
+                helper_cache_dir.display()
+            ),
+        )
+        .expect("write helper catalog");
+        catalog_path.display().to_string()
     }
 
     fn make_prepared_genome_inspection() -> PreparedGenomeInspection {
@@ -39278,12 +39802,16 @@ mod tests {
         let mut app = GENtleApp::default();
         app.open_planning_dialog();
         app.planning_sync_source = "local_lab".to_string();
+        app.planning_helper_filter = "factor xa".to_string();
+        app.planning_helper_selected_id = "pGEX".to_string();
         app.planning_status = "editing".to_string();
 
         app.open_planning_dialog();
 
         assert!(app.show_planning_dialog);
         assert_eq!(app.planning_sync_source, "local_lab");
+        assert_eq!(app.planning_helper_filter, "factor xa");
+        assert_eq!(app.planning_helper_selected_id, "pGEX");
         assert_eq!(app.planning_status, "editing");
         assert!(
             app.pending_focus_viewports
@@ -40152,6 +40680,99 @@ mod tests {
         assert_eq!(request.catalog_path, "custom/helper_catalog.json");
         assert!(request.cache_dir.is_none());
         assert_eq!(request.install_dir, "/tmp/helper_install");
+    }
+
+    #[test]
+    fn helper_catalog_entries_for_scope_apply_filter_and_include_interpretation() {
+        let temp = tempdir().expect("tempdir");
+        let helper_catalog_path = write_app_test_helper_catalog(temp.path());
+        let mut app = GENtleApp::default();
+        app.helper_genome_catalog_path = helper_catalog_path;
+
+        let rows = app
+            .helper_catalog_entries_for_scope(GenomeDialogScope::Helper, Some("factor xa"))
+            .expect("helper rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].genome_id, "pGEX_like_vector");
+        assert!(rows[0].interpretation.is_some());
+        assert_eq!(rows[0].host_system.as_deref(), Some("Escherichia coli"));
+    }
+
+    #[test]
+    fn selected_helper_catalog_entry_resolves_aliases_to_interpretation_entry() {
+        let temp = tempdir().expect("tempdir");
+        let helper_catalog_path = write_app_test_helper_catalog(temp.path());
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_prepare_dialog();
+        app.genome_catalog_path = helper_catalog_path.clone();
+        app.helper_genome_catalog_path = helper_catalog_path;
+        app.genome_id = "pGEX".to_string();
+
+        let entry = app
+            .selected_helper_catalog_entry_for_scope(GenomeDialogScope::Helper)
+            .expect("selected helper entry")
+            .expect("helper entry");
+
+        assert_eq!(entry.genome_id, "pGEX_like_vector");
+        let interpretation = entry.interpretation.expect("helper interpretation");
+        assert_eq!(
+            interpretation.offered_functions,
+            vec![
+                "affinity_purification".to_string(),
+                "bacterial_expression".to_string(),
+                "fusion_tagging".to_string(),
+                "insert_cloning".to_string(),
+                "protease_cleavage".to_string(),
+                "protease_tag_removal".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn selected_helper_catalog_entry_uses_active_dialog_catalog_path() {
+        let temp = tempdir().expect("tempdir");
+        let helper_catalog_path = write_app_test_helper_catalog(temp.path());
+        let mut app = GENtleApp::default();
+        app.open_helper_genome_prepare_dialog();
+        app.helper_genome_catalog_path = "/tmp/old_helper_catalog.json".to_string();
+        app.genome_catalog_path = helper_catalog_path;
+        app.genome_id = "pGEX".to_string();
+
+        let entry = app
+            .selected_helper_catalog_entry_for_scope(GenomeDialogScope::Helper)
+            .expect("selected helper entry")
+            .expect("helper entry");
+
+        assert_eq!(entry.genome_id, "pGEX_like_vector");
+    }
+
+    #[test]
+    fn helper_construct_interpretation_lines_include_core_reasoning_fields() {
+        let interpretation = HelperConstructInterpretation {
+            helper_id: "pGEX_like_vector".to_string(),
+            aliases: vec!["pGEX".to_string()],
+            helper_kinds: vec!["plasmid_vector".to_string()],
+            host_systems: vec!["Escherichia coli".to_string()],
+            offered_functions: vec![
+                "affinity_purification".to_string(),
+                "fusion_tagging".to_string(),
+            ],
+            constraints: vec!["reading_frame_must_be_preserved".to_string()],
+            procurement_channels: vec!["vendor_catalog".to_string()],
+            local_variant_unpublished: true,
+            ..Default::default()
+        };
+
+        let lines = GENtleApp::format_helper_construct_interpretation_detail_lines(&interpretation);
+
+        assert!(lines.contains(&"helper id: pGEX_like_vector".to_string()));
+        assert!(lines.contains(&"aliases: pGEX".to_string()));
+        assert!(lines.contains(&"helper kind: plasmid_vector".to_string()));
+        assert!(lines.contains(&"host system: Escherichia coli".to_string()));
+        assert!(lines.contains(&"constraints: reading_frame_must_be_preserved".to_string()));
+        assert!(lines.contains(&"procurement channels: vendor_catalog".to_string()));
+        assert!(lines.contains(&"local variant: unpublished".to_string()));
     }
 
     #[test]

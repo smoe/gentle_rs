@@ -1283,6 +1283,9 @@ Patterns menu:
     - `project_override` profile
     - planning objective
   - shows merged effective profile (`global -> confirmed_agent_overlay -> project_override`).
+  - includes a searchable `Helper Construct Browser` backed by the shared
+    helper catalog + normalized interpretation layer, so planning work can
+    inspect helper semantics without reparsing free text.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last
@@ -2838,6 +2841,11 @@ Recommended flow:
      - keeps older pinned release rows in the catalog
      - adds or refreshes the newest pinned release row without preparing or downloading genomes
      - if the active catalog file is not writable, the dialog requires saving an updated catalog copy instead of modifying the bundled catalog in place
+   - helper-scope dialogs (`Prepare Helper Genome...`, `Retrieve Helper Sequence...`,
+     `BLAST Helper Sequence...`, and the prepared-reference inspector while
+     helper scope is active) now also show a normalized helper-construct
+     interpretation panel when the selected catalog entry carries structured
+     helper semantics or procurement metadata
    - if the current catalog entry now points to different sources than the
      existing prepared manifest, `Reindex Selected...` still keeps the cached
      local files; only the explicit refresh action discards and re-downloads them

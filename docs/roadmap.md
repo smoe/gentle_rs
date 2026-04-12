@@ -1946,6 +1946,12 @@ Current baseline:
   `helper_catalog_entries`, and targeted `helper_interpretation` tools so
   MCP-native agents can consume the same catalog/interpretation layer without
   going through shell-command text
+- GUI helper dialogs/inspector and the Planning window now also consume the
+  same normalized helper interpretation layer:
+  - helper prepare/retrieve/BLAST/inspector surfaces show a shared
+    helper-construct interpretation panel
+  - the Planning window now includes a searchable helper-construct browser
+    backed by shared catalog-entry + interpretation projections
 
 Planned work:
 
@@ -1959,13 +1965,22 @@ Planned work:
 3. Broaden the normalized helper-interpretation layer so more routes consume
    it directly and derivation becomes richer.
    - Current baseline now emits deterministic `interpretation` records from
-     helper list/status surfaces, and JS/Lua/MCP now consume them directly;
-     GUI/planner adoption and richer function derivation are still pending.
+     helper list/status surfaces, and JS/Lua/MCP/GUI/planner now consume them
+     directly; richer function derivation and more proactive planner use are
+     still pending.
+   - next planner-facing step: inject helper interpretation facts into routine
+     scoring/objective synthesis instead of limiting that knowledge to
+     browser/inspection surfaces
 4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
-   - Bootstrap plus first follow-on examples are now in place; the next step
-     is expanding the example library so common stateful figure-generation and
-     planning/report flows no longer require hand-crafted request JSON.
+   - Bootstrap plus first follow-on examples are now in place; keep expanding
+     the example library so common requests no longer require hand-crafted
+     request JSON:
+     - helper discovery/search
+     - state summary / current-project inspection
+     - public record fetch (`genbank fetch`, `dbsnp fetch`)
+     - sequence-map graphics from a known state
+     - common stateful figure-generation and planning/report flows
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

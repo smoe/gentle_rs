@@ -345,12 +345,22 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
     assert copied_path == generated_root / "outside" / "demo.protocol.svg"
 
 
-def test_example_requests_cover_bootstrap_analysis_and_graphics_routes() -> None:
+def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
         "request_genomes_list_human.json": (
             "shell",
             "genomes list --filter human",
+            180,
+        ),
+        "request_helpers_list_gst.json": (
+            "shell",
+            "helpers list --filter gst",
+            180,
+        ),
+        "request_shell_state_summary.json": (
+            "shell",
+            "state-summary",
             180,
         ),
         "request_genomes_status_grch38.json": (
@@ -373,6 +383,16 @@ def test_example_requests_cover_bootstrap_analysis_and_graphics_routes() -> None
             'helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800',
             2100,
         ),
+        "request_genbank_fetch_pbr322.json": (
+            "shell",
+            "genbank fetch J01749 --as-id pbr322_refseq",
+            300,
+        ),
+        "request_dbsnp_fetch_rs9923231.json": (
+            "shell",
+            'dbsnp fetch rs9923231 "Human GRCh38 Ensembl 116" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core',
+            900,
+        ),
         "request_genomes_extract_gene_tp53.json": (
             "shell",
             'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
@@ -382,6 +402,11 @@ def test_example_requests_cover_bootstrap_analysis_and_graphics_routes() -> None
             "shell",
             'helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10',
             300,
+        ),
+        "request_render_svg_pgex_fasta_circular.json": (
+            "shell",
+            "render-svg pgex_fasta circular artifacts/pgex_fasta.circular.svg",
+            180,
         ),
         "request_protocol_cartoon_gibson_svg.json": (
             "shell",
@@ -396,9 +421,21 @@ def test_example_requests_cover_bootstrap_analysis_and_graphics_routes() -> None
         assert payload["mode"] == mode
         assert payload["shell_line"] == shell_line
         assert payload["timeout_secs"] == timeout_secs
+        if name in {
+            "request_shell_state_summary.json",
+            "request_genbank_fetch_pbr322.json",
+            "request_dbsnp_fetch_rs9923231.json",
+            "request_genomes_extract_gene_tp53.json",
+            "request_render_svg_pgex_fasta_circular.json",
+        }:
+            assert payload["state_path"] == ".gentle_state.json"
         if name == "request_protocol_cartoon_gibson_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/gibson.two_fragment.protocol.svg"
+            ]
+        if name == "request_render_svg_pgex_fasta_circular.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/pgex_fasta.circular.svg"
             ]
 
     planning_payload = json.loads(

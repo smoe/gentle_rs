@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "genbank fetch J01749 --as-id pbr322_refseq",
+  "timeout_secs": 300
+}

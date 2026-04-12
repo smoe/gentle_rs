@@ -106,14 +106,27 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
+
+Notes:
+
+- examples carrying `state_path: ".gentle_state.json"` expect a project state
+  file in the working directory
+- `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
+  route after `request_workflow_file.json`, which loads `pgex_fasta` into that
+  state
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
 
@@ -162,6 +175,8 @@ export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/p
 Included first-run bootstrap request examples:
 
 - `request_genomes_list_human.json`
+- `request_helpers_list_gst.json`
+- `request_shell_state_summary.json`
 - `request_genomes_status_grch38.json`
 - `request_genomes_prepare_grch38.json`
 - `request_helpers_status_puc19.json`
@@ -169,8 +184,13 @@ Included first-run bootstrap request examples:
 
 Included follow-on analysis/planning/graphics examples:
 
+- `request_genbank_fetch_pbr322.json`
+- `request_dbsnp_fetch_rs9923231.json`
 - `request_genomes_extract_gene_tp53.json`
 - `request_helpers_blast_puc19_short.json`
+- `request_render_svg_pgex_fasta_circular.json`
+  - expects a state containing `pgex_fasta`, for example after
+    `request_workflow_file.json`
 - `request_workflow_vkorc1_planning.json`
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the

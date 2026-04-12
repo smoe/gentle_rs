@@ -129,6 +129,12 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_list_human.json \
   --output /tmp/gentle_clawbio_list_human
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_helpers_list_gst.json \
+  --output /tmp/gentle_clawbio_list_helpers
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_shell_state_summary.json \
+  --output /tmp/gentle_clawbio_state_summary
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_status_grch38.json \
   --output /tmp/gentle_clawbio_status_grch38
 python clawbio.py run gentle-cloning \
@@ -137,6 +143,12 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json \
   --output /tmp/gentle_clawbio_prepare_puc19
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json \
+  --output /tmp/gentle_clawbio_fetch_pbr322
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json \
+  --output /tmp/gentle_clawbio_fetch_rs9923231
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json \
   --output /tmp/gentle_clawbio_extract_tp53
@@ -147,9 +159,20 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json \
   --output /tmp/gentle_clawbio_vkorc1_planning
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json \
+  --output /tmp/gentle_clawbio_pgex_map
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json \
   --output /tmp/gentle_clawbio_gibson_graphics
 ```
+
+Notes:
+
+- examples carrying `state_path: ".gentle_state.json"` expect a project state
+  file in the working directory
+- `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
+  route after `request_workflow_file.json`, which loads `pgex_fasta` into that
+  state
 
 Container-backed alternative:
 

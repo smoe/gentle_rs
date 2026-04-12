@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "render-svg pgex_fasta circular artifacts/pgex_fasta.circular.svg",
+  "expected_artifacts": [
+    "artifacts/pgex_fasta.circular.svg"
+  ],
+  "timeout_secs": 180
+}
