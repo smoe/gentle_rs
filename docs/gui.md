@@ -1283,6 +1283,9 @@ Patterns menu:
     - `project_override` profile
     - planning objective
   - shows merged effective profile (`global -> confirmed_agent_overlay -> project_override`).
+  - includes a searchable `Host Profile Browser` backed by the shared starter
+    host-profile catalog, so propagation/expression host traits remain
+    inspectable with genotype/phenotype/source-note details.
   - includes a searchable `Helper Construct Browser` backed by the shared
     helper catalog + normalized interpretation layer, so planning work can
     inspect helper semantics without reparsing free text.

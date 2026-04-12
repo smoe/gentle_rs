@@ -3816,6 +3816,11 @@ Post-baseline follow-ups:
     side-panel description area now shows non-sequence construct reasoning as a
     dedicated inspector section with collapsible fact and decision entries,
     while the DNA overlay remains sequence-only.
+  - Done (2026-04-12, starter host-profile catalog browser): a shared starter
+    host-profile catalog now ships at `assets/host_profiles.json`, the engine
+    can list/filter those records deterministically, and the Planning window
+    now includes a searchable host-profile browser with genotype, phenotype,
+    note, and source-note inspection.
   - Done (2026-04-12, host-route restriction/methylation slice): graph builds
     now derive a dedicated host-route restriction/methylation fact and
     decision, using explicit route-step trait text (`hsdR- M+`, `dam+`,
@@ -3832,7 +3837,8 @@ Post-baseline follow-ups:
       reasoning track.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
-    - host/helper profile catalogs with inspectable source notes
+    - broaden the starter host-profile catalog and add helper/vector profile
+      catalogs with inspectable source notes
     - broaden complementation/selection reasoning beyond the current
       small built-in rule seed set
     - broaden growth-condition interpretation beyond the current nutrient /
@@ -3844,6 +3850,9 @@ Post-baseline follow-ups:
         sequence-backed (heat shock, cold shock, recovery/incubation windows)
       - host-constraint-aware temperature interpretation (for example later
         compatibility checks against strain- or helper-specific thermal limits)
+    - let GUI and ClawBio/OpenClaw inspection surfaces deep-link from host/
+      helper reasoning nodes into the underlying catalog records instead of
+      showing only detached fact summaries
     - expose non-sequence condition/host/helper reasoning clearly in the two
       primary interfaces:
       - GUI: deepen the new inspector from read-only fact/decision summaries

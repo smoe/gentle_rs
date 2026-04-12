@@ -8867,17 +8867,26 @@ fn test_export_process_run_bundle_includes_construct_reasoning_summary_and_graph
         serde_json::from_str(&text).expect("parse run bundle json");
     assert_eq!(
         bundle.construct_reasoning.seq_ids_considered,
-        vec!["reasoning_demo".to_string(), "reasoning_demo_rev".to_string()]
+        vec![
+            "reasoning_demo".to_string(),
+            "reasoning_demo_rev".to_string()
+        ]
     );
     assert_eq!(bundle.construct_reasoning.graphs.len(), 1);
-    assert_eq!(bundle.construct_reasoning.graphs[0].graph_id, graph.graph_id);
+    assert_eq!(
+        bundle.construct_reasoning.graphs[0].graph_id,
+        graph.graph_id
+    );
     assert_eq!(bundle.construct_reasoning.summaries.len(), 1);
     let summary = &bundle.construct_reasoning.summaries[0];
     assert_eq!(summary.seq_id, "reasoning_demo");
     assert_eq!(summary.objective_id, objective.objective_id);
     assert_eq!(summary.helper_profile_id.as_deref(), Some("puc19"));
     assert_eq!(
-        summary.fact_statuses.get("selection_context").map(String::as_str),
+        summary
+            .fact_statuses
+            .get("selection_context")
+            .map(String::as_str),
         Some("supported")
     );
     assert!(
@@ -21288,6 +21297,58 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
 }
 
 #[test]
+fn list_host_profile_catalog_entries_filters_across_tags_and_notes() {
+    let td = tempdir().expect("tempdir");
+    let catalog_path = td.path().join("host_profiles.json");
+    let payload = HostProfileCatalog {
+        schema: HOST_PROFILE_CATALOG_SCHEMA.to_string(),
+        profiles: vec![
+            HostProfileRecord {
+                profile_id: "ecoli_k12_restriction_positive".to_string(),
+                species: "Escherichia coli".to_string(),
+                strain: "K-12 restriction-positive background".to_string(),
+                aliases: vec!["E. coli K".to_string()],
+                genotype_tags: vec!["hsdR+".to_string(), "hsdM+".to_string()],
+                phenotype_tags: vec!["type_i_restriction_barrier".to_string()],
+                notes: vec!["Move into this host only after route review.".to_string()],
+                source_notes: vec!["Synthetic regression fixture".to_string()],
+            },
+            HostProfileRecord {
+                profile_id: "ecoli_dh5alpha".to_string(),
+                species: "Escherichia coli".to_string(),
+                strain: "DH5alpha".to_string(),
+                aliases: vec!["DH5α".to_string()],
+                genotype_tags: vec!["endA1".to_string(), "deoR".to_string()],
+                phenotype_tags: vec!["large_insert_friendly".to_string()],
+                notes: vec!["Useful for larger DNA molecules.".to_string()],
+                source_notes: vec!["Synthetic regression fixture".to_string()],
+            },
+        ],
+    };
+    fs::write(
+        &catalog_path,
+        serde_json::to_string_pretty(&payload).expect("serialize host profile catalog"),
+    )
+    .expect("write host profile catalog");
+
+    let filtered = GentleEngine::list_host_profile_catalog_entries(
+        Some(catalog_path.to_string_lossy().as_ref()),
+        Some("hsdR route"),
+    )
+    .expect("list filtered host profiles");
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].profile_id, "ecoli_k12_restriction_positive");
+
+    let alias_match = GentleEngine::list_host_profile_catalog_entries(
+        Some(catalog_path.to_string_lossy().as_ref()),
+        Some("DH5α"),
+    )
+    .expect("list alias-matched host profiles");
+    assert_eq!(alias_match.len(), 1);
+    assert_eq!(alias_match[0].profile_id, "ecoli_dh5alpha");
+}
+
+#[test]
 fn upsert_construct_reasoning_graph_normalizes_host_context_evidence_fields() {
     let mut engine = GentleEngine::new();
     let graph = engine
@@ -21826,9 +21887,7 @@ fn build_construct_reasoning_graph_derives_host_restriction_methylation_route_ri
     let dna = DNAsequence::from_sequence("AACAAAAAAGTGCGATCCCTGG").expect("sequence");
 
     let mut state = ProjectState::default();
-    state
-        .sequences
-        .insert("route_risk_demo".to_string(), dna);
+    state.sequences.insert("route_risk_demo".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
     let objective = engine
         .upsert_construct_objective(ConstructObjective {

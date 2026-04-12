@@ -18,8 +18,7 @@ use crate::engine::{
 };
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
-    write_demo_pool_json, write_demo_workflow_json,
-    write_demo_workflow_with_shebang,
+    write_demo_pool_json, write_demo_workflow_json, write_demo_workflow_with_shebang,
 };
 use gb_io::seq::{Feature, Location};
 use std::env;

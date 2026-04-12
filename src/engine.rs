@@ -91,6 +91,8 @@ pub use gentle_protocol::{
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
 };
 
+pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {
     PrepareOrReuse,
@@ -4459,6 +4461,91 @@ impl GentleEngine {
         catalog_path: Option<&str>,
     ) -> Result<(GenomeCatalog, String), EngineError> {
         Self::open_catalog_with_default_mode(catalog_path, true)
+    }
+
+    fn open_host_profile_catalog(
+        catalog_path: Option<&str>,
+    ) -> Result<(gentle_protocol::HostProfileCatalog, String), EngineError> {
+        let resolved_catalog_path = catalog_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_HOST_PROFILE_CATALOG_PATH)
+            .to_string();
+        let raw = std::fs::read_to_string(&resolved_catalog_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read host profile catalog '{}': {}",
+                resolved_catalog_path, e
+            ),
+        })?;
+        let catalog =
+            serde_json::from_str::<gentle_protocol::HostProfileCatalog>(&raw).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse host profile catalog '{}': {}",
+                        resolved_catalog_path, e
+                    ),
+                }
+            })?;
+        Ok((catalog, resolved_catalog_path))
+    }
+
+    fn host_profile_matches_filter(profile: &HostProfileRecord, filter: Option<&str>) -> bool {
+        let tokens = filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                value
+                    .split_whitespace()
+                    .map(|token| token.trim().to_ascii_lowercase())
+                    .filter(|token| !token.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if tokens.is_empty() {
+            return true;
+        }
+        let mut haystack = vec![
+            profile.profile_id.as_str(),
+            profile.species.as_str(),
+            profile.strain.as_str(),
+        ]
+        .join("\n");
+        for value in profile.aliases.iter().chain(profile.genotype_tags.iter()) {
+            haystack.push('\n');
+            haystack.push_str(value);
+        }
+        for value in profile
+            .phenotype_tags
+            .iter()
+            .chain(profile.notes.iter())
+            .chain(profile.source_notes.iter())
+        {
+            haystack.push('\n');
+            haystack.push_str(value);
+        }
+        let haystack = haystack.to_ascii_lowercase();
+        tokens.iter().all(|token| haystack.contains(token))
+    }
+
+    pub fn list_host_profile_catalog_entries(
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<HostProfileRecord>, EngineError> {
+        let (catalog, _) = Self::open_host_profile_catalog(catalog_path)?;
+        let mut profiles = catalog
+            .profiles
+            .into_iter()
+            .filter(|profile| Self::host_profile_matches_filter(profile, filter))
+            .collect::<Vec<_>>();
+        profiles.sort_by(|left, right| {
+            left.profile_id
+                .cmp(&right.profile_id)
+                .then_with(|| left.species.cmp(&right.species))
+                .then_with(|| left.strain.cmp(&right.strain))
+        });
+        Ok(profiles)
     }
 
     pub fn list_reference_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
@@ -10285,20 +10372,16 @@ impl GentleEngine {
         let sequence = dna.forward_bytes();
         let mut dam_mode = crate::methylation_sites::MethylationMode::default();
         dam_mode.set_dam(true);
-        let dam_site_count = crate::methylation_sites::MethylationSites::new_from_sequence(
-            sequence,
-            dam_mode,
-        )
-        .sites()
-        .len();
+        let dam_site_count =
+            crate::methylation_sites::MethylationSites::new_from_sequence(sequence, dam_mode)
+                .sites()
+                .len();
         let mut dcm_mode = crate::methylation_sites::MethylationMode::default();
         dcm_mode.set_dcm(true);
-        let dcm_site_count = crate::methylation_sites::MethylationSites::new_from_sequence(
-            sequence,
-            dcm_mode,
-        )
-        .sites()
-        .len();
+        let dcm_site_count =
+            crate::methylation_sites::MethylationSites::new_from_sequence(sequence, dcm_mode)
+                .sites()
+                .len();
         let eco_k_target_site_count =
             Self::construct_reasoning_count_pattern_with_n(sequence, b"AACNNNNNNGTGC")
                 .saturating_add(Self::construct_reasoning_count_pattern_with_n(
@@ -10345,9 +10428,7 @@ impl GentleEngine {
             || compact.contains(&format!("{token}negative"))
     }
 
-    fn construct_reasoning_collect_host_route_trait_tokens(
-        step: &HostRouteStep,
-    ) -> Vec<String> {
+    fn construct_reasoning_collect_host_route_trait_tokens(step: &HostRouteStep) -> Vec<String> {
         let text = std::iter::once(step.host_profile_id.as_str())
             .chain(std::iter::once(step.rationale.as_str()))
             .chain(step.notes.iter().map(String::as_str))
@@ -10359,8 +10440,9 @@ impl GentleEngine {
             .collect::<String>()
             .to_ascii_lowercase();
         let mut tokens = BTreeSet::new();
-        for token in ["hsdr", "hsdm", "hsds", "dam", "dcm", "mdrs", "mcr", "mcra", "mcrbc", "mrr"]
-        {
+        for token in [
+            "hsdr", "hsdm", "hsds", "dam", "dcm", "mdrs", "mcr", "mcra", "mcrbc", "mrr",
+        ] {
             if Self::construct_reasoning_host_text_mentions_positive(&text, token) {
                 tokens.insert(format!("{token}_present"));
             }
@@ -10399,11 +10481,9 @@ impl GentleEngine {
         step: &ConstructHostRestrictionMethylationStep,
         tokens: &[&str],
     ) -> bool {
-        tokens.iter().any(|token| {
-            step.trait_tokens
-                .iter()
-                .any(|value| value == token)
-        })
+        tokens
+            .iter()
+            .any(|token| step.trait_tokens.iter().any(|value| value == token))
     }
 
     fn construct_reasoning_detect_route_restriction_methylation_conflicts(
@@ -10418,17 +10498,23 @@ impl GentleEngine {
             };
             let upstream_has_hsd_methylase =
                 Self::construct_reasoning_route_step_has_any_trait(upstream, &["hsdm_present"]);
-            let upstream_has_dam_dcm =
-                Self::construct_reasoning_route_step_has_any_trait(
-                    upstream,
-                    &["dam_present", "dcm_present"],
-                );
+            let upstream_has_dam_dcm = Self::construct_reasoning_route_step_has_any_trait(
+                upstream,
+                &["dam_present", "dcm_present"],
+            );
             let downstream_has_hsd_restriction =
                 Self::construct_reasoning_route_step_has_any_trait(downstream, &["hsdr_present"]);
-            let downstream_has_methylated_dna_restriction = Self::construct_reasoning_route_step_has_any_trait(
-                downstream,
-                &["mdrs_present", "mcr_present", "mcra_present", "mcrbc_present", "mrr_present"],
-            );
+            let downstream_has_methylated_dna_restriction =
+                Self::construct_reasoning_route_step_has_any_trait(
+                    downstream,
+                    &[
+                        "mdrs_present",
+                        "mcr_present",
+                        "mcra_present",
+                        "mcrbc_present",
+                        "mrr_present",
+                    ],
+                );
 
             if upstream_has_hsd_methylase
                 && downstream_has_hsd_restriction

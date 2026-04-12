@@ -14,6 +14,7 @@ pub const DESIGN_DECISION_NODE_SCHEMA: &str = "gentle.design_decision_node.v1";
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = "gentle.construct_candidate.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
+pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
 
 fn default_construct_objective_schema() -> String {
     CONSTRUCT_OBJECTIVE_SCHEMA.to_string()
@@ -41,6 +42,10 @@ fn default_construct_reasoning_graph_schema() -> String {
 
 fn default_construct_reasoning_store_schema() -> String {
     CONSTRUCT_REASONING_STORE_SCHEMA.to_string()
+}
+
+fn default_host_profile_catalog_schema() -> String {
+    HOST_PROFILE_CATALOG_SCHEMA.to_string()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -383,6 +388,24 @@ impl Default for HostProfileRecord {
             phenotype_tags: vec![],
             notes: vec![],
             source_notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Human-editable catalog of host/strain records used by construct reasoning.
+pub struct HostProfileCatalog {
+    #[serde(default = "default_host_profile_catalog_schema")]
+    pub schema: String,
+    pub profiles: Vec<HostProfileRecord>,
+}
+
+impl Default for HostProfileCatalog {
+    fn default() -> Self {
+        Self {
+            schema: default_host_profile_catalog_schema(),
+            profiles: vec![],
         }
     }
 }

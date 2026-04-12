@@ -64,10 +64,11 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
-        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
-        DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
-        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
+        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress,
+        DbSnpFetchStage, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
+        FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+        GenomeTrackSyncReport, GentleEngine, HostProfileRecord, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
         PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
@@ -971,6 +972,8 @@ pub struct GENtleApp {
     planning_sync_message: String,
     planning_rejection_reason: String,
     planning_suggestions_filter: Option<PlanningSuggestionStatus>,
+    planning_host_filter: String,
+    planning_host_selected_id: String,
     planning_helper_filter: String,
     planning_helper_selected_id: String,
     planning_status: String,
@@ -2494,6 +2497,8 @@ impl Default for GENtleApp {
             planning_sync_message: String::new(),
             planning_rejection_reason: String::new(),
             planning_suggestions_filter: Some(PlanningSuggestionStatus::Pending),
+            planning_host_filter: String::new(),
+            planning_host_selected_id: String::new(),
             planning_helper_filter: String::new(),
             planning_helper_selected_id: String::new(),
             planning_status: String::new(),
@@ -12751,6 +12756,73 @@ Error: `{err}`"
         Ok(Some(plan))
     }
 
+    fn host_profile_catalog_entries(
+        &self,
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<HostProfileRecord>, String> {
+        let resolved_catalog_path = catalog_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_HOST_PROFILE_CATALOG_PATH);
+        GentleEngine::list_host_profile_catalog_entries(catalog_path, filter).map_err(|e| {
+            format!(
+                "Could not load host profile catalog entries from '{}': {}",
+                resolved_catalog_path, e.message
+            )
+        })
+    }
+
+    fn host_profile_matches_selection(profile: &HostProfileRecord, selected: &str) -> bool {
+        let needle = selected.trim();
+        if needle.is_empty() {
+            return false;
+        }
+        profile.profile_id.eq_ignore_ascii_case(needle)
+            || profile
+                .aliases
+                .iter()
+                .any(|alias| alias.eq_ignore_ascii_case(needle))
+            || profile.strain.eq_ignore_ascii_case(needle)
+    }
+
+    fn render_host_profile_record_panel(ui: &mut Ui, profile: &HostProfileRecord, heading: &str) {
+        ui.separator();
+        ui.heading(heading);
+        ui.monospace(format!("profile id: {}", profile.profile_id));
+        ui.small(format!("species: {}", profile.species));
+        ui.small(format!("strain: {}", profile.strain));
+        if !profile.aliases.is_empty() {
+            ui.small(format!("aliases: {}", profile.aliases.join(", ")));
+        }
+        if !profile.genotype_tags.is_empty() {
+            ui.small(format!(
+                "genotype tags: {}",
+                profile.genotype_tags.join(", ")
+            ));
+        }
+        if !profile.phenotype_tags.is_empty() {
+            ui.small(format!(
+                "phenotype tags: {}",
+                profile.phenotype_tags.join(", ")
+            ));
+        }
+        if !profile.notes.is_empty() {
+            ui.collapsing("Notes", |ui| {
+                for note in &profile.notes {
+                    ui.small(note);
+                }
+            });
+        }
+        if !profile.source_notes.is_empty() {
+            ui.collapsing("Source Notes", |ui| {
+                for note in &profile.source_notes {
+                    ui.small(note);
+                }
+            });
+        }
+    }
+
     fn helper_catalog_entries_for_catalog_path(
         &self,
         catalog_path: &str,
@@ -22886,6 +22958,85 @@ Error: `{err}`"
                 self.clear_planning_objective();
             }
         });
+
+        ui.separator();
+        ui.heading("Host Profile Browser");
+        ui.small(format!(
+            "Browse starter host/strain records used by construct reasoning: {}",
+            DEFAULT_HOST_PROFILE_CATALOG_PATH
+        ));
+        ui.horizontal(|ui| {
+            ui.label("filter");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_host_filter)
+                    .desired_width(f32::INFINITY),
+            );
+            if ui
+                .button("Clear")
+                .on_hover_text("Clear the host-profile browser filter")
+                .clicked()
+            {
+                self.planning_host_filter.clear();
+            }
+        });
+        match self.host_profile_catalog_entries(None, Some(&self.planning_host_filter)) {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    ui.small("No host profiles matched the current filter.");
+                } else {
+                    if !entries.iter().any(|profile| {
+                        Self::host_profile_matches_selection(
+                            profile,
+                            &self.planning_host_selected_id,
+                        )
+                    }) {
+                        self.planning_host_selected_id = entries[0].profile_id.clone();
+                    }
+                    ui.columns(2, |columns| {
+                        columns[0].label("Catalog entries");
+                        egui::ScrollArea::vertical()
+                            .id_salt("planning_host_profile_entries")
+                            .max_height(220.0)
+                            .show(&mut columns[0], |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                for profile in &entries {
+                                    let selected = Self::host_profile_matches_selection(
+                                        profile,
+                                        &self.planning_host_selected_id,
+                                    );
+                                    let label =
+                                        format!("{} — {}", profile.profile_id, profile.strain);
+                                    if ui.selectable_label(selected, label).clicked() {
+                                        self.planning_host_selected_id = profile.profile_id.clone();
+                                    }
+                                }
+                            });
+                        columns[1].label("Selected host profile");
+                        if let Some(profile) = entries.iter().find(|profile| {
+                            Self::host_profile_matches_selection(
+                                profile,
+                                &self.planning_host_selected_id,
+                            )
+                        }) {
+                            Self::render_host_profile_record_panel(
+                                &mut columns[1],
+                                profile,
+                                "Selected Host Profile",
+                            );
+                        }
+                    });
+                }
+            }
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Host-profile browser error: {e}"),
+                );
+            }
+        }
 
         ui.separator();
         ui.heading("Helper Construct Browser");
@@ -39802,6 +39953,8 @@ mod tests {
         let mut app = GENtleApp::default();
         app.open_planning_dialog();
         app.planning_sync_source = "local_lab".to_string();
+        app.planning_host_filter = "hsdR".to_string();
+        app.planning_host_selected_id = "ecoli_k12_restriction_positive".to_string();
         app.planning_helper_filter = "factor xa".to_string();
         app.planning_helper_selected_id = "pGEX".to_string();
         app.planning_status = "editing".to_string();
@@ -39810,6 +39963,11 @@ mod tests {
 
         assert!(app.show_planning_dialog);
         assert_eq!(app.planning_sync_source, "local_lab");
+        assert_eq!(app.planning_host_filter, "hsdR");
+        assert_eq!(
+            app.planning_host_selected_id,
+            "ecoli_k12_restriction_positive"
+        );
         assert_eq!(app.planning_helper_filter, "factor xa");
         assert_eq!(app.planning_helper_selected_id, "pGEX");
         assert_eq!(app.planning_status, "editing");

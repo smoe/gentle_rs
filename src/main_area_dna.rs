@@ -6539,11 +6539,8 @@ mod tests {
             )
             .expect("build graph");
         let engine = Arc::new(RwLock::new(engine));
-        let mut area = MainAreaDna::new(
-            dna,
-            Some("seq_reasoning_context".to_string()),
-            Some(engine),
-        );
+        let mut area =
+            MainAreaDna::new(dna, Some("seq_reasoning_context".to_string()), Some(engine));
 
         area.refresh_description_cache();
 
@@ -6552,19 +6549,24 @@ mod tests {
             .as_ref()
             .expect("construct reasoning cache");
         assert_eq!(reasoning.objective_title, "GUI reasoning");
-        assert!(reasoning
-            .fact_entries
-            .iter()
-            .any(|entry| entry.title == "Selection/complementation context supported"));
+        assert!(
+            reasoning
+                .fact_entries
+                .iter()
+                .any(|entry| entry.title == "Selection/complementation context supported")
+        );
         assert!(reasoning.fact_entries.iter().any(|entry| {
-            entry.detail_lines
+            entry
+                .detail_lines
                 .iter()
                 .any(|line| line.contains("ampicillin_selection"))
         }));
-        assert!(reasoning
-            .decision_entries
-            .iter()
-            .any(|entry| entry.title == "Evaluate Selection/Complementation Fit"));
+        assert!(
+            reasoning
+                .decision_entries
+                .iter()
+                .any(|entry| entry.title == "Evaluate Selection/Complementation Fit")
+        );
     }
 
     #[test]
@@ -14055,10 +14057,7 @@ impl MainAreaDna {
         }
     }
 
-    fn construct_reasoning_json_string_list(
-        value: &serde_json::Value,
-        key: &str,
-    ) -> Vec<String> {
+    fn construct_reasoning_json_string_list(value: &serde_json::Value, key: &str) -> Vec<String> {
         value
             .get(key)
             .and_then(serde_json::Value::as_array)
@@ -14093,7 +14092,11 @@ impl MainAreaDna {
     ) -> ConstructReasoningInspectorEntry {
         let mut detail_lines = vec![];
         let mut warning_lines = vec![];
-        if let Some(status) = fact.value_json.get("status").and_then(serde_json::Value::as_str) {
+        if let Some(status) = fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+        {
             detail_lines.push(format!("status: {status}"));
             if status == "review_needed" {
                 warning_lines.push("Review needed".to_string());
@@ -14110,23 +14113,29 @@ impl MainAreaDna {
         }
         match fact.fact_type.as_str() {
             "host_transition_context" => {
-                let ordered_hosts =
-                    Self::construct_reasoning_json_string_list(&fact.value_json, "ordered_host_profile_ids");
+                let ordered_hosts = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "ordered_host_profile_ids",
+                );
                 if !ordered_hosts.is_empty() {
                     detail_lines.push(format!("hosts: {}", ordered_hosts.join(" -> ")));
                 }
             }
             "growth_condition_context" => {
-                let medium_conditions =
-                    Self::construct_reasoning_json_string_list(&fact.value_json, "medium_conditions");
+                let medium_conditions = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "medium_conditions",
+                );
                 if !medium_conditions.is_empty() {
                     detail_lines.push(format!(
                         "medium_conditions: {}",
                         medium_conditions.join(", ")
                     ));
                 }
-                let signals =
-                    Self::construct_reasoning_json_signal_labels(&fact.value_json, "condition_signals");
+                let signals = Self::construct_reasoning_json_signal_labels(
+                    &fact.value_json,
+                    "condition_signals",
+                );
                 if !signals.is_empty() {
                     detail_lines.push(format!("signals: {}", signals.join(", ")));
                 }
@@ -14144,10 +14153,15 @@ impl MainAreaDna {
                     "helper_offered_functions",
                 );
                 if !helper_functions.is_empty() {
-                    detail_lines.push(format!("offered_functions: {}", helper_functions.join(", ")));
+                    detail_lines.push(format!(
+                        "offered_functions: {}",
+                        helper_functions.join(", ")
+                    ));
                 }
-                let helper_components =
-                    Self::construct_reasoning_json_string_list(&fact.value_json, "helper_component_labels");
+                let helper_components = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "helper_component_labels",
+                );
                 if !helper_components.is_empty() {
                     detail_lines.push(format!("components: {}", helper_components.join(", ")));
                 }
@@ -14221,8 +14235,10 @@ impl MainAreaDna {
                 }
             }
             "selection_context" => {
-                let candidates =
-                    Self::construct_reasoning_json_string_list(&fact.value_json, "selection_candidates");
+                let candidates = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "selection_candidates",
+                );
                 if !candidates.is_empty() {
                     detail_lines.push(format!("candidates: {}", candidates.join(", ")));
                 }
@@ -14233,8 +14249,10 @@ impl MainAreaDna {
                     .map(|rows| {
                         rows.iter()
                             .filter_map(|row| {
-                                let rule_id = row.get("rule_id").and_then(serde_json::Value::as_str)?;
-                                let status = row.get("status").and_then(serde_json::Value::as_str)?;
+                                let rule_id =
+                                    row.get("rule_id").and_then(serde_json::Value::as_str)?;
+                                let status =
+                                    row.get("status").and_then(serde_json::Value::as_str)?;
                                 Some(format!("{rule_id} ({status})"))
                             })
                             .collect::<Vec<_>>()
@@ -34008,18 +34026,17 @@ impl MainAreaDna {
         if clear_invalid_reasoning_selection {
             self.map_dna.select_reasoning_evidence(None);
         }
-        self.description_cache_construct_reasoning = self
-            .seq_id
-            .as_deref()
-            .and_then(|seq_id| {
-                self.engine.as_ref().and_then(|engine| {
-                    engine
-                        .read()
-                        .ok()
-                        .and_then(|guard| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
+        self.description_cache_construct_reasoning =
+            self.seq_id
+                .as_deref()
+                .and_then(|seq_id| {
+                    self.engine.as_ref().and_then(|engine| {
+                        engine.read().ok().and_then(|guard| {
+                            guard.construct_reasoning_graph_for_seq_id(seq_id).ok()
+                        })
+                    })
                 })
-            })
-            .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
+                .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
                 Ok(view) => {

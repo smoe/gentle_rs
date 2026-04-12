@@ -31,7 +31,10 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         let mut fact_statuses: BTreeMap<String, String> = BTreeMap::new();
         for fact in &graph.facts {
-            if let Some(status) = fact.value_json.get("status").and_then(serde_json::Value::as_str)
+            if let Some(status) = fact
+                .value_json
+                .get("status")
+                .and_then(serde_json::Value::as_str)
             {
                 fact_statuses.insert(fact.fact_type.clone(), status.to_string());
             }
@@ -45,7 +48,8 @@ impl GentleEngine {
             .cloned()
             .collect::<Vec<_>>();
         host_profile_ids.extend(
-            graph.objective
+            graph
+                .objective
                 .host_route
                 .iter()
                 .map(|step| step.host_profile_id.clone()),
@@ -151,7 +155,8 @@ impl GentleEngine {
             .iter()
             .flat_map(|row| row.warnings.iter())
             .chain(
-                graph.facts
+                graph
+                    .facts
                     .iter()
                     .filter(|fact| {
                         fact.value_json

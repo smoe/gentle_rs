@@ -2501,6 +2501,7 @@ Construct reasoning graph foundation (implemented first slice):
   - `gentle.construct_candidate.v1`
   - `gentle.construct_reasoning_graph.v1`
   - `gentle.construct_reasoning_store.v1`
+  - `gentle.host_profile_catalog.v1`
 - Current engine-backed scope:
   - project metadata key: `construct_reasoning`
   - objective upsert/store round-trip
@@ -2549,6 +2550,9 @@ Construct reasoning graph foundation (implemented first slice):
   - active-sequence graph refresh helper that reuses the existing graph/objective
     identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph
+  - host-profile catalog loading/list projection from the shared starter JSON
+    catalog (`assets/host_profiles.json`) with filter matching across ids,
+    aliases, genotype/phenotype tags, notes, and source notes
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -2557,6 +2561,8 @@ Construct reasoning graph foundation (implemented first slice):
   - side-panel construct-reasoning inspector section for non-sequence facts and
     decision steps (host/helper/host-route restriction-methylation/medium/
     growth/selection context) without pretending they are coordinate spans
+  - Planning-window `Host Profile Browser` backed by the same shared catalog so
+    host/strain traits can be inspected without reparsing raw JSON
   - GUI-only role/class visibility filters layered on top of the same shared
     engine-owned graph payload (no adapter-local graph recomputation)
   - ClawBio/OpenClaw-facing run-bundle export integration:
