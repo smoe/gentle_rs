@@ -1143,6 +1143,7 @@ external coding agent runtime, see:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+  - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
 - shared feature-expert route now also accepts persisted UniProt projections as
   a target:
   - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
@@ -1153,6 +1154,20 @@ external coding agent runtime, see:
     - transcript lanes come from the stored transcript/CDS-to-genome projection
     - the protein lane uses the UniProt reference-protein coordinate system and
       projected UniProt interval features
+- UniProt feature-coding DNA query semantics:
+  - resolves one persisted `gentle.uniprot_genome_projection.v1` record
+  - matches `FEATURE_QUERY` case-insensitively against mapped UniProt feature
+    key/note text
+  - returns one `gentle.uniprot_feature_coding_dna_query.v1` report
+  - each transcript match includes:
+    - `genomic_coding_dna`: spliced coding-strand DNA exactly as encoded in the
+      current genome sequence
+    - `translation_speed_optimized_dna`: optional preferred-codon alternative
+      using the selected or inferred `TranslationSpeedProfile`
+    - `exon_spans[]` and `exon_pairs[]` so GUI/CLI can report the exon or exon
+      pair carrying the feature
+  - exon ordinals follow transcript order, not raw genomic left-to-right
+    position; reverse-strand transcript exon 1 is the transcript 5' exon
 - shared-shell GenBank route:
   - `genbank fetch ACCESSION [--as-id ID]`
 - shared-shell dbSNP route:

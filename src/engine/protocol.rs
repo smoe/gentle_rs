@@ -48,6 +48,9 @@ pub use gentle_protocol::{
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary, TfbsProgress,
     TranscriptProteinDerivation, TranscriptProteinDerivationMode,
     TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
+    UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
+    UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
+    UniprotFeatureCodingDnaSegment,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

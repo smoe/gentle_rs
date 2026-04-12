@@ -5425,9 +5425,9 @@ impl MainAreaDna {
         if projection_id.is_empty() {
             return Err("UniProt projection_id must not be empty".to_string());
         }
-        match self.inspect_feature_expert_target(&FeatureExpertTarget::UniprotProjection {
-            projection_id: projection_id.to_string(),
-        }) {
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::uniprot_projection(
+            projection_id.to_string(),
+        )) {
             Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                 self.open_isoform_expert_window_for_view(&view.panel_id, &view);
                 self.op_status = format!("Opened UniProt protein expert for '{projection_id}'");

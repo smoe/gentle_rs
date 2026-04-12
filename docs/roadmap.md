@@ -1176,13 +1176,18 @@ order. Durable architecture constraints and decisions remain in
     - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
     - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
-      `uniprot projection-show`
+      `uniprot projection-show`, `uniprot feature-coding-dna`
   - GUI follow-up now implemented:
     - `UniProt Mapping...` offers `Open Protein Expert` for the active
       projection and recent stored projections
     - the same specialist now also offers direct `Render Protein Mapping SVG...`
       affordances for the active/stored projection so inspection and export use
       one persisted projection handle
+    - the same specialist now also offers direct feature-to-coding-DNA lookup
+      for mapped UniProt protein intervals, including:
+      - genomic coding DNA exactly as encoded in the genome
+      - optional translation-speed optimized codon choice
+      - exon/exon-pair attribution for the selected feature span
     - the viewer still reuses the shared isoform-architecture canvas for
       genome/transcript projection inspection, but imported/derived proteins
       can now also exist as regular sequence entries

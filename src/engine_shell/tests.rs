@@ -10893,9 +10893,7 @@ fn parse_feature_expert_commands() {
             assert_eq!(seq_id, "s");
             assert_eq!(
                 target,
-                FeatureExpertTarget::UniprotProjection {
-                    projection_id: "PTEST1@seq_u".to_string()
-                }
+                FeatureExpertTarget::uniprot_projection("PTEST1@seq_u".to_string())
             );
         }
         other => panic!("unexpected command: {other:?}"),
@@ -11027,6 +11025,30 @@ fn parse_uniprot_commands() {
         projections,
         ShellCommand::UniprotProjectionList { .. }
     ));
+
+    let feature = parse_shell_line(
+        "uniprot feature-coding-dna tp53_map DNA-binding --transcript ENST00000269305.9 --mode both --speed-profile human",
+    )
+    .expect("parse feature-coding-dna");
+    match feature {
+        ShellCommand::UniprotFeatureCodingDna {
+            projection_id,
+            feature_query,
+            transcript_id,
+            mode,
+            translation_speed_profile,
+        } => {
+            assert_eq!(projection_id, "tp53_map");
+            assert_eq!(feature_query, "DNA-binding");
+            assert_eq!(transcript_id.as_deref(), Some("ENST00000269305.9"));
+            assert_eq!(mode, UniprotFeatureCodingDnaQueryMode::Both);
+            assert_eq!(
+                translation_speed_profile,
+                Some(TranslationSpeedProfile::Human)
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 fn tp53_isoform_test_sequence() -> DNAsequence {
@@ -11168,8 +11190,10 @@ OS   Homo sapiens (Human).
 DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
 FT   DOMAIN          2..8
 FT                   /note="toy domain"
+FT   REGION          25..30
+FT                   /note="junction feature"
 SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
-     MEEPQSDPSV EPPLSQETFSDLWKLLPEN
+     MEEPQSDPSV EPPLSQETFSDLWKLLPENA
 //
 "#;
     fs::write(&swiss_path, swiss_text).expect("write swiss file");
@@ -11238,9 +11262,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         &mut engine,
         &ShellCommand::InspectFeatureExpert {
             seq_id: "seq_u".to_string(),
-            target: FeatureExpertTarget::UniprotProjection {
-                projection_id: projection_id.clone(),
-            },
+            target: FeatureExpertTarget::uniprot_projection(projection_id.clone()),
         },
     )
     .expect("inspect uniprot projection expert");
@@ -11263,6 +11285,38 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .as_array()
             .map(|rows| !rows.is_empty())
             .unwrap_or(false)
+    );
+
+    let feature_query = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotFeatureCodingDna {
+            projection_id: projection_id.clone(),
+            feature_query: "junction".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            mode: UniprotFeatureCodingDnaQueryMode::Both,
+            translation_speed_profile: Some(TranslationSpeedProfile::Human),
+        },
+    )
+    .expect("query feature coding dna");
+    assert!(!feature_query.state_changed);
+    assert_eq!(
+        feature_query.output["projection_id"].as_str(),
+        Some(projection_id.as_str())
+    );
+    assert_eq!(feature_query.output["match_count"].as_u64(), Some(1));
+    assert_eq!(
+        feature_query.output["matches"][0]["primary_exon_pair"]["from_exon_ordinal"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        feature_query.output["matches"][0]["primary_exon_pair"]["to_exon_ordinal"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        feature_query.output["matches"][0]["translation_speed_optimized_dna"]
+            .as_str()
+            .map(str::len),
+        Some(18)
     );
 }
 

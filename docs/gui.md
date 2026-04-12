@@ -3414,6 +3414,8 @@ UniProt mapping behavior:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
   - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
+  - coding-DNA lookup for one mapped protein feature against a stored
+    projection (`query_uniprot_feature_coding_dna`)
 - The dialog shows a compact table of recent imported UniProt entries
   (entry/accession/source/import timestamp) and `Select` buttons to fill the
   active `entry_id`/query in the form.
@@ -3438,6 +3440,23 @@ UniProt mapping behavior:
 - The direct SVG-export affordance uses the same persisted projection state and
   target syntax as CLI/shell `render-feature-expert-svg ... uniprot-projection ...`,
   so GUI and non-GUI exports stay on one deterministic rendering path.
+- The same specialist now also includes a `Feature coding DNA query` section:
+  - `feature`
+    - case-insensitive text filter against mapped UniProt feature key/note
+  - `feature transcript`
+    - optional transcript filter against the stored projection
+  - `mode`
+    - `genomic_as_encoded`, `translation_speed_optimized`, or `both`
+  - `speed profile`
+    - `Auto`, `Human`, `Mouse`, `Yeast`, or `E. coli`
+  - result panel:
+    - transcript-specific amino-acid span
+    - genomic coding DNA in coding-strand orientation
+    - optional translation-speed optimized DNA
+    - exon attribution and ordered exon-pair summary when the feature crosses a
+      splice junction
+  - exon numbering follows transcript order, so reverse-strand transcript exon
+    `1` is the transcript 5' exon rather than the lowest genomic coordinate
 - Protein sequence windows are intentionally not enabled yet. UniProt entries
   currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.

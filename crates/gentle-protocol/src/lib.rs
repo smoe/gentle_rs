@@ -721,6 +721,12 @@ pub enum FeatureExpertTarget {
 }
 
 impl FeatureExpertTarget {
+    pub fn uniprot_projection(projection_id: impl Into<String>) -> Self {
+        Self::UniprotProjection {
+            projection_id: projection_id.into(),
+        }
+    }
+
     pub fn describe(&self) -> String {
         match self {
             Self::TfbsFeature { feature_id } => format!("tfbs feature #{feature_id}"),
@@ -748,7 +754,7 @@ impl FeatureExpertTarget {
             Self::IsoformArchitecture { panel_id } => {
                 format!("isoform architecture panel '{panel_id}'")
             }
-            Self::UniprotProjection { projection_id } => {
+            Self::UniprotProjection { projection_id, .. } => {
                 format!("UniProt projection '{projection_id}'")
             }
         }
@@ -2718,6 +2724,115 @@ impl TranslationSpeedMark {
             Self::Slow => "slow",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Output selection for protein-feature coding DNA queries.
+pub enum UniprotFeatureCodingDnaQueryMode {
+    GenomicAsEncoded,
+    TranslationSpeedOptimized,
+    #[default]
+    Both,
+}
+
+impl UniprotFeatureCodingDnaQueryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GenomicAsEncoded => "genomic_as_encoded",
+            Self::TranslationSpeedOptimized => "translation_speed_optimized",
+            Self::Both => "both",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One coding segment contributing to a queried protein feature.
+pub struct UniprotFeatureCodingDnaSegment {
+    pub aa_start: usize,
+    pub aa_end: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub strand: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One exon overlap contributing coding DNA to a queried protein feature.
+pub struct UniprotFeatureCodingDnaExonSpan {
+    pub exon_ordinal: usize,
+    pub exon_start_1based: usize,
+    pub exon_end_1based: usize,
+    pub coding_start_1based: usize,
+    pub coding_end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Ordered exon transition crossed by a queried protein feature.
+pub struct UniprotFeatureCodingDnaExonPair {
+    pub from_exon_ordinal: usize,
+    pub to_exon_ordinal: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript-specific answer for a queried UniProt feature.
+pub struct UniprotFeatureCodingDnaMatch {
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub strand: String,
+    pub feature_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_note: Option<String>,
+    #[serde(default)]
+    pub matched_feature_fields: Vec<String>,
+    pub aa_start: usize,
+    pub aa_end: usize,
+    pub amino_acid_sequence: String,
+    #[serde(default)]
+    pub genomic_segments: Vec<UniprotFeatureCodingDnaSegment>,
+    pub genomic_coding_dna: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_speed_optimized_dna: Option<String>,
+    #[serde(default)]
+    pub exon_spans: Vec<UniprotFeatureCodingDnaExonSpan>,
+    #[serde(default)]
+    pub exon_pairs: Vec<UniprotFeatureCodingDnaExonPair>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_exon_ordinal: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_exon_pair: Option<UniprotFeatureCodingDnaExonPair>,
+    #[serde(default)]
+    pub crosses_exon_junction: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable response for querying coding DNA behind one projected UniProt feature.
+pub struct UniprotFeatureCodingDnaQueryReport {
+    pub schema: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    pub feature_query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_filter: Option<String>,
+    #[serde(default)]
+    pub query_mode: UniprotFeatureCodingDnaQueryMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_translation_speed_profile: Option<TranslationSpeedProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_translation_speed_profile: Option<TranslationSpeedProfile>,
+    pub match_count: usize,
+    #[serde(default)]
+    pub matches: Vec<UniprotFeatureCodingDnaMatch>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

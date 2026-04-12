@@ -10,7 +10,7 @@
 //! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
-use crate::uniprot::UniprotFeature;
+use crate::{AMINO_ACIDS, amino_acids::STOP_CODON, uniprot::UniprotFeature};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -1439,6 +1439,500 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         rows.sort_by(|a, b| a.projection_id.cmp(&b.projection_id));
         rows
+    }
+
+    fn infer_uniprot_feature_query_speed_profile(
+        organism: Option<&str>,
+    ) -> Option<TranslationSpeedProfile> {
+        let normalized = organism?.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return None;
+        }
+        if normalized.contains("homo sapiens") || normalized.contains("human") {
+            return Some(TranslationSpeedProfile::Human);
+        }
+        if normalized.contains("mus musculus") || normalized.contains("mouse") {
+            return Some(TranslationSpeedProfile::Mouse);
+        }
+        if normalized.contains("saccharomyces cerevisiae") || normalized.contains("yeast") {
+            return Some(TranslationSpeedProfile::Yeast);
+        }
+        if normalized.contains("escherichia coli")
+            || normalized.contains("e. coli")
+            || normalized.contains("e coli")
+        {
+            return Some(TranslationSpeedProfile::Ecoli);
+        }
+        None
+    }
+
+    fn uniprot_feature_query_profile_species_label(
+        profile: TranslationSpeedProfile,
+    ) -> (&'static str, Option<&'static str>) {
+        match profile {
+            TranslationSpeedProfile::Human => ("Human", None),
+            TranslationSpeedProfile::Mouse => (
+                "Rattus norvegicus",
+                Some(
+                    "Mouse translation-speed optimization currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus preference table is not bundled yet.",
+                ),
+            ),
+            TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
+            TranslationSpeedProfile::Ecoli => ("E. coli", None),
+        }
+    }
+
+    fn build_uniprot_feature_query_optimized_dna(
+        amino_acid_sequence: &str,
+        profile: TranslationSpeedProfile,
+    ) -> (String, Vec<String>) {
+        let (species_label, profile_warning) =
+            Self::uniprot_feature_query_profile_species_label(profile);
+        let mut warnings = vec![];
+        if let Some(warning) = profile_warning {
+            warnings.push(warning.to_string());
+        }
+        let mut out = String::new();
+        for (idx, residue) in amino_acid_sequence.chars().enumerate() {
+            let aa = if residue == '*' {
+                STOP_CODON
+            } else {
+                residue.to_ascii_uppercase()
+            };
+            let codon = AMINO_ACIDS
+                .preferred_species_codon(aa, species_label)
+                .or_else(|| AMINO_ACIDS.preferred_species_codon(aa, "Default"))
+                .or_else(|| {
+                    let mut candidates = AMINO_ACIDS.aa2codons(aa, Some(1));
+                    candidates.sort();
+                    candidates
+                        .into_iter()
+                        .next()
+                        .map(|codon| String::from_utf8_lossy(&codon).to_string())
+                })
+                .unwrap_or_else(|| {
+                    warnings.push(format!(
+                        "Protein residue {} ('{}') has no bundled preferred codon; used 'NNN'.",
+                        idx + 1,
+                        residue
+                    ));
+                    "NNN".to_string()
+                });
+            out.push_str(&codon);
+        }
+        (out, warnings)
+    }
+
+    fn uniprot_feature_projection_match_fields(
+        feature: &UniprotFeatureProjection,
+        query_lower: &str,
+    ) -> Vec<String> {
+        let mut fields = vec![];
+        if feature
+            .feature_key
+            .to_ascii_lowercase()
+            .contains(query_lower)
+        {
+            fields.push("feature_key".to_string());
+        }
+        if feature
+            .feature_note
+            .as_deref()
+            .map(|note| note.to_ascii_lowercase().contains(query_lower))
+            .unwrap_or(false)
+        {
+            fields.push("feature_note".to_string());
+        }
+        fields
+    }
+
+    fn uniprot_feature_projection_label(feature: &UniprotFeatureProjection) -> String {
+        match feature
+            .feature_note
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(note) => format!(
+                "{} '{}' (aa {}..{})",
+                feature.feature_key, note, feature.aa_start, feature.aa_end
+            ),
+            None => format!(
+                "{} (aa {}..{})",
+                feature.feature_key, feature.aa_start, feature.aa_end
+            ),
+        }
+    }
+
+    fn extract_uniprot_feature_amino_acid_sequence(
+        protein_sequence: &str,
+        aa_start: usize,
+        aa_end: usize,
+    ) -> String {
+        if aa_start == 0 || aa_end < aa_start {
+            return String::new();
+        }
+        protein_sequence
+            .chars()
+            .skip(aa_start.saturating_sub(1))
+            .take(aa_end.saturating_sub(aa_start).saturating_add(1))
+            .collect()
+    }
+
+    fn resolve_uniprot_projection_transcript_feature<'a>(
+        seq: &'a DNAsequence,
+        projection: &UniprotTranscriptProjection,
+    ) -> Option<(usize, &'a gb_io::seq::Feature)> {
+        let normalized = Self::normalize_transcript_probe(&projection.transcript_id);
+        if let Some(feature_id) = projection.transcript_feature_id
+            && let Some(feature) = seq.features().get(feature_id)
+            && Self::is_mrna_feature(feature)
+            && Self::feature_transcript_match_keys(feature, feature_id)
+                .iter()
+                .any(|candidate| candidate == &normalized)
+        {
+            return Some((feature_id, feature));
+        }
+        seq.features()
+            .iter()
+            .enumerate()
+            .find(|(feature_id, feature)| {
+                Self::is_mrna_feature(feature)
+                    && Self::feature_transcript_match_keys(feature, *feature_id)
+                        .iter()
+                        .any(|candidate| candidate == &normalized)
+            })
+    }
+
+    fn transcript_feature_exon_ranges_1based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
+        let mut ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges
+            .into_iter()
+            .filter(|(start, end)| end > start)
+            .map(|(start, end)| (start.saturating_add(1), end))
+            .collect()
+    }
+
+    fn transcript_feature_cds_ranges_1based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
+        Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based")
+            .into_iter()
+            .map(|(start, end)| (start.saturating_add(1), end))
+            .collect()
+    }
+
+    fn transcript_projection_coding_exon_ranges_1based(
+        projection: &UniprotTranscriptProjection,
+    ) -> Vec<(usize, usize)> {
+        let mut ranges = projection
+            .aa_segments
+            .iter()
+            .map(|segment| {
+                (
+                    segment.genomic_start_1based.min(segment.genomic_end_1based),
+                    segment.genomic_start_1based.max(segment.genomic_end_1based),
+                )
+            })
+            .filter(|(start, end)| *start > 0 && *end >= *start)
+            .collect::<Vec<_>>();
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges.dedup();
+        ranges
+    }
+
+    fn order_ranges_1based_for_transcript(
+        mut ranges: Vec<(usize, usize)>,
+        is_reverse: bool,
+    ) -> Vec<(usize, usize)> {
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        if is_reverse {
+            ranges.reverse();
+        }
+        ranges
+    }
+
+    fn build_uniprot_feature_exon_spans(
+        exon_ranges_1based: &[(usize, usize)],
+        genomic_segments: &[UniprotFeatureCodingDnaSegment],
+    ) -> Vec<UniprotFeatureCodingDnaExonSpan> {
+        let mut by_exon: BTreeMap<usize, UniprotFeatureCodingDnaExonSpan> = BTreeMap::new();
+        for segment in genomic_segments {
+            let seg_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
+            let seg_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
+            for (idx, (exon_start, exon_end)) in exon_ranges_1based.iter().enumerate() {
+                let overlap_start = seg_start.max(*exon_start);
+                let overlap_end = seg_end.min(*exon_end);
+                if overlap_end < overlap_start {
+                    continue;
+                }
+                by_exon
+                    .entry(idx + 1)
+                    .and_modify(|row| {
+                        row.coding_start_1based = row.coding_start_1based.min(overlap_start);
+                        row.coding_end_1based = row.coding_end_1based.max(overlap_end);
+                    })
+                    .or_insert_with(|| UniprotFeatureCodingDnaExonSpan {
+                        exon_ordinal: idx + 1,
+                        exon_start_1based: *exon_start,
+                        exon_end_1based: *exon_end,
+                        coding_start_1based: overlap_start,
+                        coding_end_1based: overlap_end,
+                    });
+            }
+        }
+        by_exon.into_values().collect()
+    }
+
+    fn build_uniprot_feature_exon_pairs(
+        exon_spans: &[UniprotFeatureCodingDnaExonSpan],
+    ) -> Vec<UniprotFeatureCodingDnaExonPair> {
+        exon_spans
+            .windows(2)
+            .filter_map(|window| {
+                let from = window.first()?;
+                let to = window.get(1)?;
+                Some(UniprotFeatureCodingDnaExonPair {
+                    from_exon_ordinal: from.exon_ordinal,
+                    to_exon_ordinal: to.exon_ordinal,
+                })
+            })
+            .collect()
+    }
+
+    pub fn query_uniprot_feature_coding_dna(
+        &self,
+        projection_id: &str,
+        feature_query: &str,
+        transcript_filter: Option<&str>,
+        query_mode: UniprotFeatureCodingDnaQueryMode,
+        translation_speed_profile: Option<TranslationSpeedProfile>,
+    ) -> Result<UniprotFeatureCodingDnaQueryReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let seq = self
+            .state
+            .sequences
+            .get(&projection.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", projection.seq_id),
+            })?;
+        let feature_query = feature_query.trim();
+        if feature_query.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Protein feature query cannot be empty".to_string(),
+            });
+        }
+        let transcript_filter = transcript_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let normalized_transcript_filter = transcript_filter
+            .as_deref()
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty());
+        let query_lower = feature_query.to_ascii_lowercase();
+        let resolved_profile = match query_mode {
+            UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded => None,
+            _ => translation_speed_profile.or_else(|| {
+                Self::infer_uniprot_feature_query_speed_profile(entry.organism.as_deref())
+            }),
+        };
+
+        let mut warnings = projection.warnings.clone();
+        if !matches!(
+            query_mode,
+            UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded
+        ) && resolved_profile.is_none()
+        {
+            warnings.push(
+                "Could not resolve a translation-speed profile automatically; translation_speed_optimized_dna will be omitted unless an explicit profile is supplied."
+                    .to_string(),
+            );
+        }
+
+        let mut matches: Vec<UniprotFeatureCodingDnaMatch> = vec![];
+        let mut available_labels = BTreeSet::new();
+        for transcript in &projection.transcript_projections {
+            if let Some(filter) = normalized_transcript_filter.as_deref()
+                && Self::normalize_transcript_probe(&transcript.transcript_id) != filter
+            {
+                continue;
+            }
+
+            let transcript_feature =
+                Self::resolve_uniprot_projection_transcript_feature(seq, transcript);
+            let is_reverse = transcript.strand.trim() == "-";
+            let ordered_exon_ranges_1based = if let Some((_, feature)) = transcript_feature {
+                let transcript_exon_ranges = Self::transcript_feature_exon_ranges_1based(feature);
+                let transcript_cds_ranges = Self::transcript_feature_cds_ranges_1based(feature);
+                let preferred_ranges =
+                    if transcript_exon_ranges.len() <= 1 && transcript_cds_ranges.len() > 1 {
+                        transcript_cds_ranges
+                    } else {
+                        transcript_exon_ranges
+                    };
+                Self::order_ranges_1based_for_transcript(preferred_ranges, is_reverse)
+            } else {
+                Self::order_ranges_1based_for_transcript(
+                    Self::transcript_projection_coding_exon_ranges_1based(transcript),
+                    is_reverse,
+                )
+            };
+
+            for feature in &transcript.feature_projections {
+                available_labels.insert(Self::uniprot_feature_projection_label(feature));
+                let matched_feature_fields =
+                    Self::uniprot_feature_projection_match_fields(feature, &query_lower);
+                if matched_feature_fields.is_empty() {
+                    continue;
+                }
+
+                let amino_acid_sequence = Self::extract_uniprot_feature_amino_acid_sequence(
+                    &entry.sequence,
+                    feature.aa_start,
+                    feature.aa_end,
+                );
+                let mut match_warnings = transcript.warnings.clone();
+                if amino_acid_sequence.is_empty() {
+                    match_warnings.push(format!(
+                        "Feature aa span {}..{} could not be sliced from UniProt entry '{}'.",
+                        feature.aa_start, feature.aa_end, entry.entry_id
+                    ));
+                }
+
+                let mut genomic_segments = vec![];
+                let mut genomic_coding_dna = String::new();
+                for segment in &feature.genomic_segments {
+                    let seg_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
+                    let seg_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
+                    let raw = Self::sequence_slice_upper(seq, seg_start.saturating_sub(1), seg_end);
+                    if raw.is_empty() {
+                        match_warnings.push(format!(
+                            "Could not extract genomic DNA for transcript '{}' segment {}..{}.",
+                            transcript.transcript_id, seg_start, seg_end
+                        ));
+                        continue;
+                    }
+                    let coding_text = if is_reverse {
+                        String::from_utf8_lossy(&Self::reverse_complement_bytes(raw.as_bytes()))
+                            .to_string()
+                    } else {
+                        raw
+                    };
+                    genomic_coding_dna.push_str(&coding_text);
+                    genomic_segments.push(UniprotFeatureCodingDnaSegment {
+                        aa_start: segment.aa_start,
+                        aa_end: segment.aa_end,
+                        genomic_start_1based: seg_start,
+                        genomic_end_1based: seg_end,
+                        strand: segment.strand.clone(),
+                    });
+                }
+
+                let exon_spans = Self::build_uniprot_feature_exon_spans(
+                    &ordered_exon_ranges_1based,
+                    &genomic_segments,
+                );
+                if exon_spans.is_empty() {
+                    match_warnings.push(
+                        "Could not determine exon attribution for this feature span.".to_string(),
+                    );
+                } else if transcript_feature.is_none() {
+                    match_warnings.push(
+                        "Transcript feature could not be resolved back in the current sequence; exon attribution falls back to CDS segments from the stored projection."
+                            .to_string(),
+                    );
+                }
+                let exon_pairs = Self::build_uniprot_feature_exon_pairs(&exon_spans);
+                let primary_exon_ordinal =
+                    (exon_spans.len() == 1).then_some(exon_spans[0].exon_ordinal);
+                let primary_exon_pair = (exon_spans.len() == 2)
+                    .then(|| exon_pairs.first().cloned())
+                    .flatten();
+
+                let mut optimized_warnings = vec![];
+                let translation_speed_optimized_dna = if !matches!(
+                    query_mode,
+                    UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded
+                ) {
+                    resolved_profile.map(|profile| {
+                        let (optimized, local_warnings) =
+                            Self::build_uniprot_feature_query_optimized_dna(
+                                &amino_acid_sequence,
+                                profile,
+                            );
+                        optimized_warnings = local_warnings;
+                        optimized
+                    })
+                } else {
+                    None
+                };
+                match_warnings.extend(optimized_warnings);
+
+                matches.push(UniprotFeatureCodingDnaMatch {
+                    transcript_id: transcript.transcript_id.clone(),
+                    transcript_feature_id: transcript.transcript_feature_id,
+                    strand: transcript.strand.clone(),
+                    feature_key: feature.feature_key.clone(),
+                    feature_note: feature.feature_note.clone(),
+                    matched_feature_fields,
+                    aa_start: feature.aa_start,
+                    aa_end: feature.aa_end,
+                    amino_acid_sequence,
+                    genomic_segments,
+                    genomic_coding_dna,
+                    translation_speed_optimized_dna,
+                    exon_spans,
+                    exon_pairs,
+                    primary_exon_ordinal,
+                    primary_exon_pair,
+                    crosses_exon_junction: feature.genomic_segments.len() > 1,
+                    warnings: match_warnings,
+                });
+            }
+        }
+
+        if matches.is_empty() {
+            let available = available_labels
+                .into_iter()
+                .take(8)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let transcript_hint = transcript_filter
+                .as_deref()
+                .map(|value| format!(" in transcript '{}'", value))
+                .unwrap_or_default();
+            let suffix = if available.is_empty() {
+                "Projection currently exposes no mapped UniProt feature spans.".to_string()
+            } else {
+                format!("Available mapped features include: {available}.")
+            };
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No mapped UniProt feature matched query '{}' in projection '{}'{}; {}",
+                    feature_query, projection.projection_id, transcript_hint, suffix
+                ),
+            });
+        }
+
+        Ok(UniprotFeatureCodingDnaQueryReport {
+            schema: UNIPROT_FEATURE_CODING_DNA_QUERY_SCHEMA.to_string(),
+            projection_id: projection.projection_id,
+            entry_id: projection.entry_id,
+            seq_id: projection.seq_id,
+            feature_query: feature_query.to_string(),
+            transcript_filter,
+            query_mode,
+            requested_translation_speed_profile: translation_speed_profile,
+            resolved_translation_speed_profile: resolved_profile,
+            match_count: matches.len(),
+            matches,
+            warnings,
+        })
     }
 
     pub(super) fn fetch_uniprot_swiss_prot_text(
@@ -3578,7 +4072,7 @@ impl GentleEngine {
             FeatureExpertTarget::IsoformArchitecture { panel_id } => self
                 .build_isoform_architecture_expert_view(seq_id, panel_id)
                 .map(FeatureExpertView::IsoformArchitecture),
-            FeatureExpertTarget::UniprotProjection { projection_id } => self
+            FeatureExpertTarget::UniprotProjection { projection_id, .. } => self
                 .build_uniprot_projection_expert_view(seq_id, projection_id)
                 .map(FeatureExpertView::IsoformArchitecture),
         }

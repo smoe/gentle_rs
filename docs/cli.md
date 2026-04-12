@@ -518,6 +518,7 @@ UniProt mapping capability status:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+  - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
 - shared feature-expert route: supported for stored UniProt genome projections
   via the same expert command family used by splicing/isoform inspection
   - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
@@ -1623,6 +1624,13 @@ Isoform architecture panel workflow:
   - same command family for persisted UniProt protein mappings:
     - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
     - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
+  - direct coding-DNA query for one projected UniProt feature:
+    - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
+    - returns one structured report per matching transcript feature span, including:
+      - amino-acid interval
+      - genomic coding DNA as encoded by the genome (spliced, coding-strand orientation)
+      - optional preferred-codon translation-speed DNA
+      - exon attribution and ordered exon pairs when the feature crosses a splice junction
 
 Pool exchange commands:
 

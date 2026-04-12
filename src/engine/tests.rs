@@ -4729,9 +4729,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let expert = engine
         .inspect_feature_expert(
             "toy_seq",
-            &FeatureExpertTarget::UniprotProjection {
-                projection_id: "PTEST1@toy_seq".to_string(),
-            },
+            &FeatureExpertTarget::uniprot_projection("PTEST1@toy_seq".to_string()),
         )
         .expect("inspect UniProt projection expert");
     let FeatureExpertView::IsoformArchitecture(view) = expert else {
@@ -4831,9 +4829,7 @@ SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
     let expert = engine
         .inspect_feature_expert(
             "toy_reverse",
-            &FeatureExpertTarget::UniprotProjection {
-                projection_id: "PREV0@toy_reverse".to_string(),
-            },
+            &FeatureExpertTarget::uniprot_projection("PREV0@toy_reverse".to_string()),
         )
         .expect("inspect UniProt projection expert");
     let FeatureExpertView::IsoformArchitecture(view) = expert else {
@@ -4853,6 +4849,117 @@ SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
             .expect("terminal aa segment")
             .genomic_start_1based,
         1
+    );
+}
+
+#[test]
+fn test_query_uniprot_feature_coding_dna_reports_exon_and_exon_pair_matches() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_feature_query.txt");
+    let swiss_text = r#"ID   TOYQ_HUMAN              Reviewed;         48 AA.
+AC   PQUERY1;
+DE   RecName: Full=Toy queried protein;
+GN   Name=TOYQ;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXQ1; ENSPTOYQ1; ENSGTOYQ1.
+FT   DOMAIN          2..8
+FT                   /note="single exon feature"
+FT   REGION          25..30
+FT                   /note="junction feature"
+SQ   SEQUENCE   48 AA;  5000 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLML
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(99, 360),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYQ".to_string())),
+            ("transcript_id".into(), Some("TXQ1".to_string())),
+            ("label".into(), Some("TXQ1".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("100-180,300-360".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_query".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_query".to_string(),
+            entry_id: "PQUERY1".to_string(),
+            projection_id: Some("PQUERY1@toy_query".to_string()),
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let single = engine
+        .query_uniprot_feature_coding_dna(
+            "PQUERY1@toy_query",
+            "single exon",
+            None,
+            UniprotFeatureCodingDnaQueryMode::Both,
+            Some(TranslationSpeedProfile::Ecoli),
+        )
+        .expect("query single exon feature");
+    assert_eq!(single.match_count, 1);
+    assert_eq!(single.matches[0].transcript_id, "TXQ1");
+    assert_eq!(single.matches[0].primary_exon_ordinal, Some(1));
+    assert!(single.matches[0].primary_exon_pair.is_none());
+    assert_eq!(single.matches[0].exon_spans.len(), 1);
+    assert_eq!(single.matches[0].exon_spans[0].exon_ordinal, 1);
+    assert_eq!(single.matches[0].genomic_coding_dna.len(), 21);
+    assert_eq!(
+        single.matches[0]
+            .translation_speed_optimized_dna
+            .as_deref()
+            .map(str::len),
+        Some(21)
+    );
+
+    let junction = engine
+        .query_uniprot_feature_coding_dna(
+            "PQUERY1@toy_query",
+            "junction",
+            Some("TXQ1"),
+            UniprotFeatureCodingDnaQueryMode::Both,
+            Some(TranslationSpeedProfile::Human),
+        )
+        .expect("query junction feature");
+    assert_eq!(junction.match_count, 1);
+    assert_eq!(junction.matches[0].feature_key, "REGION");
+    assert_eq!(junction.matches[0].exon_spans.len(), 2);
+    assert_eq!(junction.matches[0].exon_spans[0].exon_ordinal, 1);
+    assert_eq!(junction.matches[0].exon_spans[1].exon_ordinal, 2);
+    assert_eq!(
+        junction.matches[0]
+            .primary_exon_pair
+            .as_ref()
+            .map(|pair| (pair.from_exon_ordinal, pair.to_exon_ordinal)),
+        Some((1, 2))
+    );
+    assert_eq!(junction.matches[0].genomic_segments.len(), 2);
+    assert_eq!(junction.matches[0].genomic_coding_dna.len(), 18);
+    assert_eq!(
+        junction.matches[0]
+            .translation_speed_optimized_dna
+            .as_deref()
+            .map(str::len),
+        Some(18)
     );
 }
 

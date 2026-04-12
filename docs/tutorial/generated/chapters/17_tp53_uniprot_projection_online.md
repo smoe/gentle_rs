@@ -1,4 +1,4 @@
-# TP53 UniProt protein mapping expert view (online)
+# TP53 UniProt domain mapping and feature-coding DNA query (online)
 
 - Chapter id: `tp53_uniprot_projection_online`
 - Tier: `online`
@@ -8,21 +8,21 @@
 - Executed during generation: `no`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 
-Build a TP53 locus project, fetch UniProt P04637, and open/export the shared protein-mapping expert view from one persisted projection route.
+Build a TP53 locus project, fetch UniProt P04637, map its domains onto the locus, and query which genomic DNA plus exon or exon pair encode one mapped feature.
 
-This chapter demonstrates the new UniProt projection UX. Instead of importing a curated panel JSON, you fetch the reviewed UniProt TP53 entry, project its reference-protein intervals onto one extracted TP53 locus, and inspect the result through the same shared isoform/protein expert canvas used by GUI and CLI. The emphasis is on one persisted projection record that can be reopened, rendered, and audited later.
+This chapter demonstrates the UniProt projection workflow as an inspectable bridge from protein annotation back to genomic DNA. Instead of importing a curated protein panel JSON, you fetch the reviewed UniProt TP53 entry, project its reference-protein intervals onto one extracted TP53 locus, inspect the mapped domains through the shared expert canvas, and then query one mapped feature such as `DNA-binding` to recover the exact spliced genomic coding DNA, exon attribution, and an optional translation-speed-oriented coding alternative.
 
 ## When This Routine Is Useful
 
-- You want to compare one gene locus against the reviewed UniProt reference protein without opening a first-class protein sequence window.
-- You want a deterministic TP53 example that maps transcript/CDS geometry onto UniProt protein coordinates.
-- You want a replayable expert-view SVG export that comes from stored projection state rather than manual figure editing.
+- You want to compare one gene locus against reviewed UniProt domains or regions without opening a first-class protein sequence window.
+- You want to know which spliced genomic DNA and which exon or exon pair encode one mapped feature such as TP53 DNA-binding.
+- You want a deterministic TP53 example that keeps one persisted projection record reusable for expert rendering, audit, and follow-up DNA queries.
 
 ## What You Learn
 
-- Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry.
-- Understand that the GUI protein expert is a thin presentation layer over `gentle.uniprot_genome_projections.v1`, not a separate GUI-only mapping model.
-- Export the exact same UniProt protein-mapping view through the same shared engine route from either the GUI specialist or CLI.
+- Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.
+- Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.
+- Recover exact genomic coding DNA plus exon attribution for one mapped protein feature, and compare it with an optional translation-speed-oriented codon choice.
 
 ## Concepts and Recurrence
 
@@ -33,6 +33,9 @@ This chapter demonstrates the new UniProt projection UX. Instead of importing a 
   - Status: reinforced from [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md), [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md).
   - Reoccurs in: no later chapter.
 - **UniProt Projection Mapping** (`uniprot_projection_mapping`): Reviewed UniProt protein annotations can be projected onto transcript/CDS geometry and reopened as one persisted expert-view artifact.
+  - Status: introduced in this chapter.
+  - Reoccurs in: no later chapter.
+- **Feature Coding-DNA Attribution** (`feature_coding_dna_attribution`): A persisted UniProt projection can be queried for the exact coding DNA, exon attribution, and splice-junction exon pairs that encode one mapped protein feature.
   - Status: introduced in this chapter.
   - Reoccurs in: no later chapter.
 - **Expert View Parity** (`expert_view_parity`): The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic.
@@ -49,7 +52,9 @@ This chapter demonstrates the new UniProt projection UX. Instead of importing a 
 
 1. Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.
 2. Open `File -> UniProt Mapping...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.
-3. Use `Render Protein Mapping SVG...` to export the stored projection directly, or press `Open Protein Expert` first if you want to inspect the transcript/protein geometry before exporting.
+3. Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts.
+4. In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.
+5. Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span.
 
 ## Command Equivalent (After GUI)
 
@@ -71,6 +76,12 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_unip
 - `RenderFeatureExpertSvg.target / path` (where used: operation 5)
   - Why it matters: Confirms that the projection can be reopened through the shared feature-expert route and exported reproducibly.
   - How to derive it: Use `UniprotProjection` with the stored projection id and a stable project-relative output path such as `exports/tp53_uniprot_projection.svg`.
+- `query_uniprot_feature_coding_dna.feature_query / transcript_id` (where used: GUI follow-up or shell follow-up after projection)
+  - Why it matters: The feature query chooses which mapped UniProt interval you want to trace back to coding DNA, while `transcript_id` narrows the report to one isoform when the projection stored multiple TP53 transcripts.
+  - How to derive it: Use a case-insensitive mapped feature substring such as `DNA-binding`, `activation`, or `DOMAIN`. Leave `transcript_id` empty until you need to pin one transcript.
+- `query_uniprot_feature_coding_dna.mode / translation_speed_profile` (where used: GUI follow-up or shell follow-up after projection)
+  - Why it matters: Controls whether you inspect only the exact genomic coding DNA or also a preferred-codon translation-speed-oriented alternative for the same amino-acid interval.
+  - How to derive it: Use `mode=both` for this tutorial so you can compare the genomic sequence with the optimized alternative. Keep the speed profile on `Auto` in the GUI or choose `human` explicitly in shell/CLI for TP53.
 
 ## Follow-up Commands
 
@@ -78,6 +89,7 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_unip
 cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'
 cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637
 cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg
+cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'
 ```
 
 ## Checkpoints
@@ -85,6 +97,7 @@ cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-proj
 - UniProt fetch/import reports the reviewed TP53 entry and the projection operation stores `tp53_uniprot_p04637` in project metadata.
 - Open Protein Expert shows one protein reference axis with projected transcript/CDS lanes from the TP53 locus.
 - Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window.
+- The feature-coding DNA query reports the coding-strand DNA for `DNA-binding` together with transcript-specific exon attribution, including an exon pair when the feature spans a splice junction.
 
 ## Retained Outputs
 

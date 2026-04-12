@@ -52,6 +52,7 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -629,6 +630,13 @@ pub enum ShellCommand {
     },
     UniprotProjectionShow {
         projection_id: String,
+    },
+    UniprotFeatureCodingDna {
+        projection_id: String,
+        feature_query: String,
+        transcript_id: Option<String>,
+        mode: UniprotFeatureCodingDnaQueryMode,
+        translation_speed_profile: Option<TranslationSpeedProfile>,
     },
     RenderRnaSvg {
         seq_id: String,
@@ -4694,6 +4702,25 @@ impl ShellCommand {
             Self::UniprotProjectionShow { projection_id } => {
                 format!("show UniProt genome projection '{}'", projection_id)
             }
+            Self::UniprotFeatureCodingDna {
+                projection_id,
+                feature_query,
+                transcript_id,
+                mode,
+                translation_speed_profile,
+            } => format!(
+                "query coding DNA for UniProt feature '{}' in projection '{}' (transcript={}, mode={}, speed_profile={})",
+                feature_query,
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+                mode.as_str(),
+                translation_speed_profile
+                    .map(|profile| profile.as_str())
+                    .unwrap_or("auto"),
+            ),
             Self::RenderRnaSvg { seq_id, output } => {
                 format!("render RNA structure SVG for '{seq_id}' to '{output}'")
             }
@@ -8128,7 +8155,7 @@ fn parse_feature_expert_target_tokens(
             if projection_id.is_empty() {
                 return Err("uniprot-projection PROJECTION_ID must not be empty".to_string());
             }
-            Ok(FeatureExpertTarget::UniprotProjection { projection_id })
+            Ok(FeatureExpertTarget::uniprot_projection(projection_id))
         }
         other => Err(format!(
             "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|uniprot-projection)"
@@ -10020,7 +10047,7 @@ fn parse_dbsnp_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show"
+            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna"
                 .to_string(),
         );
     }
@@ -10173,8 +10200,101 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UniprotProjectionShow { projection_id })
         }
+        "feature-coding-dna" | "feature-coding" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "uniprot feature-coding-dna requires PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            let feature_query = tokens[3].trim().to_string();
+            if projection_id.is_empty() {
+                return Err(
+                    "uniprot feature-coding-dna PROJECTION_ID must not be empty".to_string()
+                );
+            }
+            if feature_query.is_empty() {
+                return Err(
+                    "uniprot feature-coding-dna FEATURE_QUERY must not be empty".to_string()
+                );
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut mode = UniprotFeatureCodingDnaQueryMode::Both;
+            let mut translation_speed_profile: Option<TranslationSpeedProfile> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot feature-coding-dna",
+                        )?);
+                    }
+                    "--mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--mode",
+                            "uniprot feature-coding-dna",
+                        )?;
+                        mode = match raw.trim().to_ascii_lowercase().as_str() {
+                            "genomic_as_encoded" | "genomic" | "encoded" => {
+                                UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded
+                            }
+                            "translation_speed_optimized" | "optimized" | "speed" => {
+                                UniprotFeatureCodingDnaQueryMode::TranslationSpeedOptimized
+                            }
+                            "both" => UniprotFeatureCodingDnaQueryMode::Both,
+                            other => {
+                                return Err(format!(
+                                    "Unknown --mode '{}' for uniprot feature-coding-dna (expected genomic_as_encoded, translation_speed_optimized, or both)",
+                                    other
+                                ));
+                            }
+                        };
+                    }
+                    "--speed-profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--speed-profile",
+                            "uniprot feature-coding-dna",
+                        )?;
+                        translation_speed_profile = Some(
+                            match raw.trim().to_ascii_lowercase().as_str() {
+                                "human" => TranslationSpeedProfile::Human,
+                                "mouse" => TranslationSpeedProfile::Mouse,
+                                "yeast" => TranslationSpeedProfile::Yeast,
+                                "ecoli" | "e_coli" | "e-coli" => TranslationSpeedProfile::Ecoli,
+                                other => {
+                                    return Err(format!(
+                                        "Unknown --speed-profile '{}' for uniprot feature-coding-dna (expected human, mouse, yeast, or ecoli)",
+                                        other
+                                    ));
+                                }
+                            },
+                        );
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot feature-coding-dna"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotFeatureCodingDna {
+                projection_id,
+                feature_query,
+                transcript_id,
+                mode,
+                translation_speed_profile,
+            })
+        }
         other => Err(format!(
-            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show)"
+            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna)"
         )),
     }
 }
@@ -18929,6 +19049,29 @@ fn execute_shell_command_with_options_inner(
                 state_changed: false,
                 output: serde_json::to_value(projection)
                     .map_err(|e| format!("Could not serialize UniProt projection: {e}"))?,
+            }
+        }
+        ShellCommand::UniprotFeatureCodingDna {
+            projection_id,
+            feature_query,
+            transcript_id,
+            mode,
+            translation_speed_profile,
+        } => {
+            let report = engine
+                .query_uniprot_feature_coding_dna(
+                    projection_id,
+                    feature_query,
+                    transcript_id.as_deref(),
+                    *mode,
+                    *translation_speed_profile,
+                )
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize UniProt feature coding DNA report: {e}")
+                })?,
             }
         }
         ShellCommand::RenderRnaSvg { seq_id, output } => {

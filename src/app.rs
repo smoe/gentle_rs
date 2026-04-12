@@ -80,6 +80,8 @@ use crate::{
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        UniprotFeatureCodingDnaQueryReport,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -834,6 +836,11 @@ pub struct GENtleApp {
     uniprot_map_seq_id: String,
     uniprot_map_projection_id: String,
     uniprot_map_transcript_id: String,
+    uniprot_feature_query: String,
+    uniprot_feature_transcript_id: String,
+    uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode,
+    uniprot_feature_speed_profile: Option<TranslationSpeedProfile>,
+    uniprot_feature_report: Option<UniprotFeatureCodingDnaQueryReport>,
     uniprot_status: String,
     genbank_accession: String,
     genbank_as_id: String,
@@ -2386,6 +2393,11 @@ impl Default for GENtleApp {
             uniprot_map_seq_id: String::new(),
             uniprot_map_projection_id: String::new(),
             uniprot_map_transcript_id: String::new(),
+            uniprot_feature_query: String::new(),
+            uniprot_feature_transcript_id: String::new(),
+            uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode::Both,
+            uniprot_feature_speed_profile: None,
+            uniprot_feature_report: None,
             uniprot_status: String::new(),
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
@@ -16395,9 +16407,7 @@ Error: `{err}`"
             .unwrap()
             .apply(Operation::RenderFeatureExpertSvg {
                 seq_id: seq_id.to_string(),
-                target: FeatureExpertTarget::UniprotProjection {
-                    projection_id: projection_id.to_string(),
-                },
+                target: FeatureExpertTarget::uniprot_projection(projection_id.to_string()),
                 path: path_text.clone(),
             });
         match result {
@@ -16413,6 +16423,197 @@ Error: `{err}`"
                 );
             }
         }
+    }
+
+    fn uniprot_feature_speed_profile_label(
+        profile: Option<TranslationSpeedProfile>,
+    ) -> &'static str {
+        match profile {
+            None => "Auto",
+            Some(TranslationSpeedProfile::Human) => "Human",
+            Some(TranslationSpeedProfile::Mouse) => "Mouse",
+            Some(TranslationSpeedProfile::Yeast) => "Yeast",
+            Some(TranslationSpeedProfile::Ecoli) => "E. coli",
+        }
+    }
+
+    fn query_uniprot_feature_coding_dna_from_dialog(&mut self) {
+        let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields() else {
+            self.uniprot_status = "Project an entry first or provide seq_id + entry_id to resolve a projection before querying coding DNA.".to_string();
+            return;
+        };
+        let feature_query = self.uniprot_feature_query.trim().to_string();
+        if feature_query.is_empty() {
+            self.uniprot_status = "Protein feature query cannot be empty".to_string();
+            return;
+        }
+        let transcript_filter = Self::uniprot_optional_trimmed(&self.uniprot_feature_transcript_id);
+        let result = self
+            .engine
+            .read()
+            .unwrap()
+            .query_uniprot_feature_coding_dna(
+                &projection_id,
+                &feature_query,
+                transcript_filter.as_deref(),
+                self.uniprot_feature_query_mode,
+                self.uniprot_feature_speed_profile,
+            );
+        match result {
+            Ok(report) => {
+                let resolved_profile = report
+                    .resolved_translation_speed_profile
+                    .map(|profile| profile.as_str().to_string())
+                    .unwrap_or_else(|| "auto-unresolved".to_string());
+                self.uniprot_feature_report = Some(report);
+                self.uniprot_status = format!(
+                    "UniProt feature coding DNA query: ok (projection='{}', matches={}, mode={}, speed_profile={})",
+                    projection_id,
+                    self.uniprot_feature_report
+                        .as_ref()
+                        .map(|report| report.match_count)
+                        .unwrap_or(0),
+                    self.uniprot_feature_query_mode.as_str(),
+                    resolved_profile,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status =
+                    format!("UniProt feature coding DNA query failed: {}", err.message);
+            }
+        }
+    }
+
+    fn render_uniprot_feature_coding_report(&self, ui: &mut Ui) {
+        let Some(report) = self.uniprot_feature_report.as_ref() else {
+            return;
+        };
+        ui.separator();
+        ui.label(format!(
+            "Feature coding DNA matches ({})",
+            report.match_count
+        ));
+        ui.small(format!(
+            "projection={} | mode={} | speed_profile={}",
+            report.projection_id,
+            report.query_mode.as_str(),
+            report
+                .resolved_translation_speed_profile
+                .map(|profile| profile.as_str())
+                .unwrap_or("auto-unresolved")
+        ));
+        if !report.warnings.is_empty() {
+            ui.small(report.warnings.join(" | "));
+        }
+        egui::ScrollArea::vertical()
+            .max_height(240.0)
+            .show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
+                for (idx, row) in report.matches.iter().enumerate() {
+                    let header = format!(
+                        "{}. {} {} aa {}..{}",
+                        idx + 1,
+                        row.transcript_id,
+                        row.feature_key,
+                        row.aa_start,
+                        row.aa_end
+                    );
+                    ui.collapsing(header, |ui| {
+                        if let Some(note) = row.feature_note.as_deref() {
+                            ui.label(format!("note: {note}"));
+                        }
+                        ui.small(format!(
+                            "matched in {} | strand={} | feature fields={}",
+                            row.transcript_id,
+                            row.strand,
+                            if row.matched_feature_fields.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.matched_feature_fields.join(", ")
+                            }
+                        ));
+                        ui.small(format!("AA sequence: {}", row.amino_acid_sequence));
+                        let exon_summary = if let Some(exon) = row.primary_exon_ordinal {
+                            format!("exon {exon}")
+                        } else if let Some(pair) = row.primary_exon_pair.as_ref() {
+                            format!(
+                                "exon pair {} -> {}",
+                                pair.from_exon_ordinal, pair.to_exon_ordinal
+                            )
+                        } else if row.exon_spans.is_empty() {
+                            "exon attribution unavailable".to_string()
+                        } else {
+                            format!(
+                                "exons {}",
+                                row.exon_spans
+                                    .iter()
+                                    .map(|span| span.exon_ordinal.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )
+                        };
+                        ui.small(exon_summary);
+                        if !row.exon_spans.is_empty() {
+                            ui.small(format!(
+                                "coding spans: {}",
+                                row.exon_spans
+                                    .iter()
+                                    .map(|span| format!(
+                                        "exon {} [{}..{}] coding {}..{}",
+                                        span.exon_ordinal,
+                                        span.exon_start_1based,
+                                        span.exon_end_1based,
+                                        span.coding_start_1based,
+                                        span.coding_end_1based
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join(" | ")
+                            ));
+                        }
+                        if !row.genomic_segments.is_empty() {
+                            ui.small(format!(
+                                "genomic segments: {}",
+                                row.genomic_segments
+                                    .iter()
+                                    .map(|segment| format!(
+                                        "{}..{} ({}) aa {}..{}",
+                                        segment.genomic_start_1based,
+                                        segment.genomic_end_1based,
+                                        segment.strand,
+                                        segment.aa_start,
+                                        segment.aa_end
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join(" | ")
+                            ));
+                        }
+                        ui.label("Genomic coding DNA");
+                        let mut genomic_text = row.genomic_coding_dna.clone();
+                        ui.add(
+                            egui::TextEdit::multiline(&mut genomic_text)
+                                .desired_width(f32::INFINITY)
+                                .font(egui::TextStyle::Monospace)
+                                .interactive(false),
+                        );
+                        if let Some(optimized) = row.translation_speed_optimized_dna.as_ref() {
+                            ui.label("Translation-speed optimized DNA");
+                            let mut optimized_text = optimized.clone();
+                            ui.add(
+                                egui::TextEdit::multiline(&mut optimized_text)
+                                    .desired_width(f32::INFINITY)
+                                    .font(egui::TextStyle::Monospace)
+                                    .interactive(false),
+                            );
+                        }
+                        if !row.warnings.is_empty() {
+                            ui.small(format!("warnings: {}", row.warnings.join(" | ")));
+                        }
+                    });
+                }
+            });
     }
 
     fn render_genbank_dialog(&mut self, ctx: &egui::Context) {
@@ -16693,6 +16894,83 @@ Error: `{err}`"
         ui.small(
             "Open Protein Expert and Render Protein Mapping SVG... both reuse the shared isoform-architecture canvas, but source transcript/CDS-to-protein geometry from the stored UniProt projection rather than a curated panel JSON.",
         );
+        ui.separator();
+        ui.label("Feature coding DNA query");
+        ui.small(
+            "Query one mapped UniProt feature and show the exact coding DNA as encoded in the genome, plus an optional preferred-codon translational-speed version.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("feature");
+            ui.text_edit_singleline(&mut self.uniprot_feature_query).on_hover_text(
+                "Case-insensitive substring against mapped feature key/note (for example DOMAIN, DNA-binding, activation)",
+            );
+            if ui
+                .button("Query Coding DNA")
+                .on_hover_text(
+                    "Look up coding DNA and exon attribution for the selected mapped UniProt feature",
+                )
+                .clicked()
+            {
+                self.query_uniprot_feature_coding_dna_from_dialog();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("feature transcript");
+            ui.text_edit_singleline(&mut self.uniprot_feature_transcript_id)
+                .on_hover_text(
+                    "Optional stored projection transcript filter for feature DNA lookup",
+                );
+            egui::ComboBox::from_label("mode")
+                .selected_text(self.uniprot_feature_query_mode.as_str())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_query_mode,
+                        UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded,
+                        "genomic_as_encoded",
+                    );
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_query_mode,
+                        UniprotFeatureCodingDnaQueryMode::TranslationSpeedOptimized,
+                        "translation_speed_optimized",
+                    );
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_query_mode,
+                        UniprotFeatureCodingDnaQueryMode::Both,
+                        "both",
+                    );
+                });
+            egui::ComboBox::from_label("speed profile")
+                .selected_text(Self::uniprot_feature_speed_profile_label(
+                    self.uniprot_feature_speed_profile,
+                ))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.uniprot_feature_speed_profile, None, "Auto");
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_speed_profile,
+                        Some(TranslationSpeedProfile::Human),
+                        "Human",
+                    );
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_speed_profile,
+                        Some(TranslationSpeedProfile::Mouse),
+                        "Mouse",
+                    );
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_speed_profile,
+                        Some(TranslationSpeedProfile::Yeast),
+                        "Yeast",
+                    );
+                    ui.selectable_value(
+                        &mut self.uniprot_feature_speed_profile,
+                        Some(TranslationSpeedProfile::Ecoli),
+                        "E. coli",
+                    );
+                });
+        });
+        ui.small(
+            "Exon numbering follows transcript order. On reverse-strand transcripts, exon 1 is the transcript 5' exon rather than the lowest genomic coordinate.",
+        );
+        self.render_uniprot_feature_coding_report(ui);
         ui.separator();
         ui.label("Linked nucleotide retrieval (EMBL/GenBank crossref)");
         ui.horizontal(|ui| {

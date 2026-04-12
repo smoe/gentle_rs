@@ -1,5 +1,5 @@
 {
-   "command_count": 300,
+   "command_count": 301,
    "commands": [
       {
          "aliases": [
@@ -905,6 +905,19 @@
          "path": "uniprot projection-show",
          "summary": "Show one stored UniProt-to-genome projection record.",
          "usage": "uniprot projection-show PROJECTION_ID"
+      },
+      {
+         "aliases": [
+            "uniprot feature-coding"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot feature-coding-dna",
+         "summary": "Query coding DNA and exon attribution for one mapped UniProt protein feature.",
+         "usage": "uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]"
       },
       {
          "aliases": [],

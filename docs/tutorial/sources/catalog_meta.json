@@ -65,6 +65,11 @@
       "description": "Reviewed UniProt protein annotations can be projected onto transcript/CDS geometry and reopened as one persisted expert-view artifact."
     },
     {
+      "id": "feature_coding_dna_attribution",
+      "name": "Feature Coding-DNA Attribution",
+      "description": "A persisted UniProt projection can be queried for the exact coding DNA, exon attribution, and splice-junction exon pairs that encode one mapped protein feature."
+    },
+    {
       "id": "expert_view_parity",
       "name": "Expert View Parity",
       "description": "The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic."
