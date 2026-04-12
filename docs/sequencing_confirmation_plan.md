@@ -24,8 +24,8 @@ Current implementation snapshot:
     snapshot across individual reads/traces instead of staying pinned to the
     first evidence row
   - saved-report review now also includes a construct-scale overview strip with
-    clickable target/evidence/variant synchronization plus a discrepancy table
-    for the selected evidence row
+    clickable target/evidence/coverage-gap/variant synchronization plus a
+    discrepancy table for the selected evidence row
   - sequencing-primer overlay suggestions through the same shared engine/shell
     path plus the GUI specialist
   - unresolved-locus guidance rows now rank the best existing primer hit for

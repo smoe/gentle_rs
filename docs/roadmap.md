@@ -3133,9 +3133,9 @@ Repeated multi-tool gaps to prioritize:
          confirmation reports
        - saved-report review now also includes a construct overview strip plus
          unresolved-first queueing:
-         target spans, evidence spans, variant loci, and selected-evidence
-         discrepancy spans can be inspected at construct scale and clicked to
-         sync the detailed review panes
+         target spans, evidence spans, uncovered gaps, variant loci, and
+         selected-evidence discrepancy spans can be inspected at construct
+         scale and clicked to sync the detailed review panes
      - sequencing-primer overlays are now available through the same shared
        engine/shell path and exposed in the GUI specialist:
        - `SuggestSequencingPrimers` suggests exact-3'-anneal primer hits on the
