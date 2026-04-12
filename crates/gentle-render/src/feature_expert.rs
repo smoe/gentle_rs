@@ -11,6 +11,31 @@ use svg::node::element::{Circle, Line, Path, Rectangle, Text};
 
 const W: f32 = 1200.0;
 const H: f32 = 700.0;
+const PROTEIN_DOMAIN_LABEL_MAX_CHARS: usize = 44;
+const PROTEIN_DOMAIN_LABEL_FONT_SIZE: f32 = 8.0;
+const PROTEIN_DOMAIN_LABEL_CHAR_W: f32 = 4.8;
+const PROTEIN_DOMAIN_LABEL_BOX_X_PAD: f32 = 3.0;
+const PROTEIN_DOMAIN_LABEL_BOX_Y_PAD: f32 = 2.0;
+const PROTEIN_DOMAIN_LABEL_ROW_PITCH: f32 = 12.0;
+const PROTEIN_DOMAIN_LABEL_ROW_GAP: f32 = 8.0;
+const PROTEIN_DOMAIN_LABEL_DOMAIN_GAP: f32 = 7.0;
+const PROTEIN_DOMAIN_HALF_HEIGHT: f32 = 7.0;
+const PROTEIN_LANE_BOTTOM_PAD: f32 = 10.0;
+const PROTEIN_LANE_GAP: f32 = 12.0;
+
+#[derive(Debug, Clone)]
+struct ProteinDomainLabelPlacement {
+    compact_label: String,
+    box_left: f32,
+    box_right: f32,
+    row_index: usize,
+}
+
+#[derive(Debug, Clone)]
+struct ProteinLaneLayout {
+    lane_height: f32,
+    placements: Vec<ProteinDomainLabelPlacement>,
+}
 
 #[derive(Debug, Clone)]
 pub struct SplicingExonTransitionMatrix {
@@ -107,6 +132,115 @@ fn wrap_text(input: &str, max_chars: usize) -> Vec<String> {
         out.push(String::new());
     }
     out
+}
+
+fn compact_protein_domain_label(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        return input.to_string();
+    }
+    if max_chars <= 3 {
+        return input.chars().take(max_chars).collect();
+    }
+    let keep = max_chars.saturating_sub(3);
+    let mut out = String::new();
+    for ch in input.chars().take(keep) {
+        out.push(ch);
+    }
+    out.push_str("...");
+    out
+}
+
+fn estimate_protein_domain_label_box_width(label: &str) -> f32 {
+    label.chars().count() as f32 * PROTEIN_DOMAIN_LABEL_CHAR_W
+        + PROTEIN_DOMAIN_LABEL_BOX_X_PAD * 2.0
+}
+
+fn layout_protein_domain_labels(
+    domains: &[(f32, f32, String)],
+    left: f32,
+    right: f32,
+) -> ProteinLaneLayout {
+    #[derive(Debug, Clone)]
+    struct PendingLabel {
+        domain_index: usize,
+        compact_label: String,
+        box_left: f32,
+        box_right: f32,
+    }
+
+    let mut pending = domains
+        .iter()
+        .enumerate()
+        .map(|(domain_index, (domain_left, domain_right, raw_label))| {
+            let compact_label =
+                compact_protein_domain_label(raw_label, PROTEIN_DOMAIN_LABEL_MAX_CHARS);
+            let mut box_width = estimate_protein_domain_label_box_width(&compact_label);
+            let available_width = (right - left).max(1.0);
+            if box_width > available_width {
+                box_width = available_width;
+            }
+            let domain_center = (*domain_left + *domain_right) * 0.5;
+            let max_left = (right - box_width).max(left);
+            let box_left = (domain_center - box_width * 0.5).clamp(left, max_left);
+            PendingLabel {
+                domain_index,
+                compact_label,
+                box_left,
+                box_right: box_left + box_width,
+            }
+        })
+        .collect::<Vec<_>>();
+    pending.sort_by(|a, b| {
+        a.box_left
+            .partial_cmp(&b.box_left)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                b.box_right
+                    .partial_cmp(&a.box_right)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+
+    let mut row_right_edges: Vec<f32> = Vec::new();
+    let mut placements = vec![None; pending.len()];
+    for label in pending {
+        let mut row_index = None;
+        for (idx, row_right) in row_right_edges.iter_mut().enumerate() {
+            if label.box_left >= *row_right + PROTEIN_DOMAIN_LABEL_ROW_GAP {
+                *row_right = label.box_right;
+                row_index = Some(idx);
+                break;
+            }
+        }
+        let row_index = row_index.unwrap_or_else(|| {
+            row_right_edges.push(label.box_right);
+            row_right_edges.len() - 1
+        });
+        placements[label.domain_index] = Some(ProteinDomainLabelPlacement {
+            compact_label: label.compact_label,
+            box_left: label.box_left,
+            box_right: label.box_right,
+            row_index,
+        });
+    }
+
+    let label_rows = row_right_edges.len();
+    let label_band_height = if label_rows == 0 {
+        0.0
+    } else {
+        PROTEIN_DOMAIN_LABEL_FONT_SIZE
+            + (label_rows.saturating_sub(1) as f32) * PROTEIN_DOMAIN_LABEL_ROW_PITCH
+            + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD
+    };
+    let lane_height = label_band_height
+        + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP
+        + PROTEIN_DOMAIN_HALF_HEIGHT * 2.0
+        + PROTEIN_LANE_BOTTOM_PAD;
+
+    ProteinLaneLayout {
+        lane_height,
+        placements: placements.into_iter().flatten().collect(),
+    }
 }
 
 fn match_base_to_idx(base: Option<char>) -> Option<usize> {
@@ -1540,12 +1674,6 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
     let top_header = 114.0_f32;
     let exon_chart_h =
         lane_count as f32 * lane_h + (lane_count.saturating_sub(1) as f32) * lane_gap;
-    let protein_chart_top = top_header + exon_chart_h + 92.0;
-    let protein_chart_h =
-        lane_count as f32 * lane_h + (lane_count.saturating_sub(1) as f32) * lane_gap;
-    let footer_top = protein_chart_top + protein_chart_h + 64.0;
-    let dyn_h = (footer_top + 120.0).max(H + 140.0);
-
     let label_x = 44.0_f32;
     let left = 340.0_f32;
     let right = W - 44.0_f32;
@@ -1621,6 +1749,56 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         let clamped = aa_1based.clamp(1.0, aa_max as f32);
         left + ((clamped - 1.0) / aa_span) * width
     };
+    let protein_lane_layouts = view
+        .protein_lanes
+        .iter()
+        .map(|lane| {
+            let max_domain_end = lane
+                .domains
+                .iter()
+                .map(|domain| domain.end_aa.max(domain.start_aa))
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let lane_start = lane.reference_start_aa.unwrap_or(1).clamp(1, aa_max);
+            let inferred_end = lane
+                .expected_length_aa
+                .unwrap_or(max_domain_end)
+                .max(max_domain_end);
+            let lane_end = lane
+                .reference_end_aa
+                .unwrap_or(inferred_end)
+                .clamp(lane_start, aa_max);
+            let domains = lane
+                .domains
+                .iter()
+                .filter_map(|domain| {
+                    let domain_start = domain.start_aa.max(lane_start);
+                    let domain_end = domain.end_aa.max(domain.start_aa).min(lane_end);
+                    if domain_end < domain_start {
+                        return None;
+                    }
+                    let x1 = x_for_aa(domain_start);
+                    let x2 = x_for_aa(domain_end);
+                    let (domain_left, domain_right) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
+                    Some((domain_left, domain_right, domain.name.clone()))
+                })
+                .collect::<Vec<_>>();
+            layout_protein_domain_labels(&domains, left, right)
+        })
+        .collect::<Vec<_>>();
+    let protein_chart_top = top_header + exon_chart_h + 92.0;
+    let protein_chart_h = if protein_lane_layouts.is_empty() {
+        PROTEIN_DOMAIN_HALF_HEIGHT * 2.0 + PROTEIN_LANE_BOTTOM_PAD
+    } else {
+        protein_lane_layouts
+            .iter()
+            .map(|layout| layout.lane_height)
+            .sum::<f32>()
+            + (protein_lane_layouts.len().saturating_sub(1) as f32) * PROTEIN_LANE_GAP
+    };
+    let footer_top = protein_chart_top + protein_chart_h + 64.0;
+    let dyn_h = (footer_top + 120.0).max(H + 140.0);
     let top_geometry_kind = if view
         .transcript_geometry_mode
         .trim()
@@ -1991,8 +2169,13 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                 .set("fill", "#4b5563"),
         );
 
+    let mut protein_lane_top = protein_chart_top;
     for (idx, lane) in view.protein_lanes.iter().enumerate() {
-        let y = protein_chart_top + idx as f32 * (lane_h + lane_gap) + lane_h * 0.5;
+        let layout = protein_lane_layouts
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| layout_protein_domain_labels(&[], left, right));
+        let y = protein_lane_top + PROTEIN_DOMAIN_HALF_HEIGHT;
         doc = doc.add(
             Text::new(lane.label.clone())
                 .set("x", left - 12.0)
@@ -2029,7 +2212,7 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                 .set("stroke", "#94a3b8")
                 .set("stroke-width", 2.0),
         );
-        for domain in &lane.domains {
+        for (domain_idx, domain) in lane.domains.iter().enumerate() {
             let domain_start = domain.start_aa.max(lane_start);
             let domain_end = domain.end_aa.max(domain.start_aa).min(lane_end);
             if domain_end < domain_start {
@@ -2042,22 +2225,60 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                 .add(
                     Rectangle::new()
                         .set("x", x1)
-                        .set("y", y - 7.0)
+                        .set("y", y - PROTEIN_DOMAIN_HALF_HEIGHT)
                         .set("width", (x2 - x1).max(1.0))
-                        .set("height", 14.0)
+                        .set("height", PROTEIN_DOMAIN_HALF_HEIGHT * 2.0)
                         .set("fill", fill)
                         .set("fill-opacity", 0.82)
                         .set("stroke", "#1f2937")
                         .set("stroke-width", 0.5),
-                )
-                .add(
-                    Text::new(domain.name.clone())
-                        .set("x", x1 + 2.0)
-                        .set("y", y - 9.0)
-                        .set("font-family", "monospace")
-                        .set("font-size", 8)
-                        .set("fill", "#334155"),
                 );
+            if let Some(label) = layout.placements.get(domain_idx) {
+                let label_band_top =
+                    y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP;
+                let label_baseline_y = label_band_top
+                    + PROTEIN_DOMAIN_LABEL_FONT_SIZE
+                    + label.row_index as f32 * PROTEIN_DOMAIN_LABEL_ROW_PITCH;
+                let label_box_top = label_baseline_y - PROTEIN_DOMAIN_LABEL_FONT_SIZE;
+                let label_box_height =
+                    PROTEIN_DOMAIN_LABEL_FONT_SIZE + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 2.0;
+                let domain_center = (x1 + x2) * 0.5;
+                let leader_top = y + PROTEIN_DOMAIN_HALF_HEIGHT + 1.0;
+                let leader_bottom =
+                    (label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD - 1.0).max(leader_top);
+                doc = doc
+                    .add(
+                        Line::new()
+                            .set("x1", domain_center)
+                            .set("y1", leader_top)
+                            .set("x2", domain_center)
+                            .set("y2", leader_bottom)
+                            .set("stroke", "#94a3b8")
+                            .set("stroke-width", 0.8)
+                            .set("stroke-opacity", 0.9),
+                    )
+                    .add(
+                        Rectangle::new()
+                            .set("x", label.box_left)
+                            .set("y", label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD)
+                            .set("width", (label.box_right - label.box_left).max(1.0))
+                            .set("height", label_box_height)
+                            .set("rx", 2.0)
+                            .set("ry", 2.0)
+                            .set("fill", "#ffffff")
+                            .set("fill-opacity", 0.96)
+                            .set("stroke", "#cbd5e1")
+                            .set("stroke-width", 0.5),
+                    )
+                    .add(
+                        Text::new(label.compact_label.clone())
+                            .set("x", label.box_left + PROTEIN_DOMAIN_LABEL_BOX_X_PAD)
+                            .set("y", label_baseline_y + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 0.5)
+                            .set("font-family", "monospace")
+                            .set("font-size", PROTEIN_DOMAIN_LABEL_FONT_SIZE)
+                            .set("fill", "#334155"),
+                    );
+            }
         }
         if let Some(tag) = lane.transactivation_class.as_deref() {
             doc = doc.add(
@@ -2069,6 +2290,7 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                     .set("fill", "#374151"),
             );
         }
+        protein_lane_top += layout.lane_height + PROTEIN_LANE_GAP;
     }
 
     let mut y = footer_top;
@@ -2222,6 +2444,44 @@ mod tests {
         svg.matches("fill=\"#64748b\"").count()
     }
 
+    fn extract_first_protein_rail_y(svg: &str) -> Option<f32> {
+        for part in svg.split("<line").skip(1) {
+            if !part.contains("stroke=\"#94a3b8\"") || !part.contains("stroke-width=\"2\"") {
+                continue;
+            }
+            let Some(attr_start) = part.find(" y1=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 5..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            if let Ok(value) = rest[..attr_end].parse::<f32>() {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn extract_first_label_box_y(svg: &str) -> Option<f32> {
+        for part in svg.split("<rect").skip(1) {
+            if !part.contains("fill=\"#ffffff\"") || !part.contains("stroke=\"#cbd5e1\"") {
+                continue;
+            }
+            let Some(attr_start) = part.find(" y=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 4..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            if let Ok(value) = rest[..attr_end].parse::<f32>() {
+                return Some(value);
+            }
+        }
+        None
+    }
+
     #[test]
     fn isoform_renderer_keeps_forward_strand_exon_order_left_to_right() {
         let svg = render_isoform_architecture(&isoform_test_view("+"));
@@ -2280,5 +2540,71 @@ mod tests {
         assert_eq!(duplicated_count, single_count);
         assert!(duplicated_svg.contains("fill-opacity=\"0.18\""));
         assert!(duplicated_svg.contains("stroke=\"#475569\""));
+    }
+
+    #[test]
+    fn isoform_renderer_places_protein_domain_labels_below_domain_lane() {
+        let svg = render_isoform_architecture(&isoform_test_view("+"));
+        let protein_y = extract_first_protein_rail_y(&svg).expect("protein rail y");
+        let label_box_y = extract_first_label_box_y(&svg).expect("protein label box y");
+        assert!(
+            label_box_y > protein_y,
+            "expected first label box below protein rail: label_box_y={label_box_y}, protein_y={protein_y}"
+        );
+        assert!(svg.contains("stroke=\"#cbd5e1\""));
+    }
+
+    #[test]
+    fn isoform_renderer_staggers_dense_protein_domain_labels_across_rows() {
+        let dense_layout = layout_protein_domain_labels(
+            &[
+                (420.0, 450.0, "label alpha domain segment with long annotation text".to_string()),
+                (420.0, 450.0, "label beta overlapping segment with long annotation text".to_string()),
+                (420.0, 450.0, "label gamma dense segment with long annotation text".to_string()),
+                (420.0, 450.0, "label delta dense segment with long annotation text".to_string()),
+            ],
+            340.0,
+            1156.0,
+        );
+        assert!(
+            dense_layout
+                .placements
+                .iter()
+                .map(|placement| placement.row_index)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                >= 2
+        );
+
+        let mut view = isoform_test_view("+");
+        view.protein_lanes[0].domains = vec![
+            IsoformArchitectureProteinDomain {
+                name: "label alpha domain segment with long annotation text".to_string(),
+                start_aa: 10,
+                end_aa: 18,
+                color_hex: Some("#ff0000".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "label beta overlapping segment with long annotation text".to_string(),
+                start_aa: 10,
+                end_aa: 18,
+                color_hex: Some("#00aa00".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "label gamma dense segment with long annotation text".to_string(),
+                start_aa: 10,
+                end_aa: 18,
+                color_hex: Some("#0000ff".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "label delta dense segment with long annotation text".to_string(),
+                start_aa: 10,
+                end_aa: 18,
+                color_hex: Some("#ffaa00".to_string()),
+            },
+        ];
+
+        let svg = render_isoform_architecture(&view);
+        assert!(svg.contains("stroke=\"#cbd5e1\""));
     }
 }

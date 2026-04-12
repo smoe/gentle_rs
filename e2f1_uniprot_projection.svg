@@ -77,211 +77,311 @@ B) protein domain architecture
 <text fill="#4b5563" font-family="monospace" font-size="10" text-anchor="end" x="1156" y="212">
 437 aa
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="245.5">
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="240.5">
 ENST00000343380
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="340" x2="1154.1327" y1="242" y2="242"/>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="84.027466" x="416.55835" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="418.55835" y="233">
+<line stroke="#94a3b8" stroke-width="2" x1="340" x2="1154.1327" y1="237" y2="237"/>
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="84.027466" x="416.55835" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="458.57208" x2="458.57208" y1="245" y2="248"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="92.399994" x="412.37207" y="249"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="415.37207" y="260">
 REGION: Disordered
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.55835" x="463.2403" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="465.2403" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.55835" x="463.2403" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="501.51947" x2="501.51947" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="145.20004" x="428.91946" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="431.91946" y="284">
 REGION: Cyclin A:CDK2 binding
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.08008" x="504.32037" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="506.32037" y="233">
-CONFLICT: KRRLDLETDHQYLAESSGPARGR -&gt; RTPGTPRRQRRLCPPRRPGRAPC (in Ref. 8; AAD14150)
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.08008" x="504.32037" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="524.8604" x2="524.8604" y1="245" y2="260"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20004" x="416.2604" y="261"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="419.2604" y="272">
+CONFLICT: KRRLDLETDHQYLAESSGPARGR -&gt; RTPG...
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="190.46222" x="504.32037" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="506.32037" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="190.46222" x="504.32037" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="599.5515" x2="599.5515" y1="245" y2="368"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="183.60004" x="507.75153" y="369"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="510.75153" y="380">
 REGION: Interaction with BIRC2/c-IAP1
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="50.416504" x="526.72766" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="528.72766" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="50.416504" x="526.72766" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="551.9359" x2="551.9359" y1="245" y2="356"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="92.400024" x="505.7359" y="357"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="508.7359" y="368">
 REGION: Disordered
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="156.8512" x="543.5332" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="545.5332" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="156.8512" x="543.5332" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="621.9588" x2="621.9588" y1="245" y2="404"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="44.400024" x="599.7588" y="405"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="602.7588" y="416">
 DNA_BIND
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="556.6041" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="558.6041" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="556.6041" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="556.6041" x2="556.6041" y1="245" y2="332"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="121.19998" x="496.00412" y="333"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="499.00412" y="344">
 MOD_RES: N6-acetyllysine
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="556.6041" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="558.6041" y="233">
-MUTAGEN: K-&gt;R: Abolishes acetylation; when associated with R-120 and R-125.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="556.6041" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="556.6041" x2="556.6041" y1="245" y2="284"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.19998" x="448.00412" y="285"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="451.00412" y="296">
+MUTAGEN: K-&gt;R: Abolishes acetylation; whe...
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="562.20593" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="564.20593" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="562.20593" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="562.20593" x2="562.20593" y1="245" y2="344"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="121.19998" x="501.60593" y="345"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="504.60593" y="356">
 MOD_RES: N6-acetyllysine
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="562.20593" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="564.20593" y="233">
-MUTAGEN: K-&gt;R: Abolishes acetylation; when associated with R-117 and R-125.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="562.20593" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="562.20593" x2="562.20593" y1="245" y2="296"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.19998" x="453.60593" y="297"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="456.60593" y="308">
+MUTAGEN: K-&gt;R: Abolishes acetylation; whe...
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="571.54236" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="573.54236" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="571.54236" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="571.54236" x2="571.54236" y1="245" y2="380"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="121.19998" x="510.94235" y="381"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="513.9424" y="392">
 MOD_RES: N6-acetyllysine
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="571.54236" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="573.54236" y="233">
-MUTAGEN: K-&gt;R: Abolishes acetylation; when associated with R-117 and R-120.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="571.54236" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="571.54236" x2="571.54236" y1="245" y2="308"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.19998" x="462.94235" y="309"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="465.94235" y="320">
+MUTAGEN: K-&gt;R: Abolishes acetylation; whe...
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="584.6133" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="586.6133" y="233">
-MUTAGEN: L-&gt;E: Abolishes interaction with and repression of CEBPA and inhibition of adipogenesis.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="584.6133" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="584.6133" x2="584.6133" y1="245" y2="320"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.19998" x="476.01328" y="321"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="479.01328" y="332">
+MUTAGEN: L-&gt;E: Abolishes interaction with...
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="39.21283" x="623.82605" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="625.82605" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="39.21283" x="623.82605" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="643.4325" x2="643.4325" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="111.60004" x="587.6325" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="590.6325" y="284">
 REGION: Leucine-zipper
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="67.221924" x="633.1625" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="635.1625" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="67.221924" x="633.1625" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="666.77344" x2="666.77344" y1="245" y2="332"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="73.20001" x="630.17346" y="333"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="633.17346" y="344">
 MOTIF: DEF box
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="683.579" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="685.579" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="683.579" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="683.579" x2="683.579" y1="245" y2="392"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="169.20001" x="598.979" y="393"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="601.979" y="404">
 MOD_RES: N6-methyllysine; by SETD7
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="683.579" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="685.579" y="233">
-MUTAGEN: K-&gt;R: Abrogates methylation by SETD7. Loss of interaction with L3MBTL3. Loss of ubiquitination by the CRL4-DCAF5 E3 ubiquitin ligase complex.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="683.579" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="683.579" x2="683.579" y1="245" y2="248"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20001" x="574.979" y="249"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="577.979" y="260">
+MUTAGEN: K-&gt;R: Abrogates methylation by S...
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="354.7826" x="696.6499" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="698.6499" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="354.7826" x="696.6499" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="874.0412" x2="874.0412" y1="245" y2="308"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20001" x="765.44116" y="309"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="768.44116" y="320">
 REGION: Required for interaction with TRIM28
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="166.18762" x="702.2517" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="704.2517" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="166.18762" x="702.2517" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="785.3455" x2="785.3455" y1="245" y2="284"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="102" x="734.3455" y="285"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="737.3455" y="296">
 REGION: Dimerization
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="711.58813" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="713.58813" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="711.58813" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="711.58813" x2="711.58813" y1="245" y2="356"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="183.60004" x="619.78815" y="357"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="622.78815" y="368">
 VARIANT: G -&gt; S (in dbSNP:rs35385772)
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="63.487427" x="715.32263" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="717.32263" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="63.487427" x="715.32263" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="747.06635" x2="747.06635" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="30" x="732.06635" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="735.06635" y="284">
 HELIX
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336365" x="782.5446" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="784.5446" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336365" x="782.5446" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="787.21277" x2="787.21277" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="30" x="772.21277" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="775.21277" y="284">
 HELIX
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734497" x="795.6156" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="797.6156" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734497" x="795.6156" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="797.48285" x2="797.48285" y1="245" y2="320"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="780.0828" y="321"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="783.0828" y="332">
 STRAND
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="7.469055" x="801.2174" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="803.2174" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="7.469055" x="801.2174" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="804.9519" x2="804.9519" y1="245" y2="332"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="30" x="789.9519" y="333"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="792.9519" y="344">
 HELIX
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="808.68646" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="810.68646" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="808.68646" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="808.68646" x2="808.68646" y1="245" y2="260"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="178.79999" x="719.28644" y="261"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="722.28644" y="272">
 VARIANT: R -&gt; H (in dbSNP:rs3213172)
 </text>
-<rect fill="#be123c" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.7346191" x="818.0228" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="820.0228" y="233">
+<rect fill="#be123c" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.7346191" x="818.0228" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="819.89014" x2="819.89014" y1="245" y2="248"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="807.29016" y="249"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="810.29016" y="260">
 TURN
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="11.203613" x="823.62476" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="825.62476" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="11.203613" x="823.62476" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="829.22656" x2="829.22656" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="811.82654" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="814.82654" y="284">
 STRAND
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336426" x="846.032" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="848.032" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336426" x="846.032" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="850.7002" x2="850.7002" y1="245" y2="344"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="833.3002" y="345"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="836.3002" y="356">
 STRAND
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="853.50116" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="855.50116" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="853.50116" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="853.50116" x2="853.50116" y1="245" y2="296"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="178.79999" x="764.10114" y="297"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="767.10114" y="308">
 VARIANT: V -&gt; M (in dbSNP:rs3213173)
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336426" x="864.7048" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="866.7048" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="9.336426" x="864.7048" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="869.373" x2="869.373" y1="245" y2="284"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="851.97296" y="285"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="854.97296" y="296">
 STRAND
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734558" x="877.77576" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="879.77576" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734558" x="877.77576" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="879.64307" x2="879.64307" y1="245" y2="356"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="862.24304" y="357"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="865.24304" y="368">
 STRAND
 </text>
-<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734558" x="887.1121" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="889.1121" y="233">
+<rect fill="#4f46e5" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="3.734558" x="887.1121" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="888.9794" x2="888.9794" y1="245" y2="368"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.799988" x="871.57935" y="369"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="874.57935" y="380">
 STRAND
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="91.49658" x="898.3158" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="900.3158" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="91.49658" x="898.3158" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="944.0641" x2="944.0641" y1="245" y2="284"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="92.400024" x="897.8641" y="285"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="900.8641" y="296">
 REGION: Disordered
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="918.85583" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="920.85583" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="918.85583" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="918.85583" x2="918.85583" y1="245" y2="332"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="178.79999" x="829.4558" y="333"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="832.4558" y="344">
 VARIANT: T -&gt; N (in dbSNP:rs3213174)
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="922.5904" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="924.5904" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="922.5904" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="922.5904" x2="922.5904" y1="245" y2="320"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="188.40002" x="828.3904" y="321"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="831.3904" y="332">
 CONFLICT: S -&gt; Y (in Ref. 4; AAC50719)
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="939.3959" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="941.3959" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="939.3959" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="939.3959" x2="939.3959" y1="245" y2="248"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="188.39996" x="845.19586" y="249"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="848.19586" y="260">
 CONFLICT: N -&gt; T (in Ref. 4; AAC50719)
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="952.4668" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="954.4668" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="952.4668" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="952.4668" x2="952.4668" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="188.39996" x="858.2668" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="861.2668" y="284">
 CONFLICT: T -&gt; N (in Ref. 4; AAC50719)
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.67279" x="971.1396" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="973.1396" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.67279" x="971.1396" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="980.47595" x2="980.47595" y1="245" y2="344"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="121.19995" x="919.876" y="345"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="922.876" y="356">
 COMPBIAS: Low complexity
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1017.82153" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1019.82153" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1017.82153" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1017.82153" x2="1017.82153" y1="245" y2="356"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="159.60004" x="938.02155" y="357"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="941.02155" y="368">
 MOD_RES: Phosphoserine; by CHEK2
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1017.82153" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1019.82153" y="233">
-MUTAGEN: S-&gt;A: Abrogates in vitro phosphorylation by CHEK2 and CHEK2-dependent stabilization of E2F1 upon DNA damage.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1017.82153" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1017.82153" x2="1017.82153" y1="245" y2="260"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20007" x="909.22156" y="261"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="912.22156" y="272">
+MUTAGEN: S-&gt;A: Abrogates in vitro phospho...
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="128.84216" x="1025.2905" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1027.2905" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="128.84216" x="1025.2905" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1089.7117" x2="1089.7117" y1="245" y2="284"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="116.400024" x="1031.5117" y="285"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1034.5117" y="296">
 REGION: Transactivation
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1038.3616" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1040.3616" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1038.3616" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1038.3616" x2="1038.3616" y1="245" y2="428"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="111.60004" x="982.5616" y="429"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="985.5616" y="440">
 MOD_RES: Phosphoserine
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1071.9725" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1073.9725" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1071.9725" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1071.9725" x2="1071.9725" y1="245" y2="404"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="178.79999" x="977.2" y="405"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="980.2" y="416">
 VARIANT: G -&gt; S (in dbSNP:rs3213176)
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1090.6453" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1092.6453" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1090.6453" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1090.6453" x2="1090.6453" y1="245" y2="416"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="178.79999" x="977.2" y="417"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="980.2" y="428">
 MOD_RES: Phosphoserine; by GSK3-beta
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1090.6453" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1092.6453" y="233">
-MUTAGEN: S-&gt;A: Decreased phosphorylation by GSK3B, leading to abolished interaction with USP11 and subsequent deubiquitination.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1090.6453" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1090.6453" x2="1090.6453" y1="245" y2="368"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20001" x="938.8" y="369"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="941.8" y="380">
+MUTAGEN: S-&gt;A: Decreased phosphorylation ...
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="31.743652" x="1101.849" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1103.849" y="233">
+<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="31.743652" x="1101.849" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1117.7208" x2="1117.7208" y1="245" y2="248"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="97.19995" x="1058.8" y="249"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1061.8" y="260">
 REGION: RB1 binding
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1105.5835" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1107.5835" y="233">
-MUTAGEN: Y-&gt;C: No retinoblastoma protein binding. No effect on interaction with and repression of CEBPA.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1105.5835" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1105.5835" x2="1105.5835" y1="245" y2="380"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20001" x="938.8" y="381"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="941.8" y="392">
+MUTAGEN: Y-&gt;C: No retinoblastoma protein ...
 </text>
-<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="5.6018066" x="1124.2563" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1126.2563" y="233">
+<rect fill="#dc2626" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="5.6018066" x="1124.2563" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1127.0573" x2="1127.0573" y1="245" y2="272"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="30" x="1112.0573" y="273"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1115.0573" y="284">
 HELIX
 </text>
-<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1146.6636" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1148.6636" y="233">
+<rect fill="#0891b2" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1146.6636" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1146.6636" x2="1146.6636" y1="245" y2="296"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="193.20001" x="962.8" y="297"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="965.8" y="308">
 MOD_RES: Phosphothreonine; by GSK3-beta
 </text>
-<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1146.6636" y="235"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1148.6636" y="233">
-MUTAGEN: T-&gt;A: Decreased phosphorylation by GSK3B.
+<rect fill="#9333ea" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="1" x="1146.6636" y="230"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1146.6636" x2="1146.6636" y1="245" y2="392"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="217.20001" x="938.8" y="393"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="941.8" y="404">
+MUTAGEN: T-&gt;A: Decreased phosphorylation ...
 </text>
-<text fill="#334155" font-family="monospace" font-size="10" x="44" y="318">
+<text fill="#334155" font-family="monospace" font-size="10" x="44" y="515">
 panel source: UniProt projection Q01094 (Q01094)
 </text>
 <text fill="#374151" font-family="monospace" font-size="11" x="44" y="776">
