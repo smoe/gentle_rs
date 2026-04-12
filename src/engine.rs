@@ -4666,7 +4666,13 @@ impl GentleEngine {
         let (catalog, catalog_origin) =
             Self::open_catalog_with_default_mode(catalog_path, helper_mode)?;
         catalog
-            .preview_ensembl_quick_install(collection, species_dir, output_catalog_path, genome_id)
+            .preview_ensembl_quick_install_for_domain(
+                helper_mode,
+                collection,
+                species_dir,
+                output_catalog_path,
+                genome_id,
+            )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -4687,7 +4693,13 @@ impl GentleEngine {
         let (catalog, catalog_origin) =
             Self::open_catalog_with_default_mode(catalog_path, helper_mode)?;
         catalog
-            .apply_ensembl_quick_install(collection, species_dir, output_catalog_path, genome_id)
+            .apply_ensembl_quick_install_for_domain(
+                helper_mode,
+                collection,
+                species_dir,
+                output_catalog_path,
+                genome_id,
+            )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -4723,7 +4735,8 @@ impl GentleEngine {
             on_progress(progress)
         };
         catalog
-            .quick_install_ensembl_genome_once_with_progress(
+            .quick_install_ensembl_genome_once_with_progress_for_domain(
+                helper_mode,
                 collection,
                 species_dir,
                 output_catalog_path,

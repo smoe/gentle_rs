@@ -483,7 +483,17 @@ pub struct HelperConstructInterpretation {
 }
 
 fn default_cache_dir() -> Option<String> {
-    Some(DEFAULT_GENOME_CACHE_DIR.to_string())
+    default_cache_dir_for_domain(CatalogDomain::Reference)
+}
+
+fn default_cache_dir_for_domain(domain: CatalogDomain) -> Option<String> {
+    Some(
+        match domain {
+            CatalogDomain::Reference => DEFAULT_GENOME_CACHE_DIR,
+            CatalogDomain::Helper => DEFAULT_HELPER_GENOME_CACHE_DIR,
+        }
+        .to_string(),
+    )
 }
 
 fn configured_cache_dir_env(key: &str) -> Option<String> {
@@ -1919,7 +1929,25 @@ impl GenomeCatalog {
         output_catalog_path: Option<&str>,
         genome_id: Option<&str>,
     ) -> Result<EnsemblQuickInstallPreview, String> {
+        self.preview_ensembl_quick_install_for_domain(
+            false,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub(crate) fn preview_ensembl_quick_install_for_domain(
+        &self,
+        helper_mode: bool,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallPreview, String> {
         self.preview_ensembl_quick_install_with_fetcher(
+            helper_mode,
             collection,
             species_dir,
             output_catalog_path,
@@ -1936,7 +1964,25 @@ impl GenomeCatalog {
         output_catalog_path: Option<&str>,
         genome_id: Option<&str>,
     ) -> Result<EnsemblQuickInstallCatalogWriteReport, String> {
+        self.apply_ensembl_quick_install_for_domain(
+            false,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+        )
+    }
+
+    pub(crate) fn apply_ensembl_quick_install_for_domain(
+        &self,
+        helper_mode: bool,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+    ) -> Result<EnsemblQuickInstallCatalogWriteReport, String> {
         self.apply_ensembl_quick_install_with_fetcher(
+            helper_mode,
             collection,
             species_dir,
             output_catalog_path,
@@ -1955,7 +2001,29 @@ impl GenomeCatalog {
         cache_dir: Option<&str>,
         on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<EnsemblQuickInstallReport, String> {
+        self.quick_install_ensembl_genome_once_with_progress_for_domain(
+            false,
+            collection,
+            species_dir,
+            output_catalog_path,
+            genome_id,
+            cache_dir,
+            on_progress,
+        )
+    }
+
+    pub(crate) fn quick_install_ensembl_genome_once_with_progress_for_domain(
+        &self,
+        helper_mode: bool,
+        collection: &str,
+        species_dir: &str,
+        output_catalog_path: Option<&str>,
+        genome_id: Option<&str>,
+        cache_dir: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    ) -> Result<EnsemblQuickInstallReport, String> {
         self.quick_install_ensembl_genome_once_with_progress_and_fetcher(
+            helper_mode,
             collection,
             species_dir,
             output_catalog_path,
@@ -1968,13 +2036,14 @@ impl GenomeCatalog {
 
     fn preview_ensembl_quick_install_with_fetcher(
         &self,
+        helper_mode: bool,
         collection: &str,
         species_dir: &str,
         output_catalog_path: Option<&str>,
         genome_id: Option<&str>,
         fetch_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<EnsemblQuickInstallPreview, String> {
-        let domain = guess_catalog_domain_from_origin(self.catalog_origin_label());
+        let domain = CatalogDomain::from_helper_mode(helper_mode);
         let resolved = resolve_current_ensembl_candidate(collection, species_dir, fetch_text)?;
         let requested_genome_id = genome_id.map(str::trim).filter(|value| !value.is_empty());
         let genome_id = requested_genome_id
@@ -2042,6 +2111,7 @@ impl GenomeCatalog {
 
     fn apply_ensembl_quick_install_with_fetcher(
         &self,
+        helper_mode: bool,
         collection: &str,
         species_dir: &str,
         output_catalog_path: Option<&str>,
@@ -2049,13 +2119,17 @@ impl GenomeCatalog {
         fetch_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<EnsemblQuickInstallCatalogWriteReport, String> {
         let preview = self.preview_ensembl_quick_install_with_fetcher(
+            helper_mode,
             collection,
             species_dir,
             output_catalog_path,
             genome_id,
             fetch_text,
         )?;
-        let entry = build_ensembl_quick_install_catalog_entry(&preview);
+        let entry = build_ensembl_quick_install_catalog_entry(
+            &preview,
+            CatalogDomain::from_helper_mode(helper_mode),
+        );
         let output_path = PathBuf::from(&preview.output_catalog_path);
         match preview.catalog_write_mode.as_str() {
             "full_catalog" => {
@@ -2092,6 +2166,7 @@ impl GenomeCatalog {
 
     fn quick_install_ensembl_genome_once_with_progress_and_fetcher(
         &self,
+        helper_mode: bool,
         collection: &str,
         species_dir: &str,
         output_catalog_path: Option<&str>,
@@ -2101,6 +2176,7 @@ impl GenomeCatalog {
         fetch_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<EnsemblQuickInstallReport, String> {
         let write_report = self.apply_ensembl_quick_install_with_fetcher(
+            helper_mode,
             collection,
             species_dir,
             output_catalog_path,
@@ -6166,14 +6242,6 @@ fn discover_ensembl_installable_genomes_with_fetcher(
     })
 }
 
-fn guess_catalog_domain_from_origin(origin_label: &str) -> CatalogDomain {
-    if origin_label.to_ascii_lowercase().contains("helper") {
-        CatalogDomain::Helper
-    } else {
-        CatalogDomain::Reference
-    }
-}
-
 fn extract_ensembl_fasta_stem(filename: &str) -> Option<String> {
     for suffix in [
         ".dna_sm.toplevel.fa.gz",
@@ -6436,6 +6504,7 @@ fn validate_ensembl_quick_install_target(
 
 fn build_ensembl_quick_install_catalog_entry(
     preview: &EnsemblQuickInstallPreview,
+    domain: CatalogDomain,
 ) -> GenomeCatalogEntry {
     GenomeCatalogEntry {
         description: Some(preview.genome_id.clone()),
@@ -6445,7 +6514,7 @@ fn build_ensembl_quick_install_catalog_entry(
         )),
         sequence_remote: Some(preview.sequence_remote.clone()),
         annotations_remote: Some(preview.annotations_remote.clone()),
-        cache_dir: default_cache_dir(),
+        cache_dir: default_cache_dir_for_domain(domain),
         aliases: vec![preview.species_dir.clone(), preview.display_name.clone()],
         search_terms: vec![
             preview.collection.clone(),
@@ -12793,6 +12862,7 @@ mod tests {
 
         let preview = catalog
             .preview_ensembl_quick_install_with_fetcher(
+                false,
                 "vertebrates",
                 "mus_musculus",
                 None,
@@ -12806,6 +12876,7 @@ mod tests {
 
         let report = catalog
             .apply_ensembl_quick_install_with_fetcher(
+                false,
                 "vertebrates",
                 "mus_musculus",
                 None,
@@ -12860,6 +12931,7 @@ mod tests {
 
         let preview = catalog
             .preview_ensembl_quick_install_with_fetcher(
+                false,
                 "vertebrates",
                 "mus_musculus",
                 Some(overlay_path.to_string_lossy().as_ref()),
@@ -12871,6 +12943,7 @@ mod tests {
 
         catalog
             .apply_ensembl_quick_install_with_fetcher(
+                false,
                 "vertebrates",
                 "mus_musculus",
                 Some(overlay_path.to_string_lossy().as_ref()),
@@ -12920,6 +12993,7 @@ mod tests {
 
         let err = catalog
             .preview_ensembl_quick_install_with_fetcher(
+                false,
                 "vertebrates",
                 "mus_musculus",
                 Some(overlay_path.to_string_lossy().as_ref()),
@@ -12928,6 +13002,44 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.contains("duplicate id"));
+    }
+
+    #[test]
+    fn test_helper_ensembl_quick_install_uses_helper_cache_dir_for_explicit_catalog() {
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("catalog.json");
+        fs::write(&catalog_path, "{}").unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let fetch = |url: &str| -> Result<String, String> {
+            match url {
+                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                    r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
+                ),
+                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                    Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
+                }
+                other => Err(format!("unexpected url: {other}")),
+            }
+        };
+
+        catalog
+            .apply_ensembl_quick_install_with_fetcher(
+                true,
+                "vertebrates",
+                "mus_musculus",
+                None,
+                None,
+                &fetch,
+            )
+            .unwrap();
+        let written =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let entry = written.entry("Mus Musculus GRCm39 Ensembl 116").unwrap();
+        assert_eq!(
+            entry.cache_dir.as_deref(),
+            Some(DEFAULT_HELPER_GENOME_CACHE_DIR)
+        );
     }
 
     #[test]
