@@ -3094,6 +3094,13 @@ Repeated multi-tool gaps to prioritize:
        - selected trace-backed variant rows now render their chromatogram curves
          in-window with intended-edit / reversion / unexpected-difference /
          low-confidence badges
+       - the same chromatogram pane now also supports a trace-base browser for
+         whole-trace spot checks:
+         `First` / `Prev` / `Next` / `Last`, clip-window jumps, and a
+         called-base slider with confidence/peak summary
+       - saved-report evidence rows can now also drive the alignment snapshot
+         directly, with `Prev` / `Next` evidence navigation for multi-read
+         confirmation reports
      - sequencing-primer overlays are now available through the same shared
        engine/shell path and exposed in the GUI specialist:
        - `SuggestSequencingPrimers` suggests exact-3'-anneal primer hits on the

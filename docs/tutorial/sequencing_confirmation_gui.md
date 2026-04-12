@@ -27,7 +27,8 @@ Current boundary to keep in mind:
 - the baseline is used only to explain whether a supported difference is the
   intended edit or a reversion,
 - chromatogram review is now available in the GUI,
-- but it is still variant-focused rather than a full whole-trace browser.
+- and the same pane now also supports trace-base browsing,
+- but it is still not a full chromatogram editor.
 
 ## Inputs
 
@@ -173,6 +174,8 @@ What to verify:
 
 - overall verdict is `confirmed`
 - the evidence table contains one usable trace-backed row
+- the evidence row is selectable and becomes the alignment snapshot focus in
+  the saved-report pane
 - the per-target table shows:
   - full construct span confirmed
   - explicit junction target confirmed

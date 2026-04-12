@@ -20,6 +20,9 @@ Current implementation snapshot:
   - GUI sequencing-confirmation specialist now accepts imported trace ids and
     includes imported-trace metadata/called-base review plus
     variant-focused chromatogram inspection in the same window
+  - saved-report evidence review in the GUI can now switch the alignment
+    snapshot across individual reads/traces instead of staying pinned to the
+    first evidence row
   - sequencing-primer overlay suggestions through the same shared engine/shell
     path plus the GUI specialist
   - unresolved-locus guidance rows now rank the best existing primer hit for
@@ -31,7 +34,7 @@ Current implementation snapshot:
 
 Current follow-up after this plan:
 
-- deeper whole-trace browsing and chromatogram-navigation polish
+- richer chromatogram-navigation polish on top of the new trace-base browser
 
 Purpose: define the first shared-engine sequencing-confirmation workflow for
 GENtle so construct validation from read evidence becomes a first-class,

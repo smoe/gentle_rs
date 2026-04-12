@@ -26,8 +26,8 @@ this as a confidence map for the current GUI surface.
   handoff path.
 - Sequencing confirmation now has a dedicated specialist that accepts called
   reads, direct ABI/AB1/SCF trace import, optional baseline context, and
-  variant-focused chromatogram review, but whole-trace browsing remains
-  deliberately limited.
+  both variant-focused chromatogram review and trace-base browsing, but it is
+  still not a full chromatogram editor.
 - Primer3-backed workflows are available, but the internal backend is still
   the more predictable default while parity hardening continues.
 - Manual GUI walkthroughs in Help/Tutorial are useful for orientation, but the
@@ -1244,10 +1244,19 @@ Patterns menu:
     - baseline-vs-expected edits become first-class review checkpoints
     - selected trace-backed checkpoints render a chromatogram curve pane with
       expected, baseline, observed, and classification badges
+  - whole-trace browsing is built in:
+    - the same chromatogram pane can switch between `Variant locus` and
+      `Trace base browser`
+    - trace-base browsing supports `First`, `Prev`, `Next`, `Last`,
+      `Clip start`, and `Clip end` jumps plus a called-base slider
+    - the focused base summary shows called base, confidence, peak index, and
+      clip-window status
   - saved-report review is built in:
     - choose a persisted report for the current expected construct
     - inspect overall status, target-level outcomes, evidence-level outcomes,
-      per-variant rows, and a first-evidence alignment snapshot
+      per-variant rows, and a selected-evidence alignment snapshot
+    - the evidence table itself is now the focus picker for alignment and
+      discrepancy review, with `Prev` / `Next` navigation for multi-read runs
     - export the selected report as JSON or support TSV
     - persisted reports now also appear in the project lineage graph/table as
       analysis artifacts and reopen this specialist on the selected report
@@ -1270,8 +1279,8 @@ Patterns menu:
   - current limitation:
     - older traces without stored curve arrays must be re-imported before
       chromatogram curves can be reviewed
-    - chromatogram inspection is intentionally variant-focused, not a
-      full whole-trace browser or base-calling editor
+    - chromatogram review is now browseable by called base, but it is still
+      not a full whole-trace editor or base-calling workbench
   - shared UI-intent parity:
     - `ui open sequencing-confirmation`
     - `ui focus sequencing-confirmation`
@@ -2668,16 +2677,20 @@ Report review surface:
   - classification badge:
     `expected_match`, `intended_edit_confirmed`, `reference_reversion`,
     `unexpected_difference`, `low_confidence`, or `insufficient_evidence`
-- first-evidence alignment snapshot for quick inspection without dropping to
+  - trace-base browser mode with called-base slider plus `First/Prev/Next/Last`
+    and clip-window jumps
+- selected-evidence alignment snapshot for quick inspection without dropping to
   shell
+- saved-report evidence rows can now drive that snapshot directly, including
+  `Prev` / `Next` navigation across multiple reads or traces
 
 Current limitations:
 
 - older stored traces without raw curve arrays stay usable for confirmation,
   but the GUI asks for re-import before chromatogram curve inspection
 - no chromatogram editing or base re-calling yet
-- current chromatogram inspection is variant-focused rather than a full
-  whole-trace browser
+- current chromatogram browsing is inspectable by variant or called base, but
+  it is still not a full whole-trace editor
 - anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
 - `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line
 
