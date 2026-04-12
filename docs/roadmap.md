@@ -3774,14 +3774,15 @@ Post-baseline follow-ups:
   - Done (2026-04-12, hard-rule reasoning slice): graph builds now also derive
     first decision/fact records for propagation host, expression host,
     host-transition status, helper/MCS context, and simple
-    selection/complementation review based on recorded medium conditions plus
-    annotated `proA`/`proB`-style construct features.
+    selection/complementation review based on engine-owned complementation
+    rules, currently seeded with the deterministic `proA`/`proB` + proline
+    baseline.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
     - host-route and methylation/restriction compatibility decisions
     - host/helper profile catalogs with inspectable source notes
     - broaden complementation/selection reasoning beyond the current
-      deterministic `proA`/`proB` baseline
+      single-rule proline rescue baseline
     - inversion-risk evidence derived from self-dotplot/repeat analysis
     - only sequence-backed consequences render as DNA overlays; host-only facts
       stay as graph/inspector nodes

@@ -29098,8 +29098,10 @@ Error: `{err}`"
             .collect();
         for arrangement in &self.lineage_arrangements {
             let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id =
-                format!("{}::arrangement:{}", arrangement.created_by_op, arrangement.arrangement_id);
+            let arrangement_edge_op_id = format!(
+                "{}::arrangement:{}",
+                arrangement.created_by_op, arrangement.arrangement_id
+            );
             let mut source_node_ids: Vec<String> = vec![];
             let mut seen_sources: HashSet<String> = HashSet::new();
             for container_id in &arrangement.lane_container_ids {
@@ -30192,8 +30194,10 @@ Error: `{err}`"
             .collect();
         for arrangement in &self.lineage_arrangements {
             let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
-            let arrangement_edge_op_id =
-                format!("{}::arrangement:{}", arrangement.created_by_op, arrangement.arrangement_id);
+            let arrangement_edge_op_id = format!(
+                "{}::arrangement:{}",
+                arrangement.created_by_op, arrangement.arrangement_id
+            );
             let mut source_node_ids: Vec<String> = vec![];
             let mut seen_sources: HashSet<String> = HashSet::new();
             for container_id in &arrangement.lane_container_ids {

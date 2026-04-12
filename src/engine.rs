@@ -92,6 +92,27 @@ enum PrepareReferenceGenomeMode {
     ReindexCachedFiles,
     RefreshFromSources,
 }
+
+#[derive(Debug, Clone, Copy)]
+struct ConstructComplementationRule {
+    rule_id: &'static str,
+    label: &'static str,
+    feature_match_tokens: &'static [&'static str],
+    medium_match_terms: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructComplementationRuleMatch {
+    rule_id: String,
+    label: String,
+    status: String,
+    matched_medium_conditions: Vec<String>,
+    matched_medium_terms: Vec<String>,
+    candidate_labels: Vec<String>,
+    candidate_evidence_ids: Vec<String>,
+    candidate_match_tokens: Vec<String>,
+}
+
 pub use crate::feature_expert::{
     FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
@@ -10164,6 +10185,108 @@ impl GentleEngine {
         Self::normalize_id_token(base)
     }
 
+    fn construct_reasoning_complementation_rules() -> &'static [ConstructComplementationRule] {
+        const PROLINE_MATCH_TOKENS: &[&str] = &["proa", "prob"];
+        const PROLINE_MEDIUM_TERMS: &[&str] = &["proline", "-pro"];
+        const RULES: &[ConstructComplementationRule] = &[ConstructComplementationRule {
+            rule_id: "proline_auxotrophy_rescue",
+            label: "Proline complementation",
+            feature_match_tokens: PROLINE_MATCH_TOKENS,
+            medium_match_terms: PROLINE_MEDIUM_TERMS,
+        }];
+        RULES
+    }
+
+    fn construct_reasoning_medium_terms_matching(condition: &str, terms: &[&str]) -> Vec<String> {
+        let lower = condition.to_ascii_lowercase();
+        let mut matches = terms
+            .iter()
+            .filter(|term| lower.contains(**term))
+            .map(|term| (*term).to_string())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        matches
+    }
+
+    fn construct_reasoning_selection_status_from_match(
+        has_medium_match: bool,
+        has_candidates: bool,
+    ) -> &'static str {
+        if has_medium_match && has_candidates {
+            "supported"
+        } else if has_medium_match {
+            "review_needed"
+        } else if has_candidates {
+            "candidates_detected"
+        } else {
+            "context_recorded"
+        }
+    }
+
+    fn construct_reasoning_build_complementation_rule_match(
+        rule: &ConstructComplementationRule,
+        objective: &ConstructObjective,
+        evidence: &[DesignEvidence],
+    ) -> Option<ConstructComplementationRuleMatch> {
+        let mut matched_medium_conditions = vec![];
+        let mut matched_medium_terms = vec![];
+        for condition in &objective.medium_conditions {
+            let terms =
+                Self::construct_reasoning_medium_terms_matching(condition, rule.medium_match_terms);
+            if terms.is_empty() {
+                continue;
+            }
+            matched_medium_conditions.push(condition.clone());
+            matched_medium_terms.extend(terms);
+        }
+        matched_medium_conditions.sort();
+        matched_medium_conditions.dedup();
+        matched_medium_terms.sort();
+        matched_medium_terms.dedup();
+
+        let mut candidate_labels = vec![];
+        let mut candidate_evidence_ids = vec![];
+        let mut candidate_match_tokens = vec![];
+        for row in evidence.iter().filter(|row| {
+            row.scope == EvidenceScope::SequenceSpan
+                && matches!(row.role, ConstructRole::Gene | ConstructRole::Cds)
+        }) {
+            let token = Self::construct_reasoning_label_match_token(&row.label);
+            if !rule.feature_match_tokens.contains(&token.as_str()) {
+                continue;
+            }
+            candidate_labels.push(row.label.clone());
+            candidate_evidence_ids.push(row.evidence_id.clone());
+            candidate_match_tokens.push(token);
+        }
+        candidate_labels.sort();
+        candidate_labels.dedup();
+        candidate_evidence_ids.sort();
+        candidate_evidence_ids.dedup();
+        candidate_match_tokens.sort();
+        candidate_match_tokens.dedup();
+
+        if matched_medium_conditions.is_empty() && candidate_labels.is_empty() {
+            return None;
+        }
+
+        Some(ConstructComplementationRuleMatch {
+            rule_id: rule.rule_id.to_string(),
+            label: rule.label.to_string(),
+            status: Self::construct_reasoning_selection_status_from_match(
+                !matched_medium_conditions.is_empty(),
+                !candidate_labels.is_empty(),
+            )
+            .to_string(),
+            matched_medium_conditions,
+            matched_medium_terms,
+            candidate_labels,
+            candidate_evidence_ids,
+            candidate_match_tokens,
+        })
+    }
+
     fn construct_reasoning_evidence_ids_matching<F>(
         evidence: &[DesignEvidence],
         mut predicate: F,
@@ -10552,41 +10675,52 @@ impl GentleEngine {
             ));
         }
 
-        let complementation_candidates = evidence
+        let complementation_rule_matches = Self::construct_reasoning_complementation_rules()
             .iter()
-            .filter(|row| {
-                row.scope == EvidenceScope::SequenceSpan
-                    && matches!(row.role, ConstructRole::Gene | ConstructRole::Cds)
+            .filter_map(|rule| {
+                Self::construct_reasoning_build_complementation_rule_match(
+                    rule, objective, evidence,
+                )
             })
-            .filter_map(|row| {
-                let token = Self::construct_reasoning_label_match_token(&row.label);
-                matches!(token.as_str(), "proa" | "prob").then(|| row.label.clone())
-            })
+            .collect::<Vec<_>>();
+        let complementation_candidates = complementation_rule_matches
+            .iter()
+            .flat_map(|row| row.candidate_labels.iter().cloned())
             .collect::<BTreeSet<_>>();
-        let complementation_candidate_ids =
-            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
-                row.scope == EvidenceScope::SequenceSpan
-                    && matches!(row.role, ConstructRole::Gene | ConstructRole::Cds)
-                    && matches!(
-                        Self::construct_reasoning_label_match_token(&row.label).as_str(),
-                        "proa" | "prob"
-                    )
-            });
-        let medium_mentions_proline = objective.medium_conditions.iter().any(|condition| {
-            let lower = condition.to_ascii_lowercase();
-            lower.contains("proline") || lower.contains("-pro")
+        let complementation_candidate_ids = complementation_rule_matches
+            .iter()
+            .flat_map(|row| row.candidate_evidence_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let matching_medium_conditions = complementation_rule_matches
+            .iter()
+            .flat_map(|row| row.matched_medium_conditions.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let medium_mentions_proline = complementation_rule_matches.iter().any(|row| {
+            row.rule_id == "proline_auxotrophy_rescue" && !row.matched_medium_conditions.is_empty()
         });
         if !objective.medium_conditions.is_empty() || !complementation_candidates.is_empty() {
-            let selection_status =
-                if medium_mentions_proline && !complementation_candidates.is_empty() {
-                    "supported"
-                } else if medium_mentions_proline {
-                    "review_needed"
-                } else if !complementation_candidates.is_empty() {
-                    "candidates_detected"
-                } else {
-                    "context_recorded"
-                };
+            let selection_status = if complementation_rule_matches
+                .iter()
+                .any(|row| row.status == "supported")
+            {
+                "supported"
+            } else if complementation_rule_matches
+                .iter()
+                .any(|row| row.status == "review_needed")
+            {
+                "review_needed"
+            } else if complementation_rule_matches
+                .iter()
+                .any(|row| row.status == "candidates_detected")
+            {
+                "candidates_detected"
+            } else {
+                "context_recorded"
+            };
             let selection_label = match selection_status {
                 "supported" => "Selection/complementation context supported".to_string(),
                 "review_needed" => "Selection/complementation context requires review".to_string(),
@@ -10595,15 +10729,29 @@ impl GentleEngine {
             };
             let selection_rationale = match selection_status {
                 "supported" => format!(
-                    "Recorded medium conditions mention proline-style selection, and annotated construct features include complementation candidate(s): {}.",
+                    "Recorded medium conditions match engine-owned complementation rule(s): {}. Annotated construct features include candidate(s): {}.",
+                    complementation_rule_matches
+                        .iter()
+                        .filter(|row| row.status == "supported")
+                        .map(|row| row.label.clone())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
-                "review_needed" => "Recorded medium conditions mention proline-style selection, but no annotated proA/proB-style complementation candidates were found on the construct yet.".to_string(),
+                "review_needed" => format!(
+                    "Recorded medium conditions match engine-owned complementation rule(s): {}. No annotated construct features match those rescue candidates on the construct yet.",
+                    complementation_rule_matches
+                        .iter()
+                        .filter(|row| row.status == "review_needed")
+                        .map(|row| row.label.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
                 "candidates_detected" => format!(
-                    "Annotated construct features include potential complementation candidate(s): {}. No explicit proline-style medium condition is recorded yet, so current deterministic reasoning keeps this as inspectable context rather than claiming a selection strategy.",
+                    "Annotated construct features match engine-owned complementation rule candidate(s): {}. No matching medium condition is recorded yet, so current deterministic reasoning keeps this as inspectable context rather than claiming a selection strategy.",
                     complementation_candidates.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
-                _ => "Construct objective records medium/selection conditions, but no proA/proB-style complementation candidates are currently annotated on the construct.".to_string(),
+                _ => "Construct objective records medium/selection conditions, but none currently match the available engine-owned complementation rules.".to_string(),
             };
             let mut selection_evidence_ids = medium_evidence_ids.clone();
             selection_evidence_ids.extend(complementation_candidate_ids);
@@ -10619,8 +10767,10 @@ impl GentleEngine {
                     "seq_id": seq_id,
                     "status": selection_status,
                     "medium_conditions": objective.medium_conditions.clone(),
+                    "matching_medium_conditions": matching_medium_conditions,
                     "medium_mentions_proline": medium_mentions_proline,
                     "complementation_candidates": complementation_candidates.iter().cloned().collect::<Vec<_>>(),
+                    "complementation_rule_matches": complementation_rule_matches,
                 }),
             ));
             decisions.push(Self::construct_reasoning_build_decision(
@@ -10633,6 +10783,10 @@ impl GentleEngine {
                 json!({
                     "status": selection_status,
                     "medium_mentions_proline": medium_mentions_proline,
+                    "matching_rule_ids": Self::construct_reasoning_complementation_rules()
+                        .iter()
+                        .map(|rule| rule.rule_id.to_string())
+                        .collect::<Vec<_>>(),
                 }),
             ));
         }

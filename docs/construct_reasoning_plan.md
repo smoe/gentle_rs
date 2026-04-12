@@ -425,6 +425,10 @@ V1 should reuse existing GENtle outputs before introducing any external model:
    - source: annotated plasmid genes or curated helper profile roles
    - examples:
      - `proA`, `proB`, or similar growth-rescue markers under defined medium
+   - implementation note:
+     - keep this behind engine-owned complementation rule records so the first
+       deterministic baseline can stay inspectable and later broaden into a
+       curated rescue-marker catalog without rewriting the fact model
    - classification:
      - exact carried gene interval: `hard_fact` or `reliable_annotation`
      - growth-selection usefulness under one medium condition:

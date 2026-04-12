@@ -21533,6 +21533,25 @@ fn build_construct_reasoning_graph_derives_host_helper_facts_and_decisions() {
             .map(|rows| rows.iter().any(|row| row.as_str() == Some("proA")))
             .unwrap_or(false)
     );
+    assert!(
+        selection
+            .value_json
+            .get("matching_medium_conditions")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("proline-free medium")))
+            .unwrap_or(false)
+    );
+    let rule_matches = selection
+        .value_json
+        .get("complementation_rule_matches")
+        .and_then(serde_json::Value::as_array)
+        .expect("complementation rule matches");
+    assert!(rule_matches.iter().any(|row| {
+        row.get("rule_id").and_then(serde_json::Value::as_str) == Some("proline_auxotrophy_rescue")
+            && row.get("status").and_then(serde_json::Value::as_str) == Some("supported")
+    }));
 
     assert!(graph.decisions.iter().any(|node| {
         node.decision_type == "evaluate_host_transition_risk"
