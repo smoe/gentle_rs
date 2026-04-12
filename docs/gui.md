@@ -84,6 +84,9 @@ macOS auxiliary-window stability note:
 - Hosted project and sequence windows also clamp their initial size to that
   inset-safe workspace so resize handles remain reachable and large panes such
   as arrangements and feature details are not born partly off-screen.
+- The hosted Configuration window now uses the same safe-area clamping, and
+  its Graphics-tab control rows wrap/bound their width instead of expanding
+  horizontally without limit.
 - The Help/Tutorial viewport now uses a stable hosted child-window id on macOS
   instead of deriving its identity from the visible help topic title.
 - When older legacy help-window layers are still visible, GENtle now resets

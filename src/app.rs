@@ -2641,6 +2641,13 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Configuration Viewport")
     }
 
+    fn hosted_configuration_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_configuration_window",
+            Self::configuration_viewport_id(),
+        ))
+    }
+
     fn bed_track_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle BED Tracks Viewport")
     }
@@ -25569,7 +25576,11 @@ Error: `{err}`"
             })
             .unwrap_or_else(|| (None, vec![]));
         let candidate_planning_scores = self.routine_assistant_candidate_planning_scores_snapshot();
-        (preference_context, candidate_planning_scores, macro_suggestions)
+        (
+            preference_context,
+            candidate_planning_scores,
+            macro_suggestions,
+        )
     }
 
     fn routine_assistant_bindings_snapshot(&self) -> BTreeMap<String, String> {
@@ -25740,9 +25751,7 @@ Error: `{err}`"
         score.local_fit_score = score
             .local_fit_score
             .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
-        score.composite_meta_score = score
-            .composite_meta_score
-            .filter(|value| value.is_finite());
+        score.composite_meta_score = score.composite_meta_score.filter(|value| value.is_finite());
         score.routine_family_alignment_bonus = score
             .routine_family_alignment_bonus
             .filter(|value| value.is_finite());
@@ -35100,7 +35109,8 @@ Error: `{err}`"
                     });
 
                     ui.horizontal(|ui| {
-                        let field_width = (ui.available_width() - 20.0).max(140.0);
+                        let field_width =
+                            Self::clamp_configuration_backdrop_path_field_width(ui.available_width());
                         if ui
                             .add_sized(
                                 [field_width, 0.0],
@@ -35249,7 +35259,7 @@ Error: `{err}`"
         );
         ui.monospace(format!("Active bigWigToBedGraph: {active_bigwig}"));
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Use PATH")
                 .on_hover_text("Clear rnapkin override and use PATH lookup")
@@ -35934,7 +35944,7 @@ Error: `{err}`"
             self.configuration_window_backdrops_dirty = true;
         }
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Reset Defaults")
                 .on_hover_text("Reset graphics settings to built-in defaults")
@@ -36002,7 +36012,7 @@ Error: `{err}`"
         );
         with_window_content_inset(ui, |ui| {
             self.render_specialist_window_nav(ui);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .selectable_label(
                         self.configuration_tab == ConfigurationTab::ExternalApplications,
@@ -36107,10 +36117,28 @@ Error: `{err}`"
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_configuration_dialog;
                 let render_started = Instant::now();
+                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+                let min_size = Vec2::new(460.0, 320.0);
+                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                    Vec2::new(720.0, 540.0),
+                    constrain_rect,
+                    min_size,
+                );
+                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                    None,
+                    constrain_rect,
+                    default_size,
+                );
                 egui::Window::new("Configuration")
+                    .id(Self::hosted_configuration_window_id())
                     .open(&mut open)
+                    .collapsible(false)
                     .resizable(true)
-                    .default_size(Vec2::new(720.0, 540.0))
+                    .default_pos(default_pos)
+                    .default_size(default_size)
+                    .min_size(min_size)
+                    .max_size(constrain_rect.size())
+                    .constrain_to(constrain_rect)
                     .show(ctx, |ui| self.render_configuration_contents(ui));
                 self.note_slow_open_phase(
                     viewport_id,
@@ -37246,6 +37274,14 @@ Error: `{err}`"
             (available_width * 0.55).clamp(180.0, 420.0)
         } else {
             280.0
+        }
+    }
+
+    fn clamp_configuration_backdrop_path_field_width(available_width: f32) -> f32 {
+        if available_width.is_finite() {
+            (available_width * 0.45).clamp(180.0, 260.0)
+        } else {
+            240.0
         }
     }
 
@@ -38850,12 +38886,12 @@ mod tests {
             Container, ContainerKind, DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings,
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            PlanningEstimate, PlanningObjective, ProjectState, Rack, RackAuthoringTemplate,
-            RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
+            PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, ProjectState, Rack,
+            RackAuthoringTemplate, RackFillDirection, RackProfileKind, RackProfileSnapshot,
+            RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            RoutineDecisionTraceStore, SequenceOrigin, PLANNING_ESTIMATE_SCHEMA,
+            RoutineDecisionTraceStore, SequenceOrigin,
         },
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
@@ -40689,7 +40725,10 @@ mod tests {
             Some(0.25)
         );
         assert_eq!(trace.macro_suggestions.len(), 1);
-        assert_eq!(trace.macro_suggestions[0].template_name, "restriction_setup");
+        assert_eq!(
+            trace.macro_suggestions[0].template_name,
+            "restriction_setup"
+        );
 
         let store = app
             .engine
@@ -42507,6 +42546,22 @@ mod tests {
     }
 
     #[test]
+    fn configuration_backdrop_path_field_width_is_clamped() {
+        assert_eq!(
+            GENtleApp::clamp_configuration_backdrop_path_field_width(120.0),
+            180.0
+        );
+        assert_eq!(
+            GENtleApp::clamp_configuration_backdrop_path_field_width(1_200.0),
+            260.0
+        );
+        assert_eq!(
+            GENtleApp::clamp_configuration_backdrop_path_field_width(f32::NAN),
+            240.0
+        );
+    }
+
+    #[test]
     fn help_markdown_max_image_width_tracks_available_width() {
         assert_eq!(GENtleApp::help_markdown_max_image_width(200.0), 220);
         assert_eq!(GENtleApp::help_markdown_max_image_width(400.0), 300);
@@ -44234,6 +44289,40 @@ mod tests {
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
         let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_configuration_dialog = true;
+        app.configuration_tab = ConfigurationTab::Graphics;
+        app.mark_viewport_open_requested(GENtleApp::configuration_viewport_id());
+        let hosted_window_id = GENtleApp::hosted_configuration_window_id();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0));
+        let mut widths = Vec::new();
+
+        for _ in 0..4 {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            });
+            app.render_configuration_dialog(&ctx);
+            let width = ctx.memory(|mem| {
+                mem.area_rect(hosted_window_id)
+                    .map(|rect| rect.width())
+                    .unwrap_or_default()
+            });
+            widths.push(width);
+            let _ = ctx.end_pass();
+        }
+
+        let max_width = widths.iter().copied().fold(0.0, f32::max);
+        let min_width = widths.iter().copied().fold(f32::INFINITY, f32::min);
+        assert!(widths.iter().all(|width| *width > 0.0), "widths={widths:?}");
+        assert!(max_width <= 820.0, "widths={widths:?}");
+        assert!(max_width - min_width <= 8.0, "widths={widths:?}");
     }
 
     #[test]

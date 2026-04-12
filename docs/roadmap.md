@@ -1656,6 +1656,9 @@ order. Durable architecture constraints and decisions remain in
   - explicit `Unapplied changes` indicator is shown in Configuration
   - bottom `Cancel`/`Apply` actions are persistent and remain visible while tab
     content scrolls
+  - hosted/macOS Configuration rendering now clamps to the workspace safe area,
+    and the Graphics tab no longer requests runaway horizontal growth from its
+    backdrop-path controls/action rows
 
 ### High-level parity snapshot
 
