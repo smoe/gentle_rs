@@ -1255,8 +1255,17 @@ Patterns menu:
     - choose a persisted report for the current expected construct
     - inspect overall status, target-level outcomes, evidence-level outcomes,
       per-variant rows, and a selected-evidence alignment snapshot
+    - a construct overview strip now projects targets, evidence spans, variant
+      loci, and selected-evidence discrepancies onto the expected construct
+      span so review can start from the construct rather than from one table
+    - clicking the overview synchronizes the target, variant, evidence, and
+      trace-backed inspection panes
+    - an optional unresolved-first review mode keeps contradicted or
+      insufficient rows at the top of the target/variant inspection queue
     - the evidence table itself is now the focus picker for alignment and
       discrepancy review, with `Prev` / `Next` navigation for multi-read runs
+    - the selected-evidence snapshot now includes a full discrepancy table,
+      not only a short text preview
     - export the selected report as JSON or support TSV
     - persisted reports now also appear in the project lineage graph/table as
       analysis artifacts and reopen this specialist on the selected report
@@ -2664,6 +2673,13 @@ Actions:
 Report review surface:
 
 - overall verdict (`confirmed`, `contradicted`, `insufficient_evidence`)
+- construct overview strip for the whole expected sequence:
+  - target spans
+  - evidence spans
+  - variant loci
+  - selected-evidence discrepancy spans
+  - clickable sync into the detailed review panes
+- optional unresolved-first review mode for target and variant ordering
 - per-target table with kind, span, support counts, and reason
 - per-evidence table with sequence-vs-trace kind, chosen orientation,
   usability, identity, and coverage
@@ -2683,6 +2699,7 @@ Report review surface:
   shell
 - saved-report evidence rows can now drive that snapshot directly, including
   `Prev` / `Next` navigation across multiple reads or traces
+- selected-evidence discrepancy table with one row per mismatch/insertion/deletion
 
 Current limitations:
 

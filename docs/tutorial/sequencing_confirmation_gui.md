@@ -225,6 +225,11 @@ What to verify:
 - the artifact appears as a distinct sequencing-confirmation analysis node
 - opening it returns you to the sequencing-confirmation specialist
 - the specialist reloads the stored report rather than starting from scratch
+- the saved report now also shows a construct overview strip:
+  targets, evidence spans, and variant loci should all line up on the expected
+  construct ruler
+- clicking the inferred expected-edit marker or the evidence span in that
+  overview should keep the chromatogram and alignment panes in sync
 
 ## Optional Negative Control
 

@@ -78,11 +78,11 @@ use crate::{
         SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
         SequencingConfirmationReport, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SequencingConfirmationVariantClassification,
-        SequencingConfirmationVariantRow, SequencingPrimerOverlayReport, SequencingReadOrientation,
-        SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, Workflow,
-        resolve_formula_roi_range_inputs_0based_on_sequence,
+        SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
+        SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
+        SequencingPrimerOverlayReport, SequencingReadOrientation, SequencingTraceRecord,
+        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
+        TfbsProgress, Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -541,9 +541,11 @@ struct SequencingConfirmationUiState {
     trace_import_add_to_run: bool,
     report_id: String,
     selected_report_id: String,
+    selected_target_id: String,
     selected_evidence_id: String,
     selected_trace_id: String,
     selected_variant_id: String,
+    review_unresolved_first: bool,
     primer_seq_ids_text: String,
     primer_min_3prime_anneal_bp: String,
     primer_predicted_read_length_bp: String,
@@ -577,9 +579,11 @@ impl Default for SequencingConfirmationUiState {
             trace_import_add_to_run: true,
             report_id: "seq_confirm_gui".to_string(),
             selected_report_id: String::new(),
+            selected_target_id: String::new(),
             selected_evidence_id: String::new(),
             selected_trace_id: String::new(),
             selected_variant_id: String::new(),
+            review_unresolved_first: false,
             primer_seq_ids_text: String::new(),
             primer_min_3prime_anneal_bp: "18".to_string(),
             primer_predicted_read_length_bp: "800".to_string(),
@@ -617,6 +621,13 @@ impl SequencingChromatogramFocusMode {
             Self::TraceBaseBrowser => "Trace base browser",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SequencingConfirmationOverviewSelection {
+    Target(String),
+    Evidence(String),
+    Variant(String),
 }
 
 #[derive(Clone, Debug)]
@@ -1024,7 +1035,8 @@ mod tests {
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequencingConfirmationReadResult,
-            SequencingConfirmationReport, SequencingConfirmationTargetKind,
+            SequencingConfirmationReport, SequencingConfirmationStatus,
+            SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
             SequencingConfirmationVariantRow, SequencingTraceChannelData, SequencingTraceFormat,
             SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
             parse_required_usize_or_formula_text_on_sequence,
@@ -1765,6 +1777,87 @@ mod tests {
             MainAreaDna::sequencing_confirmation_selected_evidence_id(&report, "EVIDENCE_B")
                 .expect("selected evidence id");
         assert_eq!(selected, "evidence_b");
+    }
+
+    #[test]
+    fn sequencing_confirmation_selected_target_id_prefers_unresolved_rows_when_requested() {
+        let report = SequencingConfirmationReport {
+            targets: vec![
+                SequencingConfirmationTargetResult {
+                    target_id: "confirmed_target".to_string(),
+                    label: "Confirmed".to_string(),
+                    status: SequencingConfirmationStatus::Confirmed,
+                    start_0based: 0,
+                    end_0based_exclusive: 10,
+                    ..Default::default()
+                },
+                SequencingConfirmationTargetResult {
+                    target_id: "insufficient_target".to_string(),
+                    label: "Insufficient".to_string(),
+                    status: SequencingConfirmationStatus::InsufficientEvidence,
+                    start_0based: 10,
+                    end_0based_exclusive: 20,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let selected = MainAreaDna::sequencing_confirmation_selected_target_id(&report, "", true)
+            .expect("selected target id");
+        assert_eq!(selected, "insufficient_target");
+    }
+
+    #[test]
+    fn sequencing_confirmation_sync_target_selection_updates_linked_rows() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        let report = SequencingConfirmationReport {
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "target_b".to_string(),
+                label: "Target B".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 4,
+                end_0based_exclusive: 12,
+                contradicting_read_ids: vec!["evidence_b".to_string()],
+                ..Default::default()
+            }],
+            reads: vec![SequencingConfirmationReadResult {
+                evidence_id: "evidence_b".to_string(),
+                read_seq_id: "read_b".to_string(),
+                trace_id: Some("trace_b".to_string()),
+                contradicted_target_ids: vec!["target_b".to_string()],
+                covered_target_ids: vec!["target_b".to_string()],
+                ..Default::default()
+            }],
+            variants: vec![SequencingConfirmationVariantRow {
+                variant_id: "variant_b".to_string(),
+                label: "Variant B".to_string(),
+                target_id: Some("target_b".to_string()),
+                evidence_id: "evidence_b".to_string(),
+                trace_id: Some("trace_b".to_string()),
+                start_0based: 6,
+                end_0based_exclusive: 7,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        area.sequencing_confirmation_sync_target_selection(&report, "target_b");
+
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_target_id,
+            "target_b"
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_evidence_id,
+            "evidence_b"
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_variant_id,
+            "variant_b"
+        );
+        assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
     }
 
     #[test]
@@ -28994,6 +29087,535 @@ impl MainAreaDna {
             .map(|row| row.evidence_id.clone())
     }
 
+    fn sequencing_confirmation_target_priority(status: SequencingConfirmationStatus) -> usize {
+        match status {
+            SequencingConfirmationStatus::Contradicted => 0,
+            SequencingConfirmationStatus::InsufficientEvidence => 1,
+            SequencingConfirmationStatus::Confirmed => 2,
+        }
+    }
+
+    fn sequencing_confirmation_variant_priority(
+        classification: SequencingConfirmationVariantClassification,
+    ) -> usize {
+        match classification {
+            SequencingConfirmationVariantClassification::ReferenceReversion
+            | SequencingConfirmationVariantClassification::UnexpectedDifference => 0,
+            SequencingConfirmationVariantClassification::LowConfidenceOrAmbiguous
+            | SequencingConfirmationVariantClassification::InsufficientEvidence => 1,
+            SequencingConfirmationVariantClassification::IntendedEditConfirmed
+            | SequencingConfirmationVariantClassification::ExpectedMatch => 2,
+        }
+    }
+
+    fn sequencing_confirmation_target_review_rows<'a>(
+        report: &'a SequencingConfirmationReport,
+        review_unresolved_first: bool,
+    ) -> Vec<&'a SequencingConfirmationTargetResult> {
+        let mut rows = report.targets.iter().collect::<Vec<_>>();
+        if review_unresolved_first {
+            rows.sort_by(|a, b| {
+                Self::sequencing_confirmation_target_priority(a.status)
+                    .cmp(&Self::sequencing_confirmation_target_priority(b.status))
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.label.cmp(&b.label))
+            });
+        }
+        rows
+    }
+
+    fn sequencing_confirmation_variant_review_rows<'a>(
+        report: &'a SequencingConfirmationReport,
+        review_unresolved_first: bool,
+    ) -> Vec<&'a SequencingConfirmationVariantRow> {
+        let mut rows = report.variants.iter().collect::<Vec<_>>();
+        if review_unresolved_first {
+            rows.sort_by(|a, b| {
+                Self::sequencing_confirmation_variant_priority(a.classification)
+                    .cmp(&Self::sequencing_confirmation_variant_priority(
+                        b.classification,
+                    ))
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                    .then(a.label.cmp(&b.label))
+            });
+        }
+        rows
+    }
+
+    fn sequencing_confirmation_selected_target<'a>(
+        report: &'a SequencingConfirmationReport,
+        selected_target_id: &str,
+        review_unresolved_first: bool,
+    ) -> Option<&'a SequencingConfirmationTargetResult> {
+        let normalized_id = selected_target_id.trim();
+        if !normalized_id.is_empty()
+            && let Some(row) = report
+                .targets
+                .iter()
+                .find(|row| row.target_id.eq_ignore_ascii_case(normalized_id))
+        {
+            return Some(row);
+        }
+        Self::sequencing_confirmation_target_review_rows(report, review_unresolved_first)
+            .into_iter()
+            .next()
+    }
+
+    fn sequencing_confirmation_selected_target_id(
+        report: &SequencingConfirmationReport,
+        selected_target_id: &str,
+        review_unresolved_first: bool,
+    ) -> Option<String> {
+        Self::sequencing_confirmation_selected_target(
+            report,
+            selected_target_id,
+            review_unresolved_first,
+        )
+        .map(|row| row.target_id.clone())
+    }
+
+    fn sequencing_confirmation_report_sequence_length(
+        report: &SequencingConfirmationReport,
+        fallback_len: usize,
+    ) -> usize {
+        fallback_len.max(
+            report
+                .targets
+                .iter()
+                .map(|row| row.end_0based_exclusive)
+                .chain(report.variants.iter().map(|row| row.end_0based_exclusive))
+                .chain(
+                    report
+                        .reads
+                        .iter()
+                        .map(|row| row.best_alignment.aligned_target_end_0based_exclusive),
+                )
+                .max()
+                .unwrap_or(0),
+        )
+    }
+
+    fn sequencing_confirmation_overview_x(
+        rect: egui::Rect,
+        sequence_length: usize,
+        bp: usize,
+    ) -> f32 {
+        let denominator = sequence_length.max(1) as f32;
+        let fraction = bp.min(sequence_length) as f32 / denominator;
+        egui::lerp(rect.left()..=rect.right(), fraction)
+    }
+
+    fn sequencing_confirmation_overview_span_rect(
+        rect: egui::Rect,
+        sequence_length: usize,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> egui::Rect {
+        let left = Self::sequencing_confirmation_overview_x(rect, sequence_length, start_0based);
+        let right =
+            Self::sequencing_confirmation_overview_x(rect, sequence_length, end_0based_exclusive);
+        egui::Rect::from_min_max(
+            egui::pos2(left.min(right), rect.top()),
+            egui::pos2((left.max(right)).max(left.min(right) + 2.0), rect.bottom()),
+        )
+    }
+
+    fn sequencing_confirmation_evidence_color(
+        read: &SequencingConfirmationReadResult,
+        selected: bool,
+    ) -> egui::Color32 {
+        let base = if !read.usable {
+            egui::Color32::from_rgb(180, 83, 9)
+        } else if read.trace_id.is_some() {
+            egui::Color32::from_rgb(25, 118, 210)
+        } else {
+            egui::Color32::from_rgb(46, 125, 50)
+        };
+        if selected {
+            base
+        } else {
+            base.gamma_multiply(0.7)
+        }
+    }
+
+    fn sequencing_confirmation_sync_evidence_selection(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        evidence_id: &str,
+    ) {
+        let Some(selected) = Self::sequencing_confirmation_selected_read(report, evidence_id)
+        else {
+            self.sequencing_confirmation_ui.selected_evidence_id.clear();
+            return;
+        };
+        self.sequencing_confirmation_ui.selected_evidence_id = selected.evidence_id.clone();
+        if let Some(trace_id) = selected.trace_id.as_deref() {
+            self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
+        }
+        if let Some(target_id) = selected
+            .contradicted_target_ids
+            .first()
+            .or(selected.confirmed_target_ids.first())
+            .or(selected.covered_target_ids.first())
+        {
+            self.sequencing_confirmation_ui.selected_target_id = target_id.clone();
+        }
+        if let Some(variant) = report.variants.iter().find(|row| {
+            row.evidence_id
+                .eq_ignore_ascii_case(selected.evidence_id.as_str())
+        }) {
+            self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
+            if let Some(trace_id) = variant.trace_id.as_deref() {
+                self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
+            }
+        }
+    }
+
+    fn sequencing_confirmation_sync_variant_selection(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        variant_id: &str,
+    ) {
+        let Some(variant) = report
+            .variants
+            .iter()
+            .find(|row| row.variant_id.eq_ignore_ascii_case(variant_id.trim()))
+        else {
+            self.sequencing_confirmation_ui.selected_variant_id.clear();
+            return;
+        };
+        self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
+        if let Some(target_id) = variant.target_id.as_deref() {
+            self.sequencing_confirmation_ui.selected_target_id = target_id.to_string();
+        }
+        if !variant.evidence_id.trim().is_empty() {
+            self.sequencing_confirmation_ui.selected_evidence_id = variant.evidence_id.clone();
+        }
+        if let Some(trace_id) = variant.trace_id.as_deref() {
+            self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
+        } else if !variant.evidence_id.trim().is_empty() {
+            self.sequencing_confirmation_sync_evidence_selection(report, &variant.evidence_id);
+            self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
+        }
+    }
+
+    fn sequencing_confirmation_sync_target_selection(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        target_id: &str,
+    ) {
+        let Some(target) = report
+            .targets
+            .iter()
+            .find(|row| row.target_id.eq_ignore_ascii_case(target_id.trim()))
+        else {
+            self.sequencing_confirmation_ui.selected_target_id.clear();
+            return;
+        };
+        self.sequencing_confirmation_ui.selected_target_id = target.target_id.clone();
+        let preferred_variant = report.variants.iter().find(|row| {
+            row.target_id
+                .as_deref()
+                .is_some_and(|id| id.eq_ignore_ascii_case(target.target_id.as_str()))
+        });
+        let preferred_evidence_id = target
+            .contradicting_read_ids
+            .first()
+            .or(target.support_read_ids.first())
+            .cloned()
+            .or_else(|| {
+                report
+                    .reads
+                    .iter()
+                    .find(|row| {
+                        row.covered_target_ids
+                            .iter()
+                            .any(|id| id.eq_ignore_ascii_case(target.target_id.as_str()))
+                    })
+                    .map(|row| row.evidence_id.clone())
+            });
+        if let Some(evidence_id) = preferred_evidence_id.as_deref() {
+            self.sequencing_confirmation_sync_evidence_selection(report, evidence_id);
+            self.sequencing_confirmation_ui.selected_target_id = target.target_id.clone();
+        }
+        if let Some(variant) = preferred_variant {
+            self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
+            if let Some(trace_id) = variant.trace_id.as_deref() {
+                self.sequencing_confirmation_ui.selected_trace_id = trace_id.to_string();
+            }
+        }
+    }
+
+    fn render_sequencing_confirmation_construct_overview(
+        ui: &mut egui::Ui,
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+        selected_target_id: &str,
+        selected_evidence_id: &str,
+        selected_variant_id: &str,
+    ) -> Option<SequencingConfirmationOverviewSelection> {
+        if sequence_length == 0 {
+            ui.small(
+                "Construct overview becomes available once the expected construct length is known.",
+            );
+            return None;
+        }
+        let mut selection = None;
+        ui.small(
+            "Click a target span, evidence span, or variant marker to sync the detailed review panes below.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            ui.small(format!("1"));
+            ui.separator();
+            ui.small(format!("{} bp", sequence_length));
+            if sequence_length > 1 {
+                ui.separator();
+                ui.small(format!("midpoint {}", sequence_length / 2));
+            }
+        });
+
+        let label_width = 108.0;
+
+        ui.horizontal(|ui| {
+            ui.add_sized([label_width, 18.0], egui::Label::new("Targets"));
+            let desired_size = egui::vec2(ui.available_width().max(260.0), 20.0);
+            let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 3.0, egui::Color32::from_rgb(248, 250, 252));
+            painter.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::StrokeKind::Outside,
+            );
+            for target in &report.targets {
+                let span_rect = Self::sequencing_confirmation_overview_span_rect(
+                    rect,
+                    sequence_length,
+                    target.start_0based,
+                    target.end_0based_exclusive,
+                )
+                .shrink2(egui::vec2(0.0, 3.0));
+                let selected = target
+                    .target_id
+                    .eq_ignore_ascii_case(selected_target_id.trim());
+                painter.rect_filled(
+                    span_rect,
+                    2.0,
+                    Self::sequencing_confirmation_status_color(target.status)
+                        .gamma_multiply(if selected { 1.0 } else { 0.75 }),
+                );
+                if selected {
+                    painter.rect_stroke(
+                        span_rect.expand(1.0),
+                        2.0,
+                        egui::Stroke::new(1.5, egui::Color32::BLACK),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+            }
+            if response.clicked()
+                && let Some(pointer) = response.interact_pointer_pos()
+            {
+                for target in report.targets.iter().rev() {
+                    let span_rect = Self::sequencing_confirmation_overview_span_rect(
+                        rect,
+                        sequence_length,
+                        target.start_0based,
+                        target.end_0based_exclusive,
+                    )
+                    .shrink2(egui::vec2(0.0, 3.0));
+                    if span_rect.contains(pointer) {
+                        selection = Some(SequencingConfirmationOverviewSelection::Target(
+                            target.target_id.clone(),
+                        ));
+                        break;
+                    }
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized([label_width, 18.0], egui::Label::new("Evidence spans"));
+            let desired_size = egui::vec2(ui.available_width().max(260.0), 24.0);
+            let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 3.0, egui::Color32::from_rgb(248, 250, 252));
+            painter.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::StrokeKind::Outside,
+            );
+            for (idx, read) in report.reads.iter().enumerate() {
+                let span_rect = Self::sequencing_confirmation_overview_span_rect(
+                    rect,
+                    sequence_length,
+                    read.best_alignment.aligned_target_start_0based,
+                    read.best_alignment.aligned_target_end_0based_exclusive,
+                );
+                let vertical_offset = (idx % 3) as f32 * 5.0;
+                let bar_rect = egui::Rect::from_min_max(
+                    egui::pos2(span_rect.left(), rect.top() + 3.0 + vertical_offset),
+                    egui::pos2(span_rect.right(), rect.top() + 7.0 + vertical_offset),
+                );
+                let selected = read
+                    .evidence_id
+                    .eq_ignore_ascii_case(selected_evidence_id.trim());
+                painter.rect_filled(
+                    bar_rect,
+                    1.0,
+                    Self::sequencing_confirmation_evidence_color(read, selected),
+                );
+                if selected {
+                    painter.rect_stroke(
+                        bar_rect.expand(1.0),
+                        1.0,
+                        egui::Stroke::new(1.0, egui::Color32::BLACK),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+            }
+            if response.clicked()
+                && let Some(pointer) = response.interact_pointer_pos()
+            {
+                let mut best_match: Option<(&SequencingConfirmationReadResult, f32)> = None;
+                for read in &report.reads {
+                    let span_rect = Self::sequencing_confirmation_overview_span_rect(
+                        rect,
+                        sequence_length,
+                        read.best_alignment.aligned_target_start_0based,
+                        read.best_alignment.aligned_target_end_0based_exclusive,
+                    );
+                    if span_rect.left() <= pointer.x && pointer.x <= span_rect.right() {
+                        let midpoint = (span_rect.left() + span_rect.right()) / 2.0;
+                        let distance = (pointer.x - midpoint).abs();
+                        match best_match {
+                            Some((_, best_distance)) if best_distance <= distance => {}
+                            _ => best_match = Some((read, distance)),
+                        }
+                    }
+                }
+                if let Some((read, _)) = best_match {
+                    selection = Some(SequencingConfirmationOverviewSelection::Evidence(
+                        read.evidence_id.clone(),
+                    ));
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized([label_width, 18.0], egui::Label::new("Variants"));
+            let desired_size = egui::vec2(ui.available_width().max(260.0), 24.0);
+            let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 3.0, egui::Color32::from_rgb(248, 250, 252));
+            painter.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::StrokeKind::Outside,
+            );
+            for variant in &report.variants {
+                let center = Self::sequencing_confirmation_overview_x(
+                    rect,
+                    sequence_length,
+                    variant.start_0based,
+                );
+                let selected = variant
+                    .variant_id
+                    .eq_ignore_ascii_case(selected_variant_id.trim());
+                painter.line_segment(
+                    [
+                        egui::pos2(center, rect.top() + 4.0),
+                        egui::pos2(center, rect.bottom() - 4.0),
+                    ],
+                    egui::Stroke::new(
+                        if selected { 3.0 } else { 2.0 },
+                        Self::sequencing_confirmation_variant_color(variant.classification),
+                    ),
+                );
+                if selected {
+                    painter.circle_filled(
+                        egui::pos2(center, rect.center().y),
+                        3.5,
+                        egui::Color32::BLACK,
+                    );
+                }
+            }
+            if response.clicked()
+                && let Some(pointer) = response.interact_pointer_pos()
+            {
+                let mut best_match: Option<(&SequencingConfirmationVariantRow, f32)> = None;
+                for variant in &report.variants {
+                    let center = Self::sequencing_confirmation_overview_x(
+                        rect,
+                        sequence_length,
+                        variant.start_0based,
+                    );
+                    let distance = (pointer.x - center).abs();
+                    if distance <= 8.0 {
+                        match best_match {
+                            Some((_, best_distance)) if best_distance <= distance => {}
+                            _ => best_match = Some((variant, distance)),
+                        }
+                    }
+                }
+                if let Some((variant, _)) = best_match {
+                    selection = Some(SequencingConfirmationOverviewSelection::Variant(
+                        variant.variant_id.clone(),
+                    ));
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [label_width, 18.0],
+                egui::Label::new("Selected discrepancies"),
+            );
+            let desired_size = egui::vec2(ui.available_width().max(260.0), 20.0);
+            let (rect, _response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 3.0, egui::Color32::from_rgb(248, 250, 252));
+            painter.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::StrokeKind::Outside,
+            );
+            if let Some(read) =
+                Self::sequencing_confirmation_selected_read(report, selected_evidence_id)
+            {
+                for discrepancy in &read.discrepancies {
+                    let span_rect = Self::sequencing_confirmation_overview_span_rect(
+                        rect,
+                        sequence_length,
+                        discrepancy.target_start_0based,
+                        discrepancy.target_end_0based_exclusive,
+                    )
+                    .shrink2(egui::vec2(0.0, 4.0));
+                    let color = match discrepancy.kind {
+                        crate::engine::SequencingConfirmationDiscrepancyKind::Mismatch => {
+                            egui::Color32::from_rgb(230, 81, 0)
+                        }
+                        crate::engine::SequencingConfirmationDiscrepancyKind::Insertion => {
+                            egui::Color32::from_rgb(183, 28, 28)
+                        }
+                        crate::engine::SequencingConfirmationDiscrepancyKind::Deletion => {
+                            egui::Color32::from_rgb(180, 83, 9)
+                        }
+                    };
+                    painter.rect_filled(span_rect, 1.0, color);
+                }
+            }
+        });
+
+        selection
+    }
+
     pub fn render_sequencing_confirmation_specialist(
         &mut self,
         ui: &mut egui::Ui,
@@ -29065,6 +29687,38 @@ impl MainAreaDna {
                 )
             })
         });
+        let selected_target_id_missing = self
+            .sequencing_confirmation_ui
+            .selected_target_id
+            .trim()
+            .is_empty()
+            || !selected_report.as_ref().is_some_and(|report| {
+                report.targets.iter().any(|row| {
+                    row.target_id.eq_ignore_ascii_case(
+                        self.sequencing_confirmation_ui.selected_target_id.trim(),
+                    )
+                })
+            });
+        if selected_target_id_missing {
+            if let Some(target_id) = selected_report.as_ref().and_then(|report| {
+                Self::sequencing_confirmation_selected_target_id(
+                    report,
+                    self.sequencing_confirmation_ui.selected_target_id.trim(),
+                    self.sequencing_confirmation_ui.review_unresolved_first,
+                )
+            }) {
+                self.sequencing_confirmation_ui.selected_target_id = target_id;
+            } else {
+                self.sequencing_confirmation_ui.selected_target_id.clear();
+            }
+        }
+        let selected_target = selected_report.as_ref().and_then(|report| {
+            Self::sequencing_confirmation_selected_target(
+                report,
+                &self.sequencing_confirmation_ui.selected_target_id,
+                self.sequencing_confirmation_ui.review_unresolved_first,
+            )
+        });
         let selected_evidence_id_missing = self
             .sequencing_confirmation_ui
             .selected_evidence_id
@@ -29121,6 +29775,7 @@ impl MainAreaDna {
         let selected_variant_trace = selected_variant
             .and_then(|row| row.trace_id.as_deref())
             .and_then(|trace_id| self.sequencing_trace_record(trace_id));
+        let expected_sequence_length = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
         if let Some(trace) = selected_trace.as_ref() {
             let clamped = Self::sequencing_trace_clamp_base_index(
                 trace,
@@ -30264,19 +30919,12 @@ impl MainAreaDna {
                             }
                         });
                         if selection_changed {
-                            if let Some(trace_id) = report
-                                .variants
-                                .iter()
-                                .find(|row| {
-                                    row.variant_id.eq_ignore_ascii_case(
-                                        self.sequencing_confirmation_ui.selected_variant_id.trim(),
-                                    )
-                                })
-                                .and_then(|row| row.trace_id.as_deref())
-                            {
-                                self.sequencing_confirmation_ui.selected_trace_id =
-                                    trace_id.to_string();
-                            }
+                            let selected_variant_id =
+                                self.sequencing_confirmation_ui.selected_variant_id.clone();
+                            self.sequencing_confirmation_sync_variant_selection(
+                                report,
+                                &selected_variant_id,
+                            );
                             self.save_engine_ops_state();
                         }
                     });
@@ -30355,6 +31003,10 @@ impl MainAreaDna {
                         );
                     }
                     columns[1].collapsing("Variant rows", |ui| {
+                        let variant_rows = Self::sequencing_confirmation_variant_review_rows(
+                            report,
+                            self.sequencing_confirmation_ui.review_unresolved_first,
+                        );
                         egui::Grid::new(("seq_confirm_variants_grid", self.panel_scope_key()))
                             .num_columns(6)
                             .striped(true)
@@ -30366,7 +31018,7 @@ impl MainAreaDna {
                                 ui.strong("Trace");
                                 ui.strong("Reason");
                                 ui.end_row();
-                                for row in &report.variants {
+                                for row in variant_rows {
                                     let selected = row.variant_id.eq_ignore_ascii_case(
                                         self.sequencing_confirmation_ui.selected_variant_id.trim(),
                                     );
@@ -30377,12 +31029,10 @@ impl MainAreaDna {
                                         )
                                         .clicked()
                                     {
-                                        self.sequencing_confirmation_ui.selected_variant_id =
-                                            row.variant_id.clone();
-                                        if let Some(trace_id) = row.trace_id.as_deref() {
-                                            self.sequencing_confirmation_ui.selected_trace_id =
-                                                trace_id.to_string();
-                                        }
+                                        self.sequencing_confirmation_sync_variant_selection(
+                                            report,
+                                            &row.variant_id,
+                                        );
                                         self.save_engine_ops_state();
                                     }
                                     ui.colored_label(
@@ -30542,11 +31192,152 @@ impl MainAreaDna {
                         });
                     }
                     columns[1].separator();
+                    columns[1].label(egui::RichText::new("Construct overview").strong());
+                    let review_mode_changed = columns[1]
+                        .checkbox(
+                            &mut self.sequencing_confirmation_ui.review_unresolved_first,
+                            "Prioritize unresolved targets and variants",
+                        )
+                        .on_hover_text(
+                            "Sort target and variant tables so contradicted or insufficient loci stay at the top of the inspection queue.",
+                        )
+                        .changed();
+                    if review_mode_changed {
+                        self.save_engine_ops_state();
+                    }
+                    if let Some(selection) = Self::render_sequencing_confirmation_construct_overview(
+                        &mut columns[1],
+                        report,
+                        Self::sequencing_confirmation_report_sequence_length(
+                            report,
+                            expected_sequence_length,
+                        ),
+                        &self.sequencing_confirmation_ui.selected_target_id,
+                        &self.sequencing_confirmation_ui.selected_evidence_id,
+                        &self.sequencing_confirmation_ui.selected_variant_id,
+                    ) {
+                        match selection {
+                            SequencingConfirmationOverviewSelection::Target(target_id) => {
+                                self.sequencing_confirmation_sync_target_selection(report, &target_id);
+                            }
+                            SequencingConfirmationOverviewSelection::Evidence(evidence_id) => {
+                                self.sequencing_confirmation_sync_evidence_selection(
+                                    report,
+                                    &evidence_id,
+                                );
+                            }
+                            SequencingConfirmationOverviewSelection::Variant(variant_id) => {
+                                self.sequencing_confirmation_sync_variant_selection(
+                                    report,
+                                    &variant_id,
+                                );
+                            }
+                        }
+                        self.save_engine_ops_state();
+                    }
+                    let unresolved_targets = report
+                        .targets
+                        .iter()
+                        .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+                        .collect::<Vec<_>>();
+                    let unresolved_variants = report
+                        .variants
+                        .iter()
+                        .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+                        .collect::<Vec<_>>();
+                    if !unresolved_targets.is_empty() || !unresolved_variants.is_empty() {
+                        columns[1].collapsing("Review queue", |ui| {
+                            if !unresolved_targets.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label("Targets");
+                                    for row in Self::sequencing_confirmation_target_review_rows(
+                                        report,
+                                        true,
+                                    )
+                                    .into_iter()
+                                    .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+                                    .take(8)
+                                    {
+                                        if ui
+                                            .small_button(&row.label)
+                                            .on_hover_text(&row.reason)
+                                            .clicked()
+                                        {
+                                            self.sequencing_confirmation_sync_target_selection(
+                                                report,
+                                                &row.target_id,
+                                            );
+                                            self.save_engine_ops_state();
+                                        }
+                                    }
+                                });
+                            }
+                            if !unresolved_variants.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label("Variants");
+                                    for row in Self::sequencing_confirmation_variant_review_rows(
+                                        report,
+                                        true,
+                                    )
+                                    .into_iter()
+                                    .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+                                    .take(8)
+                                    {
+                                        if ui
+                                            .small_button(&row.label)
+                                            .on_hover_text(&row.reason)
+                                            .clicked()
+                                        {
+                                            self.sequencing_confirmation_sync_variant_selection(
+                                                report,
+                                                &row.variant_id,
+                                            );
+                                            self.save_engine_ops_state();
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    if let Some(target) = selected_target {
+                        columns[1].group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(&target.label).strong());
+                                ui.separator();
+                                ui.small(target.kind.as_str());
+                                ui.separator();
+                                ui.colored_label(
+                                    Self::sequencing_confirmation_status_color(target.status),
+                                    target.status.as_str(),
+                                );
+                                ui.separator();
+                                ui.small(format!(
+                                    "{}..{} ({}/{})",
+                                    target.start_0based,
+                                    target.end_0based_exclusive,
+                                    target.covered_bp,
+                                    target.target_length_bp
+                                ));
+                            });
+                            ui.small(format!(
+                                "support={} contradiction={} required={}",
+                                target.support_read_ids.len(),
+                                target.contradicting_read_ids.len(),
+                                target.required
+                            ));
+                            ui.small(&target.reason);
+                        });
+                    }
+                    columns[1].separator();
                     columns[1].label(egui::RichText::new("Targets").strong());
                     egui::ScrollArea::vertical()
                         .id_salt(("seq_confirm_targets_scroll", self.panel_scope_key()))
                         .max_height(220.0)
                         .show(&mut columns[1], |ui| {
+                        let target_rows = Self::sequencing_confirmation_target_review_rows(
+                            report,
+                            self.sequencing_confirmation_ui.review_unresolved_first,
+                        );
                         egui::Grid::new(("seq_confirm_targets_grid", self.panel_scope_key()))
                             .num_columns(6)
                             .striped(true)
@@ -30558,8 +31349,23 @@ impl MainAreaDna {
                                 ui.strong("Support");
                                 ui.strong("Reason");
                                 ui.end_row();
-                                for target in &report.targets {
-                                    ui.label(&target.label);
+                                for target in target_rows {
+                                    let selected = target.target_id.eq_ignore_ascii_case(
+                                        self.sequencing_confirmation_ui.selected_target_id.trim(),
+                                    );
+                                    if ui
+                                        .selectable_label(selected, &target.label)
+                                        .on_hover_text(
+                                            "Select this target as the current construct-review focus.",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.sequencing_confirmation_sync_target_selection(
+                                            report,
+                                            &target.target_id,
+                                        );
+                                        self.save_engine_ops_state();
+                                    }
                                     ui.small(target.kind.as_str());
                                     ui.colored_label(
                                         Self::sequencing_confirmation_status_color(target.status),
@@ -30640,8 +31446,10 @@ impl MainAreaDna {
                                     .clicked()
                                     && index > 0
                                 {
-                                    self.sequencing_confirmation_ui.selected_evidence_id =
-                                        report.reads[index - 1].evidence_id.clone();
+                                    self.sequencing_confirmation_sync_evidence_selection(
+                                        report,
+                                        &report.reads[index - 1].evidence_id,
+                                    );
                                     selection_changed = true;
                                 }
                                 if ui
@@ -30650,21 +31458,14 @@ impl MainAreaDna {
                                     .clicked()
                                     && index + 1 < report.reads.len()
                                 {
-                                    self.sequencing_confirmation_ui.selected_evidence_id =
-                                        report.reads[index + 1].evidence_id.clone();
+                                    self.sequencing_confirmation_sync_evidence_selection(
+                                        report,
+                                        &report.reads[index + 1].evidence_id,
+                                    );
                                     selection_changed = true;
                                 }
                             }
                             if selection_changed {
-                                if let Some(selected) = Self::sequencing_confirmation_selected_read(
-                                    report,
-                                    &self.sequencing_confirmation_ui.selected_evidence_id,
-                                )
-                                && let Some(trace_id) = selected.trace_id.as_deref()
-                                {
-                                    self.sequencing_confirmation_ui.selected_trace_id =
-                                        trace_id.to_string();
-                                }
                                 self.save_engine_ops_state();
                             }
                         });
@@ -30698,12 +31499,10 @@ impl MainAreaDna {
                                             )
                                             .clicked()
                                         {
-                                            self.sequencing_confirmation_ui.selected_evidence_id =
-                                                read.evidence_id.clone();
-                                            if let Some(trace_id) = read.trace_id.as_deref() {
-                                                self.sequencing_confirmation_ui.selected_trace_id =
-                                                    trace_id.to_string();
-                                            }
+                                            self.sequencing_confirmation_sync_evidence_selection(
+                                                report,
+                                                &read.evidence_id,
+                                            );
                                             self.save_engine_ops_state();
                                         }
                                         ui.small(read.evidence_kind.as_str());
@@ -30737,8 +31536,10 @@ impl MainAreaDna {
                                                 )
                                                 .clicked()
                                             {
-                                                self.sequencing_confirmation_ui.selected_evidence_id =
-                                                    read.evidence_id.clone();
+                                                self.sequencing_confirmation_sync_evidence_selection(
+                                                    report,
+                                                    &read.evidence_id,
+                                                );
                                                 self.sequencing_confirmation_ui.selected_trace_id =
                                                     trace_id.to_string();
                                                 self.save_engine_ops_state();
@@ -30790,7 +31591,7 @@ impl MainAreaDna {
                             if ui
                                 .small_button("Inspect this trace")
                                 .on_hover_text(
-                                    "Load the imported trace record behind the first evidence row into the trace review pane.",
+                                    "Load the imported trace record behind the selected evidence row into the trace review pane.",
                                 )
                                 .clicked()
                             {
@@ -30801,23 +31602,46 @@ impl MainAreaDna {
                         }
                         if !best_read.discrepancies.is_empty() {
                             ui.separator();
-                            for discrepancy in best_read
-                                .discrepancies
-                                .iter()
-                                .take(8)
-                            {
-                                let discrepancy: &SequencingConfirmationDiscrepancy = discrepancy;
-                                ui.small(format!(
-                                    "{} q:{}..{} t:{}..{} '{}' vs '{}'",
-                                    discrepancy.kind.as_str(),
-                                    discrepancy.query_start_0based,
-                                    discrepancy.query_end_0based_exclusive,
-                                    discrepancy.target_start_0based,
-                                    discrepancy.target_end_0based_exclusive,
-                                    discrepancy.query_bases,
-                                    discrepancy.target_bases
-                                ));
-                            }
+                            ui.label(egui::RichText::new("Discrepancies").strong());
+                            egui::Grid::new((
+                                "seq_confirm_selected_evidence_discrepancies",
+                                self.panel_scope_key(),
+                            ))
+                            .num_columns(5)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Kind");
+                                ui.strong("Query span");
+                                ui.strong("Target span");
+                                ui.strong("Observed");
+                                ui.strong("Expected");
+                                ui.end_row();
+                                for discrepancy in &best_read.discrepancies {
+                                    let discrepancy: &SequencingConfirmationDiscrepancy = discrepancy;
+                                    ui.small(discrepancy.kind.as_str());
+                                    ui.small(format!(
+                                        "{}..{}",
+                                        discrepancy.query_start_0based,
+                                        discrepancy.query_end_0based_exclusive
+                                    ));
+                                    ui.small(format!(
+                                        "{}..{}",
+                                        discrepancy.target_start_0based,
+                                        discrepancy.target_end_0based_exclusive
+                                    ));
+                                    ui.small(if discrepancy.query_bases.is_empty() {
+                                        "-"
+                                    } else {
+                                        discrepancy.query_bases.as_str()
+                                    });
+                                    ui.small(if discrepancy.target_bases.is_empty() {
+                                        "-"
+                                    } else {
+                                        discrepancy.target_bases.as_str()
+                                    });
+                                    ui.end_row();
+                                }
+                            });
                         }
                         });
                     }
