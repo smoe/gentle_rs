@@ -5,7 +5,8 @@
 
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    ProjectState, ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+    ConstructObjective, GentleEngine, HostLifecycleRole, HostRouteStep, ProjectState,
+    ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
     ROUTINE_DECISION_TRACES_METADATA_KEY, RoutineDecisionTrace,
     RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
@@ -63,6 +64,34 @@ pub fn decision_trace_fixture_state() -> ProjectState {
         .expect("trace store"),
     );
     state
+}
+
+/// Synthetic project state with one routine trace plus construct-reasoning metadata.
+pub fn decision_trace_with_construct_reasoning_fixture_state() -> ProjectState {
+    let state = decision_trace_fixture_state();
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Adapter construct reasoning".to_string(),
+            goal: "Expose host/helper selection context in run bundles".to_string(),
+            propagation_host_profile_id: Some("ecoli_k12".to_string()),
+            expression_host_profile_id: Some("ecoli_k12".to_string()),
+            helper_profile_id: Some("pUC19".to_string()),
+            medium_conditions: vec!["ampicillin".to_string()],
+            host_route: vec![HostRouteStep {
+                step_id: "storage".to_string(),
+                host_profile_id: "ecoli_k12".to_string(),
+                role: HostLifecycleRole::Storage,
+                rationale: "Retain one documented propagation/storage step.".to_string(),
+                notes: vec![],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("fixture objective");
+    engine
+        .build_construct_reasoning_graph("s", Some(&objective.objective_id), None)
+        .expect("fixture graph");
+    engine.state().clone()
 }
 
 /// Returns a minimal deterministic REBASE `.withrefm` text fixture.

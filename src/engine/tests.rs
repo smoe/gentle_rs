@@ -8826,6 +8826,81 @@ fn test_export_process_run_bundle_decision_trace_partial_statuses_and_ordering()
 }
 
 #[test]
+fn test_export_process_run_bundle_includes_construct_reasoning_summary_and_graphs() {
+    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("reasoning_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Bundle reasoning".to_string(),
+            goal: "Expose construct reasoning through the run bundle".to_string(),
+            propagation_host_profile_id: Some("ecoli_k12".to_string()),
+            expression_host_profile_id: Some("ecoli_k12".to_string()),
+            helper_profile_id: Some("pUC19".to_string()),
+            medium_conditions: vec!["ampicillin".to_string()],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_demo", Some(&objective.objective_id), None)
+        .expect("build graph");
+    engine
+        .apply(Operation::Reverse {
+            input: "reasoning_demo".to_string(),
+            output_id: Some("reasoning_demo_rev".to_string()),
+        })
+        .expect("reverse");
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("run.bundle.reasoning.json");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::ExportProcessRunBundle {
+            path: path_text.clone(),
+            run_id: Some("interactive".to_string()),
+        })
+        .expect("export run bundle");
+
+    let text = std::fs::read_to_string(path_text).expect("read bundle");
+    let bundle: ProcessRunBundleExport =
+        serde_json::from_str(&text).expect("parse run bundle json");
+    assert_eq!(
+        bundle.construct_reasoning.seq_ids_considered,
+        vec!["reasoning_demo".to_string(), "reasoning_demo_rev".to_string()]
+    );
+    assert_eq!(bundle.construct_reasoning.graphs.len(), 1);
+    assert_eq!(bundle.construct_reasoning.graphs[0].graph_id, graph.graph_id);
+    assert_eq!(bundle.construct_reasoning.summaries.len(), 1);
+    let summary = &bundle.construct_reasoning.summaries[0];
+    assert_eq!(summary.seq_id, "reasoning_demo");
+    assert_eq!(summary.objective_id, objective.objective_id);
+    assert_eq!(summary.helper_profile_id.as_deref(), Some("puc19"));
+    assert_eq!(
+        summary.fact_statuses.get("selection_context").map(String::as_str),
+        Some("supported")
+    );
+    assert!(
+        summary
+            .growth_condition_signals
+            .iter()
+            .any(|signal| signal.to_ascii_lowercase().contains("ampicillin"))
+    );
+    assert!(
+        summary
+            .supported_selection_rule_ids
+            .iter()
+            .any(|rule_id| rule_id == "ampicillin_vector_selection")
+    );
+    assert!(
+        summary
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("Helper profile: puc19"))
+    );
+}
+
+#[test]
 fn test_export_process_run_bundle_run_id_not_found_fails() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));

@@ -3807,6 +3807,22 @@ Post-baseline follow-ups:
     selection agent, heat-shock/cold-shock, and parsed Celsius temperature
     signals, and the selection/complementation rule layer now matches against
     those canonical signals instead of raw free-text substrings.
+  - Done (2026-04-12, ClawBio/OpenClaw run-bundle integration): process
+    run-bundle exports now carry a portable `construct_reasoning` section with
+    concise per-sequence summaries plus the selected stored reasoning graphs so
+    agent-facing ClawBio/OpenClaw workflows can inspect host/helper/growth/
+    selection context offline without reverse-engineering GUI state.
+  - Done (2026-04-12, GUI non-sequence inspector baseline): the DNA-window
+    side-panel description area now shows non-sequence construct reasoning as a
+    dedicated inspector section with collapsible fact and decision entries,
+    while the DNA overlay remains sequence-only.
+  - Primary interface focus for the next construct-reasoning slices:
+    - GUI remains the main human inspection/editing surface.
+    - ClawBio/OpenClaw is the main agent-facing surface for reasoning output,
+      explanation, and downstream workflow selection.
+    - CLI/MCP/JS/Lua should stay contract-parity consumers of the same
+      engine-owned records, but they are not the primary UX target for this
+      reasoning track.
   - Next concrete slice (planned): extend the graph beyond pure sequence
     annotation with helper/vector and host-context reasoning:
     - host-route and methylation/restriction compatibility decisions
@@ -3815,6 +3831,21 @@ Post-baseline follow-ups:
       small built-in rule seed set
     - broaden growth-condition interpretation beyond the current nutrient /
       antibiotic / temperature seed set
+      - induction/trigger conditions (`IPTG`, arabinose, galactose, etc.)
+      - richer growth-environment signals (pH, osmotic stress, aerobic /
+        anaerobic context, carbon-source cues)
+      - culture-process conditions that matter operationally but are not
+        sequence-backed (heat shock, cold shock, recovery/incubation windows)
+      - host-constraint-aware temperature interpretation (for example later
+        compatibility checks against strain- or helper-specific thermal limits)
+    - expose non-sequence condition/host/helper reasoning clearly in the two
+      primary interfaces:
+      - GUI: deepen the new inspector from read-only fact/decision summaries
+        into richer navigation, selection, and later editing of non-sequence
+        reasoning nodes without faking them as sequence spans
+      - ClawBio/OpenClaw: extend the new run-bundle reasoning summaries with
+        richer host-route/methylation/restriction compatibility context and
+        broader growth-condition semantics as those engine rules land
     - inversion-risk evidence derived from self-dotplot/repeat analysis
     - only sequence-backed consequences render as DNA overlays; host-only facts
       stay as graph/inspector nodes

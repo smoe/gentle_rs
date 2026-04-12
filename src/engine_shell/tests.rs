@@ -17,7 +17,8 @@ use crate::engine::{
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
 };
 use crate::test_support::{
-    decision_trace_fixture_state, write_demo_pool_json, write_demo_workflow_json,
+    decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
+    write_demo_pool_json, write_demo_workflow_json,
     write_demo_workflow_with_shebang,
 };
 use gb_io::seq::{Feature, Location};
@@ -8070,6 +8071,78 @@ fn execute_export_run_bundle_matches_engine_decision_traces() {
             .expect("snapshot derived from history")
             .errors,
         vec!["missing sequence".to_string()]
+    );
+}
+
+#[test]
+fn execute_export_run_bundle_matches_engine_construct_reasoning_block() {
+    let td = tempdir().expect("tempdir");
+    let shell_path = td.path().join("shell.run_bundle.reasoning.json");
+    let engine_path = td.path().join("engine.run_bundle.reasoning.json");
+    let fixture_state = decision_trace_with_construct_reasoning_fixture_state();
+
+    let mut shell_engine = GentleEngine::from_state(fixture_state.clone());
+    crate::engine::Engine::apply(
+        &mut shell_engine,
+        crate::engine::Operation::Reverse {
+            input: "s".to_string(),
+            output_id: Some("s_reasoning_rev".to_string()),
+        },
+    )
+    .expect("shell fixture reverse");
+    let shell_out = execute_shell_command(
+        &mut shell_engine,
+        &ShellCommand::ExportRunBundle {
+            output: shell_path.to_string_lossy().to_string(),
+            run_id: None,
+        },
+    )
+    .expect("shell export run bundle");
+    assert!(!shell_out.state_changed);
+
+    let shell_bundle_text = fs::read_to_string(&shell_path).expect("read shell bundle output");
+    let shell_bundle: crate::engine::ProcessRunBundleExport =
+        serde_json::from_str(&shell_bundle_text).expect("parse shell bundle");
+
+    let mut engine = GentleEngine::from_state(fixture_state);
+    crate::engine::Engine::apply(
+        &mut engine,
+        crate::engine::Operation::Reverse {
+            input: "s".to_string(),
+            output_id: Some("s_reasoning_rev".to_string()),
+        },
+    )
+    .expect("engine fixture reverse");
+    engine
+        .apply(crate::engine::Operation::ExportProcessRunBundle {
+            path: engine_path.to_string_lossy().to_string(),
+            run_id: None,
+        })
+        .expect("engine export run bundle");
+    let engine_bundle_text = fs::read_to_string(&engine_path).expect("read engine bundle");
+    let engine_bundle: crate::engine::ProcessRunBundleExport =
+        serde_json::from_str(&engine_bundle_text).expect("parse engine bundle");
+
+    assert_eq!(
+        serde_json::to_value(&shell_bundle.construct_reasoning)
+            .expect("serialize shell construct reasoning"),
+        serde_json::to_value(&engine_bundle.construct_reasoning)
+            .expect("serialize engine construct reasoning")
+    );
+    assert_eq!(shell_bundle.construct_reasoning.graphs.len(), 1);
+    assert_eq!(shell_bundle.construct_reasoning.summaries.len(), 1);
+    assert_eq!(
+        shell_bundle.construct_reasoning.summaries[0]
+            .fact_statuses
+            .get("selection_context")
+            .map(String::as_str),
+        Some("supported")
+    );
+    assert!(
+        shell_bundle.construct_reasoning.summaries[0]
+            .supported_selection_rule_ids
+            .iter()
+            .any(|rule_id| rule_id == "ampicillin_vector_selection")
     );
 }
 

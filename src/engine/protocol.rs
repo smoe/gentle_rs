@@ -2332,6 +2332,57 @@ pub struct RoutineDecisionTraceStore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProcessRunBundleConstructReasoningSummary {
+    pub seq_id: String,
+    pub graph_id: String,
+    pub objective_id: String,
+    pub objective_title: String,
+    pub objective_goal: String,
+    pub fact_types: Vec<String>,
+    pub decision_types: Vec<String>,
+    pub fact_statuses: BTreeMap<String, String>,
+    pub host_profile_ids: Vec<String>,
+    pub helper_profile_id: Option<String>,
+    pub medium_conditions: Vec<String>,
+    pub growth_condition_signals: Vec<String>,
+    pub supported_selection_rule_ids: Vec<String>,
+    pub summary_lines: Vec<String>,
+    pub warning_lines: Vec<String>,
+}
+
+impl Default for ProcessRunBundleConstructReasoningSummary {
+    fn default() -> Self {
+        Self {
+            seq_id: String::new(),
+            graph_id: String::new(),
+            objective_id: String::new(),
+            objective_title: String::new(),
+            objective_goal: String::new(),
+            fact_types: vec![],
+            decision_types: vec![],
+            fact_statuses: BTreeMap::new(),
+            host_profile_ids: vec![],
+            helper_profile_id: None,
+            medium_conditions: vec![],
+            growth_condition_signals: vec![],
+            supported_selection_rule_ids: vec![],
+            summary_lines: vec![],
+            warning_lines: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProcessRunBundleConstructReasoningExport {
+    pub seq_ids_considered: Vec<String>,
+    pub summaries: Vec<ProcessRunBundleConstructReasoningSummary>,
+    pub graphs: Vec<ConstructReasoningGraph>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProcessRunBundleExport {
     pub schema: String,
     pub generated_at_unix_ms: u128,
@@ -2346,4 +2397,23 @@ pub struct ProcessRunBundleExport {
     pub operation_log: Vec<OperationRecord>,
     pub outputs: ProcessRunBundleOutputs,
     pub parameter_snapshot: serde_json::Value,
+    pub construct_reasoning: ProcessRunBundleConstructReasoningExport,
+}
+
+impl Default for ProcessRunBundleExport {
+    fn default() -> Self {
+        Self {
+            schema: String::new(),
+            generated_at_unix_ms: 0,
+            run_id_filter: None,
+            selected_record_count: 0,
+            inputs: ProcessRunBundleInputs::default(),
+            parameter_overrides: vec![],
+            decision_traces: vec![],
+            operation_log: vec![],
+            outputs: ProcessRunBundleOutputs::default(),
+            parameter_snapshot: serde_json::Value::Null,
+            construct_reasoning: ProcessRunBundleConstructReasoningExport::default(),
+        }
+    }
 }

@@ -12,6 +12,208 @@
 use super::*;
 
 impl GentleEngine {
+    fn summarize_process_run_bundle_construct_reasoning_graph(
+        graph: &ConstructReasoningGraph,
+    ) -> ProcessRunBundleConstructReasoningSummary {
+        let fact_types = graph
+            .facts
+            .iter()
+            .map(|fact| fact.fact_type.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let decision_types = graph
+            .decisions
+            .iter()
+            .map(|node| node.decision_type.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut fact_statuses: BTreeMap<String, String> = BTreeMap::new();
+        for fact in &graph.facts {
+            if let Some(status) = fact.value_json.get("status").and_then(serde_json::Value::as_str)
+            {
+                fact_statuses.insert(fact.fact_type.clone(), status.to_string());
+            }
+        }
+
+        let mut host_profile_ids = graph
+            .objective
+            .propagation_host_profile_id
+            .iter()
+            .chain(graph.objective.expression_host_profile_id.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        host_profile_ids.extend(
+            graph.objective
+                .host_route
+                .iter()
+                .map(|step| step.host_profile_id.clone()),
+        );
+        host_profile_ids.sort();
+        host_profile_ids.dedup();
+
+        let growth_condition_signals = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "growth_condition_context")
+            .and_then(|fact| {
+                fact.value_json
+                    .get("condition_signals")
+                    .and_then(serde_json::Value::as_array)
+            })
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| {
+                        row.get("label")
+                            .or_else(|| row.get("token"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let supported_selection_rule_ids = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "selection_context")
+            .and_then(|fact| {
+                fact.value_json
+                    .get("selection_rule_matches")
+                    .and_then(serde_json::Value::as_array)
+            })
+            .map(|rows| {
+                rows.iter()
+                    .filter(|row| {
+                        row.get("status").and_then(serde_json::Value::as_str) == Some("supported")
+                    })
+                    .filter_map(|row| {
+                        row.get("rule_id")
+                            .and_then(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let mut summary_lines = vec![];
+        if !graph.objective.goal.trim().is_empty() {
+            summary_lines.push(format!("Goal: {}", graph.objective.goal.trim()));
+        }
+        if !host_profile_ids.is_empty() {
+            summary_lines.push(format!("Host profiles: {}", host_profile_ids.join(", ")));
+        }
+        if let Some(helper_profile_id) = graph.objective.helper_profile_id.as_ref() {
+            summary_lines.push(format!("Helper profile: {helper_profile_id}"));
+        }
+        if !graph.objective.medium_conditions.is_empty() {
+            summary_lines.push(format!(
+                "Medium/growth conditions: {}",
+                graph.objective.medium_conditions.join(", ")
+            ));
+        }
+        for fact_type in [
+            "host_transition_context",
+            "growth_condition_context",
+            "helper_context",
+            "selection_context",
+        ] {
+            if let Some(fact) = graph.facts.iter().find(|fact| fact.fact_type == fact_type) {
+                if let Some(status) = fact_statuses.get(fact_type) {
+                    summary_lines.push(format!("{} ({status})", fact.label.trim()));
+                } else if !fact.label.trim().is_empty() {
+                    summary_lines.push(fact.label.trim().to_string());
+                }
+            }
+        }
+        if !growth_condition_signals.is_empty() {
+            summary_lines.push(format!(
+                "Condition signals: {}",
+                growth_condition_signals.join(", ")
+            ));
+        }
+        if !supported_selection_rule_ids.is_empty() {
+            summary_lines.push(format!(
+                "Supported selection rules: {}",
+                supported_selection_rule_ids.join(", ")
+            ));
+        }
+        summary_lines.retain(|line| !line.trim().is_empty());
+        summary_lines.dedup();
+
+        let mut warning_lines = graph
+            .evidence
+            .iter()
+            .flat_map(|row| row.warnings.iter())
+            .chain(
+                graph.facts
+                    .iter()
+                    .filter(|fact| {
+                        fact.value_json
+                            .get("status")
+                            .and_then(serde_json::Value::as_str)
+                            == Some("review_needed")
+                    })
+                    .map(|fact| &fact.label),
+            )
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        warning_lines.sort();
+
+        ProcessRunBundleConstructReasoningSummary {
+            seq_id: graph.seq_id.clone(),
+            graph_id: graph.graph_id.clone(),
+            objective_id: graph.objective.objective_id.clone(),
+            objective_title: graph.objective.title.clone(),
+            objective_goal: graph.objective.goal.clone(),
+            fact_types,
+            decision_types,
+            fact_statuses,
+            host_profile_ids,
+            helper_profile_id: graph.objective.helper_profile_id.clone(),
+            medium_conditions: graph.objective.medium_conditions.clone(),
+            growth_condition_signals,
+            supported_selection_rule_ids,
+            summary_lines,
+            warning_lines,
+        }
+    }
+
+    fn collect_process_run_bundle_construct_reasoning(
+        &self,
+        seq_ids: &BTreeSet<String>,
+    ) -> ProcessRunBundleConstructReasoningExport {
+        let seq_ids_considered = seq_ids.iter().cloned().collect::<Vec<_>>();
+        let mut graphs = seq_ids_considered
+            .iter()
+            .filter_map(|seq_id| self.construct_reasoning_graph_for_seq_id(seq_id).ok())
+            .collect::<Vec<_>>();
+        graphs.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then_with(|| left.graph_id.cmp(&right.graph_id))
+        });
+        let summaries = graphs
+            .iter()
+            .map(Self::summarize_process_run_bundle_construct_reasoning_graph)
+            .collect::<Vec<_>>();
+        ProcessRunBundleConstructReasoningExport {
+            seq_ids_considered,
+            summaries,
+            graphs,
+        }
+    }
+
     pub(crate) fn infer_gel_topology_form_from_dna(
         dna: &DNAsequence,
     ) -> gentle_protocol::GelTopologyForm {
@@ -1424,6 +1626,11 @@ impl GentleEngine {
 
         let final_sequence_ids: BTreeSet<String> =
             created_seq_ids.union(&changed_seq_ids).cloned().collect();
+        let construct_reasoning_seq_ids: BTreeSet<String> = referenced_sequence_ids
+            .iter()
+            .cloned()
+            .chain(final_sequence_ids.iter().cloned())
+            .collect();
         let mut final_sequences: Vec<EngineSequenceSummary> = vec![];
         for seq_id in final_sequence_ids {
             let Some(dna) = self.state.sequences.get(&seq_id) else {
@@ -1444,6 +1651,8 @@ impl GentleEngine {
         });
 
         let decision_traces = self.read_routine_decision_traces_from_metadata();
+        let construct_reasoning =
+            self.collect_process_run_bundle_construct_reasoning(&construct_reasoning_seq_ids);
 
         let bundle = ProcessRunBundleExport {
             schema: PROCESS_RUN_BUNDLE_SCHEMA.to_string(),
@@ -1478,6 +1687,7 @@ impl GentleEngine {
                     message: format!("Could not serialize engine parameter snapshot: {e}"),
                 }
             })?,
+            construct_reasoning,
         };
 
         let text = serde_json::to_string_pretty(&bundle).map_err(|e| EngineError {

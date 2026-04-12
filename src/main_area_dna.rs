@@ -56,8 +56,9 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
-        CandidateRecord, CandidateSetOperator, ConstructRole, DisplayTarget, DotplotMode,
-        DotplotView, EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
+        CandidateRecord, CandidateSetOperator, ConstructReasoningGraph, ConstructRole,
+        DecisionMethod, DesignDecisionNode, DesignFact, DisplayTarget, DotplotMode, DotplotView,
+        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
         FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide,
         GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
@@ -6512,6 +6513,61 @@ mod tests {
     }
 
     #[test]
+    fn refresh_description_cache_includes_non_sequence_construct_reasoning_context() {
+        let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_context".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let objective = engine
+            .upsert_construct_objective(crate::engine::ConstructObjective {
+                title: "GUI reasoning".to_string(),
+                goal: "Show host/helper/growth context in the inspector".to_string(),
+                propagation_host_profile_id: Some("ecoli_k12".to_string()),
+                expression_host_profile_id: Some("ecoli_k12".to_string()),
+                helper_profile_id: Some("pUC19".to_string()),
+                medium_conditions: vec!["ampicillin".to_string()],
+                ..crate::engine::ConstructObjective::default()
+            })
+            .expect("objective");
+        engine
+            .build_construct_reasoning_graph(
+                "seq_reasoning_context",
+                Some(&objective.objective_id),
+                None,
+            )
+            .expect("build graph");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(
+            dna,
+            Some("seq_reasoning_context".to_string()),
+            Some(engine),
+        );
+
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert_eq!(reasoning.objective_title, "GUI reasoning");
+        assert!(reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Selection/complementation context supported"));
+        assert!(reasoning.fact_entries.iter().any(|entry| {
+            entry.detail_lines
+                .iter()
+                .any(|line| line.contains("ampicillin_selection"))
+        }));
+        assert!(reasoning
+            .decision_entries
+            .iter()
+            .any(|entry| entry.title == "Evaluate Selection/Complementation Fit"));
+    }
+
+    #[test]
     fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -7225,6 +7281,7 @@ pub struct MainAreaDna {
     description_cache_title: String,
     description_cache_range: Option<String>,
     description_cache_details: Vec<String>,
+    description_cache_construct_reasoning: Option<ConstructReasoningInspectorCache>,
     description_cache_expert_view: Option<FeatureExpertView>,
     description_cache_expert_error: Option<String>,
     show_dotplot_window: bool,
@@ -7253,6 +7310,23 @@ pub struct MainAreaDna {
     dotplot_hover_crosshair_bp: Option<(usize, usize)>,
     dotplot_locked_crosshair_bp: Option<(usize, usize)>,
     dotplot_last_compute_status: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ConstructReasoningInspectorEntry {
+    title: String,
+    detail_lines: Vec<String>,
+    warning_lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ConstructReasoningInspectorCache {
+    graph_id: String,
+    objective_title: String,
+    objective_goal: String,
+    fact_entries: Vec<ConstructReasoningInspectorEntry>,
+    decision_entries: Vec<ConstructReasoningInspectorEntry>,
+    note_lines: Vec<String>,
 }
 
 impl MainAreaDna {
@@ -7598,6 +7672,7 @@ impl MainAreaDna {
             description_cache_title: String::new(),
             description_cache_range: None,
             description_cache_details: Vec::new(),
+            description_cache_construct_reasoning: None,
             description_cache_expert_view: None,
             description_cache_expert_error: None,
             show_dotplot_window: false,
@@ -13966,6 +14041,195 @@ impl MainAreaDna {
             EditableStatus::Accepted => "accepted",
             EditableStatus::Rejected => "rejected",
             EditableStatus::Locked => "locked",
+        }
+    }
+
+    fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
+        match method {
+            DecisionMethod::HardRule => "hard_rule",
+            DecisionMethod::WeightedRule => "weighted_rule",
+            DecisionMethod::FuzzyRule => "fuzzy_rule",
+            DecisionMethod::ModelSummary => "model_summary",
+            DecisionMethod::ParetoRank => "pareto_rank",
+            DecisionMethod::UserOverride => "user_override",
+        }
+    }
+
+    fn construct_reasoning_json_string_list(
+        value: &serde_json::Value,
+        key: &str,
+    ) -> Vec<String> {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
+
+    fn construct_reasoning_json_signal_labels(value: &serde_json::Value, key: &str) -> Vec<String> {
+        value
+            .get(key)
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(|row| {
+                        row.get("label")
+                            .or_else(|| row.get("token"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
+
+    fn construct_reasoning_inspector_entry_for_fact(
+        fact: &DesignFact,
+    ) -> ConstructReasoningInspectorEntry {
+        let mut detail_lines = vec![];
+        let mut warning_lines = vec![];
+        if let Some(status) = fact.value_json.get("status").and_then(serde_json::Value::as_str) {
+            detail_lines.push(format!("status: {status}"));
+            if status == "review_needed" {
+                warning_lines.push("Review needed".to_string());
+            }
+        }
+        if !fact.rationale.trim().is_empty() {
+            detail_lines.push(format!("why: {}", fact.rationale.trim()));
+        }
+        if !fact.based_on_evidence_ids.is_empty() {
+            detail_lines.push(format!(
+                "based_on_evidence: {}",
+                fact.based_on_evidence_ids.len()
+            ));
+        }
+        match fact.fact_type.as_str() {
+            "host_transition_context" => {
+                let ordered_hosts =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "ordered_host_profile_ids");
+                if !ordered_hosts.is_empty() {
+                    detail_lines.push(format!("hosts: {}", ordered_hosts.join(" -> ")));
+                }
+            }
+            "growth_condition_context" => {
+                let medium_conditions =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "medium_conditions");
+                if !medium_conditions.is_empty() {
+                    detail_lines.push(format!(
+                        "medium_conditions: {}",
+                        medium_conditions.join(", ")
+                    ));
+                }
+                let signals =
+                    Self::construct_reasoning_json_signal_labels(&fact.value_json, "condition_signals");
+                if !signals.is_empty() {
+                    detail_lines.push(format!("signals: {}", signals.join(", ")));
+                }
+            }
+            "helper_context" => {
+                if let Some(helper_profile_id) = fact
+                    .value_json
+                    .get("helper_profile_id")
+                    .and_then(serde_json::Value::as_str)
+                {
+                    detail_lines.push(format!("helper_profile: {helper_profile_id}"));
+                }
+                let helper_functions = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "helper_offered_functions",
+                );
+                if !helper_functions.is_empty() {
+                    detail_lines.push(format!("offered_functions: {}", helper_functions.join(", ")));
+                }
+                let helper_components =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "helper_component_labels");
+                if !helper_components.is_empty() {
+                    detail_lines.push(format!("components: {}", helper_components.join(", ")));
+                }
+            }
+            "selection_context" => {
+                let candidates =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "selection_candidates");
+                if !candidates.is_empty() {
+                    detail_lines.push(format!("candidates: {}", candidates.join(", ")));
+                }
+                let rules = fact
+                    .value_json
+                    .get("selection_rule_matches")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let rule_id = row.get("rule_id").and_then(serde_json::Value::as_str)?;
+                                let status = row.get("status").and_then(serde_json::Value::as_str)?;
+                                Some(format!("{rule_id} ({status})"))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !rules.is_empty() {
+                    detail_lines.push(format!("rules: {}", rules.join(", ")));
+                }
+            }
+            _ => {}
+        }
+        ConstructReasoningInspectorEntry {
+            title: fact.label.clone(),
+            detail_lines,
+            warning_lines,
+        }
+    }
+
+    fn construct_reasoning_inspector_entry_for_decision(
+        node: &DesignDecisionNode,
+    ) -> ConstructReasoningInspectorEntry {
+        let mut detail_lines = vec![format!(
+            "method: {}",
+            Self::construct_reasoning_decision_method_label(node.method)
+        )];
+        if !node.rationale.trim().is_empty() {
+            detail_lines.push(format!("why: {}", node.rationale.trim()));
+        }
+        if !node.input_fact_ids.is_empty() {
+            detail_lines.push(format!("input_facts: {}", node.input_fact_ids.join(", ")));
+        }
+        if !node.output_fact_ids.is_empty() {
+            detail_lines.push(format!("output_facts: {}", node.output_fact_ids.join(", ")));
+        }
+        ConstructReasoningInspectorEntry {
+            title: node.title.clone(),
+            detail_lines,
+            warning_lines: vec![],
+        }
+    }
+
+    fn build_construct_reasoning_inspector_cache(
+        graph: &ConstructReasoningGraph,
+    ) -> ConstructReasoningInspectorCache {
+        let mut fact_entries = graph
+            .facts
+            .iter()
+            .map(Self::construct_reasoning_inspector_entry_for_fact)
+            .collect::<Vec<_>>();
+        let mut decision_entries = graph
+            .decisions
+            .iter()
+            .map(Self::construct_reasoning_inspector_entry_for_decision)
+            .collect::<Vec<_>>();
+        fact_entries.retain(|entry| !entry.title.trim().is_empty());
+        decision_entries.retain(|entry| !entry.title.trim().is_empty());
+        ConstructReasoningInspectorCache {
+            graph_id: graph.graph_id.clone(),
+            objective_title: graph.objective.title.clone(),
+            objective_goal: graph.objective.goal.clone(),
+            fact_entries,
+            decision_entries,
+            note_lines: graph.notes.clone(),
         }
     }
 
@@ -33575,6 +33839,7 @@ impl MainAreaDna {
             self.description_cache_selected_restriction_key = selected_restriction_key.clone();
             self.description_cache_seq_len = seq_len;
             self.description_cache_feature_count = feature_count;
+            self.description_cache_construct_reasoning = None;
             self.description_cache_expert_view = None;
             self.description_cache_expert_error = None;
 
@@ -33675,6 +33940,18 @@ impl MainAreaDna {
         if clear_invalid_reasoning_selection {
             self.map_dna.select_reasoning_evidence(None);
         }
+        self.description_cache_construct_reasoning = self
+            .seq_id
+            .as_deref()
+            .and_then(|seq_id| {
+                self.engine.as_ref().and_then(|engine| {
+                    engine
+                        .read()
+                        .ok()
+                        .and_then(|guard| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
+                })
+            })
+            .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
                 Ok(view) => {
@@ -33834,6 +34111,93 @@ impl MainAreaDna {
                         .monospace()
                         .size(detail_font_size),
                 );
+            }
+            if let Some(reasoning) = self.description_cache_construct_reasoning.clone() {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Construct reasoning")
+                        .strong()
+                        .size(detail_font_size),
+                );
+                if !reasoning.objective_title.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(reasoning.objective_title.trim())
+                            .strong()
+                            .size(detail_font_size),
+                    );
+                }
+                if !reasoning.objective_goal.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(reasoning.objective_goal.trim())
+                            .size(detail_font_size),
+                    );
+                }
+                if !reasoning.graph_id.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(format!("graph: {}", reasoning.graph_id))
+                            .monospace()
+                            .size(detail_font_size),
+                    );
+                }
+                if reasoning.fact_entries.is_empty() && reasoning.decision_entries.is_empty() {
+                    ui.label(
+                        egui::RichText::new(
+                            "No construct-reasoning facts or decisions are stored for this sequence yet.",
+                        )
+                        .size(detail_font_size),
+                    );
+                }
+                for entry in reasoning.fact_entries {
+                    egui::CollapsingHeader::new(entry.title.clone())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            for line in &entry.detail_lines {
+                                ui.label(
+                                    egui::RichText::new(line)
+                                        .monospace()
+                                        .size(detail_font_size),
+                                );
+                            }
+                            for warning in &entry.warning_lines {
+                                ui.label(
+                                    egui::RichText::new(format!("warning: {warning}"))
+                                        .monospace()
+                                        .size(detail_font_size)
+                                        .color(egui::Color32::from_rgb(176, 80, 32)),
+                                );
+                            }
+                        });
+                }
+                if !reasoning.decision_entries.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Decision steps")
+                            .strong()
+                            .size(detail_font_size),
+                    );
+                    for entry in reasoning.decision_entries {
+                        egui::CollapsingHeader::new(entry.title.clone())
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                for line in &entry.detail_lines {
+                                    ui.label(
+                                        egui::RichText::new(line)
+                                            .monospace()
+                                            .size(detail_font_size),
+                                    );
+                                }
+                            });
+                    }
+                }
+                for note in &reasoning.note_lines {
+                    if note.trim().is_empty() {
+                        continue;
+                    }
+                    ui.label(
+                        egui::RichText::new(format!("note: {}", note.trim()))
+                            .monospace()
+                            .size(detail_font_size),
+                    );
+                }
             }
             });
     }

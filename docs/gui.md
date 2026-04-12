@@ -1434,6 +1434,10 @@ Controls:
    - Hovering an evidence span shows a compact "why is this here?" tooltip.
    - Clicking an evidence span routes the side-panel details view to that exact
      reasoning record (role, class, range, rationale, provenance, and notes).
+   - The side-panel description area now also shows a dedicated
+     `Construct reasoning` section for non-sequence facts and decision steps
+     (for example host/helper/growth/selection context) so those records stay
+     inspectable without being faked as coordinate spans.
    - The adjacent `Why` menu filters visible reasoning spans by role and
      evidence class without changing the underlying engine graph.
 10. Ctx mRNA (shown in `cDNA` mode)

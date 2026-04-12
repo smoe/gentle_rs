@@ -2477,6 +2477,16 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - file artifact paths produced by selected operations
   - `parameter_snapshot`:
     - full current engine parameter snapshot at export time.
+  - `construct_reasoning`:
+    - portable construct-reasoning payload for ClawBio/OpenClaw and other
+      agent-facing consumers
+    - `seq_ids_considered`: deterministic union of referenced plus
+      created/changed sequence ids from the exported run slice
+    - `summaries`: compact per-sequence reasoning summaries
+      (objective, fact/decision coverage, host/helper/medium context,
+      interpreted growth signals, supported selection rules, and warning lines)
+    - `graphs`: the selected stored `gentle.construct_reasoning_graph.v1`
+      payloads themselves for full offline inspection
 - Failure modes:
   - empty `path` => `InvalidInput`
   - unknown filtered `run_id` (no selected rows) => `NotFound`
@@ -2539,8 +2549,14 @@ Construct reasoning graph foundation (implemented first slice):
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
     graph and paints evidence spans directly on-sequence
   - GUI-side hover/selection inspection for one evidence span at a time
+  - side-panel construct-reasoning inspector section for non-sequence facts and
+    decision steps (host/helper/medium/growth/selection context) without
+    pretending they are coordinate spans
   - GUI-only role/class visibility filters layered on top of the same shared
     engine-owned graph payload (no adapter-local graph recomputation)
+  - ClawBio/OpenClaw-facing run-bundle export integration:
+    - deterministic per-sequence summary rows for concise agent consumption
+    - embedded stored reasoning graphs for full offline inspection/replay
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - exon/splice annotations with explicit cDNA-style qualifier hints =>
@@ -2561,8 +2577,8 @@ Construct reasoning graph foundation (implemented first slice):
   - construct-candidate ranking
   - curated host/helper profile catalog loading and biological compatibility
     scoring against those catalogs
-  - editable reasoning/decision GUI surfaces beyond the current read-only span overlay
-  - process-run-bundle export integration for construct reasoning graphs
+  - editable reasoning/decision GUI surfaces beyond the current read-only span
+    overlay plus inspector summary
 
 Protocol-cartoon family growth direction (planned):
 
