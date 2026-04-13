@@ -23,6 +23,9 @@ GENtle is already strong in three places:
 - a small but real set of first-class analysis artifacts in lineage:
   - dotplots
   - flexibility tracks
+  - primer-design reports
+  - qPCR-design reports
+  - UniProt genome projections
   - sequencing-confirmation reports
 
 The main parity gap is that several other computational stores are preserved
@@ -53,43 +56,29 @@ helper overlays are still acceptable when all of the following are true:
 
 ## Priority Rollout
 
-### 1. RNA-read interpretation reports
+### 1. Primer-design and qPCR-design reports
 
 Why first:
-
-- they already carry rich request/progress/hit provenance
-- they can drive biologically meaningful conclusions
-- they are currently prominent enough to deserve first-class lineage presence
-
-Expected next step:
-
-- project persisted RNA-read reports as lineage-visible analysis artifacts
-- reopen the RNA-read mapping/evidence workspace directly from lineage
-- surface report mode, origin mode, read counts, and aligned counts in lineage
-  tooltips/details
-
-Follow-on:
-
-- expose linked audit artifacts such as gene-support summaries/audits as either
-  subordinate exports or explicit companion artifacts when they become
-  important enough for routine review
-
-### 2. Primer-design and qPCR-design reports
-
-Why next:
 
 - they are strong bench-facing computational conclusions
 - users already reason about them like generated assay artifacts, not just
   hidden metadata
 
+Shipped baseline:
+
+- persisted primer/qPCR reports now carry `op_id` / `run_id`
+- GUI lineage projects them as analysis artifacts linked from the template
+  sequence
+- lineage can reopen the PCR Designer on the selected report
+- lineage details expose backend provenance plus pair/assay counts
+
 Expected next step:
 
-- project persisted primer/qPCR reports as analysis artifact nodes linked from
-  the template sequence
-- carry backend provenance, report counts, and reopening/export affordances in
-  the same lineage-visible way
+- extend the same artifact contract to richer primer-adjacent outputs such as
+  backend-equivalence audits, nested-PCR follow-ons, or future batch summary
+  artifacts when those become persisted review objects
 
-### 3. Projection/annotation analysis artifacts
+### 2. Projection/annotation analysis artifacts
 
 First candidates:
 
@@ -104,19 +93,22 @@ Why:
 - they are more than raw exports, but they are not yet treated uniformly as
   project-visible computational artifacts
 
-### 4. Construct reasoning and planning outputs
+Shipped baseline:
 
-This track is already emerging through construct-reasoning graphs and
-run-bundle exports, but it should converge with the same artifact model.
+- persisted UniProt genome projections now carry `op_id` / `run_id`
+- GUI lineage projects them as analysis artifacts linked from the source
+  sequence
+- lineage can reopen the UniProt protein expert on the selected projection
+- lineage details expose the upstream UniProt `entry_id`, transcript filter,
+  and projected transcript count
 
-Expected direction:
+Expected next step:
 
-- reasoning graphs and planning/decision traces should be inspectable as
-  sample-linked computational artifacts rather than only side-channel metadata
-- users should be able to tell not only what ran, but why a route or
-  interpretation was preferred
+- extend the same artifact contract to curated isoform-panel expert views and
+  persisted grouped TFBS summaries when those review objects become regular
+  sample-facing handoff artifacts
 
-### 5. Protein-side and self-translation outputs
+### 3. Protein-side and self-translation outputs
 
 Upcoming protein-side work should enter the same provenance model early
 instead of becoming a special case later.
@@ -130,6 +122,40 @@ This includes future persisted outputs such as:
 The important rule is that protein-side computational conclusions should not
 silently bypass the same lineage/artifact visibility expected for nucleotide
 workflows.
+
+### 4. Construct reasoning and planning outputs
+
+This track is already emerging through construct-reasoning graphs and
+run-bundle exports, but it should converge with the same artifact model.
+
+Expected direction:
+
+- reasoning graphs and planning/decision traces should be inspectable as
+  sample-linked computational artifacts rather than only side-channel metadata
+- users should be able to tell not only what ran, but why a route or
+  interpretation was preferred
+
+### 5. RNA-read interpretation reports
+
+Why fifth:
+
+- they already carry rich request/progress/hit provenance
+- they can drive biologically meaningful conclusions
+- they deserve first-class lineage presence once the lighter-weight report
+  families establish the shared artifact vocabulary cleanly
+
+Expected next step:
+
+- project persisted RNA-read reports as lineage-visible analysis artifacts
+- reopen the RNA-read mapping/evidence workspace directly from lineage
+- surface report mode, origin mode, read counts, and aligned counts in lineage
+  tooltips/details
+
+Follow-on:
+
+- expose linked audit artifacts such as gene-support summaries/audits as either
+  subordinate exports or explicit companion artifacts when they become
+  important enough for routine review
 
 ## Shared Contract Work
 

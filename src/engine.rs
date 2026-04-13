@@ -7721,9 +7721,12 @@ impl GentleEngine {
                 report_id: report.report_id.clone(),
                 template: report.template.clone(),
                 generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
                 roi_start_0based: report.roi_start_0based,
                 roi_end_0based: report.roi_end_0based,
                 pair_count: report.pair_count,
+                backend_used: report.backend.used.clone(),
             })
             .collect()
     }
@@ -7774,9 +7777,12 @@ impl GentleEngine {
                 report_id: report.report_id.clone(),
                 template: report.template.clone(),
                 generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
                 roi_start_0based: report.roi_start_0based,
                 roi_end_0based: report.roi_end_0based,
                 assay_count: report.assay_count,
+                backend_used: report.backend.used.clone(),
             })
             .collect()
     }

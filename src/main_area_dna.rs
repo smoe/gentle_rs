@@ -3995,6 +3995,152 @@ mod tests {
     }
 
     #[test]
+    fn focus_primer_design_report_selects_report_and_shows_engine_ops() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_focus".to_string()),
+            })
+            .expect("design primer pairs");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+
+        area.focus_primer_design_report("primer_ui_focus");
+
+        assert!(area.show_engine_ops);
+        assert_eq!(area.primer_design_ui.report_id, "primer_ui_focus");
+        assert!(area.op_status.contains("Primer report 'primer_ui_focus'"));
+    }
+
+    #[test]
+    fn focus_qpcr_design_report_selects_report_and_shows_engine_ops() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                probe: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(35),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_probe_tm_delta_c: Some(50.0),
+                max_assays: Some(10),
+                report_id: Some("qpcr_ui_focus".to_string()),
+            })
+            .expect("design qpcr assays");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+
+        area.focus_qpcr_design_report("qpcr_ui_focus");
+
+        assert!(area.show_engine_ops);
+        assert_eq!(area.qpcr_design_ui.report_id, "qpcr_ui_focus");
+        assert!(area.op_status.contains("qPCR report 'qpcr_ui_focus'"));
+    }
+
+    #[test]
     fn feature_tree_matches_filter_scoped_terms() {
         let feature = make_feature("gene", vec![("label", "TP53")]);
         assert!(MainAreaDna::feature_tree_matches_filter(
@@ -8537,6 +8683,24 @@ impl MainAreaDna {
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
         self.open_dotplot_window();
+    }
+
+    pub fn focus_primer_design_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if !normalized_id.is_empty() {
+            self.primer_design_ui.report_id = normalized_id.to_string();
+        }
+        self.show_engine_ops = true;
+        self.show_primer_design_report(normalized_id);
+    }
+
+    pub fn focus_qpcr_design_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if !normalized_id.is_empty() {
+            self.qpcr_design_ui.report_id = normalized_id.to_string();
+        }
+        self.show_engine_ops = true;
+        self.show_qpcr_design_report(normalized_id);
     }
 
     pub fn focus_sequencing_confirmation_report(&mut self, report_id: &str) {

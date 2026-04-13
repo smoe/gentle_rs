@@ -1020,6 +1020,9 @@ Sequencing-trace evidence notes:
     protein products exist
 - `ReverseTranslateProteinSequence { seq_id, output_id?, speed_profile?, speed_mark?, translation_table?, target_anneal_tm_c?, anneal_window_bp? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
+  - persists one `gentle.uniprot_genome_projection.v1` artifact with stable
+    `projection_id`, upstream `seq_id`/`entry_id`, and stored `op_id` /
+    `run_id` provenance for lineage/reopen paths
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
@@ -1205,6 +1208,9 @@ external coding agent runtime, see:
       external sources such as Ensembl proteoform/protein annotations are meant
       to populate the same fields rather than replacing transcript-native
       translation
+    - the same persisted projection now also appears in GUI lineage as one
+      analysis artifact node linked from the source sequence and reopenable
+      through the protein expert
 - UniProt feature-coding DNA query semantics:
   - resolves one persisted `gentle.uniprot_genome_projection.v1` record
   - matches `FEATURE_QUERY` case-insensitively against mapped UniProt feature

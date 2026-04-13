@@ -183,8 +183,10 @@ The project main window (lineage page) supports two views:
 
 - `Table`: tabular lineage view with per-sequence actions
 - `Graph`: node/edge lineage visualization
-- analysis artifacts (dotplots/flexibility tracks) appear in lineage as
-  dedicated analysis nodes linked to their source sequences
+- analysis artifacts (dotplots, flexibility tracks, persisted primer/qPCR
+  design reports, persisted UniProt genome projections, and
+  sequencing-confirmation reports) appear in lineage as dedicated analysis
+  nodes linked to their source sequences
 - SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
   also materialized as lineage analysis nodes, linked by operation edges for
   provenance/script parity
@@ -1372,8 +1374,9 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
-- Double-click on an analysis node (`Dotplot` / `FlexibilityTrack`): opens the
-  source sequence window.
+- Double-click on an analysis node (`Dotplot` / `FlexibilityTrack` /
+  `PrimerDesign` / `QpcrDesign` / `SequencingConfirmation`): opens the source
+  sequence window.
 - Single-click on the dedicated `Gibson cloning` operation node in graph view,
   or on the `Op` cell for Gibson-created outputs in the table: reopens the
   Gibson specialist with the saved plan loaded again for review.
@@ -1412,8 +1415,9 @@ Node click behavior in lineage `Graph` view:
   - Table/tooltip details expose:
     - artifact id
     - source sequence (+ reference sequence for pairwise dotplots)
-    - mode/model
-    - point/bin count
+    - mode/model/backend depending on artifact family
+    - point/bin count for dotplot/flexibility artifacts
+    - pair/assay count for persisted primer/qPCR reports
 
 Node groups in lineage view:
 
@@ -2634,6 +2638,13 @@ Buttons:
 Both operations persist reports into project metadata (same report store used by
 CLI/shared-shell `primers ...` commands).
 
+Persisted primer/qPCR reports now also appear in the project lineage graph/table
+as analysis artifacts linked from the template sequence.
+
+- lineage actions reopen the PCR Designer on the selected report instead of
+  only opening the source sequence
+- lineage details expose the stored backend plus pair/assay counts
+
 `Design Primer Pairs` materializes lineage-visible sequence artifacts for each
 accepted pair:
 
@@ -3535,6 +3546,12 @@ UniProt mapping behavior:
 - Protein sequence windows are intentionally not enabled yet. UniProt entries
   currently act as metadata/projection inputs, not as primary sequence windows.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
+- Persisted UniProt projections now also appear in the project lineage
+  graph/table as analysis artifacts linked from the source sequence.
+  - lineage actions reopen the UniProt protein expert on the selected
+    projection instead of only opening the source sequence
+  - lineage details expose the stored `entry_id`, transcript filter, and
+    projected transcript count
 
 NCBI retrieval behavior:
 

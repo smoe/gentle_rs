@@ -1450,6 +1450,8 @@ fn test_design_primer_pairs_persists_report() {
         .expect("report by id");
     assert_eq!(report.report_id, "tp73_roi");
     assert_eq!(report.template, "tpl");
+    assert_eq!(report.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(report.run_id.as_deref(), Some("interactive"));
     assert!(!report.pairs.is_empty());
     assert_eq!(
         result.created_seq_ids.len(),
@@ -1530,7 +1532,13 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(report.backend.requested, "internal");
     assert_eq!(report.backend.used, "internal");
     let listed = engine.list_primer_design_reports();
-    assert!(listed.iter().any(|row| row.report_id == "tp73_roi"));
+    let summary = listed
+        .iter()
+        .find(|row| row.report_id == "tp73_roi")
+        .expect("primer summary");
+    assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(summary.run_id.as_deref(), Some("interactive"));
+    assert_eq!(summary.backend_used, "internal");
 }
 
 #[test]
@@ -2052,11 +2060,19 @@ fn test_design_qpcr_assays_persists_report() {
         .expect("qpcr report by id");
     assert_eq!(report.report_id, "tp73_qpcr");
     assert_eq!(report.template, "tpl");
+    assert_eq!(report.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(report.run_id.as_deref(), Some("interactive"));
     assert!(!report.assays.is_empty());
     assert_eq!(report.backend.requested, "internal");
     assert_eq!(report.backend.used, "internal");
     let listed = engine.list_qpcr_design_reports();
-    assert!(listed.iter().any(|row| row.report_id == "tp73_qpcr"));
+    let summary = listed
+        .iter()
+        .find(|row| row.report_id == "tp73_qpcr")
+        .expect("qpcr summary");
+    assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(summary.run_id.as_deref(), Some("interactive"));
+    assert_eq!(summary.backend_used, "internal");
 }
 
 #[test]
@@ -4752,6 +4768,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         .expect("projection should exist");
     assert_eq!(projection.entry_id, "PTEST1");
     assert_eq!(projection.seq_id, "toy_seq");
+    assert_eq!(projection.op_id.as_deref(), Some(map.op_id.as_str()));
+    assert_eq!(projection.run_id.as_deref(), Some("interactive"));
     assert!(!projection.transcript_projections.is_empty());
     assert!(
         projection
@@ -4759,6 +4777,14 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .iter()
             .any(|row| !row.feature_projections.is_empty())
     );
+    let summaries = engine.list_uniprot_genome_projections(Some("toy_seq"));
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].projection_id, "PTEST1@toy_seq");
+    assert_eq!(summaries[0].entry_id, "PTEST1");
+    assert_eq!(summaries[0].seq_id, "toy_seq");
+    assert_eq!(summaries[0].op_id.as_deref(), Some(map.op_id.as_str()));
+    assert_eq!(summaries[0].run_id.as_deref(), Some("interactive"));
+    assert!(summaries[0].transcript_projection_count > 0);
 
     let expert = engine
         .inspect_feature_expert(

@@ -1448,6 +1448,9 @@ impl GentleEngine {
                 entry_id: record.entry_id.clone(),
                 seq_id: record.seq_id.clone(),
                 created_at_unix_ms: record.created_at_unix_ms,
+                op_id: record.op_id.clone(),
+                run_id: record.run_id.clone(),
+                transcript_id_filter: record.transcript_id_filter.clone(),
                 transcript_projection_count: record.transcript_projections.len(),
             })
             .collect::<Vec<_>>();
@@ -2418,6 +2421,8 @@ impl GentleEngine {
             entry_id: entry.entry_id.clone(),
             seq_id: seq_id.to_string(),
             created_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
             transcript_id_filter: transcript_id_filter
                 .map(str::trim)
                 .filter(|value| !value.is_empty())

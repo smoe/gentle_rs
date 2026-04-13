@@ -132,6 +132,8 @@ pub struct UniprotGenomeProjection {
     pub entry_id: String,
     pub seq_id: String,
     pub created_at_unix_ms: u128,
+    pub op_id: Option<String>,
+    pub run_id: Option<String>,
     pub transcript_id_filter: Option<String>,
     pub transcript_projections: Vec<UniprotTranscriptProjection>,
     pub warnings: Vec<String>,
@@ -145,6 +147,9 @@ pub struct UniprotGenomeProjectionSummary {
     pub entry_id: String,
     pub seq_id: String,
     pub created_at_unix_ms: u128,
+    pub op_id: Option<String>,
+    pub run_id: Option<String>,
+    pub transcript_id_filter: Option<String>,
     pub transcript_projection_count: usize,
 }
 

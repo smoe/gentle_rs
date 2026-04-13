@@ -1576,6 +1576,10 @@ pub struct PrimerDesignReport {
     pub report_id: String,
     pub template: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub forward: PrimerDesignSideConstraint,
@@ -1629,9 +1633,15 @@ pub struct PrimerDesignReportSummary {
     pub report_id: String,
     pub template: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub pair_count: usize,
+    #[serde(default)]
+    pub backend_used: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1677,6 +1687,10 @@ pub struct QpcrDesignReport {
     pub report_id: String,
     pub template: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub forward: PrimerDesignSideConstraint,
@@ -1704,9 +1718,15 @@ pub struct QpcrDesignReportSummary {
     pub report_id: String,
     pub template: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub assay_count: usize,
+    #[serde(default)]
+    pub backend_used: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

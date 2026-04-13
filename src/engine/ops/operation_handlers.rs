@@ -3200,6 +3200,8 @@ impl GentleEngine {
         &mut self,
         result: &mut OpResult,
         parent_seq_ids: &mut Vec<SeqId>,
+        run_id: &str,
+        op_id: &str,
         template: SeqId,
         roi_start_0based: usize,
         roi_end_0based: usize,
@@ -3456,6 +3458,8 @@ impl GentleEngine {
             report_id: report_id.clone(),
             template: template.clone(),
             generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
             roi_start_0based,
             roi_end_0based,
             forward,
@@ -6993,12 +6997,14 @@ impl GentleEngine {
                 projection_id,
                 transcript_id,
             } => {
-                let projection = self.project_uniprot_to_genome(
+                let mut projection = self.project_uniprot_to_genome(
                     &seq_id,
                     &entry_id,
                     projection_id.as_deref(),
                     transcript_id.as_deref(),
                 )?;
+                projection.op_id = Some(result.op_id.clone());
+                projection.run_id = Some(run_id.to_string());
                 let projection_id = projection.projection_id.clone();
                 let transcript_count = projection.transcript_projections.len();
                 result.warnings.extend(projection.warnings.clone());
@@ -8018,9 +8024,12 @@ impl GentleEngine {
                 max_pairs,
                 report_id,
             } => {
+                let op_id = result.op_id.clone();
                 self.execute_design_primer_pairs(
                     &mut result,
                     &mut parent_seq_ids,
+                    run_id,
+                    &op_id,
                     template,
                     roi_start_0based,
                     roi_end_0based,
@@ -8070,9 +8079,12 @@ impl GentleEngine {
                 reverse.non_annealing_5prime_tail =
                     Some(insertion.reverse_extension_5prime.clone());
 
+                let op_id = result.op_id.clone();
                 self.execute_design_primer_pairs(
                     &mut result,
                     &mut parent_seq_ids,
+                    run_id,
+                    &op_id,
                     template,
                     roi_start_0based,
                     roi_end_0based,
@@ -8398,6 +8410,8 @@ impl GentleEngine {
                     report_id: report_id.clone(),
                     template: template.clone(),
                     generated_at_unix_ms: Self::now_unix_ms(),
+                    op_id: Some(result.op_id.clone()),
+                    run_id: Some(run_id.to_string()),
                     roi_start_0based,
                     roi_end_0based,
                     forward,

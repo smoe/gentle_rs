@@ -1749,6 +1749,9 @@ enum LineageNodeKind {
 enum LineageAnalysisKind {
     Dotplot,
     FlexibilityTrack,
+    PrimerDesign,
+    QpcrDesign,
+    UniprotProjection,
     SequencingConfirmation,
 }
 
@@ -1757,6 +1760,9 @@ impl LineageAnalysisKind {
         match self {
             Self::Dotplot => "dotplot",
             Self::FlexibilityTrack => "flexibility_track",
+            Self::PrimerDesign => "primer_design",
+            Self::QpcrDesign => "qpcr_design",
+            Self::UniprotProjection => "uniprot_projection",
             Self::SequencingConfirmation => "sequencing_confirmation",
         }
     }
@@ -5342,6 +5348,70 @@ Error: `{err}`"
         self.queue_focus_viewport(Self::sequencing_confirmation_viewport_id());
     }
 
+    fn open_sequence_window_for_primer_design_report(&mut self, seq_id: &str, report_id: &str) {
+        if !report_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_primer_design_report(report_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_primer_design_report(report_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_primer_design_report(report_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+        self.pcr_design_seq_id = seq_id.to_string();
+        self.show_pcr_design_dialog = true;
+        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+    }
+
+    fn open_sequence_window_for_qpcr_design_report(&mut self, seq_id: &str, report_id: &str) {
+        if !report_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_qpcr_design_report(report_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_qpcr_design_report(report_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_qpcr_design_report(report_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+        self.pcr_design_seq_id = seq_id.to_string();
+        self.show_pcr_design_dialog = true;
+        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+    }
+
     fn open_lineage_analysis_artifact(
         &mut self,
         kind: LineageAnalysisKind,
@@ -5354,6 +5424,15 @@ Error: `{err}`"
             }
             LineageAnalysisKind::FlexibilityTrack => {
                 self.open_sequence_window_for_flexibility_track_analysis(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::PrimerDesign => {
+                self.open_sequence_window_for_primer_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::QpcrDesign => {
+                self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::UniprotProjection => {
+                self.open_sequence_window_for_uniprot_projection_expert(seq_id, artifact_id);
             }
             LineageAnalysisKind::SequencingConfirmation => {
                 self.open_sequence_window_for_sequencing_confirmation_report(seq_id, artifact_id);
@@ -29923,6 +30002,207 @@ Error: `{err}`"
                 }
             }
 
+            let primer_design_summaries = engine.list_primer_design_reports();
+            for summary in primer_design_summaries {
+                let node_id = format!("analysis:primer:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:primer:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Design primer pairs: template={}, report_id={}",
+                        summary.template, summary.report_id
+                    )
+                });
+                let seq_id = summary.template.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "PrimerDesign".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::PrimerDesign),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.backend_used.clone()),
+                    analysis_status: None,
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.pair_count),
+                    analysis_variant_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
+            let qpcr_design_summaries = engine.list_qpcr_design_reports();
+            for summary in qpcr_design_summaries {
+                let node_id = format!("analysis:qpcr:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:qpcr:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Design qPCR assays: template={}, report_id={}",
+                        summary.template, summary.report_id
+                    )
+                });
+                let seq_id = summary.template.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "QpcrDesign".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::QpcrDesign),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.backend_used.clone()),
+                    analysis_status: None,
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.assay_count),
+                    analysis_variant_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
+            let uniprot_projection_summaries = engine.list_uniprot_genome_projections(None);
+            for summary in uniprot_projection_summaries {
+                let node_id = format!("analysis:uniprot:{}", summary.projection_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:uniprot:{}", summary.projection_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Project UniProt to genome: entry={}, seq={}, projection_id={}",
+                        summary.entry_id, summary.seq_id, summary.projection_id
+                    )
+                });
+                let seq_id = summary.seq_id.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.projection_id.clone(),
+                    origin: "UniprotProjection".to_string(),
+                    created_by_op,
+                    created_at: summary.created_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::UniprotProjection),
+                    analysis_artifact_id: Some(summary.projection_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.entry_id.clone()),
+                    analysis_status: summary
+                        .transcript_id_filter
+                        .clone()
+                        .or_else(|| Some("all_transcripts".to_string())),
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.transcript_projection_count),
+                    analysis_variant_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
             let sequencing_confirmation_reports =
                 GentleEngine::sequencing_confirmation_reports_from_state(state);
             for report in sequencing_confirmation_reports {
@@ -32039,6 +32319,22 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::FlexibilityTrack);
         }
+        if row.node_id.starts_with("analysis:primer:")
+            || row.origin.eq_ignore_ascii_case("primerdesign")
+        {
+            return Some(LineageAnalysisKind::PrimerDesign);
+        }
+        if row.node_id.starts_with("analysis:qpcr:")
+            || row.origin.eq_ignore_ascii_case("qpcrdesign")
+        {
+            return Some(LineageAnalysisKind::QpcrDesign);
+        }
+        if row.node_id.starts_with("analysis:uniprot:")
+            || row.node_id.starts_with("analysis:uniprot_projection:")
+            || row.origin.eq_ignore_ascii_case("uniprotprojection")
+        {
+            return Some(LineageAnalysisKind::UniprotProjection);
+        }
         if row.node_id.starts_with("analysis:seq_confirm:")
             || row.node_id.starts_with("analysis:sequencing_confirmation:")
             || row.origin.eq_ignore_ascii_case("sequencingconfirmation")
@@ -32070,6 +32366,30 @@ Error: `{err}`"
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:flexibility:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:primer:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:qpcr:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:uniprot:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:uniprot_projection:") {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -32919,6 +33239,30 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::PrimerDesign) => {
+                                                        format!(
+                                                            "{} | backend={} | pairs={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::QpcrDesign) => {
+                                                        format!(
+                                                            "{} | backend={} | assays={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::UniprotProjection) => {
+                                                        format!(
+                                                            "{} | entry={} | transcripts={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::SequencingConfirmation) => {
                                                         format!(
                                                             "{} | status={} | reads={} | traces={} | targets={} | variants={}",
@@ -33480,6 +33824,30 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::PrimerDesign) => {
+                                                        format!(
+                                                            "primer_report={} | backend={} | pairs={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::QpcrDesign) => {
+                                                        format!(
+                                                            "qpcr_report={} | backend={} | assays={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::UniprotProjection) => {
+                                                        format!(
+                                                            "uniprot_projection={} | entry={} | transcripts={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::SequencingConfirmation) => {
                                                         format!(
                                                             "confirmation={} | status={} | reads={} | traces={} | targets={} | variants={}",
@@ -33667,6 +34035,39 @@ Error: `{err}`"
                                                             "seq={} | bins={}",
                                                             row.seq_id,
                                                             row.analysis_bin_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::PrimerDesign) => {
+                                                        ui.small(format!(
+                                                            "template={} | backend={} | pairs={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::QpcrDesign) => {
+                                                        ui.small(format!(
+                                                            "template={} | backend={} | assays={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::UniprotProjection) => {
+                                                        ui.small(format!(
+                                                            "seq={} | entry={} | transcript_filter={} | transcripts={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("all_transcripts"),
+                                                            row.analysis_target_count.unwrap_or(0)
                                                         ));
                                                     }
                                                     Some(LineageAnalysisKind::SequencingConfirmation) => {
@@ -34341,6 +34742,18 @@ Error: `{err}`"
                                                 "Open Track",
                                                 "Open the flexibility-track analysis view for this sequence",
                                             ),
+                                            Some(LineageAnalysisKind::PrimerDesign) => (
+                                                "Open Primer Report",
+                                                "Open the PCR Designer on this persisted primer-design report",
+                                            ),
+                                            Some(LineageAnalysisKind::QpcrDesign) => (
+                                                "Open qPCR Report",
+                                                "Open the PCR Designer on this persisted qPCR-design report",
+                                            ),
+                                            Some(LineageAnalysisKind::UniprotProjection) => (
+                                                "Open UniProt Projection",
+                                                "Open the UniProt protein expert on this persisted genome projection",
+                                            ),
                                             Some(LineageAnalysisKind::SequencingConfirmation) => (
                                                 "Open Confirmation",
                                                 "Open the sequencing-confirmation specialist on this persisted report",
@@ -34611,10 +35024,24 @@ Error: `{err}`"
                         ui.small(format!("{reference_label}={reference_seq_id}"));
                     }
                     if let Some(mode) = selected_row.analysis_mode.as_deref() {
-                        ui.small(format!("mode/model={mode}"));
+                        let mode_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::PrimerDesign)
+                            | Some(LineageAnalysisKind::QpcrDesign) => "backend",
+                            Some(LineageAnalysisKind::UniprotProjection) => "entry_id",
+                            _ => "mode/model",
+                        };
+                        ui.small(format!("{mode_label}={mode}"));
                     }
                     if let Some(status) = selected_row.analysis_status.as_deref() {
-                        ui.small(format!("status={status}"));
+                        let status_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::UniprotProjection) => "transcript_filter",
+                            _ => "status",
+                        };
+                        ui.small(format!("{status_label}={status}"));
                     }
                     if let Some(points) = selected_row.analysis_point_count {
                         ui.small(format!("point_count={points}"));
@@ -34629,7 +35056,15 @@ Error: `{err}`"
                         ui.small(format!("trace_count={trace_count}"));
                     }
                     if let Some(target_count) = selected_row.analysis_target_count {
-                        ui.small(format!("target_count={target_count}"));
+                        let count_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
+                            Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
+                            Some(LineageAnalysisKind::UniprotProjection) => "transcript_count",
+                            _ => "target_count",
+                        };
+                        ui.small(format!("{count_label}={target_count}"));
                     }
                     if let Some(variant_count) = selected_row.analysis_variant_count {
                         ui.small(format!("variant_count={variant_count}"));
@@ -34649,6 +35084,11 @@ Error: `{err}`"
                         {
                             Some(LineageAnalysisKind::Dotplot) => "Open Dotplot View",
                             Some(LineageAnalysisKind::FlexibilityTrack) => "Open Track View",
+                            Some(LineageAnalysisKind::PrimerDesign) => "Open Primer Report",
+                            Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
+                            Some(LineageAnalysisKind::UniprotProjection) => {
+                                "Open UniProt Projection"
+                            }
                             Some(LineageAnalysisKind::SequencingConfirmation) => {
                                 "Open Confirmation View"
                             }
@@ -39460,9 +39900,10 @@ mod tests {
             DotplotMode, Engine, FlexibilityModel, GenomeAnnotationProjectionTelemetry,
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
             LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
-            PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, ProjectState, Rack,
-            RackAuthoringTemplate, RackFillDirection, RackProfileKind, RackProfileSnapshot,
-            RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
+            PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
+            PrimerDesignSideConstraint, ProjectState, Rack, RackAuthoringTemplate,
+            RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
+            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             RoutineDecisionTraceStore, SequenceOrigin,
         },
@@ -43575,6 +44016,75 @@ mod tests {
     }
 
     #[test]
+    fn open_lineage_analysis_artifact_opens_primer_design_dialog() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_primer".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::PrimerDesign,
+            "seq_primer",
+            "primer_report_1",
+        );
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_primer");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_lineage_analysis_artifact_opens_qpcr_design_dialog() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_qpcr".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::QpcrDesign,
+            "seq_qpcr",
+            "qpcr_report_1",
+        );
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_qpcr");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_lineage_analysis_artifact_opens_uniprot_projection_expert() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_uniprot".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::UniprotProjection,
+            "seq_uniprot",
+            "projection_1",
+        );
+
+        assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
     fn routine_assistant_detects_circular_gibson_binding() {
         let mut state = ProjectState::default();
         let mut vector = DNAsequence::from_sequence("ACGTACGTACGT").expect("vector");
@@ -46831,6 +47341,49 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             ))
         );
 
+        let mut primer_row = make_lineage_row("analysis:primer:tp73_primer", "seq_primer");
+        primer_row.kind = LineageNodeKind::Analysis;
+        primer_row.display_name.clear();
+        primer_row.analysis_kind = None;
+        primer_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&primer_row),
+            Some((
+                LineageAnalysisKind::PrimerDesign,
+                "seq_primer".to_string(),
+                "tp73_primer".to_string(),
+            ))
+        );
+
+        let mut qpcr_row = make_lineage_row("analysis:qpcr:tp73_qpcr", "seq_qpcr");
+        qpcr_row.kind = LineageNodeKind::Analysis;
+        qpcr_row.display_name.clear();
+        qpcr_row.analysis_kind = None;
+        qpcr_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&qpcr_row),
+            Some((
+                LineageAnalysisKind::QpcrDesign,
+                "seq_qpcr".to_string(),
+                "tp73_qpcr".to_string(),
+            ))
+        );
+
+        let mut uniprot_row =
+            make_lineage_row("analysis:uniprot:tp53_uniprot_p04637", "seq_uniprot");
+        uniprot_row.kind = LineageNodeKind::Analysis;
+        uniprot_row.display_name.clear();
+        uniprot_row.analysis_kind = None;
+        uniprot_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&uniprot_row),
+            Some((
+                LineageAnalysisKind::UniprotProjection,
+                "seq_uniprot".to_string(),
+                "tp53_uniprot_p04637".to_string(),
+            ))
+        );
+
         let mut confirmation_row =
             make_lineage_row("analysis:seq_confirm:tp73_confirm", "seq_confirm");
         confirmation_row.kind = LineageNodeKind::Analysis;
@@ -47233,6 +47786,255 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 .any(|(from, to, op_id)| from == "n_seq_a"
                     && to == "analysis:flex:p53_fx"
                     && op_id == &flex_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_primer_and_qpcr_design_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "tpl".to_string(),
+                DNAsequence::from_sequence(
+                    "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+                )
+                .unwrap(),
+            );
+            insert_test_lineage_node(state, "n_tpl", "tpl");
+        }
+
+        let (primer_op_id, qpcr_op_id) = {
+            let mut engine = app.engine.write().unwrap();
+            engine.state_mut().parameters.primer_design_backend =
+                crate::engine::PrimerDesignBackend::Internal;
+            let primer_result = engine
+                .apply(Operation::DesignPrimerPairs {
+                    template: "tpl".to_string(),
+                    roi_start_0based: 30,
+                    roi_end_0based: 70,
+                    forward: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(5),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 40.0,
+                        max_tm_c: 90.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 10,
+                        ..Default::default()
+                    },
+                    reverse: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(60),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 40.0,
+                        max_tm_c: 90.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 10,
+                        ..Default::default()
+                    },
+                    pair_constraints: PrimerDesignPairConstraint::default(),
+                    min_amplicon_bp: 40,
+                    max_amplicon_bp: 130,
+                    max_tm_delta_c: Some(50.0),
+                    max_pairs: Some(10),
+                    report_id: Some("tp73_primer".to_string()),
+                })
+                .expect("design primer pairs");
+            let qpcr_result = engine
+                .apply(Operation::DesignQpcrAssays {
+                    template: "tpl".to_string(),
+                    roi_start_0based: 30,
+                    roi_end_0based: 70,
+                    forward: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(5),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 40.0,
+                        max_tm_c: 90.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 100,
+                        ..Default::default()
+                    },
+                    reverse: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(60),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 40.0,
+                        max_tm_c: 90.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 100,
+                        ..Default::default()
+                    },
+                    probe: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(35),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 40.0,
+                        max_tm_c: 90.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 100,
+                        ..Default::default()
+                    },
+                    pair_constraints: PrimerDesignPairConstraint::default(),
+                    min_amplicon_bp: 40,
+                    max_amplicon_bp: 130,
+                    max_tm_delta_c: Some(50.0),
+                    max_probe_tm_delta_c: Some(50.0),
+                    max_assays: Some(10),
+                    report_id: Some("tp73_qpcr".to_string()),
+                })
+                .expect("design qpcr assays");
+            (primer_result.op_id, qpcr_result.op_id)
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let primer_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:primer:tp73_primer")
+            .expect("primer lineage row");
+        assert_eq!(primer_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            primer_row.analysis_kind,
+            Some(LineageAnalysisKind::PrimerDesign)
+        );
+        assert_eq!(
+            primer_row.analysis_artifact_id.as_deref(),
+            Some("tp73_primer")
+        );
+        assert_eq!(primer_row.analysis_mode.as_deref(), Some("internal"));
+        assert!(primer_row.analysis_target_count.is_some());
+        assert_eq!(primer_row.created_by_op, primer_op_id);
+
+        let qpcr_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:qpcr:tp73_qpcr")
+            .expect("qpcr lineage row");
+        assert_eq!(qpcr_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            qpcr_row.analysis_kind,
+            Some(LineageAnalysisKind::QpcrDesign)
+        );
+        assert_eq!(qpcr_row.analysis_artifact_id.as_deref(), Some("tp73_qpcr"));
+        assert_eq!(qpcr_row.analysis_mode.as_deref(), Some("internal"));
+        assert!(qpcr_row.analysis_target_count.is_some());
+        assert_eq!(qpcr_row.created_by_op, qpcr_op_id);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_tpl"
+                    && to == "analysis:primer:tp73_primer"
+                    && op_id == &primer_op_id)
+        );
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_tpl"
+                    && to == "analysis:qpcr:tp73_qpcr"
+                    && op_id == &qpcr_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_uniprot_projection_analysis_nodes() {
+        let temp = tempdir().expect("tempdir");
+        let swiss_path = temp.path().join("toy_uniprot.swiss");
+        let swiss_text = r#"
+ID   PTEST1_HUMAN             Reviewed;         81 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy protein 1;
+GN   Name=TOY1;
+OS   Homo sapiens.
+FT   DOMAIN          5..25
+FT                   /note="Toy domain"
+DR   Ensembl; TX1; ENSPTEST1; ENSTTEST1.
+SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
+     MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+//
+"#;
+        fs::write(&swiss_path, swiss_text).expect("write swiss toy");
+
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(99, 360),
+            qualifiers: vec![
+                ("gene".into(), Some("TOY1".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+                ("label".into(), Some("TX1".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("100-180,300-360".to_string()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        state.sequences.insert("toy_seq".to_string(), dna);
+        insert_test_lineage_node(&mut state, "n_toy", "toy_seq");
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.uniprot_swiss_path = swiss_path.display().to_string();
+        app.import_uniprot_swiss_prot_from_dialog();
+        let projection_op_id = {
+            let mut engine = app.engine.write().expect("engine lock");
+            engine
+                .apply(Operation::ProjectUniprotToGenome {
+                    seq_id: "toy_seq".to_string(),
+                    entry_id: "PTEST1".to_string(),
+                    projection_id: Some("toy_projection".to_string()),
+                    transcript_id: None,
+                })
+                .expect("project uniprot")
+                .op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:uniprot:toy_projection")
+            .expect("uniprot lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::UniprotProjection)
+        );
+        assert_eq!(row.analysis_artifact_id.as_deref(), Some("toy_projection"));
+        assert_eq!(row.analysis_mode.as_deref(), Some("PTEST1"));
+        assert_eq!(row.analysis_status.as_deref(), Some("all_transcripts"));
+        assert!(row.analysis_target_count.unwrap_or(0) > 0);
+        assert_eq!(row.created_by_op, projection_op_id);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_toy"
+                    && to == "analysis:uniprot:toy_projection"
+                    && op_id == &projection_op_id)
         );
     }
 

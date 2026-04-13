@@ -1532,7 +1532,8 @@ order. Durable architecture constraints and decisions remain in
   - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
   - macro instances are rendered as dedicated box nodes with explicit
     input/output edges (sequence/container-resolved where applicable)
-  - dotplot/flexibility analysis artifacts are rendered as dedicated analysis
+  - dotplot/flexibility analysis artifacts plus persisted primer/qPCR design
+    reports and UniProt genome projections are rendered as dedicated analysis
     nodes linked from source sequence nodes
   - lineage SVG export from the main GUI now reuses the same grouped +
     Gibson-hub projection model shown in the graph view, so saved DALG output
@@ -4093,13 +4094,20 @@ Post-baseline follow-ups:
   sequence products:
   - design note: `docs/computational_provenance_plan.md`
   - priority rollout:
-    - RNA-read interpretation reports first
-    - primer/qPCR design reports next
+    - primer/qPCR design reports first
+      - shipped baseline: persisted reports now carry `op_id` / `run_id`,
+        appear in GUI lineage as analysis artifacts, and reopen the PCR
+        Designer on the selected report with backend + pair/assay detail
     - then projection/annotation artifacts (for example UniProt projections,
       isoform/expert-view artifacts, grouped TFBS summaries where persisted)
-    - then construct reasoning / planning traces as sample-linked artifacts
+      - shipped baseline: persisted UniProt genome projections now carry
+        `op_id` / `run_id`, appear in GUI lineage as analysis artifacts, and
+        reopen the UniProt protein expert on the selected projection with
+        entry/filter/transcript-count detail
     - then upcoming protein-side self/reverse-translation and related
       reasoning outputs
+    - then construct reasoning / planning traces as sample-linked artifacts
+    - then RNA-read interpretation reports
   - shared contract goal:
     persisted computational artifacts should converge on one portable
     provenance vocabulary (`artifact/report id`, `op_id`, `run_id`,
