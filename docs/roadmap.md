@@ -1102,6 +1102,13 @@ order. Durable architecture constraints and decisions remain in
     - specialist left pane now includes `Selection formula` + `Apply Sel`
       plus direct `Set ROI from selection` / `Queue selection` actions so
       formula-defined selections can be used without switching windows
+    - beginner/simple-PCR path is now also explicit:
+      - map selection context menu offers `Simple PCR from selection`
+      - primer panel includes `Simple PCR starter`
+      - starter vocabulary is reduced to:
+        core ROI, max primer distance from core, max amplicon length
+      - applying the starter writes deterministic forward/reverse flank
+        windows and enables ROI flanking without hiding the underlying fields
     - qPCR remains in the existing Engine Ops panel for this v1 scope
     - shared-shell UI intents now include:
       `ui open pcr-design` and `ui focus pcr-design`

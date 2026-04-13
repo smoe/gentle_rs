@@ -163,6 +163,20 @@
         "contributors"
       ],
       "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+    },
+    {
+      "id": "simple_pcr_selection_gui",
+      "title": "Simple PCR From a Selected Core Region",
+      "path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "new_users",
+        "primer_design"
+      ],
+      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length."
     }
   ]
 }

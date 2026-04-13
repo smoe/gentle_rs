@@ -29,6 +29,11 @@ If you want the big-picture map first:
 - Use the tutorial landscape overview:
   [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
 
+If you want the simplest possible PCR walkthrough first:
+
+- Use the simple-PCR selection tutorial:
+  [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md)
+
 If you are GUI-first and want one concrete pharmacogenomic handoff into cloning:
 
 - Use the VKORC1 / rs9923231 PGx-alert-to-mammalian-reporter walkthrough:
@@ -138,6 +143,7 @@ Treat the tutorial catalog as three confidence bands:
 | Tutorial | Type | Status | Best for | Notes |
 | --- | --- | --- | --- | --- |
 | [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/sources/` and executable workflows through the runtime manifest; validated by `tutorial-check`. |
+| [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Beginner PCR setup from one selected core region | Hand-written short path for core ROI + maximum primer distance + maximum amplicon using the selection context menu and PCR Designer starter block. |
 | [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first pharmacogenomic reporter planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable workflow material. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
@@ -183,6 +189,12 @@ Use the labels above as trust/maintenance signals:
 1. Read [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md)
 2. Use the executable PCR chapter it references
 3. Save the resulting project state for later CLI/agent replay
+
+### Path B1: GUI-first simple PCR
+
+1. Read [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md)
+2. Start from one map selection and the `Simple PCR from selection` context-menu action
+3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
 
 ### Path C: Gibson specialist testing
 

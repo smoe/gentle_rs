@@ -1596,6 +1596,13 @@ Controls:
      - add current map/text selection to PCR region queue
      - seed Primer/qPCR ROI from selected feature bounds
      - add selected feature(s) to PCR region queue (one queued row per feature)
+   - map context menu now also offers `Simple PCR from selection` whenever a
+     non-empty selection is active:
+     - seeds the selected span as the core ROI
+     - enables ROI flanking
+     - applies simple left/right flank windows from the current beginner
+       distance setting
+     - opens or focuses the dedicated PCR Designer
    - opens Engine Ops so the user can run `Design Primer Pairs`,
      queue batch execution, or `Design qPCR Assays`.
    - after paint-dragging on the linear map, the post-drag chip now includes
@@ -2571,6 +2578,15 @@ Primer backend/preflight controls:
 
 Primer pairs form:
 
+- simple-starter block:
+  - `Use current selection as simple PCR core`
+  - `max primer distance from core`
+  - `Apply simple flank windows`
+  - writes deterministic side-window bounds:
+    - forward: `[ROI start - D .. ROI start]`
+    - reverse: `[ROI end .. ROI end + D]`
+  - enables `require ROI flanking`
+  - keeps `min amplicon` at least the core length
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
     - both accept numeric coordinates and `=` formulas
@@ -2630,6 +2646,10 @@ Buttons:
 - `Design Primer Pairs`
 - `Design Primer Pairs for queued regions`
 - `Design qPCR Assays`
+
+Beginner tutorial:
+
+- [`docs/tutorial/simple_pcr_selection_gui.md`](./tutorial/simple_pcr_selection_gui.md)
 - primer-report helpers (uses current primer `report_id` field):
   - `List Primer Reports`
   - `Show report_id`

@@ -752,6 +752,8 @@ struct EngineOpsUiState {
     pcr_mut_alt: String,
     #[serde(default)]
     primer_design_ui: PrimerDesignOpsUiState,
+    #[serde(default = "default_simple_pcr_max_primer_distance_bp")]
+    simple_pcr_max_primer_distance_bp: String,
     #[serde(default)]
     pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
     #[serde(default)]
@@ -3003,6 +3005,62 @@ mod tests {
     }
 
     #[test]
+    fn seed_simple_pcr_roi_sets_flanking_and_min_amplicon() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        let seeded = area
+            .seed_simple_pcr_roi_0based(25, 145, "test selection")
+            .expect("seed simple pcr");
+
+        assert_eq!(seeded, (25, 145));
+        assert_eq!(area.primer_design_ui.roi_start_0based, "25");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "145");
+        assert!(area.primer_design_ui.pair_constraints.require_roi_flanking);
+        assert_eq!(area.primer_design_ui.min_amplicon_bp, "120");
+    }
+
+    #[test]
+    fn apply_simple_pcr_flank_windows_uses_roi_and_distance() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui.roi_start_0based = "25".to_string();
+        area.primer_design_ui.roi_end_0based = "145".to_string();
+        area.simple_pcr_max_primer_distance_bp = "40".to_string();
+
+        area.apply_simple_pcr_flank_windows_from_roi()
+            .expect("apply simple pcr windows");
+
+        assert_eq!(area.primer_design_ui.forward.start_0based, "0");
+        assert_eq!(area.primer_design_ui.forward.end_0based, "25");
+        assert_eq!(area.primer_design_ui.reverse.start_0based, "145");
+        assert_eq!(area.primer_design_ui.reverse.end_0based, "185");
+        assert!(area.primer_design_ui.pair_constraints.require_roi_flanking);
+    }
+
+    #[test]
+    fn open_simple_pcr_from_current_selection_seeds_roi_and_windows() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.simple_pcr_max_primer_distance_bp = "30".to_string();
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(25, 145, 400));
+
+        area.open_simple_pcr_designer_from_current_selection();
+
+        assert_eq!(area.primer_design_ui.roi_start_0based, "25");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "145");
+        assert_eq!(area.primer_design_ui.min_amplicon_bp, "120");
+        assert_eq!(area.primer_design_ui.forward.start_0based, "0");
+        assert_eq!(area.primer_design_ui.forward.end_0based, "25");
+        assert_eq!(area.primer_design_ui.reverse.start_0based, "145");
+        assert_eq!(area.primer_design_ui.reverse.end_0based, "175");
+        assert!(area.primer_design_ui.pair_constraints.require_roi_flanking);
+    }
+
+    #[test]
     fn roi_coordinate_formula_resolves_feature_boundary_and_offset() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         dna.features_mut().push(Feature {
@@ -5133,6 +5191,22 @@ mod tests {
             (decoded.extended_top_panel_height_px - super::default_extended_top_panel_height_px())
                 .abs()
                 <= f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn simple_pcr_distance_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("simple_pcr_max_primer_distance_bp");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            decoded.simple_pcr_max_primer_distance_bp,
+            super::default_simple_pcr_max_primer_distance_bp()
         );
     }
 
@@ -7637,6 +7711,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_simple_pcr_max_primer_distance_bp() -> String {
+    "150".to_string()
+}
+
 fn default_poly_t_prefix_min_bp_text() -> String {
     "18".to_string()
 }
@@ -8147,6 +8225,7 @@ pub struct MainAreaDna {
     pcr_mut_ref: String,
     pcr_mut_alt: String,
     primer_design_ui: PrimerDesignOpsUiState,
+    simple_pcr_max_primer_distance_bp: String,
     pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
     pcr_batch_create_extract_copies: bool,
     pcr_batch_results_ui: Vec<PcrBatchResultRowUiState>,
@@ -8538,6 +8617,7 @@ impl MainAreaDna {
             pcr_mut_ref: "A".to_string(),
             pcr_mut_alt: "G".to_string(),
             primer_design_ui: PrimerDesignOpsUiState::default(),
+            simple_pcr_max_primer_distance_bp: default_simple_pcr_max_primer_distance_bp(),
             pcr_queued_regions_ui: vec![],
             pcr_batch_create_extract_copies: false,
             pcr_batch_results_ui: vec![],
@@ -14186,6 +14266,97 @@ impl MainAreaDna {
         self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
     }
 
+    fn seed_simple_pcr_roi_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+        source: &str,
+    ) -> Result<(usize, usize), String> {
+        let Some((start, end_exclusive)) = self.normalize_roi_range_0based(start, end_exclusive)
+        else {
+            return Err(format!(
+                "Could not seed simple PCR from {source}: invalid 0-based range {start}..{end_exclusive}"
+            ));
+        };
+        let core_len_bp = end_exclusive.saturating_sub(start);
+        self.set_primer_design_roi_fields_0based(start, end_exclusive);
+        self.primer_design_ui.pair_constraints.require_roi_flanking = true;
+        self.primer_design_ui.min_amplicon_bp = core_len_bp.to_string();
+        if let Ok(max_amplicon_bp) = Self::parse_positive_usize_text(
+            &self.primer_design_ui.max_amplicon_bp,
+            "max_amplicon_bp",
+        ) {
+            if max_amplicon_bp < core_len_bp {
+                self.primer_design_ui.max_amplicon_bp = core_len_bp.to_string();
+            }
+        }
+        self.save_engine_ops_state();
+        Ok((start, end_exclusive))
+    }
+
+    fn apply_simple_pcr_flank_windows_from_roi(&mut self) -> Result<(), String> {
+        let (roi_start_0based, roi_end_0based_exclusive) = self.resolve_roi_range_inputs_0based(
+            &self.primer_design_ui.roi_start_0based,
+            &self.primer_design_ui.roi_end_0based,
+            "primer_design",
+        )?;
+        let max_distance_bp = Self::parse_positive_usize_text(
+            &self.simple_pcr_max_primer_distance_bp,
+            "simple_pcr_max_primer_distance_bp",
+        )?;
+        let template_len = self.dna.read().expect("DNA lock poisoned").len();
+        let forward_start_0based = roi_start_0based.saturating_sub(max_distance_bp);
+        let forward_end_0based_exclusive = roi_start_0based;
+        let reverse_start_0based = roi_end_0based_exclusive;
+        let reverse_end_0based_exclusive = roi_end_0based_exclusive
+            .saturating_add(max_distance_bp)
+            .min(template_len);
+        self.primer_design_ui.forward.location_0based.clear();
+        self.primer_design_ui.forward.start_0based = forward_start_0based.to_string();
+        self.primer_design_ui.forward.end_0based = forward_end_0based_exclusive.to_string();
+        self.primer_design_ui.reverse.location_0based.clear();
+        self.primer_design_ui.reverse.start_0based = reverse_start_0based.to_string();
+        self.primer_design_ui.reverse.end_0based = reverse_end_0based_exclusive.to_string();
+        self.primer_design_ui.pair_constraints.require_roi_flanking = true;
+        self.save_engine_ops_state();
+        self.op_status = format!(
+            "Applied simple PCR flank windows around core ROI: forward {}..{}, reverse {}..{}, max primer distance {} bp",
+            forward_start_0based,
+            forward_end_0based_exclusive,
+            reverse_start_0based,
+            reverse_end_0based_exclusive,
+            max_distance_bp
+        );
+        Ok(())
+    }
+
+    fn open_simple_pcr_designer_from_current_selection(&mut self) {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No active selection. Drag-select a core region before starting simple PCR."
+                    .to_string();
+            return;
+        };
+        match self.seed_simple_pcr_roi_0based(start, end_exclusive, "current sequence selection") {
+            Ok((start, end_exclusive)) => {
+                if let Err(message) = self.apply_simple_pcr_flank_windows_from_roi() {
+                    self.op_status = message;
+                    return;
+                }
+                request_open_pcr_design_from_native_menu();
+                self.op_status = format!(
+                    "Seeded simple PCR from current selection: core {}..{}; max primer distance {} bp; open PCR Designer and set max amplicon as needed",
+                    start,
+                    end_exclusive,
+                    self.simple_pcr_max_primer_distance_bp.trim()
+                );
+            }
+            Err(message) => {
+                self.op_status = message;
+            }
+        }
+    }
+
     fn set_primer_design_roi_from_current_selection(&mut self, source: &str) -> Result<(), String> {
         let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
             return Err(
@@ -14290,6 +14461,27 @@ impl MainAreaDna {
                 self.op_status = format!("Could not queue PCR region: {message}");
             }
         }
+    }
+
+    fn render_selection_simple_pcr_context_action(&mut self, ui: &mut egui::Ui) -> bool {
+        let selection_roi = self.current_selection_range_0based();
+        let response = ui.add_enabled(
+            selection_roi.is_some(),
+            egui::Button::new("Simple PCR from selection"),
+        );
+        let response = if let Some((start, end_exclusive)) = selection_roi {
+            response.on_hover_text(format!(
+                "Seed a simple PCR from the current core selection {}..{}, apply flank windows, and open PCR Designer",
+                start, end_exclusive
+            ))
+        } else {
+            response.on_hover_text("Requires a non-empty current selection on the linear DNA map")
+        };
+        if response.clicked() {
+            self.open_simple_pcr_designer_from_current_selection();
+            return true;
+        }
+        false
     }
 
     fn queue_current_primer_roi_fields_for_pcr(&mut self) {
@@ -29511,6 +29703,57 @@ impl MainAreaDna {
                     );
                 });
                 ui.group(|ui| {
+                    ui.label("Simple PCR starter");
+                    ui.small(
+                        "For a simple PCR, think in three inputs: core ROI, maximum primer distance from that core, and maximum amplicon length.",
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        let selection_roi = self.current_selection_range_0based();
+                        let seed_simple_response = ui.add_enabled(
+                            selection_roi.is_some(),
+                            egui::Button::new("Use current selection as simple PCR core"),
+                        );
+                        let seed_simple_response = if selection_roi.is_some() {
+                            seed_simple_response.on_hover_text(
+                                "Seed ROI from current selection, require ROI flanking, set min amplicon to core length, apply flank windows, and open PCR Designer if needed",
+                            )
+                        } else {
+                            seed_simple_response.on_hover_text(
+                                "Requires a non-empty current selection on the sequence map",
+                            )
+                        };
+                        if seed_simple_response.clicked() {
+                            self.open_simple_pcr_designer_from_current_selection();
+                        }
+                        ui.label("max primer distance from core").on_hover_text(
+                            "Maximum allowed flanking search width on each side of the core ROI. This maps onto forward/reverse side start/end windows.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.simple_pcr_max_primer_distance_bp,
+                            )
+                            .desired_width(92.0),
+                        )
+                        .on_hover_text(
+                            "Width of the upstream and downstream primer-search windows measured from the ROI edges.",
+                        );
+                        if ui
+                            .button("Apply simple flank windows")
+                            .on_hover_text(
+                                "Set forward side window to [ROI start - D .. ROI start] and reverse side window to [ROI end .. ROI end + D], while keeping ROI flanking enabled",
+                            )
+                            .clicked()
+                        {
+                            if let Err(message) = self.apply_simple_pcr_flank_windows_from_roi() {
+                                self.op_status = message;
+                            }
+                        }
+                    });
+                    ui.small(
+                        "Then set `max amplicon` below to the longest acceptable product. The helper keeps `min amplicon` at least the core length.",
+                    );
+                });
+                ui.group(|ui| {
                     ui.label("PCR region queue (batch source)");
                     let copy_toggle = ui.checkbox(
                         &mut self.pcr_batch_create_extract_copies,
@@ -30006,6 +30249,13 @@ impl MainAreaDna {
         }
         self.draw_pcr_paint_overlays(ui, &response);
         self.render_pcr_post_drag_actions(ui);
+        response.context_menu(|ui| {
+            if self.render_selection_simple_pcr_context_action(ui) {
+                ui.close();
+                return;
+            }
+            ui.label("No selection-specific PCR action available");
+        });
     }
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -35138,6 +35388,7 @@ impl MainAreaDna {
             pcr_mut_ref: self.pcr_mut_ref.clone(),
             pcr_mut_alt: self.pcr_mut_alt.clone(),
             primer_design_ui: self.primer_design_ui.clone(),
+            simple_pcr_max_primer_distance_bp: self.simple_pcr_max_primer_distance_bp.clone(),
             pcr_queued_regions_ui: self.pcr_queued_regions_ui.clone(),
             pcr_batch_create_extract_copies: self.pcr_batch_create_extract_copies,
             pcr_batch_results_ui: self.pcr_batch_results_ui.clone(),
@@ -35353,6 +35604,12 @@ impl MainAreaDna {
         self.pcr_mut_ref = s.pcr_mut_ref;
         self.pcr_mut_alt = s.pcr_mut_alt;
         self.primer_design_ui = s.primer_design_ui;
+        self.simple_pcr_max_primer_distance_bp =
+            if s.simple_pcr_max_primer_distance_bp.trim().is_empty() {
+                default_simple_pcr_max_primer_distance_bp()
+            } else {
+                s.simple_pcr_max_primer_distance_bp
+            };
         self.pcr_queued_regions_ui = s.pcr_queued_regions_ui;
         self.pcr_batch_create_extract_copies = s.pcr_batch_create_extract_copies;
         self.pcr_batch_results_ui = s.pcr_batch_results_ui;
@@ -38408,15 +38665,31 @@ impl MainAreaDna {
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
                 response.context_menu(|ui| {
+                    let mut showed_any = false;
+                    if self.render_selection_simple_pcr_context_action(ui) {
+                        ui.close();
+                        return;
+                    }
+                    if self.current_selection_range_0based().is_some() {
+                        showed_any = true;
+                    }
                     let candidate_feature_id = self
                         .map_dna
                         .get_hovered_feature_id()
                         .or_else(|| self.map_dna.get_selected_feature_id())
                         .or_else(|| self.get_selected_feature_id());
                     let Some(feature_id) = candidate_feature_id else {
-                        ui.label("No feature under cursor");
+                        if !showed_any {
+                            ui.label("No selection or feature under cursor");
+                        } else {
+                            ui.separator();
+                            ui.small("No feature under cursor");
+                        }
                         return;
                     };
+                    if showed_any {
+                        ui.separator();
+                    }
                     let open_response = ui.add_enabled(
                         self.feature_supports_splicing_expert(feature_id),
                         egui::Button::new("Open Splicing Window"),
