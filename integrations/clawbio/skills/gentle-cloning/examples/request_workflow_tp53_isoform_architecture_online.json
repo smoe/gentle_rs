@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/tp53_isoform_architecture_online.json",
+  "expected_artifacts": [
+    "exports/tp53_isoform_architecture.svg"
+  ],
+  "timeout_secs": 7500
+}

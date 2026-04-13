@@ -1955,6 +1955,48 @@ pub struct SequenceFeatureQueryResult {
     pub rows: Vec<SequenceFeatureQueryRow>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FeatureBedCoordinateMode {
+    #[default]
+    Auto,
+    Local,
+    Genomic,
+}
+
+impl FeatureBedCoordinateMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Local => "local",
+            Self::Genomic => "genomic",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SequenceFeatureBedExportReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    pub path: String,
+    pub coordinate_mode: String,
+    pub include_restriction_sites: bool,
+    pub restriction_enzyme_filters: Vec<String>,
+    pub bed_columns: Vec<String>,
+    pub matched_sequence_feature_count: usize,
+    pub matched_restriction_site_count: usize,
+    pub matched_row_count: usize,
+    pub exportable_row_count: usize,
+    pub exported_row_count: usize,
+    pub offset: usize,
+    pub limit: Option<usize>,
+    pub local_coordinate_row_count: usize,
+    pub genomic_coordinate_row_count: usize,
+    pub skipped_missing_genomic_coordinates: usize,
+    pub query: SequenceFeatureQuery,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Progress payload emitted by TFBS annotation operations.
 pub struct TfbsProgress {

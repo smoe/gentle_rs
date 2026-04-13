@@ -11140,6 +11140,30 @@ impl GentleEngine {
                     &mut result,
                 )?;
             }
+            Operation::ExportFeaturesBed {
+                query,
+                path,
+                coordinate_mode,
+                include_restriction_sites,
+                restriction_enzymes,
+            } => {
+                let report = self.export_sequence_features_bed(
+                    query.clone(),
+                    path.as_str(),
+                    coordinate_mode.unwrap_or_default(),
+                    include_restriction_sites.unwrap_or(false),
+                    restriction_enzymes.as_slice(),
+                )?;
+                result.messages.push(format!(
+                    "Wrote BED feature export for '{}' with {} row(s) to '{}' (sequence_features={}, restriction_sites={}, coordinate_mode={})",
+                    report.seq_id,
+                    report.exported_row_count,
+                    report.path,
+                    report.matched_sequence_feature_count,
+                    report.matched_restriction_site_count,
+                    report.coordinate_mode
+                ));
+            }
             Operation::ScoreCandidateSetExpression {
                 set_name,
                 metric,
@@ -12127,6 +12151,36 @@ impl GentleEngine {
                         }
                     }
                 }
+                "restriction_enzyme_display_mode" | "restriction_display_mode" => {
+                    let raw = value.as_str().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a string value"),
+                    })?;
+                    let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
+                    let mode = match normalized.as_str() {
+                        "preferred_only" | "preferred" => {
+                            RestrictionEnzymeDisplayMode::PreferredOnly
+                        }
+                        "preferred_and_unique" | "preferred_unique" | "preferred+unique" => {
+                            RestrictionEnzymeDisplayMode::PreferredAndUnique
+                        }
+                        "unique_only" | "unique" => RestrictionEnzymeDisplayMode::UniqueOnly,
+                        "all_in_view" | "all" => RestrictionEnzymeDisplayMode::AllInView,
+                        _ => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Unsupported restriction enzyme display mode '{raw}' (expected preferred_only|preferred_and_unique|unique_only|all_in_view; legacy aliases accepted)"
+                                ),
+                            });
+                        }
+                    };
+                    self.state.display.restriction_enzyme_display_mode = mode;
+                    result.messages.push(format!(
+                        "Set parameter 'restriction_enzyme_display_mode' to {}",
+                        self.state.display.restriction_enzyme_display_mode.label()
+                    ));
+                }
                 "vcf_display_show_snp"
                 | "vcf_display_show_ins"
                 | "vcf_display_show_del"
@@ -12136,6 +12190,8 @@ impl GentleEngine {
                 | "vcf_display_use_min_qual"
                 | "vcf_display_use_max_qual"
                 | "show_tfbs"
+                | "show_restriction_enzymes"
+                | "show_restriction_enzyme_sites"
                 | "tfbs_display_use_llr_bits"
                 | "tfbs_display_use_llr_quantile"
                 | "tfbs_display_use_true_log_odds_bits"
@@ -12170,6 +12226,9 @@ impl GentleEngine {
                             self.state.display.vcf_display_use_max_qual = raw
                         }
                         "show_tfbs" => self.state.display.show_tfbs = raw,
+                        "show_restriction_enzymes" | "show_restriction_enzyme_sites" => {
+                            self.state.display.show_restriction_enzymes = raw
+                        }
                         "tfbs_display_use_llr_bits" => {
                             self.state.display.tfbs_display_use_llr_bits = raw
                         }
@@ -12316,6 +12375,43 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Set parameter 'vcf_display_required_info_keys' to [{}]",
                         keys.join(",")
+                    ));
+                }
+                "preferred_restriction_enzymes"
+                | "preferred_restriction_enzymes_csv"
+                | "restriction_preferred_enzymes" => {
+                    let values = if let Some(array) = value.as_array() {
+                        let mut values = Vec::with_capacity(array.len());
+                        for entry in array {
+                            let Some(raw) = entry.as_str() else {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: "preferred_restriction_enzymes array entries must be strings".to_string(),
+                                });
+                            };
+                            values.push(raw.to_string());
+                        }
+                        values
+                    } else if let Some(raw) = value.as_str() {
+                        raw.split(',')
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                    } else {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "SetParameter preferred_restriction_enzymes requires a string (CSV) or string array".to_string(),
+                        });
+                    };
+                    let normalized =
+                        crate::dna_display::DnaDisplay::normalize_preferred_restriction_enzymes(
+                            &values,
+                        );
+                    self.state.display.preferred_restriction_enzymes = normalized.clone();
+                    result.messages.push(format!(
+                        "Set parameter 'preferred_restriction_enzymes' to [{}]",
+                        normalized.join(",")
                     ));
                 }
                 _ => {

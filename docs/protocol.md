@@ -1841,6 +1841,30 @@ Current parameter support:
   - `vcf_display_use_max_qual`
   - `vcf_display_max_qual`
   - `vcf_display_required_info_keys` (CSV string or string array)
+- TFBS display filter parameters (shared GUI/SVG state):
+  - `show_tfbs`
+  - `tfbs_display_use_llr_bits`
+  - `tfbs_display_min_llr_bits`
+  - `tfbs_display_use_llr_quantile`
+  - `tfbs_display_min_llr_quantile`
+  - `tfbs_display_use_true_log_odds_bits`
+  - `tfbs_display_min_true_log_odds_bits`
+  - `tfbs_display_use_true_log_odds_quantile`
+  - `tfbs_display_min_true_log_odds_quantile`
+- Restriction-enzyme display parameters (shared GUI/SVG state):
+  - `show_restriction_enzymes`
+  - `show_restriction_enzyme_sites` (bool alias)
+  - `restriction_enzyme_display_mode`
+  - `restriction_display_mode` (string alias)
+    - supported values:
+      - `preferred_only`
+      - `preferred_and_unique`
+      - `unique_only`
+      - `all_in_view`
+  - `preferred_restriction_enzymes`
+  - `preferred_restriction_enzymes_csv` (CSV alias)
+  - `restriction_preferred_enzymes` (CSV/string-array alias)
+    - accepts either a CSV string or a string array
 - BLAST options-layer parameters:
   - `blast_options_override` (JSON object or `null`)
     - project-level BLAST option layer merged before per-command request JSON
@@ -3203,6 +3227,41 @@ Feature-query shell contract (implemented):
     - `rows[]` with `feature_id`, `kind`, `start_0based`,
       `end_0based_exclusive`, `length_bp`, `strand`, `label`, `labels[]`, and
       optional qualifier maps when requested (`--include-qualifiers`)
+
+Feature BED export contract (implemented):
+
+- Shared-shell command:
+  - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+- Raw/shared operation:
+  - `{"ExportFeaturesBed":{"query":{"seq_id":"tp53_region","kind_in":["gene","mRNA","exon","CDS"]},"path":"artifacts/tp53_region.features.bed","coordinate_mode":"auto","include_restriction_sites":false,"restriction_enzymes":[]}}`
+- Execution semantics:
+  - non-mutating export built on the same feature-query filter contract used by
+    `features query`
+  - when `--limit` / `query.limit` is omitted, the exporter writes all matching
+    rows instead of defaulting to the paged query window
+  - `coordinate_mode=auto` prefers genomic BED coordinates whenever a feature
+    carries `chromosome`, `genomic_start_1based`, and `genomic_end_1based`;
+    otherwise the row falls back to local `SEQ_ID` coordinates
+  - `include_restriction_sites=true` appends deterministic REBASE-derived
+    `restriction_site` rows, filtered by the same range/strand/label/qualifier
+    options; `restriction_enzymes[]` narrows those rows to selected enzymes
+  - TFBS/JASPAR annotations remain ordinary feature rows, so `kind_in=["TFBS"]`
+    exports the current binding-site table after `AnnotateTfbs`
+- File format:
+  - BED6 core columns:
+    `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`
+  - deterministic extra columns:
+    `kind`, `row_id`, `coordinate_source`, `qualifiers_json`
+- Response/report schema:
+  - `gentle.sequence_feature_bed_export.v1`
+  - fields include:
+    - `seq_id`, `path`, `coordinate_mode`
+    - `matched_sequence_feature_count`, `matched_restriction_site_count`,
+      `matched_row_count`
+    - `exportable_row_count`, `exported_row_count`
+    - `local_coordinate_row_count`, `genomic_coordinate_row_count`
+    - `skipped_missing_genomic_coordinates`
+    - `bed_columns[]`
 
 Dotplot + flexibility operation contract (implemented baseline):
 

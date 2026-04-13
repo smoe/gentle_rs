@@ -31,22 +31,22 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine, FeatureExpertTarget, FeatureExpertView,
-        FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
-        GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
-        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine, FeatureBedCoordinateMode,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
+        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
+        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
+        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
+        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
+        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
+        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
+        PrimerDesignSideConstraint, ProjectState, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -1304,6 +1304,13 @@ pub enum ShellCommand {
     },
     FeaturesQuery {
         query: SequenceFeatureQuery,
+    },
+    FeaturesExportBed {
+        query: SequenceFeatureQuery,
+        output: String,
+        coordinate_mode: FeatureBedCoordinateMode,
+        include_restriction_sites: bool,
+        restriction_enzymes: Vec<String>,
     },
     FeaturesTfbsSummary {
         request: TfbsRegionSummaryRequest,
@@ -6410,6 +6417,34 @@ impl ShellCommand {
                     .limit
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "default".to_string()),
+                query.offset
+            ),
+            Self::FeaturesExportBed {
+                query,
+                output,
+                coordinate_mode,
+                include_restriction_sites,
+                restriction_enzymes,
+            } => format!(
+                "export feature BED for '{}' to '{}' (coordinate_mode={}, include_restriction_sites={}, restriction_filters={}, kinds={}, limit={}, offset={})",
+                query.seq_id,
+                output,
+                coordinate_mode.as_str(),
+                include_restriction_sites,
+                if restriction_enzymes.is_empty() {
+                    "-".to_string()
+                } else {
+                    restriction_enzymes.join(",")
+                },
+                if query.kind_in.is_empty() {
+                    "any".to_string()
+                } else {
+                    query.kind_in.join(",")
+                },
+                query
+                    .limit
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
                 query.offset
             ),
             Self::FeaturesTfbsSummary { request } => format!(
@@ -17235,6 +17270,28 @@ fn execute_sequence_analysis_command(
                     .map_err(|e| format!("Could not serialize feature query result: {e}"))?,
             })
         }
+        ShellCommand::FeaturesExportBed {
+            query,
+            output,
+            coordinate_mode,
+            include_restriction_sites,
+            restriction_enzymes,
+        } => {
+            let report = engine
+                .export_sequence_features_bed(
+                    query.clone(),
+                    output,
+                    *coordinate_mode,
+                    *include_restriction_sites,
+                    restriction_enzymes,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize feature BED export report: {e}"))?,
+            })
+        }
         ShellCommand::FeaturesTfbsSummary { request } => {
             let summary = engine
                 .summarize_tfbs_region(request.clone())
@@ -18639,6 +18696,7 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::TranscriptsDerive { .. }
             | ShellCommand::FeaturesQuery { .. }
+            | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::DotplotCompute { .. }
             | ShellCommand::DotplotList { .. }
@@ -20832,6 +20890,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersExportQpcrReport { .. } => execute_primers_command(engine, command)?,
         ShellCommand::TranscriptsDerive { .. }
         | ShellCommand::FeaturesQuery { .. }
+        | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::DotplotCompute { .. }
         | ShellCommand::DotplotList { .. }

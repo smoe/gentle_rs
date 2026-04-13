@@ -1,0 +1,42 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow": {
+    "run_id": "clawbio_pgex_linear_restriction_svg",
+    "ops": [
+      {
+        "SetParameter": {
+          "name": "show_restriction_enzymes",
+          "value": true
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "restriction_enzyme_display_mode",
+          "value": "preferred_only"
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "preferred_restriction_enzymes",
+          "value": [
+            "EcoRI",
+            "BamHI"
+          ]
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "pgex_fasta",
+          "mode": "Linear",
+          "path": "artifacts/pgex_fasta.linear.restriction.svg"
+        }
+      }
+    ]
+  },
+  "expected_artifacts": [
+    "artifacts/pgex_fasta.linear.restriction.svg"
+  ],
+  "timeout_secs": 180
+}

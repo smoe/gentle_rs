@@ -3517,6 +3517,40 @@ fn test_set_parameter_vcf_display_controls() {
 }
 
 #[test]
+fn test_set_parameter_restriction_display_controls() {
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::SetParameter {
+            name: "show_restriction_enzymes".to_string(),
+            value: serde_json::json!(false),
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetParameter {
+            name: "restriction_display_mode".to_string(),
+            value: serde_json::json!("unique"),
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetParameter {
+            name: "preferred_restriction_enzymes".to_string(),
+            value: serde_json::json!([" EcoRI ", "BamHI", "EcoRI"]),
+        })
+        .unwrap();
+
+    let display = &engine.state().display;
+    assert!(!display.show_restriction_enzymes);
+    assert_eq!(
+        display.restriction_enzyme_display_mode,
+        RestrictionEnzymeDisplayMode::UniqueOnly
+    );
+    assert_eq!(
+        display.preferred_restriction_enzymes,
+        vec!["EcoRI".to_string(), "BamHI".to_string()]
+    );
+}
+
+#[test]
 fn test_digest_respects_max_fragments_per_container() {
     let mut state = ProjectState::default();
     state
@@ -21222,6 +21256,106 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
             .expect("gene value"),
         "TP73"
     );
+}
+
+#[test]
+fn export_sequence_features_bed_covers_genome_annotation_tfbs_and_restriction_sites() {
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("feature_export.bed");
+
+    let mut dna = DNAsequence::from_sequence("AAGAATTCTTTACGTAA").expect("sequence");
+    *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+    dna.update_computed_features();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![
+            ("label".into(), Some("TP53".to_string())),
+            ("chromosome".into(), Some("chr17".to_string())),
+            ("genomic_start_1based".into(), Some("7565097".to_string())),
+            ("genomic_end_1based".into(), Some("7565104".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(11, 15),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+            ("llr_quantile".into(), Some("0.95".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .export_sequence_features_bed(
+            SequenceFeatureQuery {
+                seq_id: "seq".to_string(),
+                sort_by: SequenceFeatureSortBy::Start,
+                ..SequenceFeatureQuery::default()
+            },
+            output.to_string_lossy().as_ref(),
+            FeatureBedCoordinateMode::Auto,
+            true,
+            &["EcoRI".to_string()],
+        )
+        .expect("export feature BED");
+
+    assert_eq!(report.schema, "gentle.sequence_feature_bed_export.v1");
+    assert_eq!(report.matched_sequence_feature_count, 2);
+    assert_eq!(report.matched_restriction_site_count, 1);
+    assert_eq!(report.exported_row_count, 3);
+    assert_eq!(report.local_coordinate_row_count, 2);
+    assert_eq!(report.genomic_coordinate_row_count, 1);
+
+    let bed = std::fs::read_to_string(&output).expect("read BED");
+    assert!(bed.contains("chr17\t7565096\t7565104\tTP53\t0\t+\tgene\tfeature:0\tgenomic\t"));
+    assert!(bed.contains("seq\t11\t15\tSP1\t950\t+\tTFBS\tfeature:1\tlocal\t"));
+    assert!(bed.contains(
+        "seq\t2\t8\tEcoRI\t0\t+\trestriction_site\trestriction_site:ecori:2:8:0\tlocal\t"
+    ));
+}
+
+#[test]
+fn apply_export_features_bed_operation_writes_requested_file() {
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("tfbs_only.bed");
+
+    let mut dna = DNAsequence::from_sequence("TTTACGTAAACGTGGG").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(3, 7),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("llr_quantile".into(), Some("0.80".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::ExportFeaturesBed {
+            query: SequenceFeatureQuery {
+                seq_id: "seq".to_string(),
+                kind_in: vec!["TFBS".to_string()],
+                ..SequenceFeatureQuery::default()
+            },
+            path: output.to_string_lossy().into_owned(),
+            coordinate_mode: Some(FeatureBedCoordinateMode::Local),
+            include_restriction_sites: Some(false),
+            restriction_enzymes: vec![],
+        })
+        .expect("apply ExportFeaturesBed");
+
+    assert!(result.messages.iter().any(|message| {
+        message.contains("BED feature export") && message.contains("sequence_features=1")
+    }));
+    let bed = std::fs::read_to_string(&output).expect("read BED");
+    assert!(bed.contains("\tTFBS\tfeature:0\tlocal\t"));
 }
 
 #[test]

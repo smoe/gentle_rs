@@ -171,6 +171,18 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json \
   --output /tmp/gentle_clawbio_pgex_map
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_tfbs.json \
+  --output /tmp/gentle_clawbio_pgex_tfbs_map
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_restriction.json \
+  --output /tmp/gentle_clawbio_pgex_restriction_map
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json \
+  --output /tmp/gentle_clawbio_tp53_isoform_workflow
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json \
+  --output /tmp/gentle_clawbio_tp53_isoform_expert
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json \
   --output /tmp/gentle_clawbio_gibson_graphics
 ```
@@ -182,6 +194,12 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_render_svg_pgex_fasta_linear_tfbs.json` and
+  `request_render_svg_pgex_fasta_linear_restriction.json` are matching
+  follow-on DNA-window graphics routes on that same `pgex_fasta` state
+- `request_render_feature_expert_tp53_isoform_svg.json` is a follow-on expert
+  route after `request_workflow_tp53_isoform_architecture_online.json` (or an
+  equivalent prior isoform-panel import)
 
 Container-backed alternative:
 
@@ -319,9 +337,32 @@ Apply the following methodology:
   - `examples/request_genomes_extract_gene_tp53.json`
   - `examples/request_helpers_blast_puc19_short.json`
   - `examples/request_workflow_vkorc1_planning.json`
+  - `examples/request_render_svg_pgex_fasta_circular.json`
+    - expects a state containing `pgex_fasta`, for example after running
+      `examples/request_workflow_file.json`
+  - `examples/request_render_svg_pgex_fasta_linear_tfbs.json`
+    - same `pgex_fasta` follow-on route, but with explicit JASPAR/TFBS display
+      filtering before linear SVG export
+  - `examples/request_render_svg_pgex_fasta_linear_restriction.json`
+    - same `pgex_fasta` follow-on route, but with explicit restriction display
+      settings before linear SVG export
+  - `examples/request_workflow_tp53_isoform_architecture_online.json`
+    - replays the canonical TP53 isoform workflow example and collects the
+      rendered architecture SVG into the ClawBio bundle
+  - `examples/request_render_feature_expert_tp53_isoform_svg.json`
+    - renders the same TP53 isoform architecture through the shared
+      `render-feature-expert-svg ... isoform ...` expert route
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`
+  - feature-table BED export is also available even though no canned request
+    JSON is shipped yet:
+    - shell/direct CLI:
+      `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME ...] [feature-query filters ...]`
+    - raw/direct operation:
+      `ExportFeaturesBed { query, path, coordinate_mode, include_restriction_sites, restriction_enzymes[] }`
+    - this is the tabular route for genome annotation, TFBS/JASPAR matches, and
+      optional deterministic REBASE restriction-site rows
 
 ## Example Queries
 

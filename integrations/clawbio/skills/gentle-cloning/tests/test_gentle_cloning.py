@@ -453,6 +453,41 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/pgex_fasta.circular.svg"
             ]
 
+    tfbs_payload = json.loads(
+        (examples_dir / "request_render_svg_pgex_fasta_linear_tfbs.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert tfbs_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert tfbs_payload["mode"] == "workflow"
+    assert tfbs_payload["state_path"] == ".gentle_state.json"
+    assert tfbs_payload["timeout_secs"] == 300
+    assert tfbs_payload["expected_artifacts"] == ["artifacts/pgex_fasta.linear.tfbs.svg"]
+    tfbs_ops = tfbs_payload["workflow"]["ops"]
+    assert tfbs_ops[0]["AnnotateTfbs"]["seq_id"] == "pgex_fasta"
+    assert tfbs_ops[-1]["RenderSequenceSvg"]["path"] == "artifacts/pgex_fasta.linear.tfbs.svg"
+
+    restriction_payload = json.loads(
+        (examples_dir / "request_render_svg_pgex_fasta_linear_restriction.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert restriction_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert restriction_payload["mode"] == "workflow"
+    assert restriction_payload["state_path"] == ".gentle_state.json"
+    assert restriction_payload["timeout_secs"] == 180
+    assert restriction_payload["expected_artifacts"] == [
+        "artifacts/pgex_fasta.linear.restriction.svg"
+    ]
+    restriction_ops = restriction_payload["workflow"]["ops"]
+    assert restriction_ops[0]["SetParameter"]["name"] == "show_restriction_enzymes"
+    assert restriction_ops[1]["SetParameter"]["name"] == "restriction_enzyme_display_mode"
+    assert restriction_ops[2]["SetParameter"]["name"] == "preferred_restriction_enzymes"
+    assert (
+        restriction_ops[-1]["RenderSequenceSvg"]["path"]
+        == "artifacts/pgex_fasta.linear.restriction.svg"
+    )
+
     planning_payload = json.loads(
         (examples_dir / "request_workflow_vkorc1_planning.json").read_text(
             encoding="utf-8"
@@ -466,3 +501,37 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         == "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"
     )
     assert planning_payload["timeout_secs"] == 1800
+
+    isoform_workflow_payload = json.loads(
+        (examples_dir / "request_workflow_tp53_isoform_architecture_online.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert isoform_workflow_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert isoform_workflow_payload["mode"] == "workflow"
+    assert isoform_workflow_payload["state_path"] == ".gentle_state.json"
+    assert (
+        isoform_workflow_payload["workflow_path"]
+        == "docs/examples/workflows/tp53_isoform_architecture_online.json"
+    )
+    assert isoform_workflow_payload["expected_artifacts"] == [
+        "exports/tp53_isoform_architecture.svg"
+    ]
+    assert isoform_workflow_payload["timeout_secs"] == 7500
+
+    isoform_expert_payload = json.loads(
+        (examples_dir / "request_render_feature_expert_tp53_isoform_svg.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert isoform_expert_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert isoform_expert_payload["mode"] == "shell"
+    assert isoform_expert_payload["state_path"] == ".gentle_state.json"
+    assert (
+        isoform_expert_payload["shell_line"]
+        == "render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 artifacts/tp53_isoforms_v1.expert.svg"
+    )
+    assert isoform_expert_payload["expected_artifacts"] == [
+        "artifacts/tp53_isoforms_v1.expert.svg"
+    ]
+    assert isoform_expert_payload["timeout_secs"] == 180

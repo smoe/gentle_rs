@@ -1343,11 +1343,29 @@ order. Durable architecture constraints and decisions remain in
     - reference extraction (`TP53`)
     - helper BLAST (`pUC19`)
     - one planning workflow replay (`VKORC1` luciferase planning)
-    - one graphics/export preparation route
+    - DNA-window graphics routes with explicit TFBS/JASPAR and
+      restriction-enzyme display settings
+    - TP53 isoform architecture workflow + expert-SVG follow-on routes
+    - one protocol-cartoon graphics/export preparation route
       (`protocol-cartoon render-svg gibson.two_fragment ...`)
       - the wrapper now supports declared `expected_artifacts[]`, and the
-        shipped graphics example copies the generated SVG into the ClawBio
+        shipped graphics examples copy generated SVGs into the ClawBio
         output bundle instead of leaving it only in the execution cwd
+  - `SetParameter` now also exposes the shared restriction-display state used
+    by GUI + SVG export:
+    - `show_restriction_enzymes`
+    - `restriction_enzyme_display_mode`
+    - `preferred_restriction_enzymes`
+    so shell/direct-op/ClawBio automation can script the same preferred-vs-
+    unique cutter view that the GUI sequence window already offers
+  - shared feature-table export now covers the DNA-window inspection classes
+    that were already parity-prioritized for automation:
+    - `features export-bed ...` (shell/direct CLI)
+    - `ExportFeaturesBed` (raw op/workflow/ClawBio)
+    - exports genome-annotation features, TFBS/JASPAR matches, and optional
+      deterministic REBASE restriction-site rows through one BED6+4 contract
+    - `coordinate_mode=auto|local|genomic` keeps genome-anchored annotation
+      rows usable downstream without losing local plasmid/helper exports
   - copied workflow example requests now resolve relative `workflow_path`
     through `GENTLE_REPO_ROOT` when present, so a copied ClawBio skill can
     still replay canonical GENtle workflow examples from the source checkout

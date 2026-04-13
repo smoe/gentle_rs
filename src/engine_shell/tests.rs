@@ -3592,6 +3592,33 @@ fn parse_features_query_with_filters() {
 }
 
 #[test]
+fn parse_features_export_bed_with_restriction_options() {
+    let cmd = parse_shell_line(
+        "features export-bed seq_a /tmp/seq_a.features.bed --coordinate-mode genomic --include-restriction-sites --restriction-enzyme EcoRI --kind TFBS --label SP1 --sort start",
+    )
+    .expect("parse features export-bed");
+    match cmd {
+        ShellCommand::FeaturesExportBed {
+            query,
+            output,
+            coordinate_mode,
+            include_restriction_sites,
+            restriction_enzymes,
+        } => {
+            assert_eq!(query.seq_id, "seq_a");
+            assert_eq!(output, "/tmp/seq_a.features.bed");
+            assert_eq!(coordinate_mode, FeatureBedCoordinateMode::Genomic);
+            assert!(include_restriction_sites);
+            assert_eq!(restriction_enzymes, vec!["EcoRI".to_string()]);
+            assert_eq!(query.kind_in, vec!["TFBS".to_string()]);
+            assert_eq!(query.label_contains.as_deref(), Some("SP1"));
+            assert_eq!(query.sort_by, SequenceFeatureSortBy::Start);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_tfbs_summary_with_context_filters() {
     let cmd = parse_shell_line(
         "features tfbs-summary seq_a --focus 2900..3100 --context 0..6001 --min-focus-count 2 --min-context-count 3 --limit 25",
@@ -7549,6 +7576,65 @@ fn execute_features_query_returns_structured_rows() {
     assert_eq!(run.output["returned_count"].as_u64(), Some(1));
     assert_eq!(run.output["rows"][0]["kind"].as_str(), Some("CDS"));
     assert_eq!(run.output["rows"][0]["strand"].as_str(), Some("reverse"));
+}
+
+#[test]
+fn execute_features_export_bed_writes_tfbs_and_restriction_rows() {
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("features.bed");
+
+    let mut dna = DNAsequence::from_sequence("AAGAATTCTTTACGTAA").expect("sequence");
+    *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    dna.update_computed_features();
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(11, 15),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("tf_id".into(), Some("MA0079.3".to_string())),
+            ("llr_quantile".into(), Some("0.95".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesExportBed {
+            query: SequenceFeatureQuery {
+                seq_id: "seq".to_string(),
+                sort_by: SequenceFeatureSortBy::Start,
+                ..SequenceFeatureQuery::default()
+            },
+            output: output.display().to_string(),
+            coordinate_mode: FeatureBedCoordinateMode::Auto,
+            include_restriction_sites: true,
+            restriction_enzymes: vec!["EcoRI".to_string()],
+        },
+    )
+    .expect("features export-bed");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.sequence_feature_bed_export.v1")
+    );
+    assert_eq!(
+        run.output["matched_sequence_feature_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        run.output["matched_restriction_site_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(run.output["exported_row_count"].as_u64(), Some(2));
+
+    let bed = fs::read_to_string(&output).expect("read BED");
+    assert!(bed.contains("\tTFBS\tfeature:0\t"));
+    assert!(bed.contains("\trestriction_site\trestriction_site:ecori:2:8:0\t"));
+    assert!(bed.contains("\t950\t+\tTFBS\t"));
 }
 
 #[test]
@@ -13003,6 +13089,25 @@ fn execute_set_param_updates_tfbs_display_state() {
     assert!(
         (engine.state().display.tfbs_display_min_llr_quantile - 0.85).abs() < f64::EPSILON,
         "tfbs_display_min_llr_quantile should be updated by set-param"
+    );
+}
+
+#[test]
+fn execute_set_param_updates_restriction_display_state() {
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SetParameter {
+            name: "preferred_restriction_enzymes".to_string(),
+            value_json: r#"[" BamHI ","EcoRI","BamHI"]"#.to_string(),
+        },
+    )
+    .expect("execute restriction set-param");
+    assert!(out.state_changed);
+    assert_eq!(
+        engine.state().display.preferred_restriction_enzymes,
+        vec!["BamHI".to_string(), "EcoRI".to_string()],
+        "preferred_restriction_enzymes should be updated by set-param"
     );
 }
 

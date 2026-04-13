@@ -44585,10 +44585,8 @@ mod tests {
         let mut app = GENtleApp::default();
         app.show_help_dialog = true;
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
-        let hosted_help_layer_id = egui::LayerId::new(
-            egui::Order::Middle,
-            GENtleApp::hosted_help_window_id(),
-        );
+        let hosted_help_layer_id =
+            egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
         let stale_title_layer_id = GENtleApp::stale_help_title_layer_id("Help - GUI Manual");
 
         ctx.begin_pass(egui::RawInput::default());
@@ -44606,16 +44604,13 @@ mod tests {
         app.show_help_dialog = true;
         app.help_doc = HelpDoc::Tutorial;
         app.help_tutorial_title = "Load pGEX and digest with BamHI/EcoRI".to_string();
-        app.help_tutorial_markdown = "# Load pGEX and digest with BamHI/EcoRI\n\nTutorial."
-            .to_string();
+        app.help_tutorial_markdown =
+            "# Load pGEX and digest with BamHI/EcoRI\n\nTutorial.".to_string();
         app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
-        let hosted_help_layer_id = egui::LayerId::new(
-            egui::Order::Middle,
-            GENtleApp::hosted_help_window_id(),
-        );
-        let stale_title_layer_id = GENtleApp::stale_help_title_layer_id(
-            "Help - Load pGEX and digest with BamHI/EcoRI",
-        );
+        let hosted_help_layer_id =
+            egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
+        let stale_title_layer_id =
+            GENtleApp::stale_help_title_layer_id("Help - Load pGEX and digest with BamHI/EcoRI");
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
@@ -44687,10 +44682,8 @@ mod tests {
     fn root_help_cleanup_ignores_stable_hosted_help_window_id() {
         let ctx = egui::Context::default();
         let title = "Help - Gibson Arrangements Tutorial";
-        let hosted_help_layer_id = egui::LayerId::new(
-            egui::Order::Middle,
-            GENtleApp::hosted_help_window_id(),
-        );
+        let hosted_help_layer_id =
+            egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
 
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new("Help")

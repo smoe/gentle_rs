@@ -328,6 +328,7 @@ const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
+const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
@@ -3247,6 +3248,16 @@ pub enum Operation {
         #[serde(default)]
         include_qc_checklist: Option<bool>,
     },
+    ExportFeaturesBed {
+        query: SequenceFeatureQuery,
+        path: String,
+        #[serde(default)]
+        coordinate_mode: Option<FeatureBedCoordinateMode>,
+        #[serde(default)]
+        include_restriction_sites: Option<bool>,
+        #[serde(default)]
+        restriction_enzymes: Vec<String>,
+    },
     ScoreCandidateSetExpression {
         set_name: String,
         metric: String,
@@ -3521,6 +3532,22 @@ struct FeatureLocationSegment {
     start_0based: usize,
     end_0based: usize,
     strand: Option<char>,
+}
+
+#[derive(Debug, Clone)]
+struct FeatureBedExportRow {
+    chrom: String,
+    chrom_start_0based: usize,
+    chrom_end_0based_exclusive: usize,
+    name: String,
+    score_0_to_1000: usize,
+    strand: char,
+    kind: String,
+    row_id: String,
+    coordinate_source: &'static str,
+    qualifiers_json: String,
+    sort_feature_id: usize,
+    length_bp: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -4238,6 +4265,7 @@ impl GentleEngine {
                 "GenerateGuideOligos".to_string(),
                 "ExportGuideOligos".to_string(),
                 "ExportGuideProtocolText".to_string(),
+                "ExportFeaturesBed".to_string(),
                 "ScoreCandidateSetExpression".to_string(),
                 "ScoreCandidateSetDistance".to_string(),
                 "FilterCandidateSet".to_string(),
@@ -6056,6 +6084,7 @@ impl GentleEngine {
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
                 | Operation::ExportProcessRunBundle { .. }
+                | Operation::ExportFeaturesBed { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
@@ -8039,6 +8068,659 @@ impl GentleEngine {
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS region summary to '{path}': {e}"),
+        })
+    }
+
+    pub fn export_sequence_features_bed(
+        &self,
+        mut query: SequenceFeatureQuery,
+        path: &str,
+        coordinate_mode: FeatureBedCoordinateMode,
+        include_restriction_sites: bool,
+        restriction_enzymes: &[String],
+    ) -> Result<SequenceFeatureBedExportReport, EngineError> {
+        fn bed_columns() -> Vec<String> {
+            [
+                "chrom",
+                "chrom_start_0based",
+                "chrom_end_0based_exclusive",
+                "name",
+                "score_0_to_1000",
+                "strand",
+                "kind",
+                "row_id",
+                "coordinate_source",
+                "qualifiers_json",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+        }
+
+        fn bed_safe_field(raw: &str) -> String {
+            let sanitized = raw.replace(['\t', '\n', '\r'], " ");
+            let trimmed = sanitized.trim();
+            if trimmed.is_empty() {
+                ".".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+
+        fn collect_qualifiers(feature: &gb_io::seq::Feature) -> BTreeMap<String, Vec<String>> {
+            let mut qualifiers: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for (key, value) in &feature.qualifiers {
+                let Some(value) = value.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+                    continue;
+                };
+                qualifiers
+                    .entry(key.to_string())
+                    .or_default()
+                    .push(value.to_string());
+            }
+            qualifiers
+        }
+
+        fn compile_qualifier_filters(
+            query: &SequenceFeatureQuery,
+        ) -> Result<Vec<(SequenceFeatureQualifierFilter, Option<Regex>)>, EngineError> {
+            let mut qualifier_filters: Vec<(SequenceFeatureQualifierFilter, Option<Regex>)> =
+                vec![];
+            for mut filter in query.qualifier_filters.clone() {
+                filter.key = filter.key.trim().to_string();
+                if filter.key.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Qualifier filter key must not be empty".to_string(),
+                    });
+                }
+                filter.value_contains = filter
+                    .value_contains
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
+                filter.value_regex = filter
+                    .value_regex
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
+                let compiled = filter
+                    .value_regex
+                    .as_ref()
+                    .map(|pattern| {
+                        RegexBuilder::new(pattern)
+                            .case_insensitive(!filter.case_sensitive)
+                            .build()
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Invalid qualifier regex for key '{}': {e}",
+                                    filter.key
+                                ),
+                            })
+                    })
+                    .transpose()?;
+                qualifier_filters.push((filter, compiled));
+            }
+            Ok(qualifier_filters)
+        }
+
+        fn qualifiers_match(
+            qualifiers: &BTreeMap<String, Vec<String>>,
+            qualifier_filters: &[(SequenceFeatureQualifierFilter, Option<Regex>)],
+        ) -> bool {
+            qualifier_filters.iter().all(|(filter, regex)| {
+                let values = qualifiers
+                    .get(filter.key.as_str())
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .collect::<Vec<_>>();
+                if values.is_empty() {
+                    return false;
+                }
+                if let Some(needle) = filter.value_contains.as_ref() {
+                    if filter.case_sensitive {
+                        if !values.iter().any(|value| value.contains(needle)) {
+                            return false;
+                        }
+                    } else {
+                        let needle_upper = needle.to_ascii_uppercase();
+                        if !values
+                            .iter()
+                            .any(|value| value.to_ascii_uppercase().contains(&needle_upper))
+                        {
+                            return false;
+                        }
+                    }
+                }
+                if let Some(regex) = regex
+                    && !values.iter().any(|value| regex.is_match(value))
+                {
+                    return false;
+                }
+                true
+            })
+        }
+
+        fn label_matches(
+            labels: &[String],
+            label_contains_upper: Option<&String>,
+            label_regex: Option<&Regex>,
+        ) -> bool {
+            if let Some(needle_upper) = label_contains_upper {
+                let matched = labels.iter().any(|value| {
+                    let upper = value.to_ascii_uppercase();
+                    upper == *needle_upper || upper.contains(needle_upper)
+                });
+                if !matched {
+                    return false;
+                }
+            }
+            if let Some(regex) = label_regex
+                && !labels.iter().any(|value| regex.is_match(value))
+            {
+                return false;
+            }
+            true
+        }
+
+        fn range_matches(
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            query: &SequenceFeatureQuery,
+        ) -> bool {
+            let Some(range_start) = query.start_0based else {
+                return true;
+            };
+            let Some(range_end) = query.end_0based_exclusive else {
+                return true;
+            };
+            match query.range_relation {
+                SequenceFeatureRangeRelation::Overlap => {
+                    end_0based_exclusive > range_start && start_0based < range_end
+                }
+                SequenceFeatureRangeRelation::Within => {
+                    start_0based >= range_start && end_0based_exclusive <= range_end
+                }
+                SequenceFeatureRangeRelation::Contains => {
+                    start_0based <= range_start && end_0based_exclusive >= range_end
+                }
+            }
+        }
+
+        fn strand_matches(strand: char, filter: SequenceFeatureStrandFilter) -> bool {
+            match filter {
+                SequenceFeatureStrandFilter::Any => true,
+                SequenceFeatureStrandFilter::Forward => strand == '+',
+                SequenceFeatureStrandFilter::Reverse => strand == '-',
+            }
+        }
+
+        fn parse_bed_score(raw: &str) -> Option<usize> {
+            raw.trim()
+                .parse::<f64>()
+                .ok()
+                .map(|value| value.round().clamp(0.0, 1000.0) as usize)
+        }
+
+        fn parse_quantile_score(raw: &str) -> Option<usize> {
+            raw.trim()
+                .parse::<f64>()
+                .ok()
+                .map(|value| (value.clamp(0.0, 1.0) * 1000.0).round() as usize)
+        }
+
+        fn feature_bed_score(feature: &gb_io::seq::Feature) -> usize {
+            for key in ["score", "bed_score"] {
+                if let Some(score) = feature.qualifier_values(key).find_map(parse_bed_score) {
+                    return score;
+                }
+            }
+            for key in ["llr_quantile", "true_log_odds_quantile"] {
+                if let Some(score) = feature.qualifier_values(key).find_map(parse_quantile_score) {
+                    return score;
+                }
+            }
+            0
+        }
+
+        fn genomic_bed_coordinates(
+            feature: &gb_io::seq::Feature,
+        ) -> Option<(String, usize, usize)> {
+            let chromosome = feature.qualifier_values("chromosome").find_map(|value| {
+                let trimmed = value.trim();
+                (!trimmed.is_empty()).then_some(trimmed.to_string())
+            })?;
+            let start_1based = feature
+                .qualifier_values("genomic_start_1based")
+                .find_map(|value| value.trim().parse::<usize>().ok())?;
+            let end_1based = feature
+                .qualifier_values("genomic_end_1based")
+                .find_map(|value| value.trim().parse::<usize>().ok())?;
+            if start_1based == 0 || end_1based < start_1based {
+                return None;
+            }
+            Some((chromosome, start_1based.saturating_sub(1), end_1based))
+        }
+
+        fn restriction_end_geometry_label(enzyme: &RestrictionEnzyme) -> &'static str {
+            match enzyme.end_geometry() {
+                crate::restriction_enzyme::RestrictionEndGeometry::Blunt => "blunt",
+                crate::restriction_enzyme::RestrictionEndGeometry::FivePrimeOverhang(_) => {
+                    "5prime_overhang"
+                }
+                crate::restriction_enzyme::RestrictionEndGeometry::ThreePrimeOverhang(_) => {
+                    "3prime_overhang"
+                }
+            }
+        }
+
+        query.seq_id = query.seq_id.trim().to_string();
+        if query.seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "export_sequence_features_bed requires non-empty seq_id".to_string(),
+            });
+        }
+        if query.limit.is_some_and(|limit| limit == 0) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Feature BED export limit must be >= 1".to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(&query.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", query.seq_id),
+            })?;
+
+        let mut all_feature_rows: Vec<SequenceFeatureQueryRow> = vec![];
+        let mut page_offset = 0usize;
+        loop {
+            let mut page_query = query.clone();
+            page_query.offset = page_offset;
+            page_query.limit = Some(FEATURE_QUERY_MAX_LIMIT);
+            let page = self.query_sequence_features(page_query)?;
+            if page.rows.is_empty() {
+                break;
+            }
+            page_offset = page_offset.saturating_add(page.rows.len());
+            all_feature_rows.extend(page.rows);
+            if page_offset >= page.matched_count {
+                break;
+            }
+        }
+        let matched_sequence_feature_count = all_feature_rows.len();
+
+        let normalized_kind_in = query
+            .kind_in
+            .iter()
+            .filter_map(|value| Self::normalize_feature_kind_token(value))
+            .collect::<HashSet<_>>();
+        let normalized_kind_not_in = query
+            .kind_not_in
+            .iter()
+            .filter_map(|value| Self::normalize_feature_kind_token(value))
+            .collect::<HashSet<_>>();
+        let restriction_kind_allowed = (normalized_kind_in.is_empty()
+            || normalized_kind_in.contains("RESTRICTION_SITE"))
+            && !normalized_kind_not_in.contains("RESTRICTION_SITE");
+        let label_contains_upper = query
+            .label_contains
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_uppercase());
+        let label_regex = query
+            .label_regex
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|pattern| {
+                RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Invalid label_regex '{}': {e}", pattern),
+                    })
+            })
+            .transpose()?;
+        let qualifier_filters = compile_qualifier_filters(&query)?;
+
+        let mut normalized_restriction_filters: Vec<String> = vec![];
+        let mut seen_restriction_filters: HashSet<String> = HashSet::new();
+        for raw in restriction_enzymes {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = trimmed.to_ascii_uppercase();
+            if seen_restriction_filters.insert(normalized) {
+                normalized_restriction_filters.push(trimmed.to_string());
+            }
+        }
+
+        let mut skipped_missing_genomic_coordinates = 0usize;
+        let mut export_rows: Vec<FeatureBedExportRow> = vec![];
+        for row in all_feature_rows {
+            let feature = dna
+                .features()
+                .get(row.feature_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Feature query row referenced missing feature_id {} on '{}'",
+                        row.feature_id, query.seq_id
+                    ),
+                })?;
+            let qualifiers = collect_qualifiers(feature);
+            let (chrom, chrom_start_0based, chrom_end_0based_exclusive, coordinate_source) =
+                match coordinate_mode {
+                    FeatureBedCoordinateMode::Auto => {
+                        if let Some((chrom, start, end)) = genomic_bed_coordinates(feature) {
+                            (chrom, start, end, "genomic")
+                        } else {
+                            (
+                                query.seq_id.clone(),
+                                row.start_0based,
+                                row.end_0based_exclusive,
+                                "local",
+                            )
+                        }
+                    }
+                    FeatureBedCoordinateMode::Local => (
+                        query.seq_id.clone(),
+                        row.start_0based,
+                        row.end_0based_exclusive,
+                        "local",
+                    ),
+                    FeatureBedCoordinateMode::Genomic => {
+                        let Some((chrom, start, end)) = genomic_bed_coordinates(feature) else {
+                            skipped_missing_genomic_coordinates =
+                                skipped_missing_genomic_coordinates.saturating_add(1);
+                            continue;
+                        };
+                        (chrom, start, end, "genomic")
+                    }
+                };
+            let qualifiers_json = serde_json::to_string(&qualifiers).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not serialize qualifiers for feature {} on '{}': {e}",
+                    row.feature_id, query.seq_id
+                ),
+            })?;
+            export_rows.push(FeatureBedExportRow {
+                chrom,
+                chrom_start_0based,
+                chrom_end_0based_exclusive,
+                name: row.label.clone(),
+                score_0_to_1000: feature_bed_score(feature),
+                strand: if row.strand.eq_ignore_ascii_case("reverse") {
+                    '-'
+                } else {
+                    '+'
+                },
+                kind: row.kind.clone(),
+                row_id: format!("feature:{}", row.feature_id),
+                coordinate_source,
+                qualifiers_json,
+                sort_feature_id: row.feature_id,
+                length_bp: row.length_bp,
+            });
+        }
+
+        let mut matched_restriction_site_count = 0usize;
+        if include_restriction_sites && restriction_kind_allowed {
+            let restriction_filter_set = normalized_restriction_filters
+                .iter()
+                .map(|value| value.to_ascii_uppercase())
+                .collect::<HashSet<_>>();
+            for (site_idx, site) in dna.restriction_enzyme_sites().iter().enumerate() {
+                if !restriction_filter_set.is_empty()
+                    && !restriction_filter_set.contains(&site.enzyme.name.to_ascii_uppercase())
+                {
+                    continue;
+                }
+                let Some((start_0based, end_0based_exclusive)) =
+                    site.recognition_bounds_0based(dna.len())
+                else {
+                    continue;
+                };
+                if end_0based_exclusive <= start_0based || start_0based >= dna.len() {
+                    continue;
+                }
+                let length_bp = end_0based_exclusive.saturating_sub(start_0based);
+                if let Some(min_len_bp) = query.min_len_bp
+                    && length_bp < min_len_bp
+                {
+                    continue;
+                }
+                if let Some(max_len_bp) = query.max_len_bp
+                    && length_bp > max_len_bp
+                {
+                    continue;
+                }
+                if !range_matches(start_0based, end_0based_exclusive, &query) {
+                    continue;
+                }
+                let strand = if site.forward_strand { '+' } else { '-' };
+                if !strand_matches(strand, query.strand) {
+                    continue;
+                }
+                let labels = vec![site.enzyme.name.clone(), site.enzyme.sequence.clone()];
+                if !label_matches(&labels, label_contains_upper.as_ref(), label_regex.as_ref()) {
+                    continue;
+                }
+                let (forward_cut, reverse_cut) = site
+                    .strand_cut_positions_0based(dna.len())
+                    .unwrap_or((start_0based, start_0based));
+                let mut qualifiers: BTreeMap<String, Vec<String>> = BTreeMap::new();
+                for (key, value) in [
+                    ("enzyme", site.enzyme.name.clone()),
+                    ("recognition_sequence", site.enzyme.sequence.clone()),
+                    (
+                        "end_geometry",
+                        restriction_end_geometry_label(&site.enzyme).to_string(),
+                    ),
+                    ("forward_cut_0based", forward_cut.to_string()),
+                    ("reverse_cut_0based", reverse_cut.to_string()),
+                    ("gentle_generated", "restriction_site".to_string()),
+                ] {
+                    qualifiers.entry(key.to_string()).or_default().push(value);
+                }
+                if let Some(note) = site
+                    .enzyme
+                    .note
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    qualifiers
+                        .entry("note".to_string())
+                        .or_default()
+                        .push(note.to_string());
+                }
+                if !qualifiers_match(&qualifiers, &qualifier_filters) {
+                    continue;
+                }
+                matched_restriction_site_count = matched_restriction_site_count.saturating_add(1);
+                let (chrom, chrom_start_0based, chrom_end_0based_exclusive, coordinate_source) =
+                    match coordinate_mode {
+                        FeatureBedCoordinateMode::Auto | FeatureBedCoordinateMode::Local => (
+                            query.seq_id.clone(),
+                            start_0based,
+                            end_0based_exclusive,
+                            "local",
+                        ),
+                        FeatureBedCoordinateMode::Genomic => {
+                            skipped_missing_genomic_coordinates =
+                                skipped_missing_genomic_coordinates.saturating_add(1);
+                            continue;
+                        }
+                    };
+                let qualifiers_json =
+                    serde_json::to_string(&qualifiers).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not serialize restriction-site qualifiers for '{}' on '{}': {e}",
+                            site.enzyme.name, query.seq_id
+                        ),
+                    })?;
+                export_rows.push(FeatureBedExportRow {
+                    chrom,
+                    chrom_start_0based,
+                    chrom_end_0based_exclusive,
+                    name: site.enzyme.name.clone(),
+                    score_0_to_1000: 0,
+                    strand,
+                    kind: "restriction_site".to_string(),
+                    row_id: format!(
+                        "restriction_site:{}:{}:{}:{}",
+                        Self::normalize_id_token(&site.enzyme.name),
+                        start_0based,
+                        end_0based_exclusive,
+                        site_idx
+                    ),
+                    coordinate_source,
+                    qualifiers_json,
+                    sort_feature_id: usize::MAX / 2usize + site_idx,
+                    length_bp,
+                });
+            }
+        }
+
+        let matched_row_count =
+            matched_sequence_feature_count.saturating_add(matched_restriction_site_count);
+        export_rows.sort_by(|a, b| match query.sort_by {
+            SequenceFeatureSortBy::FeatureId => a
+                .sort_feature_id
+                .cmp(&b.sort_feature_id)
+                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                .then(
+                    a.chrom_end_0based_exclusive
+                        .cmp(&b.chrom_end_0based_exclusive),
+                )
+                .then(a.row_id.cmp(&b.row_id)),
+            SequenceFeatureSortBy::Start => a
+                .chrom_start_0based
+                .cmp(&b.chrom_start_0based)
+                .then(
+                    a.chrom_end_0based_exclusive
+                        .cmp(&b.chrom_end_0based_exclusive),
+                )
+                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                .then(a.row_id.cmp(&b.row_id)),
+            SequenceFeatureSortBy::End => a
+                .chrom_end_0based_exclusive
+                .cmp(&b.chrom_end_0based_exclusive)
+                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                .then(a.row_id.cmp(&b.row_id)),
+            SequenceFeatureSortBy::Kind => a
+                .kind
+                .to_ascii_uppercase()
+                .cmp(&b.kind.to_ascii_uppercase())
+                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                .then(
+                    a.chrom_end_0based_exclusive
+                        .cmp(&b.chrom_end_0based_exclusive),
+                )
+                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                .then(a.row_id.cmp(&b.row_id)),
+            SequenceFeatureSortBy::Length => a
+                .length_bp
+                .cmp(&b.length_bp)
+                .then(a.chrom_start_0based.cmp(&b.chrom_start_0based))
+                .then(
+                    a.chrom_end_0based_exclusive
+                        .cmp(&b.chrom_end_0based_exclusive),
+                )
+                .then(a.sort_feature_id.cmp(&b.sort_feature_id))
+                .then(a.row_id.cmp(&b.row_id)),
+        });
+        if query.descending {
+            export_rows.reverse();
+        }
+
+        let exportable_row_count = export_rows.len();
+        let offset = query.offset.min(exportable_row_count);
+        let selected_rows = match query.limit {
+            Some(limit) => export_rows
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .collect::<Vec<_>>(),
+            None => export_rows.into_iter().skip(offset).collect::<Vec<_>>(),
+        };
+        let local_coordinate_row_count = selected_rows
+            .iter()
+            .filter(|row| row.coordinate_source == "local")
+            .count();
+        let genomic_coordinate_row_count = selected_rows
+            .iter()
+            .filter(|row| row.coordinate_source == "genomic")
+            .count();
+
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create BED export '{}': {e}", path),
+        })?;
+        let mut writer = BufWriter::new(file);
+        for row in &selected_rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                bed_safe_field(&row.chrom),
+                row.chrom_start_0based,
+                row.chrom_end_0based_exclusive,
+                bed_safe_field(&row.name),
+                row.score_0_to_1000,
+                row.strand,
+                bed_safe_field(&row.kind),
+                bed_safe_field(&row.row_id),
+                row.coordinate_source,
+                bed_safe_field(&row.qualifiers_json),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write BED export '{}': {e}", path),
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush BED export '{}': {e}", path),
+        })?;
+
+        Ok(SequenceFeatureBedExportReport {
+            schema: FEATURE_BED_EXPORT_REPORT_SCHEMA.to_string(),
+            seq_id: query.seq_id.clone(),
+            path: path.to_string(),
+            coordinate_mode: coordinate_mode.as_str().to_string(),
+            include_restriction_sites,
+            restriction_enzyme_filters: normalized_restriction_filters,
+            bed_columns: bed_columns(),
+            matched_sequence_feature_count,
+            matched_restriction_site_count,
+            matched_row_count,
+            exportable_row_count,
+            exported_row_count: selected_rows.len(),
+            offset,
+            limit: query.limit,
+            local_coordinate_row_count,
+            genomic_coordinate_row_count,
+            skipped_missing_genomic_coordinates,
+            query,
         })
     }
 

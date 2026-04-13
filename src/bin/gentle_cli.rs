@@ -638,6 +638,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
   gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
   gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
+  gentle_cli [--state PATH|--project PATH] features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
+  gentle_cli [--state PATH|--project PATH] features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
+  gentle_cli [--state PATH|--project PATH] features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]\n\n  \
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
@@ -702,6 +705,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "ladders",
     "racks",
     "guides",
+    "features",
     "primers",
     "dotplot",
     "transcripts",
@@ -3606,6 +3610,21 @@ mod tests {
         assert!(matches!(
             routines_compare,
             ShellCommand::RoutinesCompare { .. }
+        ));
+
+        let features_export_bed = parse_shell_tokens(&[
+            "features".to_string(),
+            "export-bed".to_string(),
+            "seq_a".to_string(),
+            "/tmp/seq_a.features.bed".to_string(),
+            "--include-restriction-sites".to_string(),
+            "--restriction-enzyme".to_string(),
+            "EcoRI".to_string(),
+        ])
+        .expect("parse features export-bed");
+        assert!(matches!(
+            features_export_bed,
+            ShellCommand::FeaturesExportBed { .. }
         ));
 
         let ui_open = parse_shell_tokens(&[

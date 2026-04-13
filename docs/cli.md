@@ -119,6 +119,10 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_tfbs.json --output /tmp/gentle_pgex_tfbs_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_restriction.json --output /tmp/gentle_pgex_restriction_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
@@ -129,6 +133,12 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_render_svg_pgex_fasta_linear_tfbs.json` and
+  `request_render_svg_pgex_fasta_linear_restriction.json` are matching
+  follow-on DNA-window graphics routes on that same `pgex_fasta` state
+- `request_render_feature_expert_tp53_isoform_svg.json` is a follow-on expert
+  route after `request_workflow_tp53_isoform_architecture_online.json` (or an
+  equivalent prior isoform-panel import)
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
 
@@ -195,7 +205,19 @@ Included follow-on analysis/planning/graphics examples:
 - `request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after
     `request_workflow_file.json`
+- `request_render_svg_pgex_fasta_linear_tfbs.json`
+  - same `pgex_fasta` follow-on route, but with explicit JASPAR/TFBS display
+    filtering before linear SVG export
+- `request_render_svg_pgex_fasta_linear_restriction.json`
+  - same `pgex_fasta` follow-on route, but with explicit restriction display
+    settings before linear SVG export
 - `request_workflow_vkorc1_planning.json`
+- `request_workflow_tp53_isoform_architecture_online.json`
+  - runs the canonical TP53 isoform workflow example and collects the rendered
+    architecture SVG into the ClawBio bundle
+- `request_render_feature_expert_tp53_isoform_svg.json`
+  - renders the same TP53 isoform architecture through the shared
+    `render-feature-expert-svg ... isoform ...` expert route
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the
     ClawBio output bundle under `generated/...`
@@ -1209,6 +1231,9 @@ cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_f
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
 cargo run --bin gentle_cli -- shell 'set-param tfbs_display_min_llr_quantile 0.95'
+cargo run --bin gentle_cli -- shell 'set-param show_restriction_enzymes true'
+cargo run --bin gentle_cli -- shell 'set-param restriction_enzyme_display_mode "preferred_only"'
+cargo run --bin gentle_cli -- shell 'set-param preferred_restriction_enzymes ["EcoRI","BamHI"]'
 cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'
@@ -1367,6 +1392,8 @@ Shared shell command:
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+    - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+    - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -1579,6 +1606,20 @@ Shared shell command:
         qualifiers, and length
       - deterministic ordering (`feature_id|start|end|kind|length`) with
         `offset`/`limit` paging suitable for agent iteration
+    - Feature BED export helper notes (`features export-bed`):
+      - non-mutating structured result schema:
+        `gentle.sequence_feature_bed_export.v1`
+      - writes BED6 plus deterministic extra columns:
+        `kind`, `row_id`, `coordinate_source`, `qualifiers_json`
+      - exports all matching rows by default when `--limit` is omitted; use
+        `--offset`/`--limit` only when you want a bounded subset
+      - `--coordinate-mode auto` prefers genomic BED coordinates when features
+        carry `chromosome` + `genomic_start_1based` +
+        `genomic_end_1based`; otherwise it falls back to local `SEQ_ID`
+        coordinates
+      - `--include-restriction-sites` appends deterministic REBASE-derived
+        `restriction_site` rows, and `--restriction-enzyme NAME` can be
+        repeated to keep only selected enzymes
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
@@ -2849,6 +2890,31 @@ Supported TFBS display parameter names:
 - `tfbs_display_use_true_log_odds_quantile`
 - `tfbs_display_min_true_log_odds_quantile` (quantile in range `0.0..1.0`)
 
+Set restriction-enzyme display parameters shared by GUI and SVG export:
+
+```json
+{"SetParameter":{"name":"show_restriction_enzymes","value":true}}
+{"SetParameter":{"name":"restriction_enzyme_display_mode","value":"preferred_only"}}
+{"SetParameter":{"name":"preferred_restriction_enzymes","value":["EcoRI","BamHI"]}}
+```
+
+Supported restriction display parameter names:
+
+- `show_restriction_enzymes`
+- `show_restriction_enzyme_sites` (bool alias)
+- `restriction_enzyme_display_mode`
+- `restriction_display_mode` (string alias)
+- `preferred_restriction_enzymes` (CSV string or string array)
+- `preferred_restriction_enzymes_csv` (CSV string alias)
+- `restriction_preferred_enzymes` (CSV string or string array alias)
+
+Supported `restriction_enzyme_display_mode` values:
+
+- `preferred_only`
+- `preferred_and_unique`
+- `unique_only`
+- `all_in_view`
+
 Set VCF display filtering parameters shared by GUI and SVG export:
 
 ```json
@@ -2892,6 +2958,27 @@ Render sequence SVG (engine operation):
 ```json
 {"RenderSequenceSvg":{"seq_id":"pgex","mode":"Linear","path":"pgex.linear.svg"}}
 {"RenderSequenceSvg":{"seq_id":"pgex","mode":"Circular","path":"pgex.circular.svg"}}
+```
+
+Example: linear DNA-window export with explicit restriction display state:
+
+```json
+{"SetParameter":{"name":"show_restriction_enzymes","value":true}}
+{"SetParameter":{"name":"restriction_enzyme_display_mode","value":"preferred_only"}}
+{"SetParameter":{"name":"preferred_restriction_enzymes","value":["EcoRI","BamHI"]}}
+{"RenderSequenceSvg":{"seq_id":"pgex","mode":"Linear","path":"pgex.linear.restriction.svg"}}
+```
+
+Example: linear DNA-window export with explicit JASPAR/TFBS display state:
+
+```json
+{"AnnotateTfbs":{"seq_id":"pgex","motifs":["SP1","CTCF","TATAAA"],"min_llr_quantile":0.95,"clear_existing":true,"max_hits":200}}
+{"SetParameter":{"name":"show_tfbs","value":true}}
+{"SetParameter":{"name":"tfbs_display_use_llr_bits","value":false}}
+{"SetParameter":{"name":"tfbs_display_min_llr_quantile","value":0.98}}
+{"SetParameter":{"name":"tfbs_display_use_true_log_odds_quantile","value":true}}
+{"SetParameter":{"name":"tfbs_display_min_true_log_odds_quantile","value":0.98}}
+{"RenderSequenceSvg":{"seq_id":"pgex","mode":"Linear","path":"pgex.linear.tfbs.svg"}}
 ```
 
 Render RNA secondary-structure SVG (engine operation):
