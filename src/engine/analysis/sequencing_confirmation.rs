@@ -11,6 +11,7 @@
 //! - JSON/TSV-facing construct-confirmation exports and verdict logic
 
 use super::*;
+use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
 pub(super) struct ComputedPairwiseAlignment {
@@ -2597,6 +2598,458 @@ impl GentleEngine {
         )
     }
 
+    fn sequencing_confirmation_report_sequence_length_for_summary(
+        report: &SequencingConfirmationReport,
+    ) -> usize {
+        report
+            .targets
+            .iter()
+            .map(|row| row.end_0based_exclusive)
+            .chain(report.variants.iter().map(|row| row.end_0based_exclusive))
+            .chain(
+                report
+                    .reads
+                    .iter()
+                    .map(|row| row.best_alignment.aligned_target_end_0based_exclusive),
+            )
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn sequencing_confirmation_merged_evidence_spans_for_summary(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+    ) -> Vec<(usize, usize)> {
+        if sequence_length == 0 {
+            return Vec::new();
+        }
+        let mut spans = report
+            .reads
+            .iter()
+            .filter_map(|row| {
+                let start = row
+                    .best_alignment
+                    .aligned_target_start_0based
+                    .min(sequence_length);
+                let end = row
+                    .best_alignment
+                    .aligned_target_end_0based_exclusive
+                    .min(sequence_length);
+                (end > start).then_some((start, end))
+            })
+            .collect::<Vec<_>>();
+        spans.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for (start, end) in spans {
+            if let Some(last) = merged.last_mut()
+                && start <= last.1
+            {
+                last.1 = last.1.max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        merged
+    }
+
+    fn sequencing_confirmation_uncovered_spans_for_summary(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+    ) -> Vec<(usize, usize)> {
+        if sequence_length == 0 {
+            return Vec::new();
+        }
+        let merged = Self::sequencing_confirmation_merged_evidence_spans_for_summary(
+            report,
+            sequence_length,
+        );
+        if merged.is_empty() {
+            return vec![(0, sequence_length)];
+        }
+        let mut uncovered = Vec::new();
+        let mut cursor = 0usize;
+        for (start, end) in merged {
+            if start > cursor {
+                uncovered.push((cursor, start));
+            }
+            cursor = cursor.max(end);
+        }
+        if cursor < sequence_length {
+            uncovered.push((cursor, sequence_length));
+        }
+        uncovered
+    }
+
+    fn sequencing_confirmation_target_intersects_span_for_summary(
+        target: &SequencingConfirmationTargetResult,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> bool {
+        target.start_0based < end_0based_exclusive && start_0based < target.end_0based_exclusive
+    }
+
+    fn sequencing_confirmation_span_overlap_bp_for_summary(
+        start_a: usize,
+        end_a: usize,
+        start_b: usize,
+        end_b: usize,
+    ) -> usize {
+        let overlap_start = start_a.max(start_b);
+        let overlap_end = end_a.min(end_b);
+        overlap_end.saturating_sub(overlap_start)
+    }
+
+    fn format_sequencing_confirmation_unresolved_summary_markdown_from_report(
+        report: &SequencingConfirmationReport,
+        overlay_report: Option<&SequencingPrimerOverlayReport>,
+    ) -> String {
+        let unresolved_targets = report
+            .targets
+            .iter()
+            .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+            .collect::<Vec<_>>();
+        let unresolved_variants = report
+            .variants
+            .iter()
+            .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+            .collect::<Vec<_>>();
+        let sequence_length =
+            Self::sequencing_confirmation_report_sequence_length_for_summary(report);
+        let coverage_gaps =
+            Self::sequencing_confirmation_uncovered_spans_for_summary(report, sequence_length);
+        let mut text = String::new();
+        let _ = writeln!(text, "# Sequencing Confirmation Unresolved Review");
+        let _ = writeln!(text);
+        let _ = writeln!(text, "- report_id: `{}`", report.report_id);
+        let _ = writeln!(text, "- expected_seq_id: `{}`", report.expected_seq_id);
+        let _ = writeln!(
+            text,
+            "- baseline_seq_id: `{}`",
+            report.baseline_seq_id.as_deref().unwrap_or("-")
+        );
+        let _ = writeln!(
+            text,
+            "- overall_status: `{}`",
+            report.overall_status.as_str()
+        );
+        let _ = writeln!(text, "- reads: {}", report.read_seq_ids.len());
+        let _ = writeln!(text, "- traces: {}", report.trace_ids.len());
+        let _ = writeln!(text, "- evidence_rows: {}", report.reads.len());
+        let _ = writeln!(text, "- unresolved_targets: {}", unresolved_targets.len());
+        let _ = writeln!(text, "- unresolved_variants: {}", unresolved_variants.len());
+        let _ = writeln!(text, "- coverage_gaps: {}", coverage_gaps.len());
+        let _ = writeln!(text);
+        let _ = writeln!(text, "## Unresolved Targets");
+        if unresolved_targets.is_empty() {
+            let _ = writeln!(text, "- None.");
+        } else {
+            for target in &unresolved_targets {
+                let _ = writeln!(
+                    text,
+                    "- [{}] {} (`{}`, {}..{}, covered {}/{} bp)",
+                    target.status.as_str(),
+                    target.label,
+                    target.target_id,
+                    target.start_0based,
+                    target.end_0based_exclusive,
+                    target.covered_bp,
+                    target.target_length_bp
+                );
+                let _ = writeln!(text, "  - reason: {}", target.reason);
+                let _ = writeln!(
+                    text,
+                    "  - support_reads: {}",
+                    if target.support_read_ids.is_empty() {
+                        "-".to_string()
+                    } else {
+                        target.support_read_ids.join(", ")
+                    }
+                );
+                let _ = writeln!(
+                    text,
+                    "  - contradicting_reads: {}",
+                    if target.contradicting_read_ids.is_empty() {
+                        "-".to_string()
+                    } else {
+                        target.contradicting_read_ids.join(", ")
+                    }
+                );
+            }
+        }
+        let _ = writeln!(text);
+        let _ = writeln!(text, "## Unresolved Variants");
+        if unresolved_variants.is_empty() {
+            let _ = writeln!(text, "- None.");
+        } else {
+            for variant in &unresolved_variants {
+                let _ = writeln!(
+                    text,
+                    "- [{}] {} (`{}`, {}..{}, evidence=`{}`, trace=`{}`)",
+                    variant.classification.as_str(),
+                    variant.label,
+                    variant.variant_id,
+                    variant.start_0based,
+                    variant.end_0based_exclusive,
+                    if variant.evidence_id.trim().is_empty() {
+                        "-"
+                    } else {
+                        variant.evidence_id.as_str()
+                    },
+                    variant.trace_id.as_deref().unwrap_or("-")
+                );
+                let _ = writeln!(text, "  - reason: {}", variant.reason);
+                let _ = writeln!(
+                    text,
+                    "  - expected_vs_observed: `{}` -> `{}`",
+                    variant.expected_bases,
+                    if variant.observed_bases.is_empty() {
+                        "-"
+                    } else {
+                        variant.observed_bases.as_str()
+                    }
+                );
+            }
+        }
+        let _ = writeln!(text);
+        let _ = writeln!(text, "## Coverage Gaps");
+        if coverage_gaps.is_empty() {
+            let _ = writeln!(text, "- None.");
+        } else {
+            for (start, end) in &coverage_gaps {
+                let overlapping_targets = report
+                    .targets
+                    .iter()
+                    .filter(|row| {
+                        Self::sequencing_confirmation_target_intersects_span_for_summary(
+                            row, *start, *end,
+                        )
+                    })
+                    .map(|row| row.label.as_str())
+                    .collect::<Vec<_>>();
+                let _ = writeln!(
+                    text,
+                    "- `{}..{}` ({} bp)",
+                    start,
+                    end,
+                    end.saturating_sub(*start)
+                );
+                let _ = writeln!(
+                    text,
+                    "  - overlapping_targets: {}",
+                    if overlapping_targets.is_empty() {
+                        "-".to_string()
+                    } else {
+                        overlapping_targets.join(", ")
+                    }
+                );
+            }
+        }
+        if let Some(overlay) = overlay_report {
+            let _ = writeln!(text);
+            let _ = writeln!(text, "## Primer Guidance");
+            let _ = writeln!(
+                text,
+                "- overlay_source: primers={} report=`{}` min_3prime_anneal_bp={} predicted_read_length_bp={}",
+                overlay.primer_seq_ids.len(),
+                overlay.confirmation_report_id.as_deref().unwrap_or("-"),
+                overlay.min_3prime_anneal_bp,
+                overlay.predicted_read_length_bp
+            );
+            let unresolved_target_ids = unresolved_targets
+                .iter()
+                .map(|row| row.target_id.as_str())
+                .collect::<Vec<_>>();
+            let unresolved_variant_ids = unresolved_variants
+                .iter()
+                .map(|row| row.variant_id.as_str())
+                .collect::<Vec<_>>();
+            let target_guidance = overlay
+                .problem_guidance
+                .iter()
+                .filter(|row| {
+                    row.problem_kind == SequencingPrimerProblemKind::Target
+                        && unresolved_target_ids
+                            .iter()
+                            .any(|id| row.problem_id.eq_ignore_ascii_case(id))
+                })
+                .collect::<Vec<_>>();
+            let variant_guidance = overlay
+                .problem_guidance
+                .iter()
+                .filter(|row| {
+                    row.problem_kind == SequencingPrimerProblemKind::Variant
+                        && unresolved_variant_ids
+                            .iter()
+                            .any(|id| row.problem_id.eq_ignore_ascii_case(id))
+                })
+                .collect::<Vec<_>>();
+            let mut gap_guidance = coverage_gaps
+                .iter()
+                .filter_map(|(start, end)| {
+                    overlay
+                        .suggestions
+                        .iter()
+                        .filter_map(|row| {
+                            let overlap_bp =
+                                Self::sequencing_confirmation_span_overlap_bp_for_summary(
+                                    row.predicted_read_span_start_0based,
+                                    row.predicted_read_span_end_0based_exclusive,
+                                    *start,
+                                    *end,
+                                );
+                            (overlap_bp > 0).then_some((row, overlap_bp))
+                        })
+                        .max_by(|(left_row, left_overlap), (right_row, right_overlap)| {
+                            left_overlap
+                                .cmp(right_overlap)
+                                .then(
+                                    right_row
+                                        .covered_problem_target_ids
+                                        .len()
+                                        .cmp(&left_row.covered_problem_target_ids.len()),
+                                )
+                                .then(
+                                    right_row
+                                        .covered_problem_variant_ids
+                                        .len()
+                                        .cmp(&left_row.covered_problem_variant_ids.len()),
+                                )
+                                .then(left_row.primer_seq_id.cmp(&right_row.primer_seq_id))
+                        })
+                        .map(|(row, overlap_bp)| (*start, *end, row, overlap_bp))
+                })
+                .collect::<Vec<_>>();
+            gap_guidance.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+            let relevant_proposals = overlay
+                .proposals
+                .iter()
+                .filter(|row| match row.problem_kind {
+                    SequencingPrimerProblemKind::Target => unresolved_target_ids
+                        .iter()
+                        .any(|id| row.problem_id.eq_ignore_ascii_case(id)),
+                    SequencingPrimerProblemKind::Variant => unresolved_variant_ids
+                        .iter()
+                        .any(|id| row.problem_id.eq_ignore_ascii_case(id)),
+                })
+                .collect::<Vec<_>>();
+            if target_guidance.is_empty()
+                && variant_guidance.is_empty()
+                && gap_guidance.is_empty()
+                && relevant_proposals.is_empty()
+            {
+                let _ = writeln!(
+                    text,
+                    "- No primer guidance rows matched the unresolved loci."
+                );
+            } else {
+                let _ = writeln!(text, "### Recommended Existing Primers");
+                if target_guidance.is_empty() && variant_guidance.is_empty() {
+                    let _ = writeln!(text, "- None.");
+                } else {
+                    for row in target_guidance {
+                        let _ = writeln!(
+                            text,
+                            "- [target] {} -> primer=`{}` orientation=`{}` 3'_distance_bp={} reason={}",
+                            row.problem_label,
+                            row.recommended_primer_seq_id.as_deref().unwrap_or("-"),
+                            row.recommended_orientation
+                                .map(|value| value.as_str())
+                                .unwrap_or("-"),
+                            row.recommended_three_prime_distance_bp
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            row.reason
+                        );
+                    }
+                    for row in variant_guidance {
+                        let _ = writeln!(
+                            text,
+                            "- [variant] {} -> primer=`{}` orientation=`{}` 3'_distance_bp={} reason={}",
+                            row.problem_label,
+                            row.recommended_primer_seq_id.as_deref().unwrap_or("-"),
+                            row.recommended_orientation
+                                .map(|value| value.as_str())
+                                .unwrap_or("-"),
+                            row.recommended_three_prime_distance_bp
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                            row.reason
+                        );
+                    }
+                }
+                let _ = writeln!(text, "### Gap-Covering Existing Primers");
+                if gap_guidance.is_empty() {
+                    let _ = writeln!(text, "- None.");
+                } else {
+                    for (start, end, row, overlap_bp) in gap_guidance {
+                        let _ = writeln!(
+                            text,
+                            "- gap `{}..{}` -> primer=`{}` orientation=`{}` span=`{}..{}` overlap={} bp unresolved_targets={} unresolved_variants={}",
+                            start,
+                            end,
+                            row.primer_seq_id,
+                            row.orientation.as_str(),
+                            row.predicted_read_span_start_0based,
+                            row.predicted_read_span_end_0based_exclusive,
+                            overlap_bp,
+                            row.covered_problem_target_ids.len(),
+                            row.covered_problem_variant_ids.len()
+                        );
+                    }
+                }
+                let _ = writeln!(text, "### Fresh Primer Proposals");
+                if relevant_proposals.is_empty() {
+                    let _ = writeln!(text, "- None.");
+                } else {
+                    for row in relevant_proposals {
+                        let _ = writeln!(
+                            text,
+                            "- [{}] {} -> {} primer `{}` span=`{}..{}` tm={:.1}C reason={}",
+                            row.problem_kind.as_str(),
+                            row.problem_label,
+                            row.orientation.as_str(),
+                            row.primer_sequence,
+                            row.predicted_read_span_start_0based,
+                            row.predicted_read_span_end_0based_exclusive,
+                            row.tm_c,
+                            row.reason
+                        );
+                    }
+                }
+            }
+        }
+        if !report.warnings.is_empty() {
+            let _ = writeln!(text);
+            let _ = writeln!(text, "## Warnings");
+            for warning in &report.warnings {
+                let _ = writeln!(text, "- {}", warning);
+            }
+        }
+        text
+    }
+
+    pub fn format_sequencing_confirmation_unresolved_summary_markdown(
+        &self,
+        report_id: &str,
+    ) -> Result<String, EngineError> {
+        let report = self.get_sequencing_confirmation_report(report_id)?;
+        Ok(
+            Self::format_sequencing_confirmation_unresolved_summary_markdown_from_report(
+                &report, None,
+            ),
+        )
+    }
+
+    pub(crate) fn format_sequencing_confirmation_unresolved_summary_markdown_with_overlay(
+        report: &SequencingConfirmationReport,
+        overlay_report: Option<&SequencingPrimerOverlayReport>,
+    ) -> String {
+        Self::format_sequencing_confirmation_unresolved_summary_markdown_from_report(
+            report,
+            overlay_report,
+        )
+    }
+
     pub fn get_sequencing_confirmation_report(
         &self,
         report_id: &str,
@@ -2687,6 +3140,24 @@ impl GentleEngine {
             message: format!(
                 "Could not flush sequencing-confirmation TSV output '{}': {e}",
                 path
+            ),
+        })?;
+        Ok(report)
+    }
+
+    pub fn export_sequencing_confirmation_unresolved_summary_markdown(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<SequencingConfirmationReport, EngineError> {
+        let report = self.get_sequencing_confirmation_report(report_id)?;
+        let text = Self::format_sequencing_confirmation_unresolved_summary_markdown_from_report(
+            &report, None,
+        );
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write sequencing-confirmation unresolved summary to '{path}': {e}"
             ),
         })?;
         Ok(report)

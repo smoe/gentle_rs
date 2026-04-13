@@ -29,6 +29,17 @@ Current implementation snapshot:
   - coverage gaps can now stay selected as first-class inspection targets so
     unsupported regions remain reviewable even before they are formalized as
     explicit confirmation checkpoints
+  - selected coverage gaps now also summarize the nearest retained evidence
+    edges plus the best existing or proposed sequencing primers for closing
+    that unsupported interval
+  - saved-report review now also includes queue-style `Prev unresolved` /
+    `Next unresolved` navigation across unresolved targets, variants, and
+    coverage gaps
+  - saved-report review now also exposes a compact Markdown unresolved-summary
+    handoff path (`Copy summary` / `Export summary...`) so inspection results
+    can be carried into notes, issues, or agent follow-up without retyping;
+    matching sequencing-primer overlay guidance should ride along in the same
+    exported snapshot when available
   - sequencing-primer overlay suggestions through the same shared engine/shell
     path plus the GUI specialist
   - unresolved-locus guidance rows now rank the best existing primer hit for

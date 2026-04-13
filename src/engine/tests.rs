@@ -16085,6 +16085,243 @@ fn test_export_sequencing_confirmation_support_tsv_writes_target_rows() {
 }
 
 #[test]
+fn test_format_sequencing_confirmation_unresolved_summary_markdown_includes_queue_sections() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    engine
+        .upsert_sequencing_confirmation_report(SequencingConfirmationReport {
+            report_id: "handoff_summary".to_string(),
+            expected_seq_id: "construct".to_string(),
+            overall_status: SequencingConfirmationStatus::Contradicted,
+            reads: vec![SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                best_alignment: SequenceAlignmentReport {
+                    aligned_target_start_0based: 0,
+                    aligned_target_end_0based_exclusive: 6,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 8,
+                end_0based_exclusive: 12,
+                required: true,
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                covered_bp: 0,
+                target_length_bp: 4,
+                reason: "No retained evidence row spans the junction yet.".to_string(),
+                ..Default::default()
+            }],
+            variants: vec![SequencingConfirmationVariantRow {
+                variant_id: "variant_1".to_string(),
+                label: "Unexpected SNV".to_string(),
+                start_0based: 13,
+                end_0based_exclusive: 14,
+                observed_bases: "G".to_string(),
+                classification: SequencingConfirmationVariantClassification::UnexpectedDifference,
+                status: SequencingConfirmationStatus::Contradicted,
+                evidence_id: "evidence_a".to_string(),
+                reason: "Observed base differs from the expected construct.".to_string(),
+                ..Default::default()
+            }],
+            warnings: vec!["trace confidence unavailable".to_string()],
+            ..Default::default()
+        })
+        .expect("store sequencing-confirmation report");
+
+    let text = engine
+        .format_sequencing_confirmation_unresolved_summary_markdown("handoff_summary")
+        .expect("format unresolved summary");
+
+    assert!(text.contains("# Sequencing Confirmation Unresolved Review"));
+    assert!(text.contains("## Unresolved Targets"));
+    assert!(text.contains("Insert junction"));
+    assert!(text.contains("## Unresolved Variants"));
+    assert!(text.contains("Unexpected SNV"));
+    assert!(text.contains("## Coverage Gaps"));
+    assert!(text.contains("`6..14` (8 bp)"));
+    assert!(text.contains("## Warnings"));
+    assert!(text.contains("trace confidence unavailable"));
+}
+
+#[test]
+fn test_format_sequencing_confirmation_unresolved_summary_markdown_with_overlay_includes_primer_guidance()
+ {
+    let report = SequencingConfirmationReport {
+        report_id: "handoff_summary".to_string(),
+        expected_seq_id: "construct".to_string(),
+        overall_status: SequencingConfirmationStatus::Contradicted,
+        reads: vec![SequencingConfirmationReadResult {
+            evidence_id: "evidence_a".to_string(),
+            best_alignment: SequenceAlignmentReport {
+                aligned_target_start_0based: 0,
+                aligned_target_end_0based_exclusive: 6,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        targets: vec![SequencingConfirmationTargetResult {
+            target_id: "junction_1".to_string(),
+            label: "Insert junction".to_string(),
+            kind: SequencingConfirmationTargetKind::Junction,
+            start_0based: 8,
+            end_0based_exclusive: 12,
+            required: true,
+            status: SequencingConfirmationStatus::InsufficientEvidence,
+            covered_bp: 0,
+            target_length_bp: 4,
+            reason: "No retained evidence row spans the junction yet.".to_string(),
+            ..Default::default()
+        }],
+        variants: vec![SequencingConfirmationVariantRow {
+            variant_id: "variant_1".to_string(),
+            label: "Unexpected SNV".to_string(),
+            start_0based: 13,
+            end_0based_exclusive: 14,
+            observed_bases: "G".to_string(),
+            classification: SequencingConfirmationVariantClassification::UnexpectedDifference,
+            status: SequencingConfirmationStatus::Contradicted,
+            evidence_id: "evidence_a".to_string(),
+            reason: "Observed base differs from the expected construct.".to_string(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let overlay = SequencingPrimerOverlayReport {
+        schema: "gentle.sequencing_primer_overlay_report.v1".to_string(),
+        expected_seq_id: "construct".to_string(),
+        confirmation_report_id: Some("handoff_summary".to_string()),
+        min_3prime_anneal_bp: 20,
+        predicted_read_length_bp: 650,
+        primer_seq_ids: vec!["primer_existing".to_string()],
+        problem_guidance_count: 2,
+        problem_guidance: vec![
+            SequencingPrimerProblemGuidanceRow {
+                problem_id: "junction_1".to_string(),
+                problem_kind: SequencingPrimerProblemKind::Target,
+                problem_label: "Insert junction".to_string(),
+                problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+                recommended_primer_seq_id: Some("primer_existing".to_string()),
+                recommended_orientation: Some(SequencingPrimerOrientation::ForwardRead),
+                recommended_three_prime_distance_bp: Some(42),
+                candidate_count: 1,
+                reason: "Existing primer reaches the unresolved junction.".to_string(),
+                ..Default::default()
+            },
+            SequencingPrimerProblemGuidanceRow {
+                problem_id: "variant_1".to_string(),
+                problem_kind: SequencingPrimerProblemKind::Variant,
+                problem_label: "Unexpected SNV".to_string(),
+                problem_summary: "Observed base differs from the expected construct.".to_string(),
+                recommended_primer_seq_id: Some("primer_existing".to_string()),
+                recommended_orientation: Some(SequencingPrimerOrientation::ReverseRead),
+                recommended_three_prime_distance_bp: Some(18),
+                candidate_count: 1,
+                reason: "Existing primer puts the variant into read range.".to_string(),
+                ..Default::default()
+            },
+        ],
+        suggestion_count: 1,
+        suggestions: vec![SequencingPrimerOverlaySuggestion {
+            primer_seq_id: "primer_existing".to_string(),
+            orientation: SequencingPrimerOrientation::ForwardRead,
+            predicted_read_span_start_0based: 6,
+            predicted_read_span_end_0based_exclusive: 20,
+            covered_problem_target_ids: vec!["junction_1".to_string()],
+            covered_problem_variant_ids: vec!["variant_1".to_string()],
+            ..Default::default()
+        }],
+        proposal_count: 1,
+        proposals: vec![SequencingPrimerProposalRow {
+            proposal_id: "proposal_1".to_string(),
+            problem_id: "junction_1".to_string(),
+            problem_kind: SequencingPrimerProblemKind::Target,
+            problem_label: "Insert junction".to_string(),
+            problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+            orientation: SequencingPrimerOrientation::ForwardRead,
+            primer_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            anneal_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            anneal_start_0based: 0,
+            anneal_end_0based_exclusive: 20,
+            three_prime_position_0based: 19,
+            predicted_read_span_start_0based: 0,
+            predicted_read_span_end_0based_exclusive: 120,
+            three_prime_distance_bp: 19,
+            tm_c: 61.5,
+            gc_fraction: 0.5,
+            anneal_hits: 1,
+            reason: "Fresh primer would cover the unresolved junction directly.".to_string(),
+            ..Default::default()
+        }],
+    };
+
+    let text =
+        GentleEngine::format_sequencing_confirmation_unresolved_summary_markdown_with_overlay(
+            &report,
+            Some(&overlay),
+        );
+
+    assert!(text.contains("## Primer Guidance"));
+    assert!(text.contains("overlay_source: primers=1 report=`handoff_summary`"));
+    assert!(text.contains("### Recommended Existing Primers"));
+    assert!(text.contains("primer=`primer_existing`"));
+    assert!(text.contains("### Gap-Covering Existing Primers"));
+    assert!(text.contains("gap `6..14` -> primer=`primer_existing`"));
+    assert!(text.contains("### Fresh Primer Proposals"));
+    assert!(text.contains("ACGTACGTACGTACGTACGT"));
+}
+
+#[test]
+fn test_export_sequencing_confirmation_unresolved_summary_markdown_writes_markdown() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    engine
+        .upsert_sequencing_confirmation_report(SequencingConfirmationReport {
+            report_id: "handoff_export".to_string(),
+            expected_seq_id: "construct".to_string(),
+            overall_status: SequencingConfirmationStatus::InsufficientEvidence,
+            reads: vec![SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                best_alignment: SequenceAlignmentReport {
+                    aligned_target_start_0based: 0,
+                    aligned_target_end_0based_exclusive: 5,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 7,
+                end_0based_exclusive: 11,
+                required: true,
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                covered_bp: 0,
+                target_length_bp: 4,
+                reason: "Coverage stops before the junction.".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .expect("store sequencing-confirmation report");
+
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("unresolved_summary.md");
+    engine
+        .export_sequencing_confirmation_unresolved_summary_markdown(
+            "handoff_export",
+            output.to_str().expect("utf-8 path"),
+        )
+        .expect("export unresolved summary markdown");
+    let text = fs::read_to_string(output).expect("read markdown");
+    assert!(text.contains("# Sequencing Confirmation Unresolved Review"));
+    assert!(text.contains("handoff_export"));
+    assert!(text.contains("Insert junction"));
+}
+
+#[test]
 fn test_import_sequencing_trace_stores_record_without_mutating_sequences() {
     let fixture = sequencing_confirmation_fixture_path("3100.ab1");
     let mut state = ProjectState::default();

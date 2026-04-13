@@ -80,9 +80,11 @@ use crate::{
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
         SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
-        SequencingPrimerOverlayReport, SequencingReadOrientation, SequencingTraceRecord,
-        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsProgress, Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
+        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
+        SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
+        TfThresholdOverride, TfbsProgress, Workflow,
+        resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -545,6 +547,7 @@ struct SequencingConfirmationUiState {
     selected_evidence_id: String,
     selected_trace_id: String,
     selected_variant_id: String,
+    selected_review_focus_kind: Option<SequencingConfirmationReviewFocusKind>,
     selected_gap_start_0based: Option<usize>,
     selected_gap_end_0based_exclusive: Option<usize>,
     review_unresolved_first: bool,
@@ -585,6 +588,7 @@ impl Default for SequencingConfirmationUiState {
             selected_evidence_id: String::new(),
             selected_trace_id: String::new(),
             selected_variant_id: String::new(),
+            selected_review_focus_kind: None,
             selected_gap_start_0based: None,
             selected_gap_end_0based_exclusive: None,
             review_unresolved_first: false,
@@ -625,6 +629,15 @@ impl SequencingChromatogramFocusMode {
             Self::TraceBaseBrowser => "Trace base browser",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SequencingConfirmationReviewFocusKind {
+    Target,
+    Evidence,
+    Variant,
+    CoverageGap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1024,7 +1037,7 @@ mod tests {
     use super::{
         DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTask,
         RnaReadTaskMessage, RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
-        ViewSvgExportProfile,
+        SequencingConfirmationReviewFocusKind, ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -1040,12 +1053,14 @@ mod tests {
             RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-            RnaReadSeedFilterConfig, SequencingConfirmationReadResult,
+            RnaReadSeedFilterConfig, SequenceAlignmentReport, SequencingConfirmationReadResult,
             SequencingConfirmationReport, SequencingConfirmationStatus,
             SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
-            SequencingConfirmationVariantRow, SequencingTraceChannelData, SequencingTraceFormat,
-            SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-            parse_required_usize_or_formula_text_on_sequence,
+            SequencingConfirmationVariantRow, SequencingPrimerOrientation,
+            SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+            SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
+            SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
+            SplicingScopePreset, parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1599,6 +1614,100 @@ mod tests {
     }
 
     #[test]
+    fn sequencing_confirmation_unresolved_summary_markdown_uses_matching_primer_overlay() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(24)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        let report = SequencingConfirmationReport {
+            report_id: "confirm_report".to_string(),
+            expected_seq_id: "expected_seq".to_string(),
+            overall_status: SequencingConfirmationStatus::InsufficientEvidence,
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "junction_1".to_string(),
+                label: "Insert junction".to_string(),
+                kind: SequencingConfirmationTargetKind::Junction,
+                start_0based: 8,
+                end_0based_exclusive: 12,
+                required: true,
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                covered_bp: 0,
+                target_length_bp: 4,
+                reason: "Coverage stops before the junction.".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            crate::engine::SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "schema": "gentle.sequencing_confirmation_reports.v1",
+                "updated_at_unix_ms": 0,
+                "reports": {
+                    "confirm_report": serde_json::to_value(&report)
+                        .expect("serialize confirmation report")
+                }
+            }),
+        );
+        area.engine = Some(Arc::new(RwLock::new(GentleEngine::from_state(state))));
+        area.sequencing_confirmation_ui.primer_overlay_report =
+            Some(SequencingPrimerOverlayReport {
+                schema: "gentle.sequencing_primer_overlay_report.v1".to_string(),
+                expected_seq_id: "expected_seq".to_string(),
+                confirmation_report_id: Some("confirm_report".to_string()),
+                min_3prime_anneal_bp: 20,
+                predicted_read_length_bp: 650,
+                primer_seq_ids: vec!["primer_a".to_string()],
+                problem_guidance_count: 1,
+                problem_guidance: vec![crate::engine::SequencingPrimerProblemGuidanceRow {
+                    problem_id: "junction_1".to_string(),
+                    problem_kind: SequencingPrimerProblemKind::Target,
+                    problem_label: "Insert junction".to_string(),
+                    problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+                    recommended_primer_seq_id: Some("primer_a".to_string()),
+                    recommended_orientation: Some(SequencingPrimerOrientation::ForwardRead),
+                    recommended_three_prime_distance_bp: Some(42),
+                    candidate_count: 1,
+                    reason: "Closest existing sequencing primer covers the unresolved junction."
+                        .to_string(),
+                    ..Default::default()
+                }],
+                proposal_count: 1,
+                proposals: vec![SequencingPrimerProposalRow {
+                    proposal_id: "proposal_a".to_string(),
+                    problem_id: "junction_1".to_string(),
+                    problem_kind: SequencingPrimerProblemKind::Target,
+                    problem_label: "Insert junction".to_string(),
+                    problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+                    orientation: SequencingPrimerOrientation::ForwardRead,
+                    primer_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+                    anneal_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+                    anneal_start_0based: 0,
+                    anneal_end_0based_exclusive: 20,
+                    three_prime_position_0based: 19,
+                    predicted_read_span_start_0based: 0,
+                    predicted_read_span_end_0based_exclusive: 120,
+                    three_prime_distance_bp: 19,
+                    tm_c: 61.5,
+                    gc_fraction: 0.5,
+                    anneal_hits: 1,
+                    reason: "Fresh primer would cover the unresolved junction directly."
+                        .to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            });
+
+        let (_report, text) = area
+            .build_sequencing_confirmation_unresolved_summary_markdown("confirm_report")
+            .expect("build unresolved summary markdown");
+
+        assert!(text.contains("## Primer Guidance"));
+        assert!(text.contains("primer=`primer_a`"));
+        assert!(text.contains("Fresh Primer Proposals"));
+        assert!(text.contains("ACGTACGTACGTACGTACGT"));
+    }
+
+    #[test]
     fn sequencing_trace_curve_unavailable_message_guides_reimport_for_legacy_trace() {
         let trace = SequencingTraceRecord {
             schema: "gentle.sequencing_trace_record.v1".to_string(),
@@ -1939,6 +2048,185 @@ mod tests {
             area.sequencing_confirmation_ui
                 .selected_gap_end_0based_exclusive,
             Some(12)
+        );
+    }
+
+    #[test]
+    fn sequencing_confirmation_gap_flanking_reads_pick_nearest_edges() {
+        let report = SequencingConfirmationReport {
+            reads: vec![
+                SequencingConfirmationReadResult {
+                    evidence_id: "left_far".to_string(),
+                    best_alignment: SequenceAlignmentReport {
+                        aligned_target_start_0based: 0,
+                        aligned_target_end_0based_exclusive: 8,
+                        identity_fraction: 0.90,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                SequencingConfirmationReadResult {
+                    evidence_id: "left_near".to_string(),
+                    best_alignment: SequenceAlignmentReport {
+                        aligned_target_start_0based: 3,
+                        aligned_target_end_0based_exclusive: 11,
+                        identity_fraction: 0.95,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                SequencingConfirmationReadResult {
+                    evidence_id: "right_near".to_string(),
+                    best_alignment: SequenceAlignmentReport {
+                        aligned_target_start_0based: 18,
+                        aligned_target_end_0based_exclusive: 24,
+                        identity_fraction: 0.91,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                SequencingConfirmationReadResult {
+                    evidence_id: "right_far".to_string(),
+                    best_alignment: SequenceAlignmentReport {
+                        aligned_target_start_0based: 24,
+                        aligned_target_end_0based_exclusive: 30,
+                        identity_fraction: 0.99,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let (left, right) =
+            MainAreaDna::sequencing_confirmation_gap_flanking_reads(&report, 12, 18);
+
+        assert_eq!(left.expect("left flank").evidence_id, "left_near");
+        assert_eq!(right.expect("right flank").evidence_id, "right_near");
+    }
+
+    #[test]
+    fn sequencing_confirmation_gap_primer_suggestions_prioritize_covering_spans() {
+        let overlay = SequencingPrimerOverlayReport {
+            suggestions: vec![
+                SequencingPrimerOverlaySuggestion {
+                    primer_seq_id: "primer_overlap".to_string(),
+                    orientation: SequencingPrimerOrientation::ForwardRead,
+                    three_prime_position_0based: 9,
+                    predicted_read_span_start_0based: 8,
+                    predicted_read_span_end_0based_exclusive: 20,
+                    ..Default::default()
+                },
+                SequencingPrimerOverlaySuggestion {
+                    primer_seq_id: "primer_miss".to_string(),
+                    orientation: SequencingPrimerOrientation::ReverseRead,
+                    three_prime_position_0based: 2,
+                    predicted_read_span_start_0based: 0,
+                    predicted_read_span_end_0based_exclusive: 6,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let ranked = MainAreaDna::sequencing_confirmation_gap_primer_suggestions(&overlay, 10, 14);
+
+        assert_eq!(ranked[0].primer_seq_id, "primer_overlap");
+    }
+
+    #[test]
+    fn sequencing_confirmation_unresolved_review_queue_tracks_targets_variants_and_gaps() {
+        let report = SequencingConfirmationReport {
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "target_a".to_string(),
+                label: "Target A".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 2,
+                end_0based_exclusive: 8,
+                ..Default::default()
+            }],
+            reads: vec![SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                best_alignment: SequenceAlignmentReport {
+                    aligned_target_start_0based: 0,
+                    aligned_target_end_0based_exclusive: 6,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            variants: vec![SequencingConfirmationVariantRow {
+                variant_id: "variant_a".to_string(),
+                label: "Variant A".to_string(),
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                start_0based: 10,
+                end_0based_exclusive: 11,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let queue = MainAreaDna::sequencing_confirmation_unresolved_review_queue(&report, 20);
+
+        assert_eq!(
+            queue,
+            vec![
+                SequencingConfirmationOverviewSelection::Target("target_a".to_string()),
+                SequencingConfirmationOverviewSelection::Variant("variant_a".to_string()),
+                SequencingConfirmationOverviewSelection::CoverageGap(6, 20),
+            ]
+        );
+    }
+
+    #[test]
+    fn sequencing_confirmation_step_unresolved_focus_advances_from_target_to_variant() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
+        let report = SequencingConfirmationReport {
+            targets: vec![SequencingConfirmationTargetResult {
+                target_id: "target_a".to_string(),
+                label: "Target A".to_string(),
+                status: SequencingConfirmationStatus::Contradicted,
+                start_0based: 2,
+                end_0based_exclusive: 8,
+                contradicting_read_ids: vec!["evidence_a".to_string()],
+                ..Default::default()
+            }],
+            reads: vec![SequencingConfirmationReadResult {
+                evidence_id: "evidence_a".to_string(),
+                covered_target_ids: vec!["target_a".to_string()],
+                best_alignment: SequenceAlignmentReport {
+                    aligned_target_start_0based: 0,
+                    aligned_target_end_0based_exclusive: 6,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            variants: vec![SequencingConfirmationVariantRow {
+                variant_id: "variant_a".to_string(),
+                label: "Variant A".to_string(),
+                status: SequencingConfirmationStatus::InsufficientEvidence,
+                target_id: Some("target_a".to_string()),
+                evidence_id: "evidence_a".to_string(),
+                start_0based: 10,
+                end_0based_exclusive: 11,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        area.sequencing_confirmation_sync_target_selection(&report, "target_a");
+
+        let moved = area.sequencing_confirmation_step_unresolved_focus(&report, 20, 1);
+
+        assert!(moved);
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_review_focus_kind,
+            Some(SequencingConfirmationReviewFocusKind::Variant)
+        );
+        assert_eq!(
+            area.sequencing_confirmation_ui.selected_variant_id,
+            "variant_a"
         );
     }
 
@@ -27641,6 +27929,64 @@ impl MainAreaDna {
         })
     }
 
+    fn sequencing_confirmation_overlay_report_for_expected_seq(
+        &self,
+        expected_seq_id: &str,
+    ) -> Option<&SequencingPrimerOverlayReport> {
+        let expected_seq_id = expected_seq_id.trim();
+        if expected_seq_id.is_empty() {
+            return None;
+        }
+        self.sequencing_confirmation_ui
+            .primer_overlay_report
+            .as_ref()
+            .filter(|overlay| {
+                overlay
+                    .expected_seq_id
+                    .eq_ignore_ascii_case(expected_seq_id)
+            })
+    }
+
+    fn sequencing_confirmation_report_matched_primer_overlay_report(
+        &self,
+        expected_seq_id: &str,
+        report_id: &str,
+    ) -> Option<&SequencingPrimerOverlayReport> {
+        let report_id = report_id.trim();
+        self.sequencing_confirmation_overlay_report_for_expected_seq(expected_seq_id)
+            .filter(|overlay| {
+                overlay
+                    .confirmation_report_id
+                    .as_deref()
+                    .is_none_or(|id| id.eq_ignore_ascii_case(report_id))
+            })
+    }
+
+    fn build_sequencing_confirmation_unresolved_summary_markdown(
+        &self,
+        report_id: &str,
+    ) -> Result<(SequencingConfirmationReport, String), EngineError> {
+        let Some(engine) = self.engine.clone() else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No engine attached".to_string(),
+            });
+        };
+        let report = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_sequencing_confirmation_report(report_id)?;
+        let overlay = self.sequencing_confirmation_report_matched_primer_overlay_report(
+            report.expected_seq_id.as_str(),
+            report.report_id.as_str(),
+        );
+        let text =
+            GentleEngine::format_sequencing_confirmation_unresolved_summary_markdown_with_overlay(
+                &report, overlay,
+            );
+        Ok((report, text))
+    }
+
     fn sequencing_trace_summaries(&self) -> Vec<SequencingTraceSummary> {
         let expected_seq_id = self.seq_id.as_deref().unwrap_or("");
         let Some(engine) = self.engine.as_ref() else {
@@ -28358,6 +28704,74 @@ impl MainAreaDna {
             Err(err) => {
                 self.op_status = format!(
                     "Could not export sequencing-confirmation support TSV '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn copy_sequencing_confirmation_unresolved_summary(
+        &mut self,
+        report_id: &str,
+        ctx: &egui::Context,
+    ) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Sequencing-confirmation report_id is empty".to_string();
+            return;
+        }
+        match self.build_sequencing_confirmation_unresolved_summary_markdown(report_id) {
+            Ok((report, text)) => {
+                ctx.copy_text(text);
+                self.op_status = format!(
+                    "Copied unresolved sequencing-confirmation summary for '{}'",
+                    report.report_id
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not build unresolved sequencing-confirmation summary '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn export_sequencing_confirmation_unresolved_summary_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Sequencing-confirmation report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.seq_confirm_unresolved.md");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("Markdown", &["md", "txt"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status =
+                "Sequencing-confirmation unresolved-summary export canceled".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        match self.build_sequencing_confirmation_unresolved_summary_markdown(report_id) {
+            Ok((report, text)) => match fs::write(&path, text) {
+                Ok(()) => {
+                    self.op_status = format!(
+                        "Exported unresolved sequencing-confirmation summary '{}' to {}",
+                        report.report_id, path_text
+                    );
+                }
+                Err(err) => {
+                    self.op_status = format!(
+                        "Could not write unresolved sequencing-confirmation summary '{}' to {}: {}",
+                        report.report_id, path_text, err
+                    );
+                }
+            },
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export unresolved sequencing-confirmation summary '{report_id}': {}",
                     err.message
                 );
             }
@@ -29616,6 +30030,143 @@ impl MainAreaDna {
             .find(|row| *row == selected)
     }
 
+    fn sequencing_confirmation_span_overlap_bp(
+        start_a: usize,
+        end_a: usize,
+        start_b: usize,
+        end_b: usize,
+    ) -> usize {
+        let overlap_start = start_a.max(start_b);
+        let overlap_end = end_a.min(end_b);
+        overlap_end.saturating_sub(overlap_start)
+    }
+
+    fn sequencing_confirmation_gap_center_0based(
+        gap_start_0based: usize,
+        gap_end_0based_exclusive: usize,
+    ) -> usize {
+        gap_start_0based + gap_end_0based_exclusive.saturating_sub(gap_start_0based) / 2
+    }
+
+    fn sequencing_confirmation_gap_flanking_reads<'a>(
+        report: &'a SequencingConfirmationReport,
+        gap_start_0based: usize,
+        gap_end_0based_exclusive: usize,
+    ) -> (
+        Option<&'a SequencingConfirmationReadResult>,
+        Option<&'a SequencingConfirmationReadResult>,
+    ) {
+        let left = report
+            .reads
+            .iter()
+            .filter(|row| {
+                row.best_alignment.aligned_target_end_0based_exclusive <= gap_start_0based
+            })
+            .max_by(|a, b| {
+                a.best_alignment
+                    .aligned_target_end_0based_exclusive
+                    .cmp(&b.best_alignment.aligned_target_end_0based_exclusive)
+                    .then_with(|| {
+                        a.best_alignment
+                            .identity_fraction
+                            .partial_cmp(&b.best_alignment.identity_fraction)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .then(a.evidence_id.cmp(&b.evidence_id))
+            });
+        let right = report
+            .reads
+            .iter()
+            .filter(|row| {
+                row.best_alignment.aligned_target_start_0based >= gap_end_0based_exclusive
+            })
+            .min_by(|a, b| {
+                a.best_alignment
+                    .aligned_target_start_0based
+                    .cmp(&b.best_alignment.aligned_target_start_0based)
+                    .then_with(|| {
+                        b.best_alignment
+                            .identity_fraction
+                            .partial_cmp(&a.best_alignment.identity_fraction)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .then(a.evidence_id.cmp(&b.evidence_id))
+            });
+        (left, right)
+    }
+
+    fn sequencing_confirmation_gap_primer_suggestions<'a>(
+        overlay_report: &'a SequencingPrimerOverlayReport,
+        gap_start_0based: usize,
+        gap_end_0based_exclusive: usize,
+    ) -> Vec<&'a SequencingPrimerOverlaySuggestion> {
+        let gap_center = Self::sequencing_confirmation_gap_center_0based(
+            gap_start_0based,
+            gap_end_0based_exclusive,
+        );
+        let mut rows = overlay_report.suggestions.iter().collect::<Vec<_>>();
+        rows.sort_by(|a, b| {
+            let overlap_a = Self::sequencing_confirmation_span_overlap_bp(
+                a.predicted_read_span_start_0based,
+                a.predicted_read_span_end_0based_exclusive,
+                gap_start_0based,
+                gap_end_0based_exclusive,
+            );
+            let overlap_b = Self::sequencing_confirmation_span_overlap_bp(
+                b.predicted_read_span_start_0based,
+                b.predicted_read_span_end_0based_exclusive,
+                gap_start_0based,
+                gap_end_0based_exclusive,
+            );
+            overlap_b
+                .cmp(&overlap_a)
+                .then(
+                    a.three_prime_position_0based
+                        .abs_diff(gap_center)
+                        .cmp(&b.three_prime_position_0based.abs_diff(gap_center)),
+                )
+                .then(a.primer_seq_id.cmp(&b.primer_seq_id))
+                .then(a.orientation.as_str().cmp(b.orientation.as_str()))
+        });
+        rows
+    }
+
+    fn sequencing_confirmation_gap_primer_proposals<'a>(
+        overlay_report: &'a SequencingPrimerOverlayReport,
+        gap_start_0based: usize,
+        gap_end_0based_exclusive: usize,
+    ) -> Vec<&'a SequencingPrimerProposalRow> {
+        let gap_center = Self::sequencing_confirmation_gap_center_0based(
+            gap_start_0based,
+            gap_end_0based_exclusive,
+        );
+        let mut rows = overlay_report.proposals.iter().collect::<Vec<_>>();
+        rows.sort_by(|a, b| {
+            let overlap_a = Self::sequencing_confirmation_span_overlap_bp(
+                a.predicted_read_span_start_0based,
+                a.predicted_read_span_end_0based_exclusive,
+                gap_start_0based,
+                gap_end_0based_exclusive,
+            );
+            let overlap_b = Self::sequencing_confirmation_span_overlap_bp(
+                b.predicted_read_span_start_0based,
+                b.predicted_read_span_end_0based_exclusive,
+                gap_start_0based,
+                gap_end_0based_exclusive,
+            );
+            overlap_b
+                .cmp(&overlap_a)
+                .then(
+                    a.three_prime_position_0based
+                        .abs_diff(gap_center)
+                        .cmp(&b.three_prime_position_0based.abs_diff(gap_center)),
+                )
+                .then(a.three_prime_distance_bp.cmp(&b.three_prime_distance_bp))
+                .then(a.problem_id.cmp(&b.problem_id))
+        });
+        rows
+    }
+
     fn sequencing_confirmation_overview_x(
         rect: egui::Rect,
         sequence_length: usize,
@@ -29669,6 +30220,8 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_evidence_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_review_focus_kind =
+            Some(SequencingConfirmationReviewFocusKind::Evidence);
         self.sequencing_confirmation_ui.selected_gap_start_0based = None;
         self.sequencing_confirmation_ui
             .selected_gap_end_0based_exclusive = None;
@@ -29708,6 +30261,8 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_variant_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_review_focus_kind =
+            Some(SequencingConfirmationReviewFocusKind::Variant);
         self.sequencing_confirmation_ui.selected_gap_start_0based = None;
         self.sequencing_confirmation_ui
             .selected_gap_end_0based_exclusive = None;
@@ -29723,6 +30278,8 @@ impl MainAreaDna {
         } else if !variant.evidence_id.trim().is_empty() {
             self.sequencing_confirmation_sync_evidence_selection(report, &variant.evidence_id);
             self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
+            self.sequencing_confirmation_ui.selected_review_focus_kind =
+                Some(SequencingConfirmationReviewFocusKind::Variant);
         }
     }
 
@@ -29739,6 +30296,8 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_target_id.clear();
             return;
         };
+        self.sequencing_confirmation_ui.selected_review_focus_kind =
+            Some(SequencingConfirmationReviewFocusKind::Target);
         self.sequencing_confirmation_ui.selected_gap_start_0based = None;
         self.sequencing_confirmation_ui
             .selected_gap_end_0based_exclusive = None;
@@ -29767,6 +30326,8 @@ impl MainAreaDna {
         if let Some(evidence_id) = preferred_evidence_id.as_deref() {
             self.sequencing_confirmation_sync_evidence_selection(report, evidence_id);
             self.sequencing_confirmation_ui.selected_target_id = target.target_id.clone();
+            self.sequencing_confirmation_ui.selected_review_focus_kind =
+                Some(SequencingConfirmationReviewFocusKind::Target);
         }
         if let Some(variant) = preferred_variant {
             self.sequencing_confirmation_ui.selected_variant_id = variant.variant_id.clone();
@@ -29798,6 +30359,8 @@ impl MainAreaDna {
                 start_0based,
                 end_0based_exclusive,
             ) => {
+                self.sequencing_confirmation_ui.selected_review_focus_kind =
+                    Some(SequencingConfirmationReviewFocusKind::CoverageGap);
                 self.sequencing_confirmation_ui.selected_gap_start_0based = Some(start_0based);
                 self.sequencing_confirmation_ui
                     .selected_gap_end_0based_exclusive = Some(end_0based_exclusive);
@@ -29816,6 +30379,139 @@ impl MainAreaDna {
                 }
             }
         }
+    }
+
+    fn sequencing_confirmation_unresolved_review_queue(
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+    ) -> Vec<SequencingConfirmationOverviewSelection> {
+        let mut queue = Self::sequencing_confirmation_target_review_rows(report, true)
+            .into_iter()
+            .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+            .map(|row| SequencingConfirmationOverviewSelection::Target(row.target_id.clone()))
+            .collect::<Vec<_>>();
+        queue.extend(
+            Self::sequencing_confirmation_variant_review_rows(report, true)
+                .into_iter()
+                .filter(|row| row.status != SequencingConfirmationStatus::Confirmed)
+                .map(|row| {
+                    SequencingConfirmationOverviewSelection::Variant(row.variant_id.clone())
+                }),
+        );
+        queue.extend(
+            Self::sequencing_confirmation_uncovered_spans(report, sequence_length)
+                .into_iter()
+                .map(|(start, end)| {
+                    SequencingConfirmationOverviewSelection::CoverageGap(start, end)
+                }),
+        );
+        queue
+    }
+
+    fn sequencing_confirmation_current_unresolved_focus(
+        report: &SequencingConfirmationReport,
+        selected_target_id: &str,
+        selected_variant_id: &str,
+        selected_gap: Option<(usize, usize)>,
+        selected_focus_kind: Option<SequencingConfirmationReviewFocusKind>,
+    ) -> Option<SequencingConfirmationOverviewSelection> {
+        let unresolved_target = report
+            .targets
+            .iter()
+            .find(|row| {
+                row.status != SequencingConfirmationStatus::Confirmed
+                    && row
+                        .target_id
+                        .eq_ignore_ascii_case(selected_target_id.trim())
+            })
+            .map(|row| SequencingConfirmationOverviewSelection::Target(row.target_id.clone()));
+        let unresolved_variant = report
+            .variants
+            .iter()
+            .find(|row| {
+                row.status != SequencingConfirmationStatus::Confirmed
+                    && row
+                        .variant_id
+                        .eq_ignore_ascii_case(selected_variant_id.trim())
+            })
+            .map(|row| SequencingConfirmationOverviewSelection::Variant(row.variant_id.clone()));
+        let unresolved_gap = selected_gap
+            .map(|(start, end)| SequencingConfirmationOverviewSelection::CoverageGap(start, end));
+        match selected_focus_kind {
+            Some(SequencingConfirmationReviewFocusKind::CoverageGap) => unresolved_gap,
+            Some(SequencingConfirmationReviewFocusKind::Variant) => {
+                unresolved_variant.or(unresolved_target).or(unresolved_gap)
+            }
+            Some(SequencingConfirmationReviewFocusKind::Target) => {
+                unresolved_target.or(unresolved_variant).or(unresolved_gap)
+            }
+            Some(SequencingConfirmationReviewFocusKind::Evidence) => {
+                unresolved_variant.or(unresolved_target).or(unresolved_gap)
+            }
+            None => unresolved_gap.or(unresolved_variant).or(unresolved_target),
+        }
+    }
+
+    fn sequencing_confirmation_unresolved_focus_label(
+        report: &SequencingConfirmationReport,
+        focus: &SequencingConfirmationOverviewSelection,
+    ) -> String {
+        match focus {
+            SequencingConfirmationOverviewSelection::Target(target_id) => report
+                .targets
+                .iter()
+                .find(|row| row.target_id.eq_ignore_ascii_case(target_id.trim()))
+                .map(|row| format!("Target: {}", row.label))
+                .unwrap_or_else(|| format!("Target: {target_id}")),
+            SequencingConfirmationOverviewSelection::Variant(variant_id) => report
+                .variants
+                .iter()
+                .find(|row| row.variant_id.eq_ignore_ascii_case(variant_id.trim()))
+                .map(|row| format!("Variant: {}", row.label))
+                .unwrap_or_else(|| format!("Variant: {variant_id}")),
+            SequencingConfirmationOverviewSelection::CoverageGap(start, end) => {
+                format!("Coverage gap: {start}..{end}")
+            }
+            SequencingConfirmationOverviewSelection::Evidence(evidence_id) => {
+                format!("Evidence: {evidence_id}")
+            }
+        }
+    }
+
+    fn sequencing_confirmation_step_unresolved_focus(
+        &mut self,
+        report: &SequencingConfirmationReport,
+        sequence_length: usize,
+        direction: isize,
+    ) -> bool {
+        let queue = Self::sequencing_confirmation_unresolved_review_queue(report, sequence_length);
+        if queue.is_empty() {
+            return false;
+        }
+        let current_focus = Self::sequencing_confirmation_current_unresolved_focus(
+            report,
+            &self.sequencing_confirmation_ui.selected_target_id,
+            &self.sequencing_confirmation_ui.selected_variant_id,
+            Self::sequencing_confirmation_selected_coverage_gap(
+                report,
+                sequence_length,
+                self.sequencing_confirmation_ui.selected_gap_start_0based,
+                self.sequencing_confirmation_ui
+                    .selected_gap_end_0based_exclusive,
+            ),
+            self.sequencing_confirmation_ui.selected_review_focus_kind,
+        );
+        let target_index = match current_focus
+            .as_ref()
+            .and_then(|focus| queue.iter().position(|row| row == focus))
+        {
+            Some(index) if direction < 0 => index.saturating_sub(1),
+            Some(index) if direction > 0 => (index + 1).min(queue.len().saturating_sub(1)),
+            Some(index) => index,
+            None if direction < 0 => queue.len().saturating_sub(1),
+            None => 0,
+        };
+        self.sequencing_confirmation_apply_overview_selection(report, queue[target_index].clone())
     }
 
     fn render_sequencing_confirmation_construct_overview(
@@ -30339,6 +31035,11 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_gap_start_0based = None;
             self.sequencing_confirmation_ui
                 .selected_gap_end_0based_exclusive = None;
+            if self.sequencing_confirmation_ui.selected_review_focus_kind
+                == Some(SequencingConfirmationReviewFocusKind::CoverageGap)
+            {
+                self.sequencing_confirmation_ui.selected_review_focus_kind = None;
+            }
         }
         if let Some(trace) = selected_trace.as_ref() {
             let clamped = Self::sequencing_trace_clamp_base_index(
@@ -31709,6 +32410,35 @@ impl MainAreaDna {
                         .clone();
                     self.export_sequencing_confirmation_support_tsv_dialog(&report_id);
                 }
+                if ui
+                    .button("Copy summary")
+                    .on_hover_text(
+                        "Copy a compact Markdown summary of unresolved targets, variants, and coverage gaps from the selected report.",
+                    )
+                    .clicked()
+                {
+                    let report_id = self
+                        .sequencing_confirmation_ui
+                        .selected_report_id
+                        .clone();
+                    self.copy_sequencing_confirmation_unresolved_summary(
+                        &report_id,
+                        ui.ctx(),
+                    );
+                }
+                if ui
+                    .button("Export summary...")
+                    .on_hover_text(
+                        "Export a compact Markdown summary of unresolved targets, variants, and coverage gaps from the selected report.",
+                    )
+                    .clicked()
+                {
+                    let report_id = self
+                        .sequencing_confirmation_ui
+                        .selected_report_id
+                        .clone();
+                    self.export_sequencing_confirmation_unresolved_summary_dialog(&report_id);
+                }
                 });
                 if let Some(report) = selected_report.as_ref() {
                     columns[1].group(|ui| {
@@ -31784,6 +32514,73 @@ impl MainAreaDna {
                             self.save_engine_ops_state();
                         }
                     }
+                    let unresolved_queue = Self::sequencing_confirmation_unresolved_review_queue(
+                        report,
+                        report_sequence_length,
+                    );
+                    let current_unresolved_focus =
+                        Self::sequencing_confirmation_current_unresolved_focus(
+                            report,
+                            &self.sequencing_confirmation_ui.selected_target_id,
+                            &self.sequencing_confirmation_ui.selected_variant_id,
+                            selected_gap,
+                            self.sequencing_confirmation_ui.selected_review_focus_kind,
+                        );
+                    let current_unresolved_index = current_unresolved_focus
+                        .as_ref()
+                        .and_then(|focus| unresolved_queue.iter().position(|row| row == focus));
+                    columns[1].horizontal_wrapped(|ui| {
+                        ui.label("Unresolved review");
+                        if unresolved_queue.is_empty() {
+                            ui.small("all tracked loci currently look resolved");
+                        } else {
+                            if let Some(index) = current_unresolved_index {
+                                ui.small(format!("{}/{}", index + 1, unresolved_queue.len()));
+                                if let Some(focus) = unresolved_queue.get(index) {
+                                    ui.separator();
+                                    ui.small(Self::sequencing_confirmation_unresolved_focus_label(
+                                        report, focus,
+                                    ));
+                                }
+                            } else {
+                                ui.small(format!("0/{}", unresolved_queue.len()));
+                                ui.separator();
+                                ui.small("Choose Next unresolved to start walking the queue.");
+                            }
+                            let prev_enabled =
+                                current_unresolved_index.is_none_or(|index| index > 0);
+                            if ui
+                                .add_enabled(prev_enabled, egui::Button::new("Prev unresolved"))
+                                .on_hover_text(
+                                    "Move the saved-report review focus to the previous unresolved target, variant, or coverage gap.",
+                                )
+                                .clicked()
+                                && self.sequencing_confirmation_step_unresolved_focus(
+                                    report,
+                                    report_sequence_length,
+                                    -1,
+                                )
+                            {
+                                self.save_engine_ops_state();
+                            }
+                            let next_enabled = current_unresolved_index
+                                .is_none_or(|index| index + 1 < unresolved_queue.len());
+                            if ui
+                                .add_enabled(next_enabled, egui::Button::new("Next unresolved"))
+                                .on_hover_text(
+                                    "Move the saved-report review focus to the next unresolved target, variant, or coverage gap.",
+                                )
+                                .clicked()
+                                && self.sequencing_confirmation_step_unresolved_focus(
+                                    report,
+                                    report_sequence_length,
+                                    1,
+                                )
+                            {
+                                self.save_engine_ops_state();
+                            }
+                        }
+                    });
                     let unresolved_targets = report
                         .targets
                         .iter()
@@ -31878,6 +32675,15 @@ impl MainAreaDna {
                         });
                     }
                     if let Some((gap_start, gap_end)) = selected_gap {
+                        let primer_overlay_report = self
+                            .sequencing_confirmation_overlay_report_for_expected_seq(
+                                expected_seq_id.as_str(),
+                            );
+                        let report_matched_primer_overlay_report = self
+                            .sequencing_confirmation_report_matched_primer_overlay_report(
+                                expected_seq_id.as_str(),
+                                report.report_id.as_str(),
+                            );
                         let overlapping_targets = report
                             .targets
                             .iter()
@@ -31887,6 +32693,40 @@ impl MainAreaDna {
                                 )
                             })
                             .collect::<Vec<_>>();
+                        let (left_flank, right_flank) =
+                            Self::sequencing_confirmation_gap_flanking_reads(
+                                report, gap_start, gap_end,
+                            );
+                        let gap_suggestions = primer_overlay_report
+                            .map(|overlay| {
+                                Self::sequencing_confirmation_gap_primer_suggestions(
+                                    overlay, gap_start, gap_end,
+                                )
+                            })
+                            .unwrap_or_default();
+                        let gap_proposals = report_matched_primer_overlay_report
+                            .map(|overlay| {
+                                Self::sequencing_confirmation_gap_primer_proposals(
+                                    overlay, gap_start, gap_end,
+                                )
+                            })
+                            .unwrap_or_default();
+                        let target_guidance_rows = report_matched_primer_overlay_report
+                            .map(|overlay| {
+                                overlay
+                                    .problem_guidance
+                                    .iter()
+                                    .filter(|row| {
+                                        row.problem_kind == SequencingPrimerProblemKind::Target
+                                            && overlapping_targets.iter().any(|target| {
+                                                row.problem_id.eq_ignore_ascii_case(
+                                                    target.target_id.as_str(),
+                                                )
+                                            })
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
                         columns[1].group(|ui| {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(egui::RichText::new("Selected coverage gap").strong());
@@ -31927,6 +32767,258 @@ impl MainAreaDna {
                             ui.small(
                                 "This interval currently lacks evidence-span coverage in the saved report.",
                             );
+                            match (left_flank, right_flank) {
+                                (Some(left), Some(right)) => {
+                                    ui.small(format!(
+                                        "Nearest covered edges: {} ends at {} ({} bp before gap), {} starts at {} ({} bp after gap).",
+                                        left.evidence_id,
+                                        left.best_alignment.aligned_target_end_0based_exclusive,
+                                        gap_start.saturating_sub(
+                                            left.best_alignment.aligned_target_end_0based_exclusive
+                                        ),
+                                        right.evidence_id,
+                                        right.best_alignment.aligned_target_start_0based,
+                                        right
+                                            .best_alignment
+                                            .aligned_target_start_0based
+                                            .saturating_sub(gap_end)
+                                    ));
+                                }
+                                (Some(left), None) => {
+                                    ui.small(format!(
+                                        "Nearest covered edge: {} ends at {} ({} bp before gap); no right-flanking evidence row is retained.",
+                                        left.evidence_id,
+                                        left.best_alignment.aligned_target_end_0based_exclusive,
+                                        gap_start.saturating_sub(
+                                            left.best_alignment.aligned_target_end_0based_exclusive
+                                        ),
+                                    ));
+                                }
+                                (None, Some(right)) => {
+                                    ui.small(format!(
+                                        "Nearest covered edge: {} starts at {} ({} bp after gap); no left-flanking evidence row is retained.",
+                                        right.evidence_id,
+                                        right.best_alignment.aligned_target_start_0based,
+                                        right
+                                            .best_alignment
+                                            .aligned_target_start_0based
+                                            .saturating_sub(gap_end),
+                                    ));
+                                }
+                                (None, None) => {
+                                    ui.small(
+                                        "No retained evidence rows flank this unsupported interval yet.",
+                                    );
+                                }
+                            }
+                            if let Some(overlay) = primer_overlay_report {
+                                ui.separator();
+                                ui.small(format!(
+                                    "Primer overlay source: primers={} report={}",
+                                    overlay.primer_seq_ids.len(),
+                                    overlay.confirmation_report_id.as_deref().unwrap_or("-")
+                                ));
+                                if !target_guidance_rows.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new("Target-linked primer guidance")
+                                            .strong(),
+                                    );
+                                    egui::Grid::new((
+                                        "seq_confirm_gap_guidance_grid",
+                                        self.panel_scope_key(),
+                                    ))
+                                    .num_columns(5)
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.strong("Target");
+                                        ui.strong("Primer");
+                                        ui.strong("Orientation");
+                                        ui.strong("3' dist");
+                                        ui.strong("Reason");
+                                        ui.end_row();
+                                        for row in &target_guidance_rows {
+                                            ui.small(&row.problem_label);
+                                            ui.small(
+                                                row.recommended_primer_seq_id
+                                                    .as_deref()
+                                                    .unwrap_or("-"),
+                                            );
+                                            ui.small(
+                                                row.recommended_orientation
+                                                    .map(|value| value.as_str())
+                                                    .unwrap_or("-"),
+                                            );
+                                            ui.small(
+                                                row.recommended_three_prime_distance_bp
+                                                    .map(|value| value.to_string())
+                                                    .unwrap_or_else(|| "-".to_string()),
+                                            );
+                                            ui.small(&row.reason);
+                                            ui.end_row();
+                                        }
+                                    });
+                                }
+                                let helpful_suggestions = gap_suggestions
+                                    .iter()
+                                    .filter(|row| {
+                                        Self::sequencing_confirmation_span_overlap_bp(
+                                            row.predicted_read_span_start_0based,
+                                            row.predicted_read_span_end_0based_exclusive,
+                                            gap_start,
+                                            gap_end,
+                                        ) > 0
+                                    })
+                                    .take(4)
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let closest_suggestions = if helpful_suggestions.is_empty() {
+                                    gap_suggestions.iter().take(4).cloned().collect::<Vec<_>>()
+                                } else {
+                                    helpful_suggestions
+                                };
+                                if !closest_suggestions.is_empty() {
+                                    ui.separator();
+                                    ui.label(
+                                        egui::RichText::new(
+                                            if closest_suggestions.iter().any(|row| {
+                                                Self::sequencing_confirmation_span_overlap_bp(
+                                                    row.predicted_read_span_start_0based,
+                                                    row.predicted_read_span_end_0based_exclusive,
+                                                    gap_start,
+                                                    gap_end,
+                                                ) > 0
+                                            }) {
+                                                "Existing primers that could clarify this gap"
+                                            } else {
+                                                "Closest existing primer overlays"
+                                            },
+                                        )
+                                        .strong(),
+                                    );
+                                    egui::Grid::new((
+                                        "seq_confirm_gap_suggestions_grid",
+                                        self.panel_scope_key(),
+                                    ))
+                                    .num_columns(6)
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.strong("Primer");
+                                        ui.strong("Orientation");
+                                        ui.strong("Read span");
+                                        ui.strong("Gap overlap");
+                                        ui.strong("3' dist");
+                                        ui.strong("Problem loci");
+                                        ui.end_row();
+                                        for row in &closest_suggestions {
+                                            let overlap_bp =
+                                                Self::sequencing_confirmation_span_overlap_bp(
+                                                    row.predicted_read_span_start_0based,
+                                                    row.predicted_read_span_end_0based_exclusive,
+                                                    gap_start,
+                                                    gap_end,
+                                                );
+                                            ui.small(&row.primer_seq_id);
+                                            ui.small(row.orientation.as_str());
+                                            ui.small(format!(
+                                                "{}..{}",
+                                                row.predicted_read_span_start_0based,
+                                                row.predicted_read_span_end_0based_exclusive
+                                            ));
+                                            ui.small(format!("{overlap_bp} bp"));
+                                            ui.small(
+                                                row.three_prime_position_0based
+                                                    .abs_diff(Self::sequencing_confirmation_gap_center_0based(gap_start, gap_end))
+                                                    .to_string(),
+                                            );
+                                            ui.small(format!(
+                                                "targets={} variants={}",
+                                                row.covered_problem_target_ids.len(),
+                                                row.covered_problem_variant_ids.len()
+                                            ));
+                                            ui.end_row();
+                                        }
+                                    });
+                                }
+                                let helpful_proposals = gap_proposals
+                                    .iter()
+                                    .filter(|row| {
+                                        Self::sequencing_confirmation_span_overlap_bp(
+                                            row.predicted_read_span_start_0based,
+                                            row.predicted_read_span_end_0based_exclusive,
+                                            gap_start,
+                                            gap_end,
+                                        ) > 0
+                                    })
+                                    .take(4)
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                if !helpful_proposals.is_empty() {
+                                    ui.separator();
+                                    ui.label(
+                                        egui::RichText::new("Fresh primer proposals for this gap")
+                                            .strong(),
+                                    );
+                                    egui::Grid::new((
+                                        "seq_confirm_gap_proposals_grid",
+                                        self.panel_scope_key(),
+                                    ))
+                                    .num_columns(7)
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.strong("Problem");
+                                        ui.strong("Orientation");
+                                        ui.strong("Sequence");
+                                        ui.strong("Read span");
+                                        ui.strong("Gap overlap");
+                                        ui.strong("Tm");
+                                        ui.strong("Reason");
+                                        ui.end_row();
+                                        for row in &helpful_proposals {
+                                            let overlap_bp =
+                                                Self::sequencing_confirmation_span_overlap_bp(
+                                                    row.predicted_read_span_start_0based,
+                                                    row.predicted_read_span_end_0based_exclusive,
+                                                    gap_start,
+                                                    gap_end,
+                                                );
+                                            ui.small(&row.problem_label);
+                                            ui.small(row.orientation.as_str());
+                                            ui.small(
+                                                egui::RichText::new(&row.primer_sequence)
+                                                    .monospace(),
+                                            );
+                                            ui.small(format!(
+                                                "{}..{}",
+                                                row.predicted_read_span_start_0based,
+                                                row.predicted_read_span_end_0based_exclusive
+                                            ));
+                                            ui.small(format!("{overlap_bp} bp"));
+                                            ui.small(format!("{:.1}", row.tm_c));
+                                            ui.small(&row.reason);
+                                            ui.end_row();
+                                        }
+                                    });
+                                } else if report_matched_primer_overlay_report.is_some()
+                                    && target_guidance_rows.is_empty()
+                                    && closest_suggestions.is_empty()
+                                {
+                                    ui.small(
+                                        "The current primer overlay report does not yet offer an existing or proposed primer that reaches this gap.",
+                                    );
+                                }
+                                if primer_overlay_report
+                                    .and_then(|overlay| overlay.confirmation_report_id.as_deref())
+                                    .is_some_and(|id| !id.eq_ignore_ascii_case(report.report_id.as_str()))
+                                {
+                                    ui.small(
+                                        "The loaded primer overlay report belongs to a different saved confirmation report, so report-linked guidance/proposals are hidden here until you re-run `Suggest primers` for the current report.",
+                                    );
+                                }
+                            } else {
+                                ui.small(
+                                    "No sequencing-primer overlay report is loaded for this construct. Run `Suggest primers` to see which existing or proposed primers could clarify this gap.",
+                                );
+                            }
                         });
                     }
                     columns[1].separator();

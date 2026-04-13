@@ -234,6 +234,16 @@ What to verify:
   insufficient-evidence target when one overlaps that unsupported region
 - if no target overlaps the clicked gap, the saved-report pane should still
   open an explicit unsupported-region summary for that interval
+- that unsupported-region summary should now also show the nearest retained
+  evidence edges plus the most relevant existing or proposed sequencing
+  primers for closing the gap
+- `Prev unresolved` / `Next unresolved` should walk the saved-report review
+  across unresolved targets, variants, and unsupported gaps without needing to
+  re-pick each table row manually
+- `Copy summary` / `Export summary...` should now produce a compact Markdown
+  unresolved-review snapshot from the selected saved report, including the
+  currently matching sequencing-primer guidance when an overlay report is
+  loaded
 
 ## Optional Negative Control
 

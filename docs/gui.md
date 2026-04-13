@@ -1292,6 +1292,16 @@ Patterns menu:
       relevant insufficient/contradicted target when possible
     - a clicked coverage gap now also stays highlighted and opens a dedicated
       unsupported-region summary, even when no explicit target overlaps it yet
+    - the unsupported-region summary now also shows the nearest retained
+      evidence edges plus the most relevant existing primer overlays or fresh
+      primer proposals that could close that gap next
+    - `Prev unresolved` / `Next unresolved` buttons now step the saved-report
+      review focus across unresolved targets, problem variants, and coverage
+      gaps without requiring manual clicking in each table
+    - `Copy summary` and `Export summary...` now hand off a compact Markdown
+      unresolved-review snapshot for lab notes, issues, or AI-assisted
+      follow-up, including the currently matching sequencing-primer overlay
+      guidance when one is loaded for that report
     - an optional unresolved-first review mode keeps contradicted or
       insufficient rows at the top of the target/variant inspection queue
     - the evidence table itself is now the focus picker for alignment and

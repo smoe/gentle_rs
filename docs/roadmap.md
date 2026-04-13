@@ -3232,6 +3232,16 @@ Repeated multi-tool gaps to prioritize:
        - clicked uncovered gaps now remain inspectable as their own review
          focus, with a dedicated unsupported-region summary even if no explicit
          target overlaps the gap yet
+       - that gap summary now also points at the nearest retained evidence
+         edges and the best existing or proposed sequencing primers that could
+         clarify the unsupported interval next
+       - saved-report review now also exposes `Prev unresolved` /
+         `Next unresolved` navigation across unresolved targets, problem
+         variants, and coverage gaps so inspection can move like a queue
+       - the same saved-report pane now offers `Copy summary` /
+         `Export summary...` for a compact Markdown unresolved-review handoff
+         snapshot, including the currently matching sequencing-primer overlay
+         guidance when available
      - sequencing-primer overlays are now available through the same shared
        engine/shell path and exposed in the GUI specialist:
        - `SuggestSequencingPrimers` suggests exact-3'-anneal primer hits on the
