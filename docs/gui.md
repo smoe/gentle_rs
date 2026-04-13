@@ -1987,6 +1987,8 @@ GENtle tracks open native windows and can raise a selected one to front.
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
   Planning, Agent Assistant, UniProt Mapping, Operation History)
+- In hosted/macOS mode, selecting a listed window now also raises the embedded
+  egui child window to the front instead of only requesting viewport focus.
 - Shortcut: `Cmd+Backtick` focuses the main project window
 - Specialist windows (including DNA sequence windows) include a top-left nav
   strip with:

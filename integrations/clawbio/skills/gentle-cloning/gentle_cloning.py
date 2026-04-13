@@ -78,6 +78,20 @@ def _find_repo_root(script_path: Path) -> Path | None:
     return None
 
 
+def _find_repo_root_from_path(path: Path) -> Path | None:
+    candidate = path.resolve()
+    if candidate.is_file():
+        candidate = candidate.parent
+    while True:
+        if (candidate / "Cargo.toml").exists() and (
+            candidate / "src" / "bin" / "gentle_cli.rs"
+        ).exists():
+            return candidate
+        if candidate.parent == candidate:
+            return None
+        candidate = candidate.parent
+
+
 def _request_path_candidates(raw_path: str, script_path: Path) -> list[Path]:
     path = Path(raw_path)
     if path.is_absolute():
@@ -209,8 +223,21 @@ def _json_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
 
 
-def _execution_cwd(resolution: CliResolution | None) -> Path:
-    return Path(resolution.cwd) if resolution and resolution.cwd else Path.cwd()
+def _resolve_execution_cwd(
+    request: Request,
+    resolution: CliResolution | None,
+    script_path: Path,
+) -> Path:
+    if request.mode == "workflow" and request.workflow_path:
+        resolved_workflow_path = Path(_resolve_request_path(request.workflow_path, script_path))
+        if resolved_workflow_path.exists():
+            repo_root = _find_repo_root_from_path(resolved_workflow_path)
+            if repo_root is not None:
+                return repo_root
+            return resolved_workflow_path.parent
+    if resolution and resolution.cwd:
+        return Path(resolution.cwd)
+    return Path.cwd()
 
 
 def _resolve_expected_artifact(raw_path: str, execution_cwd: Path) -> Path:
@@ -237,14 +264,13 @@ def _safe_artifact_destination(raw_path: str) -> Path:
 def _copy_collected_artifacts(
     request: Request,
     output_dir: Path,
-    resolution: CliResolution | None,
+    execution_cwd: Path,
 ) -> list[dict[str, str]]:
     collected: list[dict[str, str]] = []
     if not request.expected_artifacts:
         return collected
 
     generated_dir = output_dir / "generated"
-    execution_cwd = _execution_cwd(resolution)
     for raw_path in request.expected_artifacts:
         source_path = _resolve_expected_artifact(raw_path, execution_cwd)
         if not source_path.exists() or not source_path.is_file():
@@ -315,6 +341,7 @@ def _write_report(
     path: Path,
     request: Request,
     resolution: CliResolution | None,
+    execution_cwd: Path,
     command: list[str] | None,
     run_result: subprocess.CompletedProcess[str] | None,
     collected_artifacts: list[dict[str, str]],
@@ -339,7 +366,7 @@ def _write_report(
         lines.append(f"- State path: `{request.state_path}`")
     if resolution is not None:
         lines.append(f"- Resolver: `{resolution.label}`")
-        lines.append(f"- Resolver cwd: `{resolution.cwd or os.getcwd()}`")
+    lines.append(f"- Execution cwd: `{execution_cwd}`")
     if exit_code is not None:
         lines.append(f"- Exit code: `{exit_code}`")
     if error_message:
@@ -409,6 +436,7 @@ def main() -> int:
     run_result: subprocess.CompletedProcess[str] | None = None
     command: list[str] | None = None
     resolution: CliResolution | None = None
+    execution_cwd = Path.cwd()
     status = "failed"
     error_message: str | None = None
     collected_artifacts: list[dict[str, str]] = []
@@ -434,9 +462,10 @@ def main() -> int:
 
         cli_args = _build_cli_args(request, Path(__file__))
         command = resolution.argv_prefix + cli_args
+        execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
         run_result = subprocess.run(
             command,
-            cwd=resolution.cwd,
+            cwd=execution_cwd,
             capture_output=True,
             text=True,
             timeout=request.timeout_secs,
@@ -447,7 +476,9 @@ def main() -> int:
             error_message = (
                 f"gentle_cli exited with {run_result.returncode}; inspect stderr in report.md"
             )
-        collected_artifacts = _copy_collected_artifacts(request, output_dir, resolution)
+        collected_artifacts = _copy_collected_artifacts(
+            request, output_dir, execution_cwd
+        )
     except subprocess.TimeoutExpired as e:
         request = request if "request" in locals() else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
@@ -474,6 +505,7 @@ def main() -> int:
         path=report_path,
         request=request,
         resolution=resolution,
+        execution_cwd=execution_cwd,
         command=command,
         run_result=run_result,
         collected_artifacts=collected_artifacts,
@@ -489,7 +521,7 @@ def main() -> int:
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             f"# generated_utc: {ended}",
-            (f"cd {shlex.quote(resolution.cwd)}" if resolution and resolution.cwd else ""),
+            f"cd {shlex.quote(str(execution_cwd))}",
             command_line,
             "",
         ]

@@ -90,6 +90,15 @@ impl Window {
         }
     }
 
+    pub fn embedded_auxiliary_window_layer_id(
+        &self,
+        viewport_id: egui::ViewportId,
+    ) -> Option<egui::LayerId> {
+        match self {
+            Self::Dna(window) => window.embedded_auxiliary_window_layer_id(viewport_id),
+        }
+    }
+
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         match self {
             Self::Dna(window) => window.render_pcr_designer_specialist(ui, ctx),

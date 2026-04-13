@@ -193,9 +193,11 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
 
     fake_cli = tmp_path / "capture_cli.sh"
     capture_path = tmp_path / "captured_args.txt"
+    capture_cwd = tmp_path / "captured_cwd.txt"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$@\" > \"$FAKE_CAPTURE_ARGS\"\n",
+        "printf '%s\\n' \"$@\" > \"$FAKE_CAPTURE_ARGS\"\n"
+        "pwd > \"$FAKE_CAPTURE_CWD\"\n",
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -207,6 +209,7 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
     env = dict(os.environ)
     env["GENTLE_REPO_ROOT"] = str(fake_repo)
     env["FAKE_CAPTURE_ARGS"] = str(capture_path)
+    env["FAKE_CAPTURE_CWD"] = str(capture_cwd)
 
     run = subprocess.run(
         [
@@ -230,6 +233,7 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
         "workflow",
         f"@{workflow_abs.resolve()}",
     ]
+    assert capture_cwd.read_text(encoding="utf-8").strip() == str(fake_repo.resolve())
 
 
 def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> None:
@@ -413,6 +417,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
             600,
         ),
+        "request_genomes_blast_grch38_short.json": (
+            "shell",
+            'genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10',
+            300,
+        ),
         "request_helpers_blast_puc19_short.json": (
             "shell",
             'helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10',
@@ -545,6 +554,51 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "artifacts/tp53_isoforms_v1.expert.svg"
     ]
     assert isoform_expert_payload["timeout_secs"] == 180
+
+    splicing_workflow_payload = json.loads(
+        (examples_dir / "request_workflow_tp53_splicing_expert_svg.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert splicing_workflow_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert splicing_workflow_payload["mode"] == "workflow"
+    assert (
+        splicing_workflow_payload["workflow_path"]
+        == "docs/examples/workflows/tp53_splicing_expert_svg_offline.json"
+    )
+    assert splicing_workflow_payload["expected_artifacts"] == [
+        "exports/tp53_tp53_201.splicing.expert.svg"
+    ]
+    assert splicing_workflow_payload["timeout_secs"] == 300
+
+    splicing_workflow_definition = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "docs"
+            / "examples"
+            / "workflows"
+            / "tp53_splicing_expert_svg_offline.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert splicing_workflow_definition["id"] == "tp53_splicing_expert_svg_offline"
+    assert splicing_workflow_definition["required_files"] == [
+        "docs/figures/tp53_ensembl116_panel_source.gb"
+    ]
+    splicing_ops = splicing_workflow_definition["workflow"]["ops"]
+    assert splicing_ops[0]["LoadFile"] == {
+        "path": "docs/figures/tp53_ensembl116_panel_source.gb",
+        "as_id": "tp53_panel_source",
+    }
+    assert splicing_ops[1]["RenderFeatureExpertSvg"]["seq_id"] == "tp53_panel_source"
+    assert splicing_ops[1]["RenderFeatureExpertSvg"]["target"] == {
+        "SplicingFeature": {
+            "feature_id": 2,
+            "scope": "all_overlapping_both_strands",
+        }
+    }
+    assert splicing_ops[1]["RenderFeatureExpertSvg"]["path"] == (
+        "exports/tp53_tp53_201.splicing.expert.svg"
+    )
 
     bed_workflow_payload = json.loads(
         (examples_dir / "request_export_bed_pgex_fasta_tfbs_restriction.json").read_text(

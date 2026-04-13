@@ -368,6 +368,14 @@ impl WindowDna {
         self.main_area.collect_open_auxiliary_window_entries()
     }
 
+    pub fn embedded_auxiliary_window_layer_id(
+        &self,
+        viewport_id: egui::ViewportId,
+    ) -> Option<egui::LayerId> {
+        self.main_area
+            .embedded_auxiliary_window_layer_id(viewport_id)
+    }
+
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.main_area.render_pcr_designer_specialist(ui, ctx);
     }

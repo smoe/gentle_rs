@@ -1,0 +1,39 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp53_splicing_expert_svg_offline",
+  "title": "TP53 splicing expert SVG (offline)",
+  "summary": "Load the bundled synthetic TP53 Ensembl 116 panel source and render one deterministic splicing expert SVG for transcript TP53-201.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/figures/tp53_ensembl116_panel_source.gb"
+  ],
+  "tags": [
+    "splicing",
+    "expert-view",
+    "offline",
+    "tp53"
+  ],
+  "workflow": {
+    "run_id": "example_tp53_splicing_expert_svg_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "docs/figures/tp53_ensembl116_panel_source.gb",
+          "as_id": "tp53_panel_source"
+        }
+      },
+      {
+        "RenderFeatureExpertSvg": {
+          "seq_id": "tp53_panel_source",
+          "target": {
+            "SplicingFeature": {
+              "feature_id": 2,
+              "scope": "all_overlapping_both_strands"
+            }
+          },
+          "path": "exports/tp53_tp53_201.splicing.expert.svg"
+        }
+      }
+    ]
+  }
+}

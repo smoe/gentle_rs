@@ -14,6 +14,117 @@ pub(super) struct OpenWindowEntry {
 }
 
 impl GENtleApp {
+    fn embedded_window_layer_from_window_id(window_id: egui::Id) -> egui::LayerId {
+        egui::LayerId::new(egui::Order::Middle, window_id)
+    }
+
+    fn embedded_window_layer_from_title(title: impl Into<String>) -> egui::LayerId {
+        Self::embedded_window_layer_from_window_id(egui::Id::new(title.into()))
+    }
+
+    pub(crate) fn embedded_window_layer_id_for_viewport(
+        &self,
+        viewport_id: ViewportId,
+    ) -> Option<egui::LayerId> {
+        if viewport_id == ViewportId::ROOT {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::main_workspace_hosted_window_id(),
+            ));
+        }
+        if viewport_id == Self::configuration_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_configuration_window_id(),
+            ));
+        }
+        if viewport_id == Self::help_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_help_window_id(),
+            ));
+        }
+        if viewport_id == Self::command_palette_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Command Palette"));
+        }
+        if viewport_id == Self::history_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Operation History"));
+        }
+        if viewport_id == Self::prepare_genome_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                self.genome_dialog_scope.prepare_title(),
+            ));
+        }
+        if viewport_id == Self::retrieve_genome_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                self.genome_dialog_scope.retrieve_title(),
+            ));
+        }
+        if viewport_id == Self::blast_genome_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                self.genome_dialog_scope.blast_title(),
+            ));
+        }
+        if viewport_id == Self::bed_track_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                "Import Genome Tracks",
+            ));
+        }
+        if viewport_id == Self::gibson_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Gibson"));
+        }
+        if viewport_id == Self::arrangement_gel_preview_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                self.arrangement_gel_preview_title(),
+            ));
+        }
+        if viewport_id == Self::pcr_design_viewport_id() {
+            let title = if self.pcr_design_seq_id.trim().is_empty() {
+                "PCR Designer".to_string()
+            } else {
+                format!("PCR Designer — {}", self.pcr_design_seq_id.trim())
+            };
+            return Some(Self::embedded_window_layer_from_title(title));
+        }
+        if viewport_id == Self::sequencing_confirmation_viewport_id() {
+            let title = if self.sequencing_confirmation_seq_id.trim().is_empty() {
+                "Sequencing Confirmation".to_string()
+            } else {
+                format!(
+                    "Sequencing Confirmation — {}",
+                    self.sequencing_confirmation_seq_id.trim()
+                )
+            };
+            return Some(Self::embedded_window_layer_from_title(title));
+        }
+        if viewport_id == Self::planning_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Planning"));
+        }
+        if viewport_id == Self::routine_assistant_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Routine Assistant"));
+        }
+        if viewport_id == Self::agent_assistant_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("Agent Assistant"));
+        }
+        if viewport_id == Self::uniprot_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title("UniProt Mapping"));
+        }
+        if viewport_id == Self::genbank_viewport_id() {
+            return Some(Self::embedded_window_layer_from_title(
+                "GenBank / dbSNP Fetch",
+            ));
+        }
+        if self.windows.contains_key(&viewport_id) {
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+                "hosted_sequence_window",
+                viewport_id,
+            ))));
+        }
+        self.windows.values().find_map(|window| {
+            window
+                .read()
+                .ok()
+                .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
+        })
+    }
+
     pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
         let mut entries = vec![OpenWindowEntry {
             native_menu_key: Self::native_menu_key_for_viewport(ViewportId::ROOT),
@@ -274,6 +385,13 @@ impl GENtleApp {
             self.show_genbank_dialog = true;
         }
 
+        if ctx.embed_viewports() {
+            if let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id) {
+                ctx.move_to_top(layer_id);
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
+            }
+        }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
         ctx.request_repaint();

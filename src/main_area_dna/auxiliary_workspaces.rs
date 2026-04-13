@@ -5551,6 +5551,67 @@ impl MainAreaDna {
         entries
     }
 
+    pub(crate) fn embedded_auxiliary_window_layer_id(
+        &self,
+        viewport_id: egui::ViewportId,
+    ) -> Option<egui::LayerId> {
+        if self.show_dotplot_window {
+            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
+                if viewport_id == Self::dotplot_viewport_id(&viewport_seq_id) {
+                    return Some(egui::LayerId::new(
+                        egui::Order::Middle,
+                        egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
+                    ));
+                }
+            }
+        }
+        if self.show_splicing_expert_window {
+            if let Some(view) = self.splicing_expert_window_view.as_ref() {
+                if viewport_id
+                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+                {
+                    return Some(egui::LayerId::new(
+                        egui::Order::Middle,
+                        egui::Id::new(format!(
+                            "splicing_expert_window_embedded_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        )),
+                    ));
+                }
+            }
+        }
+        if self.show_rna_read_mapping_window {
+            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
+                if viewport_id
+                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+                {
+                    return Some(egui::LayerId::new(
+                        egui::Order::Middle,
+                        Self::rna_read_mapping_embedded_window_id(view),
+                    ));
+                }
+            }
+        }
+        if self.show_isoform_expert_window {
+            if let Some(view) = self.isoform_expert_window_view.as_ref() {
+                let panel_id = self
+                    .isoform_expert_window_panel_id
+                    .as_deref()
+                    .unwrap_or(view.panel_id.as_str());
+                if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
+                    return Some(egui::LayerId::new(
+                        egui::Order::Middle,
+                        egui::Id::new(format!(
+                            "isoform_expert_window_embedded_{}_{}",
+                            view.seq_id, panel_id
+                        )),
+                    ));
+                }
+            }
+        }
+        None
+    }
+
     pub(super) fn render_dotplot_window(&mut self, ctx: &egui::Context) {
         if !self.show_dotplot_window {
             return;

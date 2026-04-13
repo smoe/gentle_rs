@@ -44579,6 +44579,41 @@ mod tests {
     }
 
     #[test]
+    fn embedded_window_layer_id_for_root_and_configuration_use_hosted_window_ids() {
+        let app = GENtleApp::default();
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(egui::ViewportId::ROOT),
+            Some(egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::main_workspace_hosted_window_id(),
+            ))
+        );
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(GENtleApp::configuration_viewport_id()),
+            Some(egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::hosted_configuration_window_id(),
+            ))
+        );
+    }
+
+    #[test]
+    fn embedded_window_layer_id_for_sequence_viewport_uses_hosted_sequence_window_id() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(viewport_id),
+            Some(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(("hosted_sequence_window", viewport_id)),
+            ))
+        );
+    }
+
+    #[test]
     fn embedded_help_viewport_renders_without_nested_help_window_area() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);

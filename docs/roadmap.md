@@ -1657,6 +1657,8 @@ order. Durable architecture constraints and decisions remain in
   - `GENtle -> GENtle Windows…`
   - entries now sync by stable viewport keys (not transient index position)
   - selecting an entry requests focus for the specific window key
+  - hosted/embedded child windows are now explicitly raised to the top of the
+    egui layer stack when selected, so background windows surface correctly
   - active window state is mirrored with native menu checkmarks
 - Circular sequence-map feature labels now use collision-aware placement:
   labels can slide within feature spans and avoid overlap with already rendered
