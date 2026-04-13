@@ -1342,6 +1342,7 @@ order. Durable architecture constraints and decisions remain in
   - the example request pack now also includes follow-on routes for:
     - reference extraction (`TP53`)
     - BED export for extracted genome annotation (`TP53` gene/mRNA/exon/CDS)
+    - reference-genome BLAST against prepared `Human GRCh38 Ensembl 116`
     - helper BLAST (`pUC19`)
     - one planning workflow replay (`VKORC1` luciferase planning)
     - DNA-window graphics routes with explicit TFBS/JASPAR and
@@ -1349,6 +1350,8 @@ order. Durable architecture constraints and decisions remain in
     - one DNA-window BED export route combining TFBS/JASPAR rows with selected
       restriction-site rows
     - TP53 isoform architecture workflow + expert-SVG follow-on routes
+    - one deterministic offline TP53 splicing-expert SVG workflow route from
+      the bundled Ensembl 116 panel-source GenBank asset
     - one protocol-cartoon graphics/export preparation route
       (`protocol-cartoon render-svg gibson.two_fragment ...`)
       - the wrapper now supports declared `expected_artifacts[]`, and the
@@ -1373,6 +1376,10 @@ order. Durable architecture constraints and decisions remain in
     through `GENTLE_REPO_ROOT` when present, so a copied ClawBio skill can
     still replay canonical GENtle workflow examples from the source checkout
     without rewriting the request JSON
+  - copied workflow example requests now also execute from the resolved
+    GENtle repo root when discoverable, so repo-relative assets referenced by
+    shipped workflow examples keep working after the scaffold is copied into a
+    separate ClawBio checkout
   - container publishing now splits into:
     - `ghcr.io/...:cli` for headless CLI/MCP/Apptainer use
     - `ghcr.io/...:gui` for explicit browser-served GUI use

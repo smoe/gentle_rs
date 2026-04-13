@@ -165,6 +165,10 @@ task:
    - Relative `workflow_path` values resolve first from the current working
      directory, then from `GENTLE_REPO_ROOT`, then from the local GENtle repo
      containing the scaffold when discoverable.
+   - When a resolved workflow lives inside a GENtle repo, execution also runs
+     from that repo root so repo-relative assets referenced by the workflow
+     keep working after the scaffold is copied into a separate ClawBio
+     checkout.
 4. **Execute exactly once**: run the command with the declared timeout and no
    hidden retries or silent fallback behavior beyond the resolver order above.
 5. **Capture provenance**: record resolver metadata, full command, timestamps,
@@ -210,6 +214,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json \
   --output /tmp/gentle_clawbio_prepare_grch38
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_blast_grch38_short.json \
+  --output /tmp/gentle_clawbio_grch38_blast
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json \
   --output /tmp/gentle_clawbio_prepare_puc19
 python clawbio.py run gentle-cloning \
@@ -243,6 +250,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json \
   --output /tmp/gentle_clawbio_tp53_isoform_expert
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json \
+  --output /tmp/gentle_clawbio_tp53_splicing_expert
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json \
   --output /tmp/gentle_clawbio_gibson_graphics
 ```
@@ -254,12 +264,19 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_genomes_blast_grch38_short.json` is a follow-on search route after
+  `request_genomes_prepare_grch38.json`; it exercises the shared
+  reference-genome BLAST path against the prepared GRCh38 catalog entry
 - `request_render_svg_pgex_fasta_linear_tfbs.json` and
   `request_render_svg_pgex_fasta_linear_restriction.json` are matching
   follow-on DNA-window graphics routes on that same `pgex_fasta` state
 - `request_render_feature_expert_tp53_isoform_svg.json` is a follow-on expert
   route after `request_workflow_tp53_isoform_architecture_online.json` (or an
   equivalent prior isoform-panel import)
+- `request_workflow_tp53_splicing_expert_svg.json` replays one deterministic
+  offline splicing-expert workflow from the bundled
+  `docs/figures/tp53_ensembl116_panel_source.gb` source asset and collects the
+  rendered expert SVG into the output bundle
 
 Container-backed alternative:
 
@@ -405,6 +422,10 @@ Apply the following methodology:
     - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
     - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4
       artifact
+  - `examples/request_genomes_blast_grch38_short.json`
+    - follow-on route after `examples/request_genomes_prepare_grch38.json`
+    - exercises the shared `genomes blast ...` route against the prepared
+      GRCh38 Ensembl 116 reference catalog entry
   - `examples/request_helpers_blast_puc19_short.json`
   - `examples/request_workflow_vkorc1_planning.json`
   - `examples/request_render_svg_pgex_fasta_circular.json`
@@ -425,6 +446,10 @@ Apply the following methodology:
   - `examples/request_render_feature_expert_tp53_isoform_svg.json`
     - renders the same TP53 isoform architecture through the shared
       `render-feature-expert-svg ... isoform ...` expert route
+  - `examples/request_workflow_tp53_splicing_expert_svg.json`
+    - replays a deterministic offline splicing-expert workflow from the
+      bundled TP53 Ensembl 116 panel-source GenBank asset and collects the
+      rendered SVG
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`

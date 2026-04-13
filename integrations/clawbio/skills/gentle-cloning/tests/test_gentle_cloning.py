@@ -172,6 +172,12 @@ def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None
 
 def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:
     fake_repo = tmp_path / "GENtle"
+    (fake_repo / "src" / "bin").mkdir(parents=True)
+    (fake_repo / "Cargo.toml").write_text("[package]\nname = 'gentle'\n", encoding="utf-8")
+    (fake_repo / "src" / "bin" / "gentle_cli.rs").write_text(
+        "fn main() {}\n",
+        encoding="utf-8",
+    )
     workflow_rel = Path("docs/examples/workflows/demo_workflow.json")
     workflow_abs = fake_repo / workflow_rel
     workflow_abs.parent.mkdir(parents=True)
@@ -574,6 +580,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     splicing_workflow_definition = json.loads(
         (
             Path(__file__).resolve().parents[3]
+            .parent.parent
             / "docs"
             / "examples"
             / "workflows"

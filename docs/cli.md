@@ -120,9 +120,11 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_ensembl_available_human.json --output /tmp/gentle_ensembl_human
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_install_ensembl_mouse.json --output /tmp/gentle_install_mouse
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_blast_grch38_short.json --output /tmp/gentle_grch38_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
@@ -136,6 +138,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_restriction.json --output /tmp/gentle_pgex_restriction_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
@@ -155,9 +158,16 @@ Notes:
   follow-on DNA-window graphics routes on that same `pgex_fasta` state
 - `request_export_bed_grch38_tp53_gene_models.json` is a follow-on annotation
   export after `request_genomes_extract_gene_tp53.json`
+- `request_genomes_blast_grch38_short.json` is a follow-on search route after
+  `request_genomes_prepare_grch38.json`; it exercises the shared
+  reference-genome BLAST path against the prepared GRCh38 catalog entry
 - `request_render_feature_expert_tp53_isoform_svg.json` is a follow-on expert
   route after `request_workflow_tp53_isoform_architecture_online.json` (or an
   equivalent prior isoform-panel import)
+- `request_workflow_tp53_splicing_expert_svg.json` replays one deterministic
+  offline splicing-expert workflow from the bundled
+  `docs/figures/tp53_ensembl116_panel_source.gb` source asset and collects the
+  rendered expert SVG into the output bundle
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
 
@@ -174,6 +184,10 @@ Relative `workflow_path` values inside the wrapper resolve in this order:
 1. current working directory
 2. `GENTLE_REPO_ROOT` when set
 3. the local GENtle repo containing the scaffold, when discoverable
+
+When a resolved workflow lives inside a GENtle repo, the wrapper also executes
+from that repo root so repo-relative assets referenced by the workflow keep
+working after the scaffold is copied into a separate ClawBio checkout.
 
 Quick scaffold usage (inside the scaffold directory):
 
@@ -209,6 +223,7 @@ Included first-run bootstrap request examples:
 - `request_helpers_list_gst.json`
 - `request_hosts_list_deor.json`
 - `request_genomes_ensembl_available_human.json`
+- `request_genomes_install_ensembl_mouse.json`
 - `request_shell_state_summary.json`
 - `request_genomes_status_grch38.json`
 - `request_genomes_prepare_grch38.json`
@@ -223,6 +238,10 @@ Included follow-on analysis/planning/graphics examples:
 - `request_export_bed_grch38_tp53_gene_models.json`
   - follow-on route after `request_genomes_extract_gene_tp53.json`
   - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4 artifact
+- `request_genomes_blast_grch38_short.json`
+  - follow-on route after `request_genomes_prepare_grch38.json`
+  - exercises the shared `genomes blast ...` route against the prepared GRCh38
+    Ensembl 116 reference catalog entry
 - `request_helpers_blast_puc19_short.json`
 - `request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after
@@ -243,6 +262,9 @@ Included follow-on analysis/planning/graphics examples:
 - `request_render_feature_expert_tp53_isoform_svg.json`
   - renders the same TP53 isoform architecture through the shared
     `render-feature-expert-svg ... isoform ...` expert route
+- `request_workflow_tp53_splicing_expert_svg.json`
+  - replays a deterministic offline splicing-expert workflow from the bundled
+    TP53 Ensembl 116 panel-source GenBank asset and collects the rendered SVG
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the
     ClawBio output bundle under `generated/...`
