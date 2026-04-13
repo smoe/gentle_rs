@@ -5532,7 +5532,8 @@ impl MainAreaDna {
         }) {
             Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                 self.open_isoform_expert_window_for_view(&view.panel_id, &view);
-                self.op_status = format!("Opened Protein Expert for UniProt projection '{projection_id}'");
+                self.op_status =
+                    format!("Opened Protein Expert for UniProt projection '{projection_id}'");
                 Ok(view)
             }
             Ok(other) => Err(format!(

@@ -10,8 +10,8 @@
 //! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
-use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use crate::uniprot::UniprotFeatureProjection;
+use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -38,6 +38,44 @@ struct DerivedProteinExpertTranscript {
     intron_ranges_1based: Vec<(usize, usize)>,
     cds_to_protein_segments: Vec<IsoformArchitectureCdsAaSegment>,
     derivation: Option<TranscriptProteinDerivation>,
+}
+
+#[derive(Clone)]
+struct ExternalProteinOpinionAaSegment {
+    aa_start: usize,
+    aa_end: usize,
+    genomic_start_1based: usize,
+    genomic_end_1based: usize,
+}
+
+#[derive(Clone)]
+struct ExternalProteinOpinionFeatureProjection {
+    feature_key: String,
+    feature_note: Option<String>,
+    genomic_segments: Vec<ExternalProteinOpinionAaSegment>,
+}
+
+#[derive(Clone)]
+struct ExternalProteinOpinionTranscript {
+    transcript_id: String,
+    transcript_feature_id: Option<usize>,
+    strand: String,
+    aa_segments: Vec<ExternalProteinOpinionAaSegment>,
+    feature_projections: Vec<ExternalProteinOpinionFeatureProjection>,
+}
+
+#[derive(Clone)]
+struct ExternalProteinOpinionViewSource {
+    source: gentle_protocol::ProteinExternalOpinionSource,
+    source_id: String,
+    source_label: String,
+    panel_source_label: String,
+    transcript_id_filter: Option<String>,
+    gene_symbol_hint: Option<String>,
+    expected_length_aa: Option<usize>,
+    feature_inventory_keys: Vec<String>,
+    warnings: Vec<String>,
+    transcripts: Vec<ExternalProteinOpinionTranscript>,
 }
 
 impl GentleEngine {
@@ -2437,15 +2475,17 @@ impl GentleEngine {
         feature_note: Option<&str>,
     ) -> String {
         let key = feature_key.trim();
-        let note = feature_note.map(str::trim).filter(|value| !value.is_empty());
+        let note = feature_note
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         match note {
             Some(note) if !note.eq_ignore_ascii_case(key) => format!("{key}: {note}"),
             _ => key.to_string(),
         }
     }
 
-    fn projected_uniprot_feature_domain(
-        feature_projection: &UniprotFeatureProjection,
+    fn projected_external_protein_feature_domain(
+        feature_projection: &ExternalProteinOpinionFeatureProjection,
     ) -> Option<IsoformArchitectureProteinDomain> {
         let projected_start = feature_projection
             .genomic_segments
@@ -2487,6 +2527,19 @@ impl GentleEngine {
         matches!(feature_key.trim().to_ascii_uppercase().as_str(), "CONFLICT")
     }
 
+    fn external_protein_feature_hidden_by_default(
+        source: gentle_protocol::ProteinExternalOpinionSource,
+        feature_key: &str,
+    ) -> bool {
+        match source {
+            gentle_protocol::ProteinExternalOpinionSource::Uniprot => {
+                Self::uniprot_feature_hidden_by_default(feature_key)
+            }
+            gentle_protocol::ProteinExternalOpinionSource::Ensembl
+            | gentle_protocol::ProteinExternalOpinionSource::Other => false,
+        }
+    }
+
     fn normalized_protein_feature_key(feature_key: &str) -> String {
         feature_key.trim().to_ascii_uppercase()
     }
@@ -2501,24 +2554,6 @@ impl GentleEngine {
         feature_key.trim().to_ascii_uppercase().hash(&mut hasher);
         let idx = (hasher.finish() as usize) % palette.len();
         palette[idx].to_string()
-    }
-
-    fn uniprot_projection_segment_ranges(
-        aa_segments: &[UniprotAaGenomicSegment],
-    ) -> Vec<(usize, usize)> {
-        let mut ranges = aa_segments
-            .iter()
-            .map(|segment| {
-                (
-                    segment.genomic_start_1based.min(segment.genomic_end_1based),
-                    segment.genomic_start_1based.max(segment.genomic_end_1based),
-                )
-            })
-            .filter(|(start, end)| *start > 0 && *end >= *start)
-            .collect::<Vec<_>>();
-        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-        ranges.dedup();
-        ranges
     }
 
     fn local_ranges_0based_from_derivation(
@@ -2579,7 +2614,8 @@ impl GentleEngine {
         source_seq_id: &str,
     ) -> Result<DerivedProteinExpertTranscript, EngineError> {
         let exon_ranges_0based = Self::feature_location_ranges_0based(source_feature);
-        let exon_segments_forward = Self::build_transcript_exon_segments_forward(&exon_ranges_0based);
+        let exon_segments_forward =
+            Self::build_transcript_exon_segments_forward(&exon_ranges_0based);
         let transcript_exons_1based = Self::feature_location_ranges_1based(source_feature);
         let (
             derived_transcript,
@@ -2607,7 +2643,8 @@ impl GentleEngine {
                 &transcript_label,
             )?,
         };
-        let local_cds_ranges_0based = Self::local_ranges_0based_from_derivation(derivation.as_ref());
+        let local_cds_ranges_0based =
+            Self::local_ranges_0based_from_derivation(derivation.as_ref());
         let genomic_cds_ranges_0based = if !local_cds_ranges_0based.is_empty() {
             Self::map_transcript_local_ranges_to_source_ranges_0based(
                 &local_cds_ranges_0based,
@@ -2660,9 +2697,7 @@ impl GentleEngine {
         let ordered = Self::order_ranges_for_transcript(
             ranges_1based
                 .iter()
-                .map(|(start_1based, end_1based)| {
-                    (start_1based.saturating_sub(1), *end_1based)
-                })
+                .map(|(start_1based, end_1based)| (start_1based.saturating_sub(1), *end_1based))
                 .collect(),
             is_reverse,
         )
@@ -2712,19 +2747,13 @@ impl GentleEngine {
                     .saturating_add(overlap_start.saturating_sub(segment_start) / 3)
             };
             let local_end = if is_reverse {
-                segment.aa_start.saturating_add(
-                    segment_end
-                        .saturating_sub(overlap_start)
-                        .saturating_add(1)
-                        / 3,
-                )
+                segment
+                    .aa_start
+                    .saturating_add(segment_end.saturating_sub(overlap_start).saturating_add(1) / 3)
             } else {
-                segment.aa_start.saturating_add(
-                    overlap_end
-                        .saturating_sub(segment_start)
-                        .saturating_add(1)
-                        / 3,
-                )
+                segment
+                    .aa_start
+                    .saturating_add(overlap_end.saturating_sub(segment_start).saturating_add(1) / 3)
             }
             .saturating_sub(1);
             if local_end >= local_start {
@@ -2734,13 +2763,13 @@ impl GentleEngine {
         out
     }
 
-    fn projected_uniprot_feature_domain_on_transcript(
-        feature_projection: &UniprotFeatureProjection,
+    fn projected_external_protein_feature_domain_on_transcript(
+        feature_projection: &ExternalProteinOpinionFeatureProjection,
         transcript_segments: &[IsoformArchitectureCdsAaSegment],
         is_reverse: bool,
     ) -> Option<IsoformArchitectureProteinDomain> {
         if transcript_segments.is_empty() {
-            return Self::projected_uniprot_feature_domain(feature_projection);
+            return Self::projected_external_protein_feature_domain(feature_projection);
         }
         let mut mapped_local_ranges = vec![];
         for genomic_segment in &feature_projection.genomic_segments {
@@ -2766,23 +2795,48 @@ impl GentleEngine {
         })
     }
 
-    fn build_uniprot_external_opinion_summary(
-        projection_id: &str,
-        entry: &UniprotEntry,
-        transcript: &UniprotTranscriptProjection,
+    fn external_protein_transcript_coding_ranges_1based(
+        transcript: &ExternalProteinOpinionTranscript,
+    ) -> Vec<(usize, usize)> {
+        let mut ranges = transcript
+            .aa_segments
+            .iter()
+            .map(|segment| {
+                (
+                    segment.genomic_start_1based.min(segment.genomic_end_1based),
+                    segment.genomic_start_1based.max(segment.genomic_end_1based),
+                )
+            })
+            .filter(|(start, end)| *start > 0 && *end >= *start)
+            .collect::<Vec<_>>();
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges.dedup();
+        ranges
+    }
+
+    fn build_external_protein_opinion_summary(
+        source: &ExternalProteinOpinionViewSource,
+        transcript: &ExternalProteinOpinionTranscript,
     ) -> gentle_protocol::TranscriptProteinExternalOpinion {
-        let expected_length_aa = (entry.sequence_length > 0).then_some(entry.sequence_length);
-        let reference_start_aa = transcript.aa_segments.iter().map(|segment| segment.aa_start).min();
-        let reference_end_aa = transcript.aa_segments.iter().map(|segment| segment.aa_end).max();
+        let reference_start_aa = transcript
+            .aa_segments
+            .iter()
+            .map(|segment| segment.aa_start)
+            .min();
+        let reference_end_aa = transcript
+            .aa_segments
+            .iter()
+            .map(|segment| segment.aa_end)
+            .max();
         gentle_protocol::TranscriptProteinExternalOpinion {
-            source: gentle_protocol::ProteinExternalOpinionSource::Uniprot,
-            source_id: projection_id.to_string(),
-            source_label: format!("UniProt {} ({})", entry.entry_id, entry.accession),
-            expected_length_aa,
+            source: source.source,
+            source_id: source.source_id.clone(),
+            source_label: source.source_label.clone(),
+            expected_length_aa: source.expected_length_aa,
             reference_start_aa,
             reference_end_aa,
-            genomic_coding_ranges_1based: Self::uniprot_projection_segment_ranges(
-                &transcript.aa_segments,
+            genomic_coding_ranges_1based: Self::external_protein_transcript_coding_ranges_1based(
+                transcript,
             ),
         }
     }
@@ -2830,7 +2884,8 @@ impl GentleEngine {
                     .join(", ")
             ));
         }
-        if let (Some(derivation), Some(external_opinion)) = (derivation, external_opinion.as_ref()) {
+        if let (Some(derivation), Some(external_opinion)) = (derivation, external_opinion.as_ref())
+        {
             if let Some(external_length_aa) = external_opinion.expected_length_aa
                 && derivation.protein_length_aa > 0
                 && derivation.protein_length_aa != external_length_aa
@@ -2871,6 +2926,92 @@ impl GentleEngine {
             mismatch_reasons,
             derived_only_exon_ranges_1based: derived_only_internal,
             external_only_exon_ranges_1based: external_only_internal,
+        }
+    }
+
+    fn build_uniprot_external_protein_opinion_source(
+        projection: &UniprotGenomeProjection,
+        entry: &UniprotEntry,
+    ) -> ExternalProteinOpinionViewSource {
+        let source_label = format!("UniProt {} ({})", entry.entry_id, entry.accession);
+        let gene_symbol_hint = entry
+            .gene_names
+            .iter()
+            .find(|value| !value.trim().is_empty())
+            .cloned()
+            .or_else(|| {
+                entry
+                    .protein_name
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+            });
+        let feature_inventory_keys = entry
+            .features
+            .iter()
+            .filter_map(|feature| {
+                let (Some(start_aa), Some(end_aa)) =
+                    (feature.interval.start_aa, feature.interval.end_aa)
+                else {
+                    return None;
+                };
+                if start_aa == 0 || end_aa < start_aa || feature.key.eq_ignore_ascii_case("CHAIN") {
+                    return None;
+                }
+                Some(Self::normalized_protein_feature_key(&feature.key))
+            })
+            .collect::<Vec<_>>();
+        let transcripts = projection
+            .transcript_projections
+            .iter()
+            .map(|transcript| ExternalProteinOpinionTranscript {
+                transcript_id: transcript.transcript_id.clone(),
+                transcript_feature_id: transcript.transcript_feature_id,
+                strand: transcript.strand.clone(),
+                aa_segments: transcript
+                    .aa_segments
+                    .iter()
+                    .map(|segment| ExternalProteinOpinionAaSegment {
+                        aa_start: segment.aa_start,
+                        aa_end: segment.aa_end,
+                        genomic_start_1based: segment.genomic_start_1based,
+                        genomic_end_1based: segment.genomic_end_1based,
+                    })
+                    .collect(),
+                feature_projections: transcript
+                    .feature_projections
+                    .iter()
+                    .map(|feature| ExternalProteinOpinionFeatureProjection {
+                        feature_key: feature.feature_key.clone(),
+                        feature_note: feature.feature_note.clone(),
+                        genomic_segments: feature
+                            .genomic_segments
+                            .iter()
+                            .map(|segment| ExternalProteinOpinionAaSegment {
+                                aa_start: segment.aa_start,
+                                aa_end: segment.aa_end,
+                                genomic_start_1based: segment.genomic_start_1based,
+                                genomic_end_1based: segment.genomic_end_1based,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+
+        ExternalProteinOpinionViewSource {
+            source: gentle_protocol::ProteinExternalOpinionSource::Uniprot,
+            source_id: projection.projection_id.clone(),
+            source_label: source_label.clone(),
+            panel_source_label: format!(
+                "Transcript-native proteins with optional UniProt opinion {} ({})",
+                entry.entry_id, entry.accession
+            ),
+            transcript_id_filter: projection.transcript_id_filter.clone(),
+            gene_symbol_hint,
+            expected_length_aa: (entry.sequence_length > 0).then_some(entry.sequence_length),
+            feature_inventory_keys,
+            warnings: projection.warnings.clone(),
+            transcripts,
         }
     }
 
@@ -2916,11 +3057,15 @@ impl GentleEngine {
         candidate_ranges: &[(usize, usize)],
         container_ranges: &[(usize, usize)],
     ) -> bool {
-        candidate_ranges.iter().all(|(candidate_start, candidate_end)| {
-            container_ranges.iter().any(|(container_start, container_end)| {
-                candidate_start >= container_start && candidate_end <= container_end
+        candidate_ranges
+            .iter()
+            .all(|(candidate_start, candidate_end)| {
+                container_ranges
+                    .iter()
+                    .any(|(container_start, container_end)| {
+                        candidate_start >= container_start && candidate_end <= container_end
+                    })
             })
-        })
     }
 
     fn infer_cds_ranges_from_compatible_cds_features(
@@ -2934,7 +3079,8 @@ impl GentleEngine {
         let transcript_is_reverse = feature_is_reverse(transcript_feature);
         let mut candidates: BTreeSet<Vec<(usize, usize)>> = BTreeSet::new();
         for feature in features {
-            if !Self::is_cds_feature(feature) || feature_is_reverse(feature) != transcript_is_reverse
+            if !Self::is_cds_feature(feature)
+                || feature_is_reverse(feature) != transcript_is_reverse
             {
                 continue;
             }
@@ -2992,7 +3138,6 @@ impl GentleEngine {
             seq_id,
             transcript_id_filter,
             None,
-            None,
             protein_feature_filter,
         )
     }
@@ -3001,8 +3146,7 @@ impl GentleEngine {
         &self,
         seq_id: &str,
         transcript_id_filter: Option<&str>,
-        projection: Option<&UniprotGenomeProjection>,
-        entry: Option<&UniprotEntry>,
+        external_source: Option<&ExternalProteinOpinionViewSource>,
         protein_feature_filter: &ProteinFeatureFilter,
     ) -> Result<IsoformArchitectureExpertView, EngineError> {
         let dna = self
@@ -3031,29 +3175,26 @@ impl GentleEngine {
             .filter(|value| !value.is_empty())
             .collect::<BTreeSet<_>>();
 
-        let mut warnings = projection.map(|projection| projection.warnings.clone()).unwrap_or_default();
-        if let Some(entry) = entry {
+        let mut warnings = external_source
+            .map(|external_source| external_source.warnings.clone())
+            .unwrap_or_default();
+        if let Some(external_source) = external_source {
             let mut hidden_feature_counts: BTreeMap<String, usize> = BTreeMap::new();
             let mut explicit_filter_hidden_counts: BTreeMap<String, usize> = BTreeMap::new();
-            for feature in &entry.features {
-                let (Some(start_aa), Some(end_aa)) =
-                    (feature.interval.start_aa, feature.interval.end_aa)
-                else {
-                    continue;
-                };
-                if start_aa == 0 || end_aa < start_aa || feature.key.eq_ignore_ascii_case("CHAIN")
+            for normalized_key in &external_source.feature_inventory_keys {
+                if Self::external_protein_feature_hidden_by_default(
+                    external_source.source,
+                    normalized_key,
+                ) && !include_feature_keys.contains(normalized_key.as_str())
                 {
+                    *hidden_feature_counts
+                        .entry(normalized_key.clone())
+                        .or_insert(0) += 1;
                     continue;
                 }
-                let normalized_key = Self::normalized_protein_feature_key(&feature.key);
-                if Self::uniprot_feature_hidden_by_default(&normalized_key)
-                    && !include_feature_keys.contains(&normalized_key)
-                {
-                    *hidden_feature_counts.entry(normalized_key.clone()).or_insert(0) += 1;
-                    continue;
-                }
-                if (!include_feature_keys.is_empty() && !include_feature_keys.contains(&normalized_key))
-                    || exclude_feature_keys.contains(&normalized_key)
+                if (!include_feature_keys.is_empty()
+                    && !include_feature_keys.contains(normalized_key.as_str()))
+                    || exclude_feature_keys.contains(normalized_key.as_str())
                 {
                     *explicit_filter_hidden_counts
                         .entry(normalized_key.clone())
@@ -3083,7 +3224,6 @@ impl GentleEngine {
         }
 
         let mut derived_transcripts: Vec<DerivedProteinExpertTranscript> = vec![];
-        let mut derived_key_index: HashMap<String, usize> = HashMap::new();
         for (feature_id, feature) in features.iter().enumerate() {
             if !Self::is_transcript_feature_for_derivation(feature) {
                 continue;
@@ -3101,13 +3241,7 @@ impl GentleEngine {
                 feature_id,
                 seq_id,
             ) {
-                Ok(derived) => {
-                    let row_index = derived_transcripts.len();
-                    for key in match_keys {
-                        derived_key_index.entry(key).or_insert(row_index);
-                    }
-                    derived_transcripts.push(derived);
-                }
+                Ok(derived) => derived_transcripts.push(derived),
                 Err(err) => warnings.push(format!(
                     "Transcript feature n-{} could not be prepared for transcript-native protein comparison: {}",
                     feature_id + 1,
@@ -3116,11 +3250,11 @@ impl GentleEngine {
             }
         }
 
-        let projection_transcripts = projection
-            .map(|projection| projection.transcript_projections.clone())
+        let external_transcripts = external_source
+            .map(|external_source| external_source.transcripts.clone())
             .unwrap_or_default();
         let mut external_key_index: HashMap<String, usize> = HashMap::new();
-        for (idx, transcript) in projection_transcripts.iter().enumerate() {
+        for (idx, transcript) in external_transcripts.iter().enumerate() {
             let key = Self::normalize_transcript_probe(&transcript.transcript_id);
             if !key.is_empty() {
                 external_key_index.entry(key).or_insert(idx);
@@ -3134,20 +3268,19 @@ impl GentleEngine {
 
         for derived in &derived_transcripts {
             let transcript_key = Self::normalize_transcript_probe(&derived.transcript_id);
-            let external_projection = external_key_index
+            let external_transcript = external_key_index
                 .get(&transcript_key)
-                .and_then(|idx| projection_transcripts.get(*idx));
+                .and_then(|idx| external_transcripts.get(*idx));
             if let Some(external_idx) = external_key_index.get(&transcript_key) {
                 matched_external_indices.insert(*external_idx);
             }
 
-            let external_opinion = if let (Some(projection), Some(entry), Some(external_projection)) =
-                (projection, entry, external_projection)
+            let external_opinion = if let (Some(external_source), Some(external_transcript)) =
+                (external_source, external_transcript)
             {
-                Some(Self::build_uniprot_external_opinion_summary(
-                    &projection.projection_id,
-                    entry,
-                    external_projection,
+                Some(Self::build_external_protein_opinion_summary(
+                    external_source,
+                    external_transcript,
                 ))
             } else {
                 None
@@ -3187,13 +3320,20 @@ impl GentleEngine {
                 _ => None,
             };
 
-            let domains = external_projection
+            let domains = external_transcript
                 .into_iter()
-                .flat_map(|external_projection| external_projection.feature_projections.iter())
+                .flat_map(|external_transcript| external_transcript.feature_projections.iter())
                 .filter_map(|feature_projection| {
                     let normalized_key =
                         Self::normalized_protein_feature_key(&feature_projection.feature_key);
-                    if Self::uniprot_feature_hidden_by_default(&normalized_key)
+                    if external_source
+                        .map(|external_source| {
+                            Self::external_protein_feature_hidden_by_default(
+                                external_source.source,
+                                &normalized_key,
+                            )
+                        })
+                        .unwrap_or(false)
                         && !include_feature_keys.contains(&normalized_key)
                     {
                         return None;
@@ -3204,7 +3344,7 @@ impl GentleEngine {
                     {
                         return None;
                     }
-                    Self::projected_uniprot_feature_domain_on_transcript(
+                    Self::projected_external_protein_feature_domain_on_transcript(
                         feature_projection,
                         &derived.cds_to_protein_segments,
                         derived.is_reverse,
@@ -3271,17 +3411,21 @@ impl GentleEngine {
             });
         }
 
-        for (external_idx, transcript) in projection_transcripts.iter().enumerate() {
+        for (external_idx, transcript) in external_transcripts.iter().enumerate() {
             if matched_external_indices.contains(&external_idx) {
                 continue;
             }
             let transcript_key = Self::normalize_transcript_probe(&transcript.transcript_id);
-            if let Some(filter) = normalized_filter.as_ref() && &transcript_key != filter {
+            if let Some(filter) = normalized_filter.as_ref()
+                && &transcript_key != filter
+            {
                 continue;
             }
-            let transcript_feature = transcript
-                .transcript_feature_id
-                .and_then(|feature_id| features.get(feature_id).map(|feature| (feature_id, feature)));
+            let transcript_feature = transcript.transcript_feature_id.and_then(|feature_id| {
+                features
+                    .get(feature_id)
+                    .map(|feature| (feature_id, feature))
+            });
             let transcript_exons = transcript_feature
                 .as_ref()
                 .map(|(_, feature)| Self::feature_location_ranges_1based(feature))
@@ -3291,7 +3435,14 @@ impl GentleEngine {
                 .and_then(|(_, feature)| {
                     Self::first_nonempty_feature_qualifier(
                         feature,
-                        &["label", "name", "standard_name", "product", "transcript_id", "gene"],
+                        &[
+                            "label",
+                            "name",
+                            "standard_name",
+                            "product",
+                            "transcript_id",
+                            "gene",
+                        ],
                     )
                 })
                 .unwrap_or_else(|| transcript.transcript_id.clone());
@@ -3299,17 +3450,17 @@ impl GentleEngine {
                 .as_ref()
                 .map(|(_, feature)| feature_is_reverse(feature))
                 .unwrap_or_else(|| transcript.strand.trim() == "-");
-            let external_ranges_1based = Self::uniprot_projection_segment_ranges(&transcript.aa_segments);
-            let comparison = if let (Some(projection), Some(entry)) = (projection, entry) {
+            let external_ranges_1based =
+                Self::external_protein_transcript_coding_ranges_1based(transcript);
+            let comparison = if let Some(external_source) = external_source {
                 Self::build_transcript_protein_comparison(
                     &transcript.transcript_id,
                     &transcript_label,
                     is_reverse,
                     None,
                     &[],
-                    Some(Self::build_uniprot_external_opinion_summary(
-                        &projection.projection_id,
-                        entry,
+                    Some(Self::build_external_protein_opinion_summary(
+                        external_source,
                         transcript,
                     )),
                 )
@@ -3329,7 +3480,14 @@ impl GentleEngine {
                 .filter_map(|feature_projection| {
                     let normalized_key =
                         Self::normalized_protein_feature_key(&feature_projection.feature_key);
-                    if Self::uniprot_feature_hidden_by_default(&normalized_key)
+                    if external_source
+                        .map(|external_source| {
+                            Self::external_protein_feature_hidden_by_default(
+                                external_source.source,
+                                &normalized_key,
+                            )
+                        })
+                        .unwrap_or(false)
                         && !include_feature_keys.contains(&normalized_key)
                     {
                         return None;
@@ -3340,7 +3498,7 @@ impl GentleEngine {
                     {
                         return None;
                     }
-                    Self::projected_uniprot_feature_domain(feature_projection)
+                    Self::projected_external_protein_feature_domain(feature_projection)
                 })
                 .collect::<Vec<_>>();
             domains.sort_by(|left, right| {
@@ -3431,20 +3589,8 @@ impl GentleEngine {
             .map(|(_, end)| *end)
             .max()
             .unwrap_or_else(|| dna.len().max(1));
-        let gene_symbol = entry
-            .and_then(|entry| {
-                entry
-                    .gene_names
-                    .iter()
-                    .find(|value| !value.trim().is_empty())
-                    .cloned()
-                    .or_else(|| {
-                        entry
-                            .protein_name
-                            .clone()
-                            .filter(|value| !value.trim().is_empty())
-                    })
-            })
+        let gene_symbol = external_source
+            .and_then(|external_source| external_source.gene_symbol_hint.clone())
             .or_else(|| {
                 features.iter().find_map(|feature| {
                     Self::first_nonempty_feature_qualifier(
@@ -3454,20 +3600,20 @@ impl GentleEngine {
                 })
             })
             .unwrap_or_else(|| seq_id.to_string());
-        let panel_id = projection
-            .map(|projection| projection.projection_id.clone())
+        let panel_id = external_source
+            .map(|external_source| external_source.source_id.clone())
             .unwrap_or_else(|| match normalized_filter.as_deref() {
                 Some(filter) => format!("protein_compare:{filter}@{seq_id}"),
                 None => format!("protein_compare@{seq_id}"),
             });
-        let panel_source = if let Some(entry) = entry {
-            Some(format!(
-                "Transcript-native proteins with optional UniProt opinion {} ({})",
-                entry.entry_id, entry.accession
-            ))
-        } else {
-            Some("Transcript-native protein derivation (external protein opinions optional)".to_string())
-        };
+        let panel_source = external_source
+            .map(|external_source| external_source.panel_source_label.clone())
+            .or_else(|| {
+                Some(
+                    "Transcript-native protein derivation (external protein opinions optional)"
+                        .to_string(),
+                )
+            });
 
         Ok(IsoformArchitectureExpertView {
             seq_id: seq_id.to_string(),
@@ -3501,11 +3647,12 @@ impl GentleEngine {
             });
         }
         let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let external_source =
+            Self::build_uniprot_external_protein_opinion_source(&projection, &entry);
         self.build_optional_external_protein_expert_view(
             seq_id,
-            projection.transcript_id_filter.as_deref(),
-            Some(&projection),
-            Some(&entry),
+            external_source.transcript_id_filter.as_deref(),
+            Some(&external_source),
             protein_feature_filter,
         )
     }
@@ -4924,11 +5071,7 @@ impl GentleEngine {
                 projection_id,
                 protein_feature_filter,
             } => self
-                .build_uniprot_projection_expert_view(
-                    seq_id,
-                    projection_id,
-                    protein_feature_filter,
-                )
+                .build_uniprot_projection_expert_view(seq_id, projection_id, protein_feature_filter)
                 .map(FeatureExpertView::IsoformArchitecture),
         }
     }

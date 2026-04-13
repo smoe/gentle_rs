@@ -1243,6 +1243,10 @@ order. Durable architecture constraints and decisions remain in
         `external_opinion_only`
       - the GUI details grid exposes translation table/source, derivation mode,
         external-opinion source, status, and mismatch summaries inline
+      - the engine now routes external protein evidence through one
+        source-neutral adapter boundary before Protein Expert view assembly, so
+        future providers can reuse the same transcript-first comparison model
+        without reshaping shell/GUI payloads
     - future external protein evidence should reuse that same comparison
       contract; Ensembl proteoform/protein annotations are the next planned
       source, but are not implemented yet in this slice

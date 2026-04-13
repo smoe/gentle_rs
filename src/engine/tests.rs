@@ -4808,13 +4808,35 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     );
     assert_eq!(view.transcript_lanes.len(), 1);
     assert_eq!(view.protein_lanes.len(), 1);
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record should exist for projected expert view");
+    let derived = comparison
+        .derived
+        .as_ref()
+        .expect("projected expert view should still expose transcript-native derivation");
+    let external_opinion = comparison
+        .external_opinion
+        .as_ref()
+        .expect("UniProt-backed expert should expose external opinion metadata");
     assert_eq!(
         view.protein_lanes[0].expected_length_aa,
-        Some(entries[0].sequence_length)
+        Some(derived.protein_length_aa)
     );
     assert_eq!(view.protein_lanes[0].reference_start_aa, Some(1));
     assert_eq!(
         view.protein_lanes[0].reference_end_aa,
+        Some(derived.protein_length_aa)
+    );
+    assert_eq!(
+        external_opinion.source,
+        gentle_protocol::ProteinExternalOpinionSource::Uniprot
+    );
+    assert_eq!(external_opinion.source_id, "PTEST1@toy_seq");
+    assert_eq!(external_opinion.source_label, "UniProt PTEST1 (PTEST1)");
+    assert_eq!(
+        external_opinion.expected_length_aa,
         Some(entries[0].sequence_length)
     );
     assert!(
@@ -4879,11 +4901,17 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
         TranscriptProteinComparisonStatus::DerivedOnly
     );
     assert!(comparison.external_opinion.is_none());
-    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    let derived = comparison
+        .derived
+        .as_ref()
+        .expect("derived transcript product");
     assert_eq!(derived.transcript_id, "TX_TPROT");
     assert_eq!(derived.protein_length_aa, 60);
     assert_eq!(derived.translation_table, 1);
-    assert_eq!(derived.translation_table_source.as_str(), "standard_default");
+    assert_eq!(
+        derived.translation_table_source.as_str(),
+        "standard_default"
+    );
     assert_eq!(view.transcript_lanes[0].transcript_exons.len(), 1);
     assert_eq!(view.transcript_lanes[0].exons.len(), 1);
     assert!(!view.transcript_lanes[0].cds_to_protein_segments.is_empty());
@@ -4928,13 +4956,19 @@ fn test_transcript_protein_expert_preserves_explicit_translation_table() {
         .comparison
         .as_ref()
         .expect("comparison record");
-    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    let derived = comparison
+        .derived
+        .as_ref()
+        .expect("derived transcript product");
     assert_eq!(
         comparison.status,
         TranscriptProteinComparisonStatus::DerivedOnly
     );
     assert_eq!(derived.translation_table, 11);
-    assert_eq!(derived.translation_table_source.as_str(), "explicit_cds_qualifier");
+    assert_eq!(
+        derived.translation_table_source.as_str(),
+        "explicit_cds_qualifier"
+    );
     assert_eq!(derived.organism.as_deref(), Some("Escherichia coli"));
 }
 
@@ -4974,7 +5008,10 @@ fn test_transcript_protein_expert_preserves_mitochondrial_default_context() {
         .comparison
         .as_ref()
         .expect("comparison record");
-    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    let derived = comparison
+        .derived
+        .as_ref()
+        .expect("derived transcript product");
     assert_eq!(
         comparison.status,
         TranscriptProteinComparisonStatus::DerivedOnly
@@ -5022,7 +5059,10 @@ SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
             ("gene".into(), Some("TOYMIS".to_string())),
             ("transcript_id".into(), Some("TXMM1".to_string())),
             ("label".into(), Some("TXMM1".to_string())),
-            ("cds_ranges_1based".into(), Some("1-30,61-90,121-150".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("1-30,61-90,121-150".to_string()),
+            ),
         ]
         .into_iter()
         .collect(),
@@ -5129,7 +5169,10 @@ SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
             ("gene".into(), Some("TOYUTR".to_string())),
             ("transcript_id".into(), Some("TXUTR1".to_string())),
             ("label".into(), Some("TXUTR1".to_string())),
-            ("cds_ranges_1based".into(), Some("61-90,121-150".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("61-90,121-150".to_string()),
+            ),
         ]
         .into_iter()
         .collect(),
@@ -5254,12 +5297,30 @@ SQ   SEQUENCE   60 AA;  6666 MW;  0000000000000000 CRC64;
             .all(|domain| !domain.name.to_ascii_uppercase().contains("CONFLICT")),
         "default protein-feature filter should hide CONFLICT features"
     );
-    assert!(domains.iter().any(|domain| domain.name.starts_with("SIGNAL")));
-    assert!(domains.iter().any(|domain| domain.name.starts_with("TOPO_DOM")));
-    assert!(domains.iter().any(|domain| domain.name.starts_with("TRANSMEM")));
-    assert!(domains.iter().any(|domain| domain.name.contains("tail domain")));
     assert!(
-        view.warnings.iter().any(|warning| warning.contains("CONFLICT x1")),
+        domains
+            .iter()
+            .any(|domain| domain.name.starts_with("SIGNAL"))
+    );
+    assert!(
+        domains
+            .iter()
+            .any(|domain| domain.name.starts_with("TOPO_DOM"))
+    );
+    assert!(
+        domains
+            .iter()
+            .any(|domain| domain.name.starts_with("TRANSMEM"))
+    );
+    assert!(
+        domains
+            .iter()
+            .any(|domain| domain.name.contains("tail domain"))
+    );
+    assert!(
+        view.warnings
+            .iter()
+            .any(|warning| warning.contains("CONFLICT x1")),
         "expected warning about default-hidden CONFLICT features, got {:?}",
         view.warnings
     );

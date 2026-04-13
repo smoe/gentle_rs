@@ -12,9 +12,9 @@
 use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    ProteinFeatureFilter, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    Arrangement, ArrangementMode, Container, ContainerKind, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
     RackProfileSnapshot,
 };
 use crate::test_support::{
@@ -11249,10 +11249,9 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
-    let filtered_protein_compare = parse_shell_line(
-        "inspect-feature-expert s protein-comparison --transcript TX_TPROT",
-    )
-    .expect("parse filtered transcript protein comparison target");
+    let filtered_protein_compare =
+        parse_shell_line("inspect-feature-expert s protein-comparison --transcript TX_TPROT")
+            .expect("parse filtered transcript protein comparison target");
     match filtered_protein_compare {
         ShellCommand::InspectFeatureExpert { seq_id, target } => {
             assert_eq!(seq_id, "s");

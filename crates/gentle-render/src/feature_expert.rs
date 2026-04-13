@@ -577,7 +577,8 @@ fn best_matching_exon_identity_key(
         })
         .collect::<Vec<_>>();
     overlaps.sort_by(|left, right| {
-        right.1
+        right
+            .1
             .cmp(&left.1)
             .then_with(|| {
                 let left_len = left.0.1.saturating_sub(left.0.0).saturating_add(1);
@@ -599,7 +600,9 @@ fn lane_exon_identity_key_for_coding_range(
         genomic_start_1based,
         genomic_end_1based,
     )
-    .or_else(|| best_matching_exon_identity_key(&lane.exons, genomic_start_1based, genomic_end_1based))
+    .or_else(|| {
+        best_matching_exon_identity_key(&lane.exons, genomic_start_1based, genomic_end_1based)
+    })
     .unwrap_or_else(|| genomic_interval_key(genomic_start_1based, genomic_end_1based))
 }
 
@@ -653,7 +656,11 @@ fn exon_family_index_for_key(
     exon_key: (usize, usize),
     exon_family_registry: &ExonFamilyRegistry,
 ) -> usize {
-    if let Some(index) = exon_family_registry.family_index_by_key.get(&exon_key).copied() {
+    if let Some(index) = exon_family_registry
+        .family_index_by_key
+        .get(&exon_key)
+        .copied()
+    {
         return index;
     }
     exon_family_registry
@@ -826,8 +833,7 @@ fn map_reference_interval_to_local_segments(
         let overlap_start = start_aa.max(reference_start.min(reference_end));
         let overlap_end = end_aa.min(reference_start.max(reference_end));
         if overlap_end >= overlap_start {
-            let local_start =
-                overlap_start.saturating_sub(reference_start.min(reference_end)) + 1;
+            let local_start = overlap_start.saturating_sub(reference_start.min(reference_end)) + 1;
             let local_end = overlap_end.saturating_sub(reference_start.min(reference_end)) + 1;
             out.push((local_start, local_end));
         }
@@ -916,8 +922,7 @@ fn layout_compressed_transcript_lane(
             clipped_end.saturating_sub(family_start).saturating_add(1) as f32
         };
         let x1 = column.x1 + (start_offset / family_len) * (column.x2 - column.x1).max(1.0);
-        let x2 = column.x1
-            + (end_offset_exclusive / family_len) * (column.x2 - column.x1).max(1.0);
+        let x2 = column.x1 + (end_offset_exclusive / family_len) * (column.x2 - column.x1).max(1.0);
         coding_blocks.push(CompressedTranscriptBlock {
             segment_index,
             exon_key,
@@ -949,7 +954,10 @@ fn layout_local_protein_lane(
         .map(|segment| segment.local_aa_end)
         .or_else(|| protein_lane.expected_length_aa)
         .or_else(|| {
-            match (protein_lane.reference_start_aa, protein_lane.reference_end_aa) {
+            match (
+                protein_lane.reference_start_aa,
+                protein_lane.reference_end_aa,
+            ) {
                 (Some(start), Some(end)) => Some(end.max(start).saturating_sub(start.min(end)) + 1),
                 _ => None,
             }
@@ -966,8 +974,7 @@ fn layout_local_protein_lane(
     let local_span = local_length_aa as f32;
     let x_for_local_edge = |edge_1based_exclusive: usize| -> f32 {
         let clamped = edge_1based_exclusive.clamp(1, local_length_aa.saturating_add(1));
-        left
-            + ((clamped.saturating_sub(1)) as f32 / local_span) * (right - left).max(1.0)
+        left + ((clamped.saturating_sub(1)) as f32 / local_span) * (right - left).max(1.0)
     };
     let contribution_rects = contributions
         .iter()
@@ -2563,8 +2570,12 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         left + rel * width
     };
     let exon_family_registry = build_exon_family_registry(view);
-    let exon_family_columns =
-        layout_exon_family_columns(&exon_family_registry, left, right, dominant_strand_is_reverse);
+    let exon_family_columns = layout_exon_family_columns(
+        &exon_family_registry,
+        left,
+        right,
+        dominant_strand_is_reverse,
+    );
 
     let paired_lane_layouts = view
         .transcript_lanes
@@ -2912,7 +2923,8 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
             .protein_lanes
             .get(idx)
             .unwrap_or(&fallback_protein_lane);
-        let transcript_y = paired_lane_top + TRANSCRIPT_PRODUCT_TOP_PAD + COMPRESSED_EXON_HALF_HEIGHT;
+        let transcript_y =
+            paired_lane_top + TRANSCRIPT_PRODUCT_TOP_PAD + COMPRESSED_EXON_HALF_HEIGHT;
         let protein_y = transcript_y
             + COMPRESSED_EXON_HALF_HEIGHT
             + TRANSCRIPT_PRODUCT_CONNECTOR_GAP
@@ -2929,11 +2941,14 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                 .set("text-anchor", "end")
                 .set("font-family", "monospace")
                 .set("font-size", 10)
-                .set("fill", if transcript_lane.mapped {
-                    "#111827"
-                } else {
-                    "#b45309"
-                }),
+                .set(
+                    "fill",
+                    if transcript_lane.mapped {
+                        "#111827"
+                    } else {
+                        "#b45309"
+                    },
+                ),
         );
         let exon_boxes = &layout.compressed.exon_boxes;
         for pair in exon_boxes.windows(2) {
@@ -2977,7 +2992,10 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                     .set("width", (block.x2 - block.x1).max(1.0))
                     .set("height", COMPRESSED_EXON_HALF_HEIGHT * 2.0)
                     .set("fill", block.fill)
-                    .set("fill-opacity", if transcript_lane.mapped { 0.88 } else { 0.45 })
+                    .set(
+                        "fill-opacity",
+                        if transcript_lane.mapped { 0.88 } else { 0.45 },
+                    )
                     .set("stroke", block.stroke)
                     .set("stroke-width", 0.6)
                     .set("data-track", "compressed-cds-block")
@@ -3048,7 +3066,8 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
             );
         }
 
-        let topology_block_top = protein_y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_TOPOLOGY_TRACK_GAP;
+        let topology_block_top =
+            protein_y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_TOPOLOGY_TRACK_GAP;
         let topology_block_height = if layout.protein.topology_rows.row_count == 0 {
             0.0
         } else {
@@ -3092,7 +3111,8 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                         .set("x", (piece.x1 + piece.x2) * 0.5)
                         .set(
                             "y",
-                            rect_y + PROTEIN_TOPOLOGY_ROW_HEIGHT * 0.5
+                            rect_y
+                                + PROTEIN_TOPOLOGY_ROW_HEIGHT * 0.5
                                 + PROTEIN_TOPOLOGY_LABEL_FONT_SIZE * 0.35,
                         )
                         .set("text-anchor", "middle")
@@ -3129,10 +3149,7 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
             );
         }
         for (label_idx, label) in layout.protein.overlay_labels.placements.iter().enumerate() {
-            let Some(&domain_index) = layout
-                .protein
-                .overlay_label_domain_indices
-                .get(label_idx)
+            let Some(&domain_index) = layout.protein.overlay_label_domain_indices.get(label_idx)
             else {
                 continue;
             };
@@ -3195,10 +3212,9 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         }
 
         let protein_note = match layout.protein.reference_span_label.as_deref() {
-            Some(reference_span) => format!(
-                "{} aa | {}",
-                layout.protein.local_length_aa, reference_span
-            ),
+            Some(reference_span) => {
+                format!("{} aa | {}", layout.protein.local_length_aa, reference_span)
+            }
             None => format!("{} aa", layout.protein.local_length_aa),
         };
         doc = doc.add(
@@ -3577,61 +3593,65 @@ mod tests {
         let svg = render_isoform_architecture(&view);
         assert_eq!(track_count(&svg, "data-track=\"compressed-cds-block\""), 2);
         assert_eq!(track_count(&svg, "data-track=\"protein-contribution\""), 2);
-        assert_eq!(track_count(&svg, "data-track=\"transcript-product-link\""), 2);
+        assert_eq!(
+            track_count(&svg, "data-track=\"transcript-product-link\""),
+            2
+        );
         assert!(svg.contains("isoform-local protein axis"));
     }
 
     #[test]
     fn isoform_renderer_keeps_same_genomic_exon_color_across_isoforms_and_panels() {
         let mut view = isoform_test_view("+");
-        view.transcript_lanes.push(IsoformArchitectureTranscriptLane {
-            isoform_id: "i2".to_string(),
-            label: "iso2".to_string(),
-            transcript_id: Some("tx2".to_string()),
-            transcript_feature_id: Some(2),
-            strand: "+".to_string(),
-            transcript_exons: vec![
-                SplicingRange {
-                    start_1based: 148,
-                    end_1based: 186,
-                },
-                SplicingRange {
-                    start_1based: 196,
-                    end_1based: 214,
-                },
-            ],
-            exons: vec![
-                SplicingRange {
-                    start_1based: 150,
-                    end_1based: 176,
-                },
-                SplicingRange {
-                    start_1based: 198,
-                    end_1based: 210,
-                },
-            ],
-            introns: vec![SplicingRange {
-                start_1based: 177,
-                end_1based: 197,
-            }],
-            mapped: true,
-            transactivation_class: None,
-            cds_to_protein_segments: vec![
-                IsoformArchitectureCdsAaSegment {
-                    genomic_start_1based: 150,
-                    genomic_end_1based: 176,
-                    aa_start: 1,
-                    aa_end: 27,
-                },
-                IsoformArchitectureCdsAaSegment {
-                    genomic_start_1based: 198,
-                    genomic_end_1based: 210,
-                    aa_start: 28,
-                    aa_end: 40,
-                },
-            ],
-            note: None,
-        });
+        view.transcript_lanes
+            .push(IsoformArchitectureTranscriptLane {
+                isoform_id: "i2".to_string(),
+                label: "iso2".to_string(),
+                transcript_id: Some("tx2".to_string()),
+                transcript_feature_id: Some(2),
+                strand: "+".to_string(),
+                transcript_exons: vec![
+                    SplicingRange {
+                        start_1based: 148,
+                        end_1based: 186,
+                    },
+                    SplicingRange {
+                        start_1based: 196,
+                        end_1based: 214,
+                    },
+                ],
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 150,
+                        end_1based: 176,
+                    },
+                    SplicingRange {
+                        start_1based: 198,
+                        end_1based: 210,
+                    },
+                ],
+                introns: vec![SplicingRange {
+                    start_1based: 177,
+                    end_1based: 197,
+                }],
+                mapped: true,
+                transactivation_class: None,
+                cds_to_protein_segments: vec![
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 150,
+                        genomic_end_1based: 176,
+                        aa_start: 1,
+                        aa_end: 27,
+                    },
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 198,
+                        genomic_end_1based: 210,
+                        aa_start: 28,
+                        aa_end: 40,
+                    },
+                ],
+                note: None,
+            });
         view.protein_lanes.push(IsoformArchitectureProteinLane {
             isoform_id: "i2".to_string(),
             label: "iso2".to_string(),
@@ -3687,54 +3707,55 @@ mod tests {
     #[test]
     fn isoform_renderer_uses_shared_genomic_exon_columns_in_lower_panel() {
         let mut view = isoform_test_view("+");
-        view.transcript_lanes.push(IsoformArchitectureTranscriptLane {
-            isoform_id: "i2".to_string(),
-            label: "iso2".to_string(),
-            transcript_id: Some("tx2".to_string()),
-            transcript_feature_id: Some(2),
-            strand: "+".to_string(),
-            transcript_exons: vec![
-                SplicingRange {
-                    start_1based: 148,
-                    end_1based: 186,
-                },
-                SplicingRange {
-                    start_1based: 196,
-                    end_1based: 214,
-                },
-            ],
-            exons: vec![
-                SplicingRange {
-                    start_1based: 150,
-                    end_1based: 176,
-                },
-                SplicingRange {
-                    start_1based: 198,
-                    end_1based: 210,
-                },
-            ],
-            introns: vec![SplicingRange {
-                start_1based: 177,
-                end_1based: 197,
-            }],
-            mapped: true,
-            transactivation_class: None,
-            cds_to_protein_segments: vec![
-                IsoformArchitectureCdsAaSegment {
-                    genomic_start_1based: 150,
-                    genomic_end_1based: 176,
-                    aa_start: 1,
-                    aa_end: 27,
-                },
-                IsoformArchitectureCdsAaSegment {
-                    genomic_start_1based: 198,
-                    genomic_end_1based: 210,
-                    aa_start: 28,
-                    aa_end: 40,
-                },
-            ],
-            note: None,
-        });
+        view.transcript_lanes
+            .push(IsoformArchitectureTranscriptLane {
+                isoform_id: "i2".to_string(),
+                label: "iso2".to_string(),
+                transcript_id: Some("tx2".to_string()),
+                transcript_feature_id: Some(2),
+                strand: "+".to_string(),
+                transcript_exons: vec![
+                    SplicingRange {
+                        start_1based: 148,
+                        end_1based: 186,
+                    },
+                    SplicingRange {
+                        start_1based: 196,
+                        end_1based: 214,
+                    },
+                ],
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 150,
+                        end_1based: 176,
+                    },
+                    SplicingRange {
+                        start_1based: 198,
+                        end_1based: 210,
+                    },
+                ],
+                introns: vec![SplicingRange {
+                    start_1based: 177,
+                    end_1based: 197,
+                }],
+                mapped: true,
+                transactivation_class: None,
+                cds_to_protein_segments: vec![
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 150,
+                        genomic_end_1based: 176,
+                        aa_start: 1,
+                        aa_end: 27,
+                    },
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 198,
+                        genomic_end_1based: 210,
+                        aa_start: 28,
+                        aa_end: 40,
+                    },
+                ],
+                note: None,
+            });
         view.protein_lanes.push(IsoformArchitectureProteinLane {
             isoform_id: "i2".to_string(),
             label: "iso2".to_string(),

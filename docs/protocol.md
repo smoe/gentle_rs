@@ -1204,6 +1204,10 @@ external coding agent runtime, see:
       - `low_confidence_external_opinion`
       - `no_transcript_cds`
       - `external_opinion_only`
+    - inside the engine, external protein evidence now enters the Protein
+      Expert through one source-neutral adapter boundary before view assembly,
+      so future sources can reuse the same transcript-first comparison payload
+      instead of forking the renderer/GUI contract
     - this comparison model is intentionally not UniProt-specific; future
       external sources such as Ensembl proteoform/protein annotations are meant
       to populate the same fields rather than replacing transcript-native

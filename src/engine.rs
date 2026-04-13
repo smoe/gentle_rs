@@ -89,10 +89,10 @@ pub use gentle_protocol::{
     Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
     GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
     LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily,
-    RackPhysicalTemplateKind, RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
+    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind,
+    RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId,
+    SeqId, SequenceOrigin,
 };
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";

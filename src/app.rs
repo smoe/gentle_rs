@@ -16354,7 +16354,8 @@ Error: `{err}`"
     ) {
         let seq_id = seq_id.trim();
         if seq_id.is_empty() {
-            self.uniprot_status = "seq_id is required for transcript-native Protein Expert".to_string();
+            self.uniprot_status =
+                "seq_id is required for transcript-native Protein Expert".to_string();
             return;
         }
         self.open_sequence_window_for_transcript_protein_expert(seq_id, transcript_id_filter);
@@ -16600,7 +16601,8 @@ Error: `{err}`"
             .add_filter("SVG", &["svg"])
             .save_file()
         else {
-            self.uniprot_status = "Transcript-native Protein Expert SVG export canceled".to_string();
+            self.uniprot_status =
+                "Transcript-native Protein Expert SVG export canceled".to_string();
             return;
         };
         let path_text = path.display().to_string();

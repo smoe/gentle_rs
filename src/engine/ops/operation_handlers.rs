@@ -1371,7 +1371,9 @@ impl GentleEngine {
         }
         let mut source_ranges = vec![];
         for (local_start, local_end) in forward_local_ranges {
-            for (source_start, source_end, exon_local_start, exon_local_end) in exon_segments_forward {
+            for (source_start, source_end, exon_local_start, exon_local_end) in
+                exon_segments_forward
+            {
                 let overlap_start = local_start.max(*exon_local_start);
                 let overlap_end = local_end.min(*exon_local_end);
                 if overlap_end <= overlap_start {
