@@ -1507,7 +1507,7 @@ Adapter-equivalence guarantee for UI-intent tools:
   - `macros instance-list` and `macros instance-show` expose persisted lineage
     macro-instance records as first-class introspection contracts
 
-- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
   - shared-shell/CLI routine catalog discovery surface
   - default catalog path: `assets/cloning_routines.json`
   - typed catalog schema: `gentle.cloning_routines.v1`
@@ -1515,13 +1515,20 @@ Adapter-equivalence guarantee for UI-intent tools:
   - filters are case-insensitive; query performs substring match across
     routine id/title/family/status/template/tags/summary plus explainability
     metadata fields
-- `routines explain ROUTINE_ID [--catalog PATH]`
+  - when `--seq-id` is supplied, planning estimates also consume the active
+    construct-reasoning graph for that sequence so variant-derived assay
+    suggestions can bias routine-family ranking deterministically
+- `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
   - shared-shell/CLI routine explainability surface
   - response schema: `gentle.cloning_routine_explain.v1`
   - returns one routine definition plus normalized explanation payload
     (purpose/mechanism/requires/contraindications/disambiguation/failure modes)
     and resolved confusing alternatives
-- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - when `--seq-id` is supplied, the response also includes the
+    sequence-aware `routine_preference_context` plus a planning estimate for
+    that routine, so explain-stage inspection stays aligned with list/compare
+    ranking for the same construct-reasoning graph
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
   - shared-shell/CLI deterministic routine comparison surface
   - response schema: `gentle.cloning_routine_compare.v1`
   - returns both routine definitions plus comparison payload:
@@ -1532,6 +1539,9 @@ Adapter-equivalence guarantee for UI-intent tools:
     - `estimated_cost`
     - `local_fit_score`
     - `composite_meta_score`
+  - `--seq-id` applies the same active-sequence construct-reasoning context
+    used by `routines list`, so compare-stage estimates stay aligned with
+    variant-driven assay preferences
 
 - Planning meta-layer contracts (shared shell/CLI, engine-owned):
   - profile schema: `gentle.planning_profile.v1`
@@ -2038,10 +2048,10 @@ Candidate-set semantics:
     - `gibson.two_fragment_overlap_preview`
     - `restriction.digest_ligate_extract_sticky`
   - adapter discovery surface:
-    `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+    `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
   - explainability and comparison surfaces:
-    - `routines explain ROUTINE_ID [--catalog PATH]`
-    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+    - `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
 - Macro-instance lineage baseline:
   - mutating `macros run` / `macros template-run` append one
     `LineageMacroInstance` record in project lineage state for success and
@@ -2688,6 +2698,9 @@ Construct reasoning graph foundation (implemented first slice):
     - variant-effect context derived from overlap of mapped variant markers
       against promoter/enhancer/TFBS/CDS/exon/UTR/splice evidence already in
       the graph
+      - per-variant summaries now keep transcript-level ambiguity explicit via
+        `transcript_context_status` and `transcript_effect_summaries[]`
+        instead of flattening multi-transcript consequences away
     - variant-assay context that maps the same deterministic overlap rules onto
       first assay-family suggestions such as:
       - promoter/regulatory reporter follow-up
@@ -2723,6 +2736,14 @@ Construct reasoning graph foundation (implemented first slice):
     - deterministic per-sequence summary rows for concise agent consumption
       including additive variant effect tags and suggested assay-family ids
     - embedded stored reasoning graphs for full offline inspection/replay
+  - planning/routine handoff now also consumes the same graph:
+    - `routine_preference_context` records can carry
+      `construct_reasoning_seq_id`, `variant_effect_tags`,
+      `variant_suggested_assay_ids`, and
+      `variant_derived_preferred_routine_families`
+    - `routines list` / `routines compare` planning estimates and GUI Routine
+      Assistant traces can therefore explain when variant-derived assay context
+      boosted one routine family over another
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - dbSNP / VCF-generated variant markers => `hard_fact`

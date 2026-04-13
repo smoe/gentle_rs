@@ -3797,6 +3797,7 @@ fn parse_routines_list_with_filters() {
             status,
             tag,
             query,
+            seq_id,
         } => {
             assert_eq!(
                 catalog_path.as_deref(),
@@ -3806,6 +3807,7 @@ fn parse_routines_list_with_filters() {
             assert_eq!(status.as_deref(), Some("implemented"));
             assert_eq!(tag.as_deref(), Some("guide"));
             assert_eq!(query.as_deref(), Some("scan"));
+            assert_eq!(seq_id, None);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -3821,9 +3823,38 @@ fn parse_routines_explain_with_catalog() {
         ShellCommand::RoutinesExplain {
             catalog_path,
             routine_id,
+            seq_id,
         } => {
             assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
             assert_eq!(routine_id, "golden_gate.type_iis_single_insert".to_string());
+            assert_eq!(seq_id, None);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_routines_explain_with_sequence_context() {
+    let cmd = parse_shell_line(
+        "routines explain golden_gate.type_iis_single_insert --seq-id seq_variant",
+    )
+    .expect("parse routines explain");
+    match cmd {
+        ShellCommand::RoutinesExplain { seq_id, .. } => {
+            assert_eq!(seq_id.as_deref(), Some("seq_variant"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_routines_list_with_sequence_context() {
+    let cmd = parse_shell_line("routines list --query reporter --seq-id seq_variant")
+        .expect("parse routines list");
+    match cmd {
+        ShellCommand::RoutinesList { query, seq_id, .. } => {
+            assert_eq!(query.as_deref(), Some("reporter"));
+            assert_eq!(seq_id.as_deref(), Some("seq_variant"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -3840,6 +3871,7 @@ fn parse_routines_compare_with_catalog() {
             catalog_path,
             left_routine_id,
             right_routine_id,
+            seq_id,
         } => {
             assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
             assert_eq!(
@@ -3850,6 +3882,21 @@ fn parse_routines_compare_with_catalog() {
                 right_routine_id,
                 "gibson.two_fragment_overlap_preview".to_string()
             );
+            assert_eq!(seq_id, None);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_routines_compare_with_sequence_context() {
+    let cmd = parse_shell_line(
+        "routines compare golden_gate.type_iis_single_insert gibson.two_fragment_overlap_preview --seq-id seq_variant",
+    )
+    .expect("parse routines compare");
+    match cmd {
+        ShellCommand::RoutinesCompare { seq_id, .. } => {
+            assert_eq!(seq_id.as_deref(), Some("seq_variant"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -4923,6 +4970,7 @@ fn execute_routines_list_filters_and_searches() {
             status: Some("planned".to_string()),
             tag: Some("guide".to_string()),
             query: Some("scan".to_string()),
+            seq_id: None,
         },
     )
     .expect("list routines");
@@ -5107,6 +5155,7 @@ fn execute_routines_list_without_planning_preserves_legacy_order() {
             status: None,
             tag: None,
             query: None,
+            seq_id: None,
         },
     )
     .expect("list routines");
@@ -5173,6 +5222,7 @@ fn execute_routines_list_applies_missing_material_penalty_default_business_days(
             status: None,
             tag: None,
             query: None,
+            seq_id: None,
         },
     )
     .expect("list routines");
@@ -5263,6 +5313,7 @@ fn execute_routines_list_prefers_helper_compatible_routine_family() {
             status: None,
             tag: None,
             query: None,
+            seq_id: None,
         },
     )
     .expect("list routines");
@@ -5290,6 +5341,121 @@ fn execute_routines_list_prefers_helper_compatible_routine_family() {
     assert_eq!(
         rows[1]["planning_estimate"]["explanation"]["routine_family_alignment_bonus"].as_f64(),
         Some(0.0)
+    );
+}
+
+#[test]
+fn execute_routines_list_prefers_variant_derived_routine_family_for_sequence() {
+    let mut engine = GentleEngine::default();
+    engine
+        .set_planning_objective(Some(PlanningObjective::default()))
+        .expect("set planning objective");
+    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "promoter".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(4, 7),
+        qualifiers: vec![("label".into(), Some("SP1 motif".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(5, 6),
+        qualifiers: vec![
+            ("label".into(), Some("rsVariant".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("dbsnp_variant_marker".to_string()),
+            ),
+        ],
+    });
+    dna.update_computed_features();
+    engine
+        .state_mut()
+        .sequences
+        .insert("variant_routine_seq".to_string(), dna);
+
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("routines_variant_preference.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "pcr.demo_screen",
+      "title": "PCR Demo Screen",
+      "family": "pcr",
+      "status": "implemented",
+      "vocabulary_tags": ["pcr", "screen"],
+      "template_name": "pcr_demo_screen",
+      "base_time_hours": 4.0,
+      "base_cost": 2.0,
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    },
+    {
+      "routine_id": "gibson.demo_overlap",
+      "title": "Gibson Demo Overlap",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": ["gibson", "assembly"],
+      "template_name": "gibson_demo_overlap",
+      "base_time_hours": 4.0,
+      "base_cost": 2.0,
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    }
+  ]
+}"#,
+    )
+    .expect("write planning catalog");
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RoutinesList {
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            family: None,
+            status: None,
+            tag: None,
+            query: None,
+            seq_id: Some("variant_routine_seq".to_string()),
+        },
+    )
+    .expect("list routines");
+    let rows = out.output["routines"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0]["routine_id"].as_str(),
+        Some("gibson.demo_overlap"),
+        "variant-derived reporter/expression preferences should boost compatible assembly families"
+    );
+    assert_eq!(
+        rows[0]["planning_estimate"]["explanation"]["routine_family_alignment_bonus"].as_f64(),
+        Some(0.16)
+    );
+    assert!(
+        rows[0]["planning_estimate"]["explanation"]["routine_family_alignment_sources"]
+            .as_array()
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("variant_derived")))
+            .unwrap_or(false)
+    );
+    assert!(
+        rows[0]["planning_estimate"]["explanation"]["routine_preference_context"]
+            ["variant_suggested_assay_ids"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str() == Some("allele_paired_promoter_luciferase_reporter")
+            }))
+            .unwrap_or(false)
     );
 }
 
@@ -5455,6 +5621,7 @@ fn execute_routines_explain_with_explicit_alternative_metadata() {
         &ShellCommand::RoutinesExplain {
             catalog_path: Some(catalog_path.to_string_lossy().to_string()),
             routine_id: "golden_gate.type_iis_single_insert".to_string(),
+            seq_id: None,
         },
     )
     .expect("routines explain");
@@ -5552,6 +5719,7 @@ fn execute_routines_compare_returns_difference_matrix() {
             catalog_path: Some(catalog_path.to_string_lossy().to_string()),
             left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
             right_routine_id: "gibson.two_fragment_overlap_preview".to_string(),
+            seq_id: None,
         },
     )
     .expect("routines compare");
@@ -5575,6 +5743,98 @@ fn execute_routines_compare_returns_difference_matrix() {
         matrix
             .iter()
             .any(|row| row.get("axis").and_then(|value| value.as_str()) == Some("assembly_mode"))
+    );
+}
+
+#[test]
+fn execute_routines_explain_includes_variant_planning_context_for_sequence() {
+    let mut engine = GentleEngine::default();
+    engine
+        .set_planning_objective(Some(PlanningObjective::default()))
+        .expect("set planning objective");
+    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "promoter".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(4, 7),
+        qualifiers: vec![("label".into(), Some("SP1 motif".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(5, 6),
+        qualifiers: vec![
+            ("label".into(), Some("rsExplain".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("dbsnp_variant_marker".to_string()),
+            ),
+        ],
+    });
+    dna.update_computed_features();
+    engine
+        .state_mut()
+        .sequences
+        .insert("variant_explain_seq".to_string(), dna);
+
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("cloning_routines_explain_variant.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "gibson.demo_overlap",
+      "title": "Gibson Demo Overlap",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": ["gibson", "assembly"],
+      "summary": "Assembly-compatible demo routine.",
+      "template_name": "gibson_demo_overlap",
+      "base_time_hours": 4.0,
+      "base_cost": 2.0,
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    }
+  ]
+}"#,
+    )
+    .expect("write routines catalog");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RoutinesExplain {
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            routine_id: "gibson.demo_overlap".to_string(),
+            seq_id: Some("variant_explain_seq".to_string()),
+        },
+    )
+    .expect("routines explain");
+    assert_eq!(
+        run.output["planning"]["seq_id"].as_str(),
+        Some("variant_explain_seq")
+    );
+    assert!(
+        run.output["planning"]["routine_preference_context"]["variant_effect_tags"]
+            .as_array()
+            .map(|rows| {
+                rows.iter()
+                    .any(|row| row.as_str() == Some("promoter_tfbs_regulatory_candidate"))
+            })
+            .unwrap_or(false)
+    );
+    assert!(
+        run.output["planning"]["estimate"]["explanation"]["routine_family_alignment_sources"]
+            .as_array()
+            .map(|rows| {
+                rows.iter()
+                    .any(|row| row.as_str() == Some("variant_derived"))
+            })
+            .unwrap_or(false)
     );
 }
 

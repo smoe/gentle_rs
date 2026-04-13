@@ -131,12 +131,16 @@ struct ConstructConditionSignal {
 #[derive(Debug, Clone, Serialize, Default, PartialEq, Eq)]
 pub(crate) struct RoutinePreferenceContext {
     pub helper_profile_id: Option<String>,
+    pub construct_reasoning_seq_id: Option<String>,
     pub helper_resolution_status: String,
     pub explicit_preferred_routine_families: Vec<String>,
     pub helper_derived_preferred_routine_families: Vec<String>,
+    pub variant_derived_preferred_routine_families: Vec<String>,
     pub effective_preferred_routine_families: Vec<String>,
     pub helper_offered_functions: Vec<String>,
     pub helper_component_labels: Vec<String>,
+    pub variant_effect_tags: Vec<String>,
+    pub variant_suggested_assay_ids: Vec<String>,
     pub rationale: Vec<String>,
 }
 
@@ -216,7 +220,17 @@ struct ConstructVariantReasoningSummary {
     transcript_labels: Vec<String>,
     effect_tags: Vec<String>,
     suggested_assay_ids: Vec<String>,
+    transcript_context_status: String,
+    transcript_effect_summaries: Vec<ConstructTranscriptVariantEffectSummary>,
     coding_predictions: Vec<ConstructVariantCodingPrediction>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructTranscriptVariantEffectSummary {
+    transcript_label: String,
+    effect_tags: Vec<String>,
+    suggested_assay_ids: Vec<String>,
+    source: String,
 }
 
 pub use crate::feature_expert::{
@@ -9515,16 +9529,132 @@ impl GentleEngine {
         )
     }
 
+    fn variant_assay_routine_family_preferences(assay_id: &str) -> Vec<String> {
+        match assay_id.trim() {
+            "allele_paired_promoter_luciferase_reporter"
+            | "allele_paired_regulatory_reporter"
+            | "allele_paired_expression_compare"
+            | "utr_reporter_translation_compare" => vec![
+                "gibson".to_string(),
+                "infusion".to_string(),
+                "nebuilder_hifi".to_string(),
+                "restriction".to_string(),
+                "golden_gate".to_string(),
+            ],
+            "minigene_splicing_assay" => vec![
+                "gibson".to_string(),
+                "infusion".to_string(),
+                "nebuilder_hifi".to_string(),
+                "restriction".to_string(),
+                "golden_gate".to_string(),
+                "pcr".to_string(),
+            ],
+            _ => vec![],
+        }
+    }
+
+    fn variant_assay_ids_to_routine_family_preferences(assay_ids: &[String]) -> Vec<String> {
+        assay_ids
+            .iter()
+            .flat_map(|assay_id| Self::variant_assay_routine_family_preferences(assay_id))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+    }
+
+    fn construct_reasoning_variant_preference_summary(
+        graph: Option<&ConstructReasoningGraph>,
+    ) -> (
+        Option<String>,
+        Vec<String>,
+        Vec<String>,
+        Vec<String>,
+        Option<String>,
+    ) {
+        let Some(graph) = graph else {
+            return (None, vec![], vec![], vec![], None);
+        };
+        let effect_tags = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "variant_effect_context")
+            .and_then(|fact| {
+                fact.value_json
+                    .get("effect_tags")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+            })
+            .unwrap_or_default();
+        let assay_ids = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "variant_assay_context")
+            .and_then(|fact| {
+                fact.value_json
+                    .get("suggested_assay_ids")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+            })
+            .unwrap_or_default();
+        let routine_families = Self::variant_assay_ids_to_routine_family_preferences(&assay_ids);
+        let rationale = if assay_ids.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "Construct reasoning for '{}' suggests assay family/ies {} from variant context (effect tags: {}).",
+                graph.seq_id,
+                assay_ids.join(", "),
+                if effect_tags.is_empty() {
+                    "none".to_string()
+                } else {
+                    effect_tags.join(", ")
+                }
+            ))
+        };
+        (
+            Some(graph.seq_id.clone()),
+            effect_tags,
+            assay_ids,
+            routine_families,
+            rationale,
+        )
+    }
+
     fn build_routine_preference_context(
         helper_profile_id: Option<&str>,
         explicit_preferred_routine_families: &[String],
         helper_interpretation: Option<&HelperConstructInterpretation>,
         helper_resolution_status: &str,
         helper_resolution_note: Option<String>,
+        construct_reasoning_seq_id: Option<&str>,
+        variant_effect_tags: &[String],
+        variant_suggested_assay_ids: &[String],
+        variant_derived_preferred_routine_families: &[String],
+        variant_reasoning_note: Option<String>,
     ) -> RoutinePreferenceContext {
         let explicit_preferred_routine_families =
             Self::normalize_routine_family_preferences(explicit_preferred_routine_families);
+        let variant_derived_preferred_routine_families =
+            Self::normalize_routine_family_preferences(variant_derived_preferred_routine_families);
         let helper_profile_id = helper_profile_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let construct_reasoning_seq_id = construct_reasoning_seq_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string());
@@ -9556,11 +9686,15 @@ impl GentleEngine {
         if let Some(note) = helper_resolution_note {
             rationale.push(note);
         }
+        if let Some(note) = variant_reasoning_note {
+            rationale.push(note);
+        }
         rationale.sort();
         rationale.dedup();
         let mut effective_preferred_routine_families = explicit_preferred_routine_families
             .iter()
             .chain(helper_derived_preferred_routine_families.iter())
+            .chain(variant_derived_preferred_routine_families.iter())
             .cloned()
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -9569,12 +9703,16 @@ impl GentleEngine {
 
         RoutinePreferenceContext {
             helper_profile_id,
+            construct_reasoning_seq_id,
             helper_resolution_status: helper_resolution_status.to_string(),
             explicit_preferred_routine_families,
             helper_derived_preferred_routine_families,
+            variant_derived_preferred_routine_families,
             effective_preferred_routine_families,
             helper_offered_functions,
             helper_component_labels,
+            variant_effect_tags: variant_effect_tags.to_vec(),
+            variant_suggested_assay_ids: variant_suggested_assay_ids.to_vec(),
             rationale,
         }
     }
@@ -9584,6 +9722,7 @@ impl GentleEngine {
     ) -> RoutinePreferenceContextRecord {
         RoutinePreferenceContextRecord {
             helper_profile_id: context.helper_profile_id.clone(),
+            construct_reasoning_seq_id: context.construct_reasoning_seq_id.clone(),
             helper_resolution_status: context.helper_resolution_status.clone(),
             explicit_preferred_routine_families: context
                 .explicit_preferred_routine_families
@@ -9591,11 +9730,16 @@ impl GentleEngine {
             helper_derived_preferred_routine_families: context
                 .helper_derived_preferred_routine_families
                 .clone(),
+            variant_derived_preferred_routine_families: context
+                .variant_derived_preferred_routine_families
+                .clone(),
             effective_preferred_routine_families: context
                 .effective_preferred_routine_families
                 .clone(),
             helper_offered_functions: context.helper_offered_functions.clone(),
             helper_component_labels: context.helper_component_labels.clone(),
+            variant_effect_tags: context.variant_effect_tags.clone(),
+            variant_suggested_assay_ids: context.variant_suggested_assay_ids.clone(),
             rationale: context.rationale.clone(),
         }
     }
@@ -9612,6 +9756,11 @@ impl GentleEngine {
                 None,
                 "not_requested",
                 None,
+                None,
+                &[],
+                &[],
+                &[],
+                None,
             );
         };
         match Self::interpret_helper_genome(helper_profile_id, None) {
@@ -9620,6 +9769,11 @@ impl GentleEngine {
                 &explicit_preferred_routine_families,
                 Some(&helper_interpretation),
                 "resolved",
+                None,
+                None,
+                &[],
+                &[],
+                &[],
                 None,
             ),
             Ok(None) => Self::build_routine_preference_context(
@@ -9630,6 +9784,11 @@ impl GentleEngine {
                 Some(format!(
                     "Planning objective selected helper profile '{helper_profile_id}', but no helper interpretation was found in the active helper catalog."
                 )),
+                None,
+                &[],
+                &[],
+                &[],
+                None,
             ),
             Err(error) => Self::build_routine_preference_context(
                 Some(helper_profile_id),
@@ -9640,6 +9799,11 @@ impl GentleEngine {
                     "Planning objective could not resolve helper profile '{helper_profile_id}' for routine-preference synthesis: {}.",
                     error.message
                 )),
+                None,
+                &[],
+                &[],
+                &[],
+                None,
             ),
         }
     }
@@ -9647,6 +9811,10 @@ impl GentleEngine {
     fn construct_objective_routine_preference_context(
         objective: &ConstructObjective,
         helper_interpretation: Option<&HelperConstructInterpretation>,
+        construct_reasoning_seq_id: Option<&str>,
+        variant_effect_tags: &[String],
+        variant_suggested_assay_ids: &[String],
+        variant_derived_preferred_routine_families: &[String],
     ) -> RoutinePreferenceContext {
         let explicit_preferred_routine_families =
             Self::normalize_routine_family_preferences(&objective.preferred_routine_families);
@@ -9673,6 +9841,17 @@ impl GentleEngine {
             helper_interpretation,
             helper_resolution_status,
             helper_resolution_note,
+            construct_reasoning_seq_id,
+            variant_effect_tags,
+            variant_suggested_assay_ids,
+            variant_derived_preferred_routine_families,
+            (!variant_suggested_assay_ids.is_empty()).then(|| {
+                format!(
+                    "Variant-aware construct reasoning suggests assay family/ies {} for sequence '{}'.",
+                    variant_suggested_assay_ids.join(", "),
+                    construct_reasoning_seq_id.unwrap_or_default()
+                )
+            }),
         )
     }
 
@@ -9849,6 +10028,75 @@ impl GentleEngine {
         Self::routine_preference_context_record(&context)
     }
 
+    fn planning_objective_routine_preference_context_for_sequence(
+        &mut self,
+        objective: &PlanningObjective,
+        seq_id: Option<&str>,
+    ) -> RoutinePreferenceContext {
+        let mut context = Self::planning_objective_routine_preference_context(objective);
+        let graph = seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|seq_id| {
+                self.refresh_construct_reasoning_graph_for_seq_id(seq_id)
+                    .ok()
+            });
+        let (
+            construct_reasoning_seq_id,
+            variant_effect_tags,
+            variant_suggested_assay_ids,
+            variant_derived_preferred_routine_families,
+            variant_reasoning_note,
+        ) = Self::construct_reasoning_variant_preference_summary(graph.as_ref());
+        if construct_reasoning_seq_id.is_some()
+            || !variant_effect_tags.is_empty()
+            || !variant_suggested_assay_ids.is_empty()
+            || !variant_derived_preferred_routine_families.is_empty()
+        {
+            context.construct_reasoning_seq_id = construct_reasoning_seq_id;
+            context.variant_effect_tags = variant_effect_tags;
+            context.variant_suggested_assay_ids = variant_suggested_assay_ids;
+            context.variant_derived_preferred_routine_families =
+                variant_derived_preferred_routine_families;
+            if let Some(note) = variant_reasoning_note {
+                context.rationale.push(note);
+            }
+            context.rationale.sort();
+            context.rationale.dedup();
+            context.effective_preferred_routine_families = context
+                .explicit_preferred_routine_families
+                .iter()
+                .chain(context.helper_derived_preferred_routine_families.iter())
+                .chain(context.variant_derived_preferred_routine_families.iter())
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            context
+                .effective_preferred_routine_families
+                .sort_by_key(|value| value.to_ascii_lowercase());
+        }
+        context
+    }
+
+    pub fn planning_routine_preference_context_record_for_sequence(
+        &mut self,
+        seq_id: Option<&str>,
+    ) -> RoutinePreferenceContextRecord {
+        let objective = self.planning_objective();
+        let context =
+            self.planning_objective_routine_preference_context_for_sequence(&objective, seq_id);
+        Self::routine_preference_context_record(&context)
+    }
+
+    pub(crate) fn planning_routine_preference_context_for_sequence(
+        &mut self,
+        seq_id: Option<&str>,
+    ) -> RoutinePreferenceContext {
+        let objective = self.planning_objective();
+        self.planning_objective_routine_preference_context_for_sequence(&objective, seq_id)
+    }
+
     pub fn suggest_macro_templates_for_routine(
         &self,
         selected_routine_id: Option<&str>,
@@ -9857,6 +10105,41 @@ impl GentleEngine {
     ) -> Vec<MacroTemplateSuggestion> {
         let objective = self.planning_objective();
         let context = Self::planning_objective_routine_preference_context(&objective);
+        Self::suggest_macro_templates_for_routine_with_context(
+            self,
+            &context,
+            selected_routine_id,
+            selected_routine_family,
+            limit,
+        )
+    }
+
+    pub fn suggest_macro_templates_for_routine_for_sequence(
+        &mut self,
+        selected_routine_id: Option<&str>,
+        selected_routine_family: Option<&str>,
+        seq_id: Option<&str>,
+        limit: usize,
+    ) -> Vec<MacroTemplateSuggestion> {
+        let objective = self.planning_objective();
+        let context =
+            self.planning_objective_routine_preference_context_for_sequence(&objective, seq_id);
+        Self::suggest_macro_templates_for_routine_with_context(
+            self,
+            &context,
+            selected_routine_id,
+            selected_routine_family,
+            limit,
+        )
+    }
+
+    fn suggest_macro_templates_for_routine_with_context(
+        &self,
+        context: &RoutinePreferenceContext,
+        selected_routine_id: Option<&str>,
+        selected_routine_family: Option<&str>,
+        limit: usize,
+    ) -> Vec<MacroTemplateSuggestion> {
         let mut suggestions = vec![];
 
         let workflow_store = self.read_workflow_macro_template_store();
@@ -9869,7 +10152,7 @@ impl GentleEngine {
                 &template.script,
                 selected_routine_id,
                 selected_routine_family,
-                &context,
+                context,
             ) {
                 suggestions.push(suggestion);
             }
@@ -9885,7 +10168,7 @@ impl GentleEngine {
                 &template.script,
                 selected_routine_id,
                 selected_routine_family,
-                &context,
+                context,
             ) {
                 suggestions.push(suggestion);
             }
@@ -11596,6 +11879,45 @@ impl GentleEngine {
         crate::AMINO_ACIDS.codon2aa(*codon, Some(translation_table))
     }
 
+    fn construct_reasoning_suggest_variant_assays_from_effect_tags(
+        effect_tags: &[String],
+    ) -> Vec<String> {
+        let tags = effect_tags
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        let mut suggested_assay_ids = vec![];
+        if tags.contains("promoter_variant_candidate") {
+            suggested_assay_ids.push("allele_paired_promoter_luciferase_reporter".to_string());
+        } else if tags.contains("enhancer_variant_candidate")
+            || tags.contains("tfbs_overlap_candidate")
+            || tags.contains("regulatory_variant_candidate")
+        {
+            suggested_assay_ids.push("allele_paired_regulatory_reporter".to_string());
+        }
+        if tags.contains("splice_variant_candidate") {
+            suggested_assay_ids.push("minigene_splicing_assay".to_string());
+        }
+        if tags.contains("coding_variant_candidate")
+            || tags.contains("missense_variant")
+            || tags.contains("synonymous_variant")
+            || tags.contains("nonsense_variant")
+            || tags.contains("stop_lost_variant")
+        {
+            suggested_assay_ids.push("allele_paired_expression_compare".to_string());
+        }
+        if tags.contains("utr_variant_candidate")
+            && !suggested_assay_ids
+                .iter()
+                .any(|value| value == "allele_paired_promoter_luciferase_reporter")
+        {
+            suggested_assay_ids.push("utr_reporter_translation_compare".to_string());
+        }
+        suggested_assay_ids.sort();
+        suggested_assay_ids.dedup();
+        suggested_assay_ids
+    }
+
     fn construct_reasoning_predict_variant_coding_effects(
         dna: &DNAsequence,
         variant_feature: &gb_io::seq::Feature,
@@ -11845,27 +12167,8 @@ impl GentleEngine {
         effect_tags.sort();
         effect_tags.dedup();
 
-        let mut suggested_assay_ids = vec![];
-        if has_role(ConstructRole::Promoter) {
-            suggested_assay_ids.push("allele_paired_promoter_luciferase_reporter".to_string());
-        } else if has_role(ConstructRole::Enhancer) || has_role(ConstructRole::Tfbs) {
-            suggested_assay_ids.push("allele_paired_regulatory_reporter".to_string());
-        }
-        if has_role(ConstructRole::SpliceBoundary) {
-            suggested_assay_ids.push("minigene_splicing_assay".to_string());
-        }
-        if has_role(ConstructRole::Cds) || !coding_predictions.is_empty() {
-            suggested_assay_ids.push("allele_paired_expression_compare".to_string());
-        }
-        if (has_role(ConstructRole::Utr5Prime) || has_role(ConstructRole::Utr3Prime))
-            && !suggested_assay_ids
-                .iter()
-                .any(|value| value == "allele_paired_promoter_luciferase_reporter")
-        {
-            suggested_assay_ids.push("utr_reporter_translation_compare".to_string());
-        }
-        suggested_assay_ids.sort();
-        suggested_assay_ids.dedup();
+        let suggested_assay_ids =
+            Self::construct_reasoning_suggest_variant_assays_from_effect_tags(&effect_tags);
 
         let overlapping_roles = overlapping
             .iter()
@@ -11879,6 +12182,104 @@ impl GentleEngine {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        let transcript_labels = labels_for_role(ConstructRole::Transcript);
+        let general_transcript_tags = effect_tags
+            .iter()
+            .filter(|tag| {
+                matches!(
+                    tag.as_str(),
+                    "promoter_variant_candidate"
+                        | "enhancer_variant_candidate"
+                        | "tfbs_overlap_candidate"
+                        | "regulatory_variant_candidate"
+                        | "promoter_tfbs_regulatory_candidate"
+                        | "splice_variant_candidate"
+                        | "utr_variant_candidate"
+                        | "genic_variant_candidate"
+                        | "exonic_variant_candidate"
+                )
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut transcript_effect_map: BTreeMap<
+            String,
+            (BTreeSet<String>, BTreeSet<String>, String),
+        > = BTreeMap::new();
+        for transcript_label in &transcript_labels {
+            let assays = Self::construct_reasoning_suggest_variant_assays_from_effect_tags(
+                &general_transcript_tags,
+            );
+            transcript_effect_map.insert(
+                transcript_label.clone(),
+                (
+                    general_transcript_tags.iter().cloned().collect(),
+                    assays.into_iter().collect(),
+                    "shared_overlap_context".to_string(),
+                ),
+            );
+        }
+        for prediction in &coding_predictions {
+            let transcript_label = prediction
+                .transcript_label
+                .clone()
+                .unwrap_or_else(|| prediction.cds_label.clone());
+            let entry = transcript_effect_map
+                .entry(transcript_label)
+                .or_insert_with(|| {
+                    (
+                        BTreeSet::new(),
+                        BTreeSet::new(),
+                        "coding_prediction".to_string(),
+                    )
+                });
+            entry.0.insert("coding_variant_candidate".to_string());
+            entry.0.insert(prediction.effect_tag.clone());
+            for assay in Self::construct_reasoning_suggest_variant_assays_from_effect_tags(
+                &entry.0.iter().cloned().collect::<Vec<_>>(),
+            ) {
+                entry.1.insert(assay);
+            }
+            if entry.2 != "coding_prediction" {
+                entry.2 = "shared_overlap_and_coding_prediction".to_string();
+            }
+        }
+        let transcript_effect_summaries = transcript_effect_map
+            .into_iter()
+            .map(
+                |(transcript_label, (effect_tags, suggested_assay_ids, source))| {
+                    ConstructTranscriptVariantEffectSummary {
+                        transcript_label,
+                        effect_tags: effect_tags.into_iter().collect(),
+                        suggested_assay_ids: suggested_assay_ids.into_iter().collect(),
+                        source,
+                    }
+                },
+            )
+            .collect::<Vec<_>>();
+        let transcript_context_status = if transcript_effect_summaries.len() <= 1 {
+            "single_or_unspecified"
+        } else {
+            let unique_effect_sets = transcript_effect_summaries
+                .iter()
+                .map(|row| row.effect_tags.join("|"))
+                .collect::<BTreeSet<_>>();
+            let unique_assay_sets = transcript_effect_summaries
+                .iter()
+                .map(|row| row.suggested_assay_ids.join("|"))
+                .collect::<BTreeSet<_>>();
+            if unique_effect_sets.len() > 1 || unique_assay_sets.len() > 1 {
+                "multi_transcript_ambiguous"
+            } else {
+                "multi_transcript_consistent"
+            }
+        }
+        .to_string();
+        let mut effect_tags = effect_tags;
+        if transcript_context_status == "multi_transcript_ambiguous" {
+            effect_tags.push("transcript_context_ambiguous".to_string());
+            effect_tags.sort();
+            effect_tags.dedup();
+        }
 
         ConstructVariantReasoningSummary {
             evidence_id: variant_evidence.evidence_id.clone(),
@@ -11898,11 +12299,59 @@ impl GentleEngine {
             overlapping_roles,
             overlapping_labels,
             gene_labels: labels_for_role(ConstructRole::Gene),
-            transcript_labels: labels_for_role(ConstructRole::Transcript),
+            transcript_labels,
             effect_tags,
             suggested_assay_ids,
+            transcript_context_status,
+            transcript_effect_summaries,
             coding_predictions,
         }
+    }
+
+    fn construct_reasoning_collect_variant_summaries(
+        dna: &DNAsequence,
+        evidence: &[DesignEvidence],
+        variant_evidence_rows: &[&DesignEvidence],
+    ) -> Vec<ConstructVariantReasoningSummary> {
+        if variant_evidence_rows.is_empty() {
+            return vec![];
+        }
+        let mut variant_summaries = vec![];
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if Self::construct_reasoning_role_from_feature(feature) != Some(ConstructRole::Variant)
+            {
+                continue;
+            }
+            let Some((start_0based, end_0based_exclusive)) =
+                Self::construct_reasoning_first_range_for_feature(feature)
+            else {
+                continue;
+            };
+            let label = Self::feature_display_label(feature, feature_id);
+            let label_token = Self::construct_reasoning_label_match_token(&label);
+            let Some(variant_evidence) = variant_evidence_rows.iter().find(|row| {
+                row.start_0based == start_0based
+                    && row.end_0based_exclusive == end_0based_exclusive
+                    && Self::construct_reasoning_label_match_token(&row.label) == label_token
+            }) else {
+                continue;
+            };
+            variant_summaries.push(Self::construct_reasoning_variant_summary(
+                dna,
+                feature,
+                variant_evidence,
+                evidence,
+            ));
+        }
+
+        variant_summaries.sort_by(|left, right| {
+            left.start_0based.cmp(&right.start_0based).then_with(|| {
+                left.label
+                    .to_ascii_lowercase()
+                    .cmp(&right.label.to_ascii_lowercase())
+            })
+        });
+        variant_summaries
     }
 
     fn construct_reasoning_label_match_token(label: &str) -> String {
@@ -12654,6 +13103,12 @@ impl GentleEngine {
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
                 row.scope == EvidenceScope::MediumCondition
             });
+        let variant_evidence_rows = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan && row.role == ConstructRole::Variant
+            })
+            .collect::<Vec<_>>();
         let condition_signals = Self::construct_reasoning_interpret_medium_conditions(objective);
         let host_constraint_evidence_ids =
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
@@ -13050,8 +13505,33 @@ impl GentleEngine {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let routine_preference_context =
-            Self::construct_objective_routine_preference_context(objective, helper_interpretation);
+        let variant_summaries = Self::construct_reasoning_collect_variant_summaries(
+            dna,
+            evidence,
+            &variant_evidence_rows,
+        );
+        let variant_effect_tags = variant_summaries
+            .iter()
+            .flat_map(|row| row.effect_tags.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let suggested_variant_assay_ids = variant_summaries
+            .iter()
+            .flat_map(|row| row.suggested_assay_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let variant_derived_preferred_routine_families =
+            Self::variant_assay_ids_to_routine_family_preferences(&suggested_variant_assay_ids);
+        let routine_preference_context = Self::construct_objective_routine_preference_context(
+            objective,
+            helper_interpretation,
+            (!variant_summaries.is_empty()).then_some(seq_id),
+            &variant_effect_tags,
+            &suggested_variant_assay_ids,
+            &variant_derived_preferred_routine_families,
+        );
         if objective.helper_profile_id.is_some() || !helper_mcs_feature_labels.is_empty() {
             let helper_status = match (
                 objective.helper_profile_id.as_ref(),
@@ -13121,6 +13601,9 @@ impl GentleEngine {
             || !routine_preference_context
                 .helper_derived_preferred_routine_families
                 .is_empty()
+            || !routine_preference_context
+                .variant_derived_preferred_routine_families
+                .is_empty()
         {
             let planning_status = match (
                 routine_preference_context
@@ -13129,22 +13612,41 @@ impl GentleEngine {
                 routine_preference_context
                     .helper_derived_preferred_routine_families
                     .is_empty(),
+                routine_preference_context
+                    .variant_derived_preferred_routine_families
+                    .is_empty(),
                 routine_preference_context.helper_resolution_status.as_str(),
             ) {
-                (false, false, _) => "explicit_and_helper_derived",
-                (false, true, _) => "explicit_only",
-                (true, false, _) => "helper_derived",
-                (true, true, "error") => "helper_resolution_error",
-                (true, true, "not_found") => "helper_not_found",
+                (false, false, false, _) => "explicit_helper_and_variant_derived",
+                (false, false, true, _) => "explicit_and_helper_derived",
+                (false, true, false, _) => "explicit_and_variant_derived",
+                (true, false, false, _) => "helper_and_variant_derived",
+                (false, true, true, _) => "explicit_only",
+                (true, false, true, _) => "helper_derived",
+                (true, true, false, _) => "variant_derived",
+                (true, true, true, "error") => "helper_resolution_error",
+                (true, true, true, "not_found") => "helper_not_found",
                 _ => "unspecified",
             };
             let planning_label = match planning_status {
+                "explicit_helper_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
                 "explicit_and_helper_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "explicit_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "helper_and_variant_derived" => {
                     "Routine planning preferences synthesized".to_string()
                 }
                 "explicit_only" => "Routine planning preferences recorded".to_string(),
                 "helper_derived" => {
                     "Routine planning preferences derived from helper profile".to_string()
+                }
+                "variant_derived" => {
+                    "Routine planning preferences derived from variant assay context".to_string()
                 }
                 "helper_resolution_error" => {
                     "Helper-derived routine planning context could not be resolved".to_string()
@@ -13315,62 +13817,7 @@ impl GentleEngine {
             ));
         }
 
-        let variant_evidence_rows = evidence
-            .iter()
-            .filter(|row| {
-                row.scope == EvidenceScope::SequenceSpan && row.role == ConstructRole::Variant
-            })
-            .collect::<Vec<_>>();
-        if !variant_evidence_rows.is_empty() {
-            let mut variant_summaries = vec![];
-            for (feature_id, feature) in dna.features().iter().enumerate() {
-                if Self::construct_reasoning_role_from_feature(feature)
-                    != Some(ConstructRole::Variant)
-                {
-                    continue;
-                }
-                let Some((start_0based, end_0based_exclusive)) =
-                    Self::construct_reasoning_first_range_for_feature(feature)
-                else {
-                    continue;
-                };
-                let label = Self::feature_display_label(feature, feature_id);
-                let label_token = Self::construct_reasoning_label_match_token(&label);
-                let Some(variant_evidence) = variant_evidence_rows.iter().find(|row| {
-                    row.start_0based == start_0based
-                        && row.end_0based_exclusive == end_0based_exclusive
-                        && Self::construct_reasoning_label_match_token(&row.label) == label_token
-                }) else {
-                    continue;
-                };
-                variant_summaries.push(Self::construct_reasoning_variant_summary(
-                    dna,
-                    feature,
-                    variant_evidence,
-                    evidence,
-                ));
-            }
-
-            variant_summaries.sort_by(|left, right| {
-                left.start_0based.cmp(&right.start_0based).then_with(|| {
-                    left.label
-                        .to_ascii_lowercase()
-                        .cmp(&right.label.to_ascii_lowercase())
-                })
-            });
-
-            let variant_effect_tags = variant_summaries
-                .iter()
-                .flat_map(|row| row.effect_tags.iter().cloned())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            let suggested_variant_assay_ids = variant_summaries
-                .iter()
-                .flat_map(|row| row.suggested_assay_ids.iter().cloned())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
+        if !variant_summaries.is_empty() {
             let variant_labels = variant_summaries
                 .iter()
                 .map(|row| row.label.clone())
@@ -13379,6 +13826,10 @@ impl GentleEngine {
                 .iter()
                 .map(|row| row.coding_predictions.len())
                 .sum::<usize>();
+            let ambiguous_transcript_count = variant_summaries
+                .iter()
+                .filter(|row| row.transcript_context_status == "multi_transcript_ambiguous")
+                .count();
             let mut variant_related_evidence_ids = variant_evidence_rows
                 .iter()
                 .map(|row| row.evidence_id.clone())
@@ -13423,11 +13874,20 @@ impl GentleEngine {
                 } else {
                     " Codon-level refinement remains absent for markers without explicit allele context.".to_string()
                 };
+                let transcript_text = if ambiguous_transcript_count > 0 {
+                    format!(
+                        " {} variant(s) remain transcript-ambiguous, so transcript-specific effect summaries are kept inspectable instead of being flattened away.",
+                        ambiguous_transcript_count
+                    )
+                } else {
+                    String::new()
+                };
                 format!(
-                    "Variant placement against promoter/TFBS/CDS/UTR/splice annotations yields deterministic effect candidate tag(s): {}. Variant(s): {}.{}",
+                    "Variant placement against promoter/TFBS/CDS/UTR/splice annotations yields deterministic effect candidate tag(s): {}. Variant(s): {}.{}{}",
                     variant_effect_tags.join(", "),
                     variant_labels.join(", "),
-                    coding_text
+                    coding_text,
+                    transcript_text
                 )
             };
             facts.push(Self::construct_reasoning_build_fact(

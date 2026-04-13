@@ -24464,6 +24464,72 @@ Error: `{err}`"
                 if let Some(summary) = routine.summary.as_deref() {
                     ui.small(summary);
                 }
+                if let Some(planning) = self
+                    .routine_assistant_explain_output
+                    .as_ref()
+                    .and_then(|value| value.get("planning"))
+                {
+                    if let Some(estimate) = planning.get("estimate") {
+                        let composite = estimate
+                            .get("composite_meta_score")
+                            .and_then(|value| value.as_f64());
+                        let local_fit = estimate
+                            .get("local_fit_score")
+                            .and_then(|value| value.as_f64());
+                        let time_hours = estimate
+                            .get("estimated_time_hours")
+                            .and_then(|value| value.as_f64());
+                        let cost = estimate
+                            .get("estimated_cost")
+                            .and_then(|value| value.as_f64());
+                        if composite.is_some()
+                            || local_fit.is_some()
+                            || time_hours.is_some()
+                            || cost.is_some()
+                        {
+                            ui.small(format!(
+                                "sequence-aware planning: score {} | fit {} | time {} h | cost {}",
+                                composite
+                                    .map(|value| format!("{value:.3}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                                local_fit
+                                    .map(|value| format!("{value:.3}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                                time_hours
+                                    .map(|value| format!("{value:.2}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                                cost.map(|value| format!("{value:.2}"))
+                                    .unwrap_or_else(|| "-".to_string())
+                            ));
+                        }
+                        let bonus = estimate
+                            .get("explanation")
+                            .and_then(|value| value.get("routine_family_alignment_bonus"))
+                            .and_then(|value| value.as_f64())
+                            .unwrap_or(0.0);
+                        if bonus > 0.0 {
+                            let sources = estimate
+                                .get("explanation")
+                                .and_then(|value| value.get("routine_family_alignment_sources"))
+                                .and_then(|value| value.as_array())
+                                .map(|rows| {
+                                    rows.iter()
+                                        .filter_map(|row| row.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                })
+                                .unwrap_or_default();
+                            ui.small(format!(
+                                "alignment bonus: +{bonus:.2}{}",
+                                if sources.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" ({sources})")
+                                }
+                            ));
+                        }
+                    }
+                }
                 self.render_routine_assistant_macro_suggestions(ui);
                 ui.horizontal(|ui| {
                     if ui
@@ -25919,6 +25985,22 @@ Error: `{err}`"
         out
     }
 
+    fn routine_assistant_construct_reasoning_seq_id(&self) -> Option<String> {
+        self.active_dna_window_context()
+            .map(|(seq_id, _)| seq_id)
+            .or_else(|| {
+                self.routine_assistant_preference_context
+                    .as_ref()
+                    .and_then(|context| context.construct_reasoning_seq_id.clone())
+            })
+            .or_else(|| {
+                self.routine_assistant_decision_trace
+                    .as_ref()
+                    .and_then(|trace| trace.routine_preference_context.as_ref())
+                    .and_then(|context| context.construct_reasoning_seq_id.clone())
+            })
+    }
+
     fn routine_assistant_candidate_planning_scores_snapshot(
         &self,
     ) -> Vec<RoutineDecisionTraceCandidateScore> {
@@ -26008,15 +26090,19 @@ Error: `{err}`"
                     .filter(|value| !value.is_empty())
                     .map(|value| value.to_string())
             });
+        let construct_reasoning_seq_id = self.routine_assistant_construct_reasoning_seq_id();
         let (preference_context, macro_suggestions) = self
             .engine
-            .read()
+            .write()
             .ok()
-            .map(|engine| {
-                let context = engine.planning_routine_preference_context_record();
-                let suggestions = engine.suggest_macro_templates_for_routine(
+            .map(|mut engine| {
+                let context = engine.planning_routine_preference_context_record_for_sequence(
+                    construct_reasoning_seq_id.as_deref(),
+                );
+                let suggestions = engine.suggest_macro_templates_for_routine_for_sequence(
                     selected_routine_id.as_deref(),
                     selected_routine_family.as_deref(),
+                    construct_reasoning_seq_id.as_deref(),
                     6,
                 );
                 (Some(context), suggestions)
@@ -26156,6 +26242,11 @@ Error: `{err}`"
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        context.construct_reasoning_seq_id = context
+            .construct_reasoning_seq_id
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         context.helper_resolution_status = context.helper_resolution_status.trim().to_string();
         if context.helper_resolution_status.is_empty() {
             context.helper_resolution_status = "not_requested".to_string();
@@ -26169,9 +26260,12 @@ Error: `{err}`"
         };
         normalize_vec(&mut context.explicit_preferred_routine_families);
         normalize_vec(&mut context.helper_derived_preferred_routine_families);
+        normalize_vec(&mut context.variant_derived_preferred_routine_families);
         normalize_vec(&mut context.effective_preferred_routine_families);
         normalize_vec(&mut context.helper_offered_functions);
         normalize_vec(&mut context.helper_component_labels);
+        normalize_vec(&mut context.variant_effect_tags);
+        normalize_vec(&mut context.variant_suggested_assay_ids);
         normalize_vec(&mut context.rationale);
         context
     }
@@ -26778,6 +26872,7 @@ Error: `{err}`"
                 .filter(|value| !value.is_empty())
                 .map(|value| value.to_string()),
             tag: None,
+            seq_id: self.routine_assistant_construct_reasoning_seq_id(),
             query: query
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -27015,13 +27110,19 @@ Error: `{err}`"
             return;
         };
         if context.helper_profile_id.is_none()
+            && context.construct_reasoning_seq_id.is_none()
             && context.effective_preferred_routine_families.is_empty()
+            && context.variant_effect_tags.is_empty()
+            && context.variant_suggested_assay_ids.is_empty()
             && context.rationale.is_empty()
         {
             return;
         }
         ui.group(|ui| {
             ui.strong("Planning Context");
+            if let Some(seq_id) = context.construct_reasoning_seq_id.as_deref() {
+                ui.small(format!("construct reasoning: {seq_id}"));
+            }
             if let Some(helper_profile_id) = context.helper_profile_id.as_deref() {
                 ui.small(format!(
                     "helper profile: {} [{}]",
@@ -27032,6 +27133,18 @@ Error: `{err}`"
                 ui.small(format!(
                     "preferred routine families: {}",
                     context.effective_preferred_routine_families.join(", ")
+                ));
+            }
+            if !context.variant_effect_tags.is_empty() {
+                ui.small(format!(
+                    "variant effect tags: {}",
+                    context.variant_effect_tags.join(", ")
+                ));
+            }
+            if !context.variant_suggested_assay_ids.is_empty() {
+                ui.small(format!(
+                    "suggested variant assays: {}",
+                    context.variant_suggested_assay_ids.join(", ")
                 ));
             }
             if let Some(line) = context.rationale.first() {
@@ -27241,6 +27354,7 @@ Error: `{err}`"
         let command = ShellCommand::RoutinesExplain {
             catalog_path: Some(DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
             routine_id: selected_id.clone(),
+            seq_id: self.routine_assistant_construct_reasoning_seq_id(),
         };
         match self.execute_shared_shell_command_json(&command) {
             Ok((output, _)) => {
@@ -27314,6 +27428,7 @@ Error: `{err}`"
             catalog_path: Some(DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
             left_routine_id: left.clone(),
             right_routine_id: right.clone(),
+            seq_id: self.routine_assistant_construct_reasoning_seq_id(),
         };
         match self.execute_shared_shell_command_json(&command) {
             Ok((output, _)) => {
@@ -41209,6 +41324,90 @@ mod tests {
         );
         assert_eq!(persisted.traces[0].candidate_planning_scores.len(), 1);
         assert_eq!(persisted.traces[0].macro_suggestions.len(), 1);
+    }
+
+    #[test]
+    fn open_routine_assistant_dialog_captures_active_sequence_variant_reasoning_context() {
+        let mut app = GENtleApp::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "promoter".into(),
+            location: gb_io::seq::Location::simple_range(0, 8),
+            qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "TFBS".into(),
+            location: gb_io::seq::Location::simple_range(4, 7),
+            qualifiers: vec![("label".into(), Some("SP1 motif".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(5, 6),
+            qualifiers: vec![
+                ("label".into(), Some("rsRoutine".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("dbsnp_variant_marker".to_string()),
+                ),
+            ],
+        });
+        dna.update_computed_features();
+        app.engine
+            .write()
+            .unwrap()
+            .state_mut()
+            .sequences
+            .insert("variant_routine_seq".to_string(), dna);
+        app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+            routine_id: "gibson.demo_overlap".to_string(),
+            title: "Gibson Demo Overlap".to_string(),
+            family: "gibson".to_string(),
+            status: "implemented".to_string(),
+            ..Default::default()
+        }];
+
+        let viewport_id = egui::ViewportId::from_hash_of("routine_assistant_variant_seq");
+        let native_key = GENtleApp::native_menu_key_for_viewport(viewport_id);
+        app.windows.insert(
+            viewport_id,
+            Arc::new(RwLock::new(Window::new_dna_lazy(
+                "variant_routine_seq".to_string(),
+                app.engine.clone(),
+            ))),
+        );
+        app.native_window_key_to_viewport
+            .insert(native_key, viewport_id);
+        app.active_window_menu_key = Some(native_key);
+
+        app.open_routine_assistant_dialog();
+
+        let context = app
+            .routine_assistant_decision_trace
+            .as_ref()
+            .and_then(|trace| trace.routine_preference_context.as_ref())
+            .expect("routine preference context");
+        assert_eq!(
+            context.construct_reasoning_seq_id.as_deref(),
+            Some("variant_routine_seq")
+        );
+        assert!(
+            context
+                .variant_effect_tags
+                .iter()
+                .any(|tag| tag == "promoter_tfbs_regulatory_candidate")
+        );
+        assert!(
+            context
+                .variant_suggested_assay_ids
+                .iter()
+                .any(|assay| assay == "allele_paired_promoter_luciferase_reporter")
+        );
+        assert!(
+            context
+                .variant_derived_preferred_routine_families
+                .iter()
+                .any(|family| family == "gibson")
+        );
     }
 
     #[test]

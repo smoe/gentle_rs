@@ -3976,6 +3976,15 @@ Post-baseline follow-ups:
     allele-paired promoter luciferase, regulatory reporter, minigene splicing,
     UTR reporter, or allele-paired coding-expression comparison. Those summary
     tags now also flow through the ClawBio/OpenClaw run-bundle export block.
+  - Done (2026-04-13, reasoning-to-action bridge): transcript-aware variant
+    summaries now keep `transcript_context_status` and per-transcript effect /
+    assay rows explicit, construct `routine_planning_context` can now derive
+    preferred routine families directly from variant assay suggestions, shared
+    `routines list` / `routines explain` / `routines compare` accept optional
+    `--seq-id` to reuse that same construct reasoning for planning estimates,
+    and GUI Routine Assistant traces plus explain-stage summaries now persist
+    the active construct-reasoning sequence id and variant-driven routine
+    preference context instead of only helper/objective-derived preferences.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.
     - ClawBio/OpenClaw is the main agent-facing surface for reasoning output,
@@ -3989,7 +3998,6 @@ Post-baseline follow-ups:
       catalogs with inspectable source notes
     - deepen variant consequence reasoning beyond the current overlap-first
       slice:
-      - transcript-aware multi-isoform coding consequence comparison
       - promoter-window defaults tied to gene orientation and distance
       - richer TFBS/JASPAR delta scoring instead of overlap-only hypotheses
       - deeper splice consequence scoring beyond explicit splice-boundary

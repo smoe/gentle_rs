@@ -6955,6 +6955,11 @@ mod tests {
     fn refresh_description_cache_includes_variant_reasoning_context() {
         let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
         dna.features_mut().push(Feature {
+            kind: "transcript".into(),
+            location: Location::simple_range(0, 9),
+            qualifiers: vec![("label".into(), Some("Demo transcript".to_string()))],
+        });
+        dna.features_mut().push(Feature {
             kind: "CDS".into(),
             location: Location::simple_range(0, 9),
             qualifiers: vec![("label".into(), Some("Demo CDS".to_string()))],
@@ -6998,6 +7003,10 @@ mod tests {
                     .detail_lines
                     .iter()
                     .any(|line| line.contains("coding_variant_candidate"))
+                && entry
+                    .detail_lines
+                    .iter()
+                    .any(|line| line.contains("transcript_context"))
         }));
         assert!(reasoning.fact_entries.iter().any(|entry| {
             entry.title == "Variant follow-up assays suggested"
@@ -7005,6 +7014,10 @@ mod tests {
                     .detail_lines
                     .iter()
                     .any(|line| line.contains("allele_paired_expression_compare"))
+                && entry
+                    .detail_lines
+                    .iter()
+                    .any(|line| line.contains("per_variant"))
         }));
     }
 
@@ -14729,6 +14742,72 @@ impl MainAreaDna {
                 if !effect_tags.is_empty() {
                     detail_lines.push(format!("effect_tags: {}", effect_tags.join(", ")));
                 }
+                let transcript_rows = fact
+                    .value_json
+                    .get("variants")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let label = row.get("label").and_then(serde_json::Value::as_str)?;
+                                let status = row
+                                    .get("transcript_context_status")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("unspecified");
+                                Some(format!("{label} ({status})"))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !transcript_rows.is_empty() {
+                    detail_lines.push(format!(
+                        "transcript_context: {}",
+                        transcript_rows.join(" | ")
+                    ));
+                }
+                let transcript_effects = fact
+                    .value_json
+                    .get("variants")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .flat_map(|row| {
+                                let variant_label = row
+                                    .get("label")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("variant");
+                                row.get("transcript_effect_summaries")
+                                    .and_then(serde_json::Value::as_array)
+                                    .into_iter()
+                                    .flatten()
+                                    .filter_map(move |summary| {
+                                        let transcript_label = summary
+                                            .get("transcript_label")
+                                            .and_then(serde_json::Value::as_str)?;
+                                        let effect_tags = summary
+                                            .get("effect_tags")
+                                            .and_then(serde_json::Value::as_array)
+                                            .map(|tags| {
+                                                tags.iter()
+                                                    .filter_map(serde_json::Value::as_str)
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ")
+                                            })
+                                            .unwrap_or_default();
+                                        Some(format!(
+                                            "{variant_label} -> {transcript_label}: {effect_tags}"
+                                        ))
+                                    })
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !transcript_effects.is_empty() {
+                    detail_lines.push(format!(
+                        "transcript_effects: {}",
+                        transcript_effects.join(" | ")
+                    ));
+                }
             }
             "variant_assay_context" => {
                 let variant_labels =
@@ -14742,6 +14821,33 @@ impl MainAreaDna {
                 );
                 if !assay_ids.is_empty() {
                     detail_lines.push(format!("assays: {}", assay_ids.join(", ")));
+                }
+                let assay_map = fact
+                    .value_json
+                    .get("variant_assay_map")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let label = row.get("label").and_then(serde_json::Value::as_str)?;
+                                let assays = row
+                                    .get("suggested_assay_ids")
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|entries| {
+                                        entries
+                                            .iter()
+                                            .filter_map(serde_json::Value::as_str)
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    })
+                                    .unwrap_or_default();
+                                Some(format!("{label}: {assays}"))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !assay_map.is_empty() {
+                    detail_lines.push(format!("per_variant: {}", assay_map.join(" | ")));
                 }
             }
             _ => {}

@@ -661,9 +661,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
   gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
   gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
-  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n  \
-  gentle_cli routines explain ROUTINE_ID [--catalog PATH]\n  \
-  gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH]\n\n  \
+  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
+  gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
+  gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
   gentle_cli planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]\n  \
   gentle_cli planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]\n  \
   gentle_cli planning profile clear [--scope global|project_override|confirmed_agent_overlay]\n  \

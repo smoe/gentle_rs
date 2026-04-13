@@ -827,15 +827,18 @@ pub enum ShellCommand {
         status: Option<String>,
         tag: Option<String>,
         query: Option<String>,
+        seq_id: Option<String>,
     },
     RoutinesExplain {
         catalog_path: Option<String>,
         routine_id: String,
+        seq_id: Option<String>,
     },
     RoutinesCompare {
         catalog_path: Option<String>,
         left_routine_id: String,
         right_routine_id: String,
+        seq_id: Option<String>,
     },
     PlanningProfileShow {
         scope: PlanningProfileScope,
@@ -2635,6 +2638,14 @@ fn routine_family_alignment_bonus(
     {
         bonus += 0.12;
         sources.push("helper_derived".to_string());
+    }
+    if preference_context
+        .variant_derived_preferred_routine_families
+        .iter()
+        .any(|value| value == &family)
+    {
+        bonus += 0.16;
+        sources.push("variant_derived".to_string());
     }
     (bonus, sources)
 }
@@ -5125,6 +5136,7 @@ impl ShellCommand {
                 status,
                 tag,
                 query,
+                seq_id,
             } => {
                 let catalog = catalog_path
                     .clone()
@@ -5149,30 +5161,47 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .unwrap_or("-");
+                let seq_id = seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
                 format!(
-                    "list cloning routines from '{catalog}' (family={family}, status={status}, tag={tag}, query={query})"
+                    "list cloning routines from '{catalog}' (family={family}, status={status}, tag={tag}, query={query}, seq_id={seq_id})"
                 )
             }
             Self::RoutinesExplain {
                 catalog_path,
                 routine_id,
+                seq_id,
             } => {
                 let catalog = catalog_path
                     .clone()
                     .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
-                format!("explain cloning routine '{routine_id}' from '{catalog}'")
+                let seq_id = seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                format!("explain cloning routine '{routine_id}' from '{catalog}' (seq_id={seq_id})")
             }
             Self::RoutinesCompare {
                 catalog_path,
                 left_routine_id,
                 right_routine_id,
+                seq_id,
             } => {
                 let catalog = catalog_path
                     .clone()
                     .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
+                let seq_id = seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
                 format!(
-                    "compare cloning routines '{}' vs '{}' from '{}'",
-                    left_routine_id, right_routine_id, catalog
+                    "compare cloning routines '{}' vs '{}' from '{}' (seq_id={})",
+                    left_routine_id, right_routine_id, catalog, seq_id
                 )
             }
             Self::PlanningProfileShow { scope } => {
@@ -15940,6 +15969,7 @@ fn execute_routines_command(
             status,
             tag,
             query,
+            seq_id,
         } => {
             let resolved_catalog = catalog_path
                 .as_deref()
@@ -15987,7 +16017,7 @@ fn execute_routines_command(
             let planning_objective = engine.planning_objective();
             let planning_profile = engine.planning_effective_profile();
             let routine_preference_context =
-                GentleEngine::planning_objective_routine_preference_context(&planning_objective);
+                engine.planning_routine_preference_context_for_sequence(seq_id.as_deref());
             let mut planning_rows = routines
                 .drain(..)
                 .map(|routine| {
@@ -16087,6 +16117,7 @@ fn execute_routines_command(
                         "status": status,
                         "tag": tag,
                         "query": query,
+                        "seq_id": seq_id,
                     },
                     "available_families": available_families,
                     "available_statuses": available_statuses,
@@ -16111,6 +16142,7 @@ fn execute_routines_command(
         ShellCommand::RoutinesExplain {
             catalog_path,
             routine_id,
+            seq_id,
         } => {
             let resolved_catalog = catalog_path
                 .as_deref()
@@ -16183,6 +16215,15 @@ fn execute_routines_command(
             let contraindications = routine.contraindications.clone();
             let failure_modes = routine.failure_modes.clone();
             let routine_payload = routine.clone();
+            let planning_objective = engine.planning_objective();
+            let routine_preference_context =
+                engine.planning_routine_preference_context_for_sequence(seq_id.as_deref());
+            let planning_estimate = estimate_routine_planning(
+                engine,
+                &planning_objective,
+                &routine,
+                &routine_preference_context,
+            );
 
             Ok(ShellRunResult {
                 state_changed: false,
@@ -16200,6 +16241,14 @@ fn execute_routines_command(
                         "failure_modes": failure_modes,
                     },
                     "alternatives": alternatives,
+                    "planning": {
+                        "enabled": true,
+                        "objective": planning_objective,
+                        "routine_preference_context": routine_preference_context,
+                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
+                        "estimate": planning_estimate,
+                        "seq_id": seq_id,
+                    },
                 }),
             })
         }
@@ -16207,6 +16256,7 @@ fn execute_routines_command(
             catalog_path,
             left_routine_id,
             right_routine_id,
+            seq_id,
         } => {
             let resolved_catalog = catalog_path
                 .as_deref()
@@ -16366,7 +16416,7 @@ fn execute_routines_command(
             let planning_objective = engine.planning_objective();
             let planning_profile = engine.planning_effective_profile();
             let routine_preference_context =
-                GentleEngine::planning_objective_routine_preference_context(&planning_objective);
+                engine.planning_routine_preference_context_for_sequence(seq_id.as_deref());
             let left_estimate = estimate_routine_planning(
                 engine,
                 &planning_objective,

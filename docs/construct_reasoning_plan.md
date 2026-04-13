@@ -570,6 +570,24 @@ Preferred order:
 This keeps construct intent separate from protocol execution while allowing
 Routine Assistant to consume richer candidate context.
 
+Current implemented bridge:
+
+- active-sequence construct reasoning can already feed
+  `routine_preference_context` with:
+  - `construct_reasoning_seq_id`
+  - `variant_effect_tags`
+  - `variant_suggested_assay_ids`
+  - `variant_derived_preferred_routine_families`
+- shared `routines list` / `routines compare` can therefore rank by the same
+  sequence-aware variant assay context used by GUI Routine Assistant and
+  run-bundle traces
+- shared `routines explain` can now inspect one routine under the same active
+  sequence context, including the planning estimate and family-alignment
+  sources that explain why it fits a given variant-bearing construct
+- transcript ambiguity stays inspectable through
+  `transcript_context_status` + `transcript_effect_summaries[]` instead of
+  collapsing all consequences into one flat variant note
+
 ## 11. Offline-first policy
 
 V1 should not require internet or external model calls.
@@ -645,7 +663,9 @@ Acceptance:
 ### Phase 5: construct candidates + routine handoff
 
 - derive `construct_candidate` rows
-- feed candidates into Routine Assistant compare/rank stages
+- deepen the current sequence-aware reasoning handoff from direct variant
+  assay preferences into true construct-candidate driven Routine Assistant
+  compare/rank stages
 
 Acceptance:
 

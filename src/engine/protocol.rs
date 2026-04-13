@@ -2089,12 +2089,16 @@ pub struct CandidateMacroTemplateSummary {
 /// Engine-owned helper/objective-derived routine preference context.
 pub struct RoutinePreferenceContextRecord {
     pub helper_profile_id: Option<String>,
+    pub construct_reasoning_seq_id: Option<String>,
     pub helper_resolution_status: String,
     pub explicit_preferred_routine_families: Vec<String>,
     pub helper_derived_preferred_routine_families: Vec<String>,
+    pub variant_derived_preferred_routine_families: Vec<String>,
     pub effective_preferred_routine_families: Vec<String>,
     pub helper_offered_functions: Vec<String>,
     pub helper_component_labels: Vec<String>,
+    pub variant_effect_tags: Vec<String>,
+    pub variant_suggested_assay_ids: Vec<String>,
     pub rationale: Vec<String>,
 }
 

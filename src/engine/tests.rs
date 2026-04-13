@@ -9480,15 +9480,19 @@ fn test_export_process_run_bundle_operation() {
                 candidate_routine_ids: vec!["golden_gate.type_iis_single_insert".to_string()],
                 routine_preference_context: Some(RoutinePreferenceContextRecord {
                     helper_profile_id: Some("puc19".to_string()),
+                    construct_reasoning_seq_id: None,
                     helper_resolution_status: "resolved".to_string(),
                     explicit_preferred_routine_families: vec!["golden_gate".to_string()],
                     helper_derived_preferred_routine_families: vec!["restriction".to_string()],
+                    variant_derived_preferred_routine_families: vec![],
                     effective_preferred_routine_families: vec![
                         "golden_gate".to_string(),
                         "restriction".to_string(),
                     ],
                     helper_offered_functions: vec!["mcs_cloning".to_string()],
                     helper_component_labels: vec!["MCS".to_string()],
+                    variant_effect_tags: vec![],
+                    variant_suggested_assay_ids: vec![],
                     rationale: vec!["pUC19 contributes a polylinker.".to_string()],
                 }),
                 candidate_planning_scores: vec![RoutineDecisionTraceCandidateScore {
@@ -22772,7 +22776,10 @@ fn build_construct_reasoning_graph_derives_coding_variant_consequence_and_expres
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "CDS".into(),
         location: gb_io::seq::Location::simple_range(0, 9),
-        qualifiers: vec![("label".into(), Some("TP73 CDS".to_string()))],
+        qualifiers: vec![
+            ("label".into(), Some("TP73 CDS".to_string())),
+            ("transcript_id".into(), Some("TP73-201".to_string())),
+        ],
     });
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "variation".into(),
@@ -22855,6 +22862,171 @@ fn build_construct_reasoning_graph_derives_coding_variant_consequence_and_expres
             .map(|rows| rows
                 .iter()
                 .any(|row| { row.as_str() == Some("allele_paired_expression_compare") }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_records_transcript_ambiguous_variant_context() {
+    let mut dna = DNAsequence::from_sequence("ATGGAATTT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "transcript".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("TP73-201".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "transcript".into(),
+        location: gb_io::seq::Location::simple_range(0, 4),
+        qualifiers: vec![("label".into(), Some("TP73-short".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("TP73 CDS".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3, 4),
+        qualifiers: vec![
+            ("label".into(), Some("rsAmbig".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_VCF_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("vcf_ref".into(), Some("G".to_string())),
+            ("vcf_alt".into(), Some("A".to_string())),
+            ("vcf_variant_class".into(), Some("snv".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("variant_ambiguous_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("variant_ambiguous_demo", None, None)
+        .expect("build graph");
+
+    let variant_effect = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_effect_context")
+        .expect("variant effect fact");
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("transcript_context_ambiguous")))
+            .unwrap_or(false)
+    );
+    let variant_row = variant_effect
+        .value_json
+        .get("variants")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|rows| rows.first())
+        .expect("variant row");
+    assert_eq!(
+        variant_row
+            .get("transcript_context_status")
+            .and_then(serde_json::Value::as_str),
+        Some("multi_transcript_ambiguous")
+    );
+    let transcript_effects = variant_row
+        .get("transcript_effect_summaries")
+        .and_then(serde_json::Value::as_array)
+        .expect("transcript effect summaries");
+    assert!(transcript_effects.iter().any(|row| {
+        row.get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|tags| {
+                tags.iter()
+                    .any(|tag| tag.as_str() == Some("missense_variant"))
+            })
+            .unwrap_or(false)
+    }));
+    assert!(transcript_effects.iter().any(|row| {
+        row.get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|tags| {
+                tags.iter()
+                    .all(|tag| tag.as_str() != Some("missense_variant"))
+            })
+            .unwrap_or(false)
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_variant_routine_planning_context() {
+    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "promoter".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(4, 7),
+        qualifiers: vec![("label".into(), Some("SP1 motif".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(5, 6),
+        qualifiers: vec![
+            ("label".into(), Some("rsRoutine".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("variant_routine_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("variant_routine_demo", None, None)
+        .expect("build graph");
+
+    let routine_planning = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "routine_planning_context")
+        .expect("routine planning fact");
+    assert_eq!(
+        routine_planning
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("variant_derived")
+    );
+    assert!(
+        routine_planning
+            .value_json
+            .get("context")
+            .and_then(|value| value.get("variant_suggested_assay_ids"))
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
+            .unwrap_or(false)
+    );
+    assert!(
+        routine_planning
+            .value_json
+            .get("context")
+            .and_then(|value| value.get("variant_derived_preferred_routine_families"))
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| row.as_str() == Some("gibson")))
             .unwrap_or(false)
     );
 }

@@ -4891,6 +4891,7 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
             let mut status: Option<String> = None;
             let mut tag: Option<String> = None;
             let mut query: Option<String> = None;
+            let mut seq_id: Option<String> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -4934,6 +4935,14 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                             "routines list",
                         )?);
                     }
+                    "--seq-id" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "routines list",
+                        )?);
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for routines list"));
                     }
@@ -4945,17 +4954,22 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                 status,
                 tag,
                 query,
+                seq_id,
             })
         }
         "explain" => {
             if tokens.len() < 3 {
-                return Err("routines explain requires ROUTINE_ID [--catalog PATH]".to_string());
+                return Err(
+                    "routines explain requires ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]"
+                        .to_string(),
+                );
             }
             let routine_id = tokens[2].trim().to_string();
             if routine_id.is_empty() {
                 return Err("routines explain ROUTINE_ID cannot be empty".to_string());
             }
             let mut catalog_path: Option<String> = None;
+            let mut seq_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -4967,6 +4981,14 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                             "routines explain",
                         )?);
                     }
+                    "--seq-id" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "routines explain",
+                        )?);
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for routines explain"));
                     }
@@ -4975,12 +4997,13 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
             Ok(ShellCommand::RoutinesExplain {
                 catalog_path,
                 routine_id,
+                seq_id,
             })
         }
         "compare" => {
             if tokens.len() < 4 {
                 return Err(
-                    "routines compare requires ROUTINE_A ROUTINE_B [--catalog PATH]".to_string(),
+                    "routines compare requires ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]".to_string(),
                 );
             }
             let left_routine_id = tokens[2].trim().to_string();
@@ -4989,6 +5012,7 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                 return Err("routines compare routine ids cannot be empty".to_string());
             }
             let mut catalog_path: Option<String> = None;
+            let mut seq_id: Option<String> = None;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -4997,6 +5021,14 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                             tokens,
                             &mut idx,
                             "--catalog",
+                            "routines compare",
+                        )?);
+                    }
+                    "--seq-id" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
                             "routines compare",
                         )?);
                     }
@@ -5009,6 +5041,7 @@ pub(super) fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, 
                 catalog_path,
                 left_routine_id,
                 right_routine_id,
+                seq_id,
             })
         }
         other => Err(format!(

@@ -1439,9 +1439,9 @@ Shared shell command:
     - `macros template-delete TEMPLATE_NAME`
     - `macros template-import PATH`
     - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]`
-    - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
-    - `routines explain ROUTINE_ID [--catalog PATH]`
-    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+    - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
+    - `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
     - `candidates list`
     - `candidates delete SET_NAME`
     - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
@@ -2426,22 +2426,29 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
 
 Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'routines ...'`):
 
-- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
   - Lists typed cloning routines from catalog JSON (`gentle.cloning_routines.v1`).
   - `--family`, `--status`, `--tag`: exact case-insensitive filters.
   - `--query`: case-insensitive substring match across id/title/family/status/template/tags/summary plus explainability metadata fields.
+  - `--seq-id`: refreshes construct reasoning for that sequence and feeds any
+    variant-derived assay preferences into the planning estimate / ranking.
   - Default catalog path: `assets/cloning_routines.json`.
-- `routines explain ROUTINE_ID [--catalog PATH]`
+- `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
   - Returns structured explainability payload for one routine.
   - Response schema: `gentle.cloning_routine_explain.v1`.
   - Includes resolved alternatives plus purpose/mechanism/requirements, contraindications, disambiguation questions, and failure modes.
-- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - `--seq-id` adds the same construct-reasoning planning context used by
+    `routines list` / `routines compare`, including any variant-derived assay
+    preferences and the resulting planning estimate for the explained routine.
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
   - Returns deterministic side-by-side comparison payload for two routines.
   - Response schema: `gentle.cloning_routine_compare.v1`.
   - Includes shared/unique vocabulary tags, difference-matrix rows, and merged disambiguation questions.
   - Also includes planning-aware estimate rows:
     `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
     `composite_meta_score`.
+  - `--seq-id` applies the same sequence-aware construct-reasoning preference
+    context used by `routines list`.
 
 Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'planning ...'`):
 
@@ -2500,6 +2507,13 @@ Planning estimate rule (v1 purchasing simplification):
   `routines list` and `routines compare` emit a synthesized
   `routine_preference_context` and a transparent
   `routine_family_alignment_bonus` inside each planning estimate explanation.
+- When `--seq-id` is present and the sequence has construct reasoning with
+  variant assay suggestions, that same context also contributes:
+  - `construct_reasoning_seq_id`
+  - `variant_effect_tags`
+  - `variant_suggested_assay_ids`
+  - `variant_derived_preferred_routine_families`
+  - `routine_family_alignment_sources += variant_derived`
 
 Shipped starter assets:
 
