@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "features export-bed grch38_tp53 artifacts/grch38_tp53.gene_models.bed --coordinate-mode auto --kind gene --kind mRNA --kind exon --kind CDS --sort start --include-source --include-qualifiers",
+  "expected_artifacts": [
+    "artifacts/grch38_tp53.gene_models.bed"
+  ],
+  "timeout_secs": 180
+}

@@ -1341,10 +1341,13 @@ order. Durable architecture constraints and decisions remain in
     instead of only from `capabilities`
   - the example request pack now also includes follow-on routes for:
     - reference extraction (`TP53`)
+    - BED export for extracted genome annotation (`TP53` gene/mRNA/exon/CDS)
     - helper BLAST (`pUC19`)
     - one planning workflow replay (`VKORC1` luciferase planning)
     - DNA-window graphics routes with explicit TFBS/JASPAR and
       restriction-enzyme display settings
+    - one DNA-window BED export route combining TFBS/JASPAR rows with selected
+      restriction-site rows
     - TP53 isoform architecture workflow + expert-SVG follow-on routes
     - one protocol-cartoon graphics/export preparation route
       (`protocol-cartoon render-svg gibson.two_fragment ...`)

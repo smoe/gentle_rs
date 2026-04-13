@@ -1,7 +1,7 @@
 {
   "name": "gentle-cloning",
   "cli_alias": "gentle-cloning",
-  "description": "Deterministic DNA construct design and cloning specialist powered by GENtle, with local-checkout or container-backed execution and reproducibility bundle output.",
+  "description": "Deterministic sequence-design and genome-context specialist powered by GENtle, positioned to turn cohort or patient-data observations into sequence-grounded mechanistic follow-up and reproducible assay-planning artifacts while also bootstrapping reusable local reference assets.",
   "version": "0.1.0",
   "status": "mvp",
   "has_script": true,
@@ -22,7 +22,10 @@
     "pcr",
     "genome-context",
     "reproducibility",
-    "automation"
+    "automation",
+    "patient-data-follow-up",
+    "wet-lab-planning",
+    "reference-preparation"
   ],
   "trigger_keywords": [
     "gentle",
@@ -34,7 +37,13 @@
     "blast sequence",
     "genome anchor",
     "fetch genbank",
-    "design assay"
+    "design assay",
+    "patient variant",
+    "regulatory variant",
+    "splicing effect",
+    "isoform shift",
+    "prepare ensembl",
+    "reference blast"
   ],
   "chaining_partners": [
     "bio-orchestrator",

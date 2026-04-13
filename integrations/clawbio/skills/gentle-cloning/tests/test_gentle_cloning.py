@@ -423,6 +423,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "render-svg pgex_fasta circular artifacts/pgex_fasta.circular.svg",
             180,
         ),
+        "request_export_bed_grch38_tp53_gene_models.json": (
+            "shell",
+            "features export-bed grch38_tp53 artifacts/grch38_tp53.gene_models.bed --coordinate-mode auto --kind gene --kind mRNA --kind exon --kind CDS --sort start --include-source --include-qualifiers",
+            180,
+        ),
         "request_protocol_cartoon_gibson_svg.json": (
             "shell",
             "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
@@ -441,6 +446,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_genbank_fetch_pbr322.json",
             "request_dbsnp_fetch_rs9923231.json",
             "request_genomes_extract_gene_tp53.json",
+            "request_export_bed_grch38_tp53_gene_models.json",
             "request_render_svg_pgex_fasta_circular.json",
         }:
             assert payload["state_path"] == ".gentle_state.json"
@@ -451,6 +457,10 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_render_svg_pgex_fasta_circular.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.circular.svg"
+            ]
+        if name == "request_export_bed_grch38_tp53_gene_models.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tp53.gene_models.bed"
             ]
 
     tfbs_payload = json.loads(
@@ -535,3 +545,51 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "artifacts/tp53_isoforms_v1.expert.svg"
     ]
     assert isoform_expert_payload["timeout_secs"] == 180
+
+    bed_workflow_payload = json.loads(
+        (examples_dir / "request_export_bed_pgex_fasta_tfbs_restriction.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert bed_workflow_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert bed_workflow_payload["mode"] == "workflow"
+    assert bed_workflow_payload["state_path"] == ".gentle_state.json"
+    assert bed_workflow_payload["expected_artifacts"] == [
+        "artifacts/pgex_fasta.tfbs_restriction.bed"
+    ]
+    assert bed_workflow_payload["timeout_secs"] == 300
+    bed_ops = bed_workflow_payload["workflow"]["ops"]
+    assert bed_ops[0]["AnnotateTfbs"]["seq_id"] == "pgex_fasta"
+    assert bed_ops[1]["ExportFeaturesBed"]["query"] == {
+        "seq_id": "pgex_fasta",
+        "kind_in": ["TFBS"],
+        "sort_by": "start",
+    }
+    assert bed_ops[1]["ExportFeaturesBed"]["path"] == (
+        "artifacts/pgex_fasta.tfbs_restriction.bed"
+    )
+    assert bed_ops[1]["ExportFeaturesBed"]["coordinate_mode"] == "local"
+    assert bed_ops[1]["ExportFeaturesBed"]["include_restriction_sites"] is True
+    assert bed_ops[1]["ExportFeaturesBed"]["restriction_enzymes"] == [
+        "EcoRI",
+        "BamHI",
+    ]
+
+
+def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets() -> None:
+    catalog_entry = json.loads(
+        (Path(__file__).resolve().parents[1] / "catalog_entry.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    description = catalog_entry["description"]
+    assert "patient-data observations" in description
+    assert "mechanistic follow-up" in description
+    assert "reusable local reference assets" in description
+
+    trigger_keywords = set(catalog_entry["trigger_keywords"])
+    assert "patient variant" in trigger_keywords
+    assert "splicing effect" in trigger_keywords
+    assert "prepare ensembl" in trigger_keywords
+    assert "reference blast" in trigger_keywords

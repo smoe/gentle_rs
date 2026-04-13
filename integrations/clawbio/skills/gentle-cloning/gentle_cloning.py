@@ -383,7 +383,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "GENtle ClawBio skill wrapper. Executes deterministic gentle_cli "
-            "commands from structured request JSON and writes reproducibility artifacts."
+            "commands from structured request JSON, supports sequence-grounded "
+            "follow-up to biological observations, and writes reproducibility artifacts."
         )
     )
     parser.add_argument("--input", help="Path to request JSON")

@@ -2,6 +2,12 @@
 
 This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 
+It is intended to position GENtle as a deterministic bridge from biological
+observations, including patient/cohort-derived leads, to sequence-grounded
+mechanistic follow-up and wet-lab planning. It also makes clear that prepared
+Ensembl/reference assets and BLAST-capable indices are reusable local
+infrastructure, not GENtle-only byproducts.
+
 ## Files
 
 - `SKILL.md`: skill metadata + routing/instructions
@@ -11,6 +17,20 @@ This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
 - `examples/*.json`: request payload examples, including bootstrap, extract/BLAST, planning, and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
+
+## Positioning for OpenClaw
+
+When OpenClaw answers broad questions such as "How does GENtle help me?", the
+intended framing is:
+
+- GENtle helps move from an observation to a reproducible follow-up.
+- For patient/cohort signals, that means:
+  `statistical observation -> mechanistic hypothesis -> sequence/context analysis -> wet-lab validation plan`.
+- GENtle does not prove causality by itself.
+- GENtle can bootstrap reusable local Ensembl/reference assets, including
+  BLAST-capable indices, that may also be useful to external bioinformatics
+  tools. Its added value is deterministic preparation, cataloging, provenance,
+  and reuse in the same workflow.
 
 ## Recommended first-time route: local GENtle checkout
 
@@ -38,9 +58,11 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_grch38_tp53_gene_models.json --output /tmp/gentle_tp53_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_pgex_fasta_tfbs_restriction.json --output /tmp/gentle_pgex_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_tfbs.json --output /tmp/gentle_pgex_tfbs_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_restriction.json --output /tmp/gentle_pgex_restriction_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
@@ -55,9 +77,15 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_export_bed_pgex_fasta_tfbs_restriction.json` is a matching
+  follow-on tabular route on that same `pgex_fasta` state; it annotates TFBS,
+  exports TFBS rows, and appends selected restriction-site rows into one BED
+  bundle artifact
 - `request_render_svg_pgex_fasta_linear_tfbs.json` and
   `request_render_svg_pgex_fasta_linear_restriction.json` are matching
   follow-on DNA-window graphics routes on that same `pgex_fasta` state
+- `request_export_bed_grch38_tp53_gene_models.json` is a follow-on annotation
+  export after `request_genomes_extract_gene_tp53.json`
 - `request_render_feature_expert_tp53_isoform_svg.json` is a follow-on expert
   route after `request_workflow_tp53_isoform_architecture_online.json` (or an
   equivalent prior isoform-panel import)
@@ -135,13 +163,19 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_genbank_fetch_pbr322.json`
 - `examples/request_dbsnp_fetch_rs9923231.json`
 - `examples/request_genomes_extract_gene_tp53.json`
+- `examples/request_export_bed_grch38_tp53_gene_models.json`
+  - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
+  - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4 artifact
 - `examples/request_helpers_blast_puc19_short.json`
 - `examples/request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after running
     `examples/request_workflow_file.json`
+- `examples/request_export_bed_pgex_fasta_tfbs_restriction.json`
+  - same `pgex_fasta` follow-on route, but exports TFBS/JASPAR hits plus
+    selected restriction-site rows into one BED artifact
 - `examples/request_render_svg_pgex_fasta_linear_tfbs.json`
   - same `pgex_fasta` follow-on route, but with explicit JASPAR/TFBS display
-    filtering before linear SVG export
+  filtering before linear SVG export
 - `examples/request_render_svg_pgex_fasta_linear_restriction.json`
   - same `pgex_fasta` follow-on route, but with explicit restriction display
     settings before linear SVG export
@@ -154,14 +188,16 @@ Included follow-on analysis/planning/graphics requests:
     `render-feature-expert-svg ... isoform ...` expert route
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
-    wrapper output bundle under `generated/...`
-- No canned BED-export request is shipped yet, but ClawBio can already call
-  the shared routes directly:
+  wrapper output bundle under `generated/...`
+- shipped BED-export examples now cover both common follow-on surfaces:
   - shell mode:
-    `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME ...] [feature-query filters ...]`
-  - raw/op mode:
-    `ExportFeaturesBed { query, path, coordinate_mode, include_restriction_sites, restriction_enzymes[] }`
-  - this covers genome annotation, TFBS/JASPAR features, and optional
+    `request_export_bed_grch38_tp53_gene_models.json`
+  - workflow/op mode:
+    `request_export_bed_pgex_fasta_tfbs_restriction.json`
+  - both ride the shared routes directly:
+    - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME ...] [feature-query filters ...]`
+    - `ExportFeaturesBed { query, path, coordinate_mode, include_restriction_sites, restriction_enzymes[] }`
+  - together they cover genome annotation, TFBS/JASPAR rows, and optional
     deterministic REBASE restriction-site rows through one BED6+4 export
     contract
 
