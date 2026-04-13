@@ -11554,6 +11554,72 @@ fn execute_transcript_protein_comparison_expert_without_uniprot() {
 }
 
 #[test]
+fn execute_transcript_protein_comparison_expert_svg_shell_and_operation_routes_match() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(Feature {
+        kind: "source".into(),
+        location: Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TPROT".to_string())),
+            ("transcript_id".into(), Some("TX_TPROT".to_string())),
+            ("label".into(), Some("TX_TPROT".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_tx_only".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let tmp = tempdir().expect("temp dir");
+    let op_svg = tmp.path().join("protein_compare.op.svg");
+    let shell_svg = tmp.path().join("protein_compare.shell.svg");
+    let op_path = op_svg.display().to_string();
+    let shell_path = shell_svg.display().to_string();
+
+    engine
+        .apply(Operation::RenderFeatureExpertSvg {
+            seq_id: "toy_tx_only".to_string(),
+            target: FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_TPROT".to_string()),
+                protein_feature_filter: Default::default(),
+            },
+            path: op_path.clone(),
+        })
+        .expect("render transcript protein comparison op route");
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::RenderFeatureExpertSvg {
+            seq_id: "toy_tx_only".to_string(),
+            target: FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_TPROT".to_string()),
+                protein_feature_filter: Default::default(),
+            },
+            output: shell_path.clone(),
+        },
+    )
+    .expect("render transcript protein comparison shell route");
+
+    let op_text = fs::read_to_string(op_path).expect("read op svg");
+    let shell_text = fs::read_to_string(shell_path).expect("read shell svg");
+    assert_eq!(
+        op_text, shell_text,
+        "RenderFeatureExpertSvg operation and shell routes must match for transcript protein comparison"
+    );
+    assert!(op_text.contains("protein-rail"));
+}
+
+#[test]
 fn execute_panels_validate_isoform_returns_report() {
     let mut engine = GentleEngine::new();
     let out = execute_shell_command(

@@ -3438,6 +3438,10 @@ UniProt mapping behavior:
     - open the same Protein Expert without requiring a stored UniProt
       projection; the current transcript field acts as an optional transcript
       filter for transcript-only inspection
+  - `Render Derived Protein SVG...`
+    - export that transcript-native Protein Expert directly through the shared
+      `RenderFeatureExpertSvg` route, again without requiring a stored UniProt
+      projection
   - `Render Protein Mapping SVG...` / `Render SVG...`
     - export the same stored projection directly through the shared
       `RenderFeatureExpertSvg` route without first opening the expert window
@@ -3462,6 +3466,9 @@ UniProt mapping behavior:
   - low-confidence disagreements between transcript-native translation and the
     external protein opinion remain visible as explicit warnings/status chips
     instead of being silently flattened away
+  - the same compare surface can now also be exported in derived-only form,
+    so transcript-first inspection/export no longer needs a stored UniProt
+    projection
   - the shared SVG/view layout now deliberately shows both:
     - a coordinate-true exon/intron panel for locus context
     - a lower shared-genomic-exon-column transcript/product panel with

@@ -4864,6 +4864,110 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
 }
 
 #[test]
+fn test_transcript_protein_expert_preserves_explicit_translation_table() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("codon_start".into(), Some("1".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let expert = engine
+        .inspect_feature_expert(
+            "s",
+            &FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_TOY".to_string()),
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect transcript-native protein expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for transcript protein expert");
+    };
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::DerivedOnly
+    );
+    assert_eq!(derived.translation_table, 11);
+    assert_eq!(derived.translation_table_source.as_str(), "explicit_cds_qualifier");
+    assert_eq!(derived.organism.as_deref(), Some("Escherichia coli"));
+}
+
+#[test]
+fn test_transcript_protein_expert_preserves_mitochondrial_default_context() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        reverse_transcript_translation_test_sequence(
+            vec![
+                ("organism".into(), Some("Homo sapiens".to_string())),
+                ("organelle".into(), Some("mitochondrion".to_string())),
+            ],
+            vec![
+                ("gene".into(), Some("MTTOY".to_string())),
+                ("transcript_id".into(), Some("TX_MT".to_string())),
+                ("label".into(), Some("TX_MT".to_string())),
+            ],
+            vec![("transcript_id".into(), Some("TX_MT".to_string()))],
+        ),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let expert = engine
+        .inspect_feature_expert(
+            "s",
+            &FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_MT".to_string()),
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect transcript-native protein expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for transcript protein expert");
+    };
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::DerivedOnly
+    );
+    assert_eq!(
+        derived.translation_table_source.as_str(),
+        "ambiguous_mitochondrial_default"
+    );
+    assert_eq!(derived.organism.as_deref(), Some("Homo sapiens"));
+    assert_eq!(derived.organelle.as_deref(), Some("mitochondrion"));
+    assert!(
+        derived
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Mitochondrial context was detected"))
+    );
+}
+
+#[test]
 fn test_uniprot_projection_expert_marks_internal_coding_exon_mismatch_low_confidence() {
     let dir = tempfile::tempdir().unwrap();
     let swiss_path = dir.path().join("toy_uniprot_mismatch.txt");

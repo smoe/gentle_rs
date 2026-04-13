@@ -16438,6 +16438,19 @@ Error: `{err}`"
         format!("{stem}.protein_mapping.svg")
     }
 
+    fn default_transcript_protein_svg_file_name(
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+    ) -> String {
+        let descriptor = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{}_{}", seq_id.trim(), value))
+            .unwrap_or_else(|| format!("{}_derived_proteins", seq_id.trim()));
+        let stem = Self::sanitize_file_stem(&descriptor, "protein_compare");
+        format!("{stem}.protein_compare.svg")
+    }
+
     fn export_uniprot_projection_svg_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
         let seq_id = seq_id.trim();
         let projection_id = projection_id.trim();
@@ -16479,6 +16492,70 @@ Error: `{err}`"
             Err(err) => {
                 self.uniprot_status = format!(
                     "Could not export UniProt protein mapping SVG: {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn export_transcript_protein_svg_from_dialog(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+    ) {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            self.uniprot_status =
+                "seq_id is required before exporting transcript-native Protein Expert SVG"
+                    .to_string();
+            return;
+        }
+        let normalized_filter = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let default_file_name =
+            Self::default_transcript_protein_svg_file_name(seq_id, normalized_filter.as_deref());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            self.uniprot_status = "Transcript-native Protein Expert SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: seq_id.to_string(),
+                target: FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: normalized_filter.clone(),
+                    protein_feature_filter: Default::default(),
+                },
+                path: path_text.clone(),
+            });
+        match result {
+            Ok(op_result) => {
+                self.uniprot_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    if let Some(transcript_id_filter) = normalized_filter.as_deref() {
+                        format!(
+                            "Wrote transcript-native Protein Expert SVG for '{}' to '{}'",
+                            transcript_id_filter, path_text
+                        )
+                    } else {
+                        format!(
+                            "Wrote transcript-native Protein Expert SVG to '{}'",
+                            path_text
+                        )
+                    }
+                });
+            }
+            Err(err) => {
+                self.uniprot_status = format!(
+                    "Could not export transcript-native Protein Expert SVG: {}",
                     err.message
                 );
             }
@@ -16947,6 +17024,21 @@ Error: `{err}`"
                 );
             }
             if ui
+                .button("Render Derived Protein SVG...")
+                .on_hover_text(
+                    "Export the transcript-native Protein Expert directly as SVG without requiring any stored UniProt projection; optional transcript filter uses the current transcript field",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                let transcript_filter =
+                    Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id);
+                self.export_transcript_protein_svg_from_dialog(
+                    &seq_id,
+                    transcript_filter.as_deref(),
+                );
+            }
+            if ui
                 .button("Render Protein Mapping SVG...")
                 .on_hover_text(
                     "Export the current stored UniProt projection directly as an SVG from the shared protein-mapping expert route",
@@ -16965,7 +17057,7 @@ Error: `{err}`"
             }
         });
         ui.small(
-            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Protein Mapping SVG... exports the current shared Protein Expert view for the stored UniProt projection.",
+            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Derived Protein SVG... exports the transcript-native view directly, while Render Protein Mapping SVG... exports the shared Protein Expert view for the stored UniProt projection.",
         );
         ui.separator();
         ui.label("Feature coding DNA query");
@@ -45102,6 +45194,21 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 "tp53_uniprot_p04637"
             ),
             "grch38_tp53_tp53_uniprot_p04637.protein_mapping.svg"
+        );
+    }
+
+    #[test]
+    fn default_transcript_protein_svg_file_name_uses_seq_and_optional_transcript() {
+        assert_eq!(
+            GENtleApp::default_transcript_protein_svg_file_name("grch38_tp53", None),
+            "grch38_tp53_derived_proteins.protein_compare.svg"
+        );
+        assert_eq!(
+            GENtleApp::default_transcript_protein_svg_file_name(
+                "grch38_tp53",
+                Some("ENST00000269305")
+            ),
+            "grch38_tp53_ENST00000269305.protein_compare.svg"
         );
     }
 

@@ -1183,6 +1183,9 @@ order. Durable architecture constraints and decisions remain in
     - the same specialist now also offers `Open Derived Protein Expert`, so
       transcript-native protein inspection no longer requires a stored UniProt
       projection
+    - that derived-only transcript-first Protein Expert can now also export SVG
+      directly from the same dialog, so transcript-native inspection/export is
+      no longer gated on persisted UniProt projection state
     - the same transcript-first protein expert is now also available over the
       shared shell/CLI route via
       `inspect-feature-expert SEQ_ID protein-comparison [--transcript ID]` and
