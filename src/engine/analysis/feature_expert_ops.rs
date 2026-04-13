@@ -41,41 +41,62 @@ struct DerivedProteinExpertTranscript {
 }
 
 #[derive(Clone)]
-struct ExternalProteinOpinionAaSegment {
-    aa_start: usize,
-    aa_end: usize,
-    genomic_start_1based: usize,
-    genomic_end_1based: usize,
+pub(crate) struct ExternalProteinOpinionAaSegment {
+    pub(crate) aa_start: usize,
+    pub(crate) aa_end: usize,
+    pub(crate) genomic_start_1based: usize,
+    pub(crate) genomic_end_1based: usize,
 }
 
 #[derive(Clone)]
-struct ExternalProteinOpinionFeatureProjection {
-    feature_key: String,
-    feature_note: Option<String>,
-    genomic_segments: Vec<ExternalProteinOpinionAaSegment>,
+pub(crate) struct ExternalProteinOpinionFeatureProjection {
+    pub(crate) feature_key: String,
+    pub(crate) feature_note: Option<String>,
+    pub(crate) genomic_segments: Vec<ExternalProteinOpinionAaSegment>,
 }
 
 #[derive(Clone)]
-struct ExternalProteinOpinionTranscript {
-    transcript_id: String,
-    transcript_feature_id: Option<usize>,
-    strand: String,
-    aa_segments: Vec<ExternalProteinOpinionAaSegment>,
-    feature_projections: Vec<ExternalProteinOpinionFeatureProjection>,
+pub(crate) struct ExternalProteinOpinionTranscript {
+    pub(crate) transcript_id: String,
+    pub(crate) transcript_feature_id: Option<usize>,
+    pub(crate) strand: String,
+    pub(crate) aa_segments: Vec<ExternalProteinOpinionAaSegment>,
+    pub(crate) feature_projections: Vec<ExternalProteinOpinionFeatureProjection>,
 }
 
 #[derive(Clone)]
-struct ExternalProteinOpinionViewSource {
-    source: gentle_protocol::ProteinExternalOpinionSource,
-    source_id: String,
-    source_label: String,
-    panel_source_label: String,
-    transcript_id_filter: Option<String>,
-    gene_symbol_hint: Option<String>,
-    expected_length_aa: Option<usize>,
-    feature_inventory_keys: Vec<String>,
-    warnings: Vec<String>,
-    transcripts: Vec<ExternalProteinOpinionTranscript>,
+pub(crate) struct ExternalProteinOpinionViewSource {
+    pub(crate) source: gentle_protocol::ProteinExternalOpinionSource,
+    pub(crate) source_id: String,
+    pub(crate) source_label: String,
+    pub(crate) panel_source_label: String,
+    pub(crate) transcript_id_filter: Option<String>,
+    pub(crate) gene_symbol_hint: Option<String>,
+    pub(crate) expected_length_aa: Option<usize>,
+    pub(crate) feature_inventory_keys: Vec<String>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) transcripts: Vec<ExternalProteinOpinionTranscript>,
+}
+
+#[derive(Clone)]
+enum ExternalProteinOpinionProvider<'a> {
+    #[allow(dead_code)]
+    Materialized(ExternalProteinOpinionViewSource),
+    UniprotProjection {
+        projection: &'a UniprotGenomeProjection,
+        entry: &'a UniprotEntry,
+    },
+}
+
+impl ExternalProteinOpinionProvider<'_> {
+    fn transcript_id_filter(&self) -> Option<&str> {
+        match self {
+            Self::Materialized(source) => source.transcript_id_filter.as_deref(),
+            Self::UniprotProjection { projection, .. } => {
+                projection.transcript_id_filter.as_deref()
+            }
+        }
+    }
 }
 
 impl GentleEngine {
@@ -3015,6 +3036,35 @@ impl GentleEngine {
         }
     }
 
+    fn materialize_external_protein_opinion_provider(
+        provider: Option<&ExternalProteinOpinionProvider<'_>>,
+    ) -> Option<ExternalProteinOpinionViewSource> {
+        match provider {
+            Some(ExternalProteinOpinionProvider::Materialized(source)) => Some(source.clone()),
+            Some(ExternalProteinOpinionProvider::UniprotProjection { projection, entry }) => Some(
+                Self::build_uniprot_external_protein_opinion_source(projection, entry),
+            ),
+            None => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn build_external_protein_expert_view_for_test(
+        &self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        external_source: ExternalProteinOpinionViewSource,
+        protein_feature_filter: &ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let provider = ExternalProteinOpinionProvider::Materialized(external_source);
+        self.build_optional_external_protein_expert_view(
+            seq_id,
+            transcript_id_filter,
+            Some(&provider),
+            protein_feature_filter,
+        )
+    }
+
     fn feature_location_ranges_1based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
         let mut ranges = vec![];
         let mut raw_ranges = vec![];
@@ -3146,9 +3196,12 @@ impl GentleEngine {
         &self,
         seq_id: &str,
         transcript_id_filter: Option<&str>,
-        external_source: Option<&ExternalProteinOpinionViewSource>,
+        external_provider: Option<&ExternalProteinOpinionProvider<'_>>,
         protein_feature_filter: &ProteinFeatureFilter,
     ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let materialized_external_source =
+            Self::materialize_external_protein_opinion_provider(external_provider);
+        let external_source = materialized_external_source.as_ref();
         let dna = self
             .state
             .sequences
@@ -3647,12 +3700,14 @@ impl GentleEngine {
             });
         }
         let entry = self.get_uniprot_entry(&projection.entry_id)?;
-        let external_source =
-            Self::build_uniprot_external_protein_opinion_source(&projection, &entry);
+        let provider = ExternalProteinOpinionProvider::UniprotProjection {
+            projection: &projection,
+            entry: &entry,
+        };
         self.build_optional_external_protein_expert_view(
             seq_id,
-            external_source.transcript_id_filter.as_deref(),
-            Some(&external_source),
+            provider.transcript_id_filter(),
+            Some(&provider),
             protein_feature_filter,
         )
     }

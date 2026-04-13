@@ -4918,6 +4918,119 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
 }
 
 #[test]
+fn test_transcript_protein_expert_supports_non_uniprot_external_provider() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYENS".to_string())),
+            ("transcript_id".into(), Some("TX_ENS1".to_string())),
+            ("label".into(), Some("TX_ENS1".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_ensembl".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let external_source = super::feature_expert_ops::ExternalProteinOpinionViewSource {
+        source: gentle_protocol::ProteinExternalOpinionSource::Ensembl,
+        source_id: "ENSPTOY1@toy_ensembl".to_string(),
+        source_label: "Ensembl ENSPTOY1".to_string(),
+        panel_source_label: "Transcript-native proteins with optional Ensembl opinion ENSPTOY1"
+            .to_string(),
+        transcript_id_filter: Some("TX_ENS1".to_string()),
+        gene_symbol_hint: Some("TOYENS".to_string()),
+        expected_length_aa: Some(60),
+        feature_inventory_keys: vec!["DOMAIN".to_string()],
+        warnings: vec!["Synthetic Ensembl-like external protein opinion".to_string()],
+        transcripts: vec![
+            super::feature_expert_ops::ExternalProteinOpinionTranscript {
+                transcript_id: "TX_ENS1".to_string(),
+                transcript_feature_id: Some(1),
+                strand: "+".to_string(),
+                aa_segments: vec![super::feature_expert_ops::ExternalProteinOpinionAaSegment {
+                    aa_start: 1,
+                    aa_end: 60,
+                    genomic_start_1based: 1,
+                    genomic_end_1based: 180,
+                }],
+                feature_projections: vec![
+                    super::feature_expert_ops::ExternalProteinOpinionFeatureProjection {
+                        feature_key: "DOMAIN".to_string(),
+                        feature_note: Some("synthetic Ensembl domain".to_string()),
+                        genomic_segments: vec![
+                            super::feature_expert_ops::ExternalProteinOpinionAaSegment {
+                                aa_start: 10,
+                                aa_end: 20,
+                                genomic_start_1based: 28,
+                                genomic_end_1based: 60,
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+
+    let view = engine
+        .build_external_protein_expert_view_for_test(
+            "toy_ensembl",
+            Some("TX_ENS1"),
+            external_source,
+            &ProteinFeatureFilter::default(),
+        )
+        .expect("build synthetic external protein expert view");
+
+    assert_eq!(view.gene_symbol, "TOYENS");
+    assert_eq!(view.panel_id, "ENSPTOY1@toy_ensembl");
+    assert_eq!(
+        view.panel_source.as_deref(),
+        Some("Transcript-native proteins with optional Ensembl opinion ENSPTOY1")
+    );
+    assert!(
+        view.warnings
+            .iter()
+            .any(|warning| warning.contains("Synthetic Ensembl-like"))
+    );
+    assert_eq!(view.transcript_lanes.len(), 1);
+    assert_eq!(view.protein_lanes.len(), 1);
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion
+    );
+    assert_eq!(
+        comparison
+            .external_opinion
+            .as_ref()
+            .expect("external opinion")
+            .source,
+        gentle_protocol::ProteinExternalOpinionSource::Ensembl
+    );
+    assert!(
+        view.protein_lanes[0]
+            .domains
+            .iter()
+            .any(|domain| domain.name.contains("synthetic Ensembl domain"))
+    );
+}
+
+#[test]
 fn test_transcript_protein_expert_preserves_explicit_translation_table() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -5083,6 +5196,8 @@ SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
             entry_id: "PMIS1".to_string(),
             seq_id: "toy_mismatch".to_string(),
             created_at_unix_ms: 1,
+            op_id: None,
+            run_id: None,
             transcript_id_filter: None,
             transcript_projections: vec![crate::uniprot::UniprotTranscriptProjection {
                 transcript_id: "TXMM1".to_string(),
