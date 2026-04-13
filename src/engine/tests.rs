@@ -4763,7 +4763,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let expert = engine
         .inspect_feature_expert(
             "toy_seq",
-            &FeatureExpertTarget::uniprot_projection("PTEST1@toy_seq".to_string()),
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PTEST1@toy_seq".to_string(),
+                protein_feature_filter: Default::default(),
+            },
         )
         .expect("inspect UniProt projection expert");
     let FeatureExpertView::IsoformArchitecture(view) = expert else {
@@ -4775,7 +4778,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     assert_eq!(view.transcript_geometry_mode, "cds");
     assert_eq!(
         view.panel_source.as_deref(),
-        Some("UniProt projection PTEST1 (PTEST1)")
+        Some("Transcript-native proteins with optional UniProt opinion PTEST1 (PTEST1)")
     );
     assert_eq!(view.transcript_lanes.len(), 1);
     assert_eq!(view.protein_lanes.len(), 1);
@@ -4797,6 +4800,653 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     assert!(
         !view.transcript_lanes[0].cds_to_protein_segments.is_empty(),
         "UniProt projection expert should expose transcript/CDS-to-protein guide segments"
+    );
+}
+
+#[test]
+fn test_transcript_protein_expert_supports_transcript_only_rows() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TPROT".to_string())),
+            ("transcript_id".into(), Some("TX_TPROT".to_string())),
+            ("label".into(), Some("TX_TPROT".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_tx_only".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_tx_only",
+            &FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: None,
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect transcript-native protein expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for transcript protein expert");
+    };
+    assert_eq!(view.seq_id, "toy_tx_only");
+    assert_eq!(view.protein_lanes.len(), 1);
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::DerivedOnly
+    );
+    assert!(comparison.external_opinion.is_none());
+    let derived = comparison.derived.as_ref().expect("derived transcript product");
+    assert_eq!(derived.transcript_id, "TX_TPROT");
+    assert_eq!(derived.protein_length_aa, 60);
+    assert_eq!(derived.translation_table, 1);
+    assert_eq!(derived.translation_table_source.as_str(), "standard_default");
+    assert_eq!(view.transcript_lanes[0].transcript_exons.len(), 1);
+    assert_eq!(view.transcript_lanes[0].exons.len(), 1);
+    assert!(!view.transcript_lanes[0].cds_to_protein_segments.is_empty());
+}
+
+#[test]
+fn test_uniprot_projection_expert_marks_internal_coding_exon_mismatch_low_confidence() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_mismatch.txt");
+    let swiss_text = r#"ID   TOYMIS_HUMAN            Reviewed;         20 AA.
+AC   PMIS1;
+DE   RecName: Full=Toy mismatch protein;
+GN   Name=TOYMIS;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXMM1; ENSPTOYMM1; ENSGTOYMM1.
+SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 30),
+            gb_io::seq::Location::simple_range(60, 90),
+            gb_io::seq::Location::simple_range(120, 150),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYMIS".to_string())),
+            ("transcript_id".into(), Some("TXMM1".to_string())),
+            ("label".into(), Some("TXMM1".to_string())),
+            ("cds_ranges_1based".into(), Some("1-30,61-90,121-150".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_mismatch".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .upsert_uniprot_projection(crate::uniprot::UniprotGenomeProjection {
+            schema: "gentle.uniprot_genome_projection.v1".to_string(),
+            projection_id: "PMIS1@toy_mismatch".to_string(),
+            entry_id: "PMIS1".to_string(),
+            seq_id: "toy_mismatch".to_string(),
+            created_at_unix_ms: 1,
+            transcript_id_filter: None,
+            transcript_projections: vec![crate::uniprot::UniprotTranscriptProjection {
+                transcript_id: "TXMM1".to_string(),
+                transcript_feature_id: Some(0),
+                strand: "+".to_string(),
+                aa_segments: vec![
+                    crate::uniprot::UniprotAaGenomicSegment {
+                        aa_start: 1,
+                        aa_end: 10,
+                        genomic_start_1based: 1,
+                        genomic_end_1based: 30,
+                        strand: "+".to_string(),
+                    },
+                    crate::uniprot::UniprotAaGenomicSegment {
+                        aa_start: 11,
+                        aa_end: 20,
+                        genomic_start_1based: 121,
+                        genomic_end_1based: 150,
+                        strand: "+".to_string(),
+                    },
+                ],
+                feature_projections: vec![],
+                warnings: vec![],
+            }],
+            warnings: vec![],
+        })
+        .expect("store synthetic mismatch projection");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_mismatch",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PMIS1@toy_mismatch".to_string(),
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect mismatch protein expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for mismatch view");
+    };
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion
+    );
+    assert!(
+        comparison
+            .mismatch_reasons
+            .iter()
+            .any(|reason| reason.contains("internal coding exon"))
+    );
+    assert_eq!(comparison.derived_only_exon_ranges_1based, vec![(61, 90)]);
+}
+
+#[test]
+fn test_uniprot_projection_expert_ignores_noncoding_transcript_exon_for_consistency() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_utr.txt");
+    let swiss_text = r#"ID   TOYUTR_HUMAN            Reviewed;         20 AA.
+AC   PUTR1;
+DE   RecName: Full=Toy UTR protein;
+GN   Name=TOYUTR;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXUTR1; ENSPTOYUTR1; ENSGTOYUTR1.
+SQ   SEQUENCE   20 AA;  2222 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 30),
+            gb_io::seq::Location::simple_range(60, 90),
+            gb_io::seq::Location::simple_range(120, 150),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYUTR".to_string())),
+            ("transcript_id".into(), Some("TXUTR1".to_string())),
+            ("label".into(), Some("TXUTR1".to_string())),
+            ("cds_ranges_1based".into(), Some("61-90,121-150".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_utr".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_utr".to_string(),
+            entry_id: "PUTR1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_utr",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PUTR1@toy_utr".to_string(),
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect utr protein expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for utr view");
+    };
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion
+    );
+    assert!(comparison.mismatch_reasons.is_empty());
+    assert_eq!(view.transcript_lanes[0].transcript_exons.len(), 3);
+    assert_eq!(view.transcript_lanes[0].exons.len(), 2);
+}
+
+#[test]
+fn test_uniprot_projection_expert_filters_conflict_features_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_topology.txt");
+    let swiss_text = r#"ID   TOYMEM_HUMAN            Reviewed;         60 AA.
+AC   PMEM1;
+DE   RecName: Full=Toy membrane protein;
+GN   Name=TOYMEM;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXMEM1; ENSPTOYMEM1; ENSGTOYMEM1.
+FT   SIGNAL          1..12
+FT                   /note="signal peptide"
+FT   TOPO_DOM        13..25
+FT                   /note="luminal"
+FT   TRANSMEM        26..45
+FT                   /note="helical"
+FT   DOMAIN          46..58
+FT                   /note="tail domain"
+FT   CONFLICT        18
+FT                   /note="synthetic conflict that should stay hidden by default"
+SQ   SEQUENCE   60 AA;  6666 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(99, 280),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYMEM".to_string())),
+            ("transcript_id".into(), Some("TXMEM1".to_string())),
+            ("label".into(), Some("TXMEM1".to_string())),
+            ("cds_ranges_1based".into(), Some("100-279".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_mem".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_mem".to_string(),
+            entry_id: "PMEM1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_mem",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PMEM1@toy_mem".to_string(),
+                protein_feature_filter: Default::default(),
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    let domains = &view.protein_lanes[0].domains;
+    assert!(
+        domains
+            .iter()
+            .all(|domain| !domain.name.to_ascii_uppercase().contains("CONFLICT")),
+        "default protein-feature filter should hide CONFLICT features"
+    );
+    assert!(domains.iter().any(|domain| domain.name.starts_with("SIGNAL")));
+    assert!(domains.iter().any(|domain| domain.name.starts_with("TOPO_DOM")));
+    assert!(domains.iter().any(|domain| domain.name.starts_with("TRANSMEM")));
+    assert!(domains.iter().any(|domain| domain.name.contains("tail domain")));
+    assert!(
+        view.warnings.iter().any(|warning| warning.contains("CONFLICT x1")),
+        "expected warning about default-hidden CONFLICT features, got {:?}",
+        view.warnings
+    );
+}
+
+#[test]
+fn test_uniprot_projection_expert_can_reinclude_conflict_features_explicitly() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_topology.txt");
+    let swiss_text = r#"ID   TOYMEM_HUMAN            Reviewed;         60 AA.
+AC   PMEM1;
+DE   RecName: Full=Toy membrane protein;
+GN   Name=TOYMEM;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXMEM1; ENSPTOYMEM1; ENSGTOYMEM1.
+FT   SIGNAL          1..12
+FT                   /note="signal peptide"
+FT   TOPO_DOM        13..25
+FT                   /note="luminal"
+FT   TRANSMEM        26..45
+FT                   /note="helical"
+FT   DOMAIN          46..58
+FT                   /note="tail domain"
+FT   CONFLICT        18
+FT                   /note="synthetic conflict re-included through feature filter"
+SQ   SEQUENCE   60 AA;  6666 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(99, 280),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYMEM".to_string())),
+            ("transcript_id".into(), Some("TXMEM1".to_string())),
+            ("label".into(), Some("TXMEM1".to_string())),
+            ("cds_ranges_1based".into(), Some("100-279".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_mem".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_mem".to_string(),
+            entry_id: "PMEM1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_mem",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PMEM1@toy_mem".to_string(),
+                protein_feature_filter: ProteinFeatureFilter {
+                    include_feature_keys: vec!["CONFLICT".to_string()],
+                    exclude_feature_keys: vec![],
+                },
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    let domains = &view.protein_lanes[0].domains;
+    assert!(
+        domains
+            .iter()
+            .any(|domain| domain.name.to_ascii_uppercase().contains("CONFLICT")),
+        "explicit protein-feature filter should be able to re-include CONFLICT features"
+    );
+    assert!(
+        view.warnings
+            .iter()
+            .all(|warning| !warning.contains("Default UniProt protein-feature filter hid")),
+        "default-hidden warning should not fire when CONFLICT was explicitly re-included"
+    );
+}
+
+#[test]
+fn test_uniprot_projection_expert_clips_protein_lane_domains_to_transcript_coverage() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_partial_domain.txt");
+    let swiss_text = r#"ID   TOYISO_HUMAN            Reviewed;         60 AA.
+AC   PISO1;
+DE   RecName: Full=Toy isoform-sensitive protein;
+GN   Name=TOYISO;
+OS   Homo sapiens (Human).
+FT   REGION          1..20
+FT                   /note="N-terminal region"
+FT   DNA_BIND        22..28
+FT   DOMAIN          35..58
+FT                   /note="SAM"
+SQ   SEQUENCE   60 AA;  6666 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(220)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYISO".to_string())),
+            ("transcript_id".into(), Some("TXFULL".to_string())),
+            ("label".into(), Some("TXFULL".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 120),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYISO".to_string())),
+            ("transcript_id".into(), Some("TXSHORT".to_string())),
+            ("label".into(), Some("TXSHORT".to_string())),
+            ("cds_ranges_1based".into(), Some("1-120".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_iso".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_iso".to_string(),
+            entry_id: "PISO1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_iso",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PISO1@toy_iso".to_string(),
+                protein_feature_filter: ProteinFeatureFilter {
+                    include_feature_keys: vec![
+                        "REGION".to_string(),
+                        "DNA_BIND".to_string(),
+                        "DOMAIN".to_string(),
+                    ],
+                    exclude_feature_keys: vec![],
+                },
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    assert_eq!(view.protein_lanes.len(), 2);
+    let full_lane = view
+        .protein_lanes
+        .iter()
+        .find(|lane| lane.isoform_id == "TXFULL")
+        .expect("full lane");
+    let short_lane = view
+        .protein_lanes
+        .iter()
+        .find(|lane| lane.isoform_id == "TXSHORT")
+        .expect("short lane");
+    assert_eq!(full_lane.reference_end_aa, Some(60));
+    assert_eq!(short_lane.reference_end_aa, Some(40));
+    let full_sam = full_lane
+        .domains
+        .iter()
+        .find(|domain| domain.name.contains("SAM"))
+        .expect("full SAM domain");
+    let short_sam = short_lane
+        .domains
+        .iter()
+        .find(|domain| domain.name.contains("SAM"))
+        .expect("partial SAM domain");
+    assert_eq!((full_sam.start_aa, full_sam.end_aa), (35, 58));
+    assert_eq!((short_sam.start_aa, short_sam.end_aa), (35, 40));
+}
+
+#[test]
+fn test_uniprot_projection_expert_infers_cds_ranges_from_compatible_cds_features() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_cds_inference.txt");
+    let swiss_text = r#"ID   TOYISO_HUMAN            Reviewed;         60 AA.
+AC   PISO1;
+DE   RecName: Full=Toy isoform-sensitive protein;
+GN   Name=TOYISO;
+OS   Homo sapiens (Human).
+FT   REGION          1..20
+FT                   /note="N-terminal region"
+FT   DNA_BIND        22..28
+FT   DOMAIN          35..58
+FT                   /note="SAM"
+SQ   SEQUENCE   60 AA;  6666 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEPMEEPQSDPSVEP
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(240)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 210),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYISO".to_string())),
+            ("transcript_id".into(), Some("TXFULL".to_string())),
+            ("label".into(), Some("TXFULL".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(15, 195),
+        qualifiers: vec![("gene".into(), Some("TOYISO".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 150),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYISO".to_string())),
+            ("transcript_id".into(), Some("TXSHORT".to_string())),
+            ("label".into(), Some("TXSHORT".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(15, 135),
+        qualifiers: vec![("gene".into(), Some("TOYISO".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    state.sequences.insert("toy_iso_cds".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_iso_cds".to_string(),
+            entry_id: "PISO1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_iso_cds",
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PISO1@toy_iso_cds".to_string(),
+                protein_feature_filter: ProteinFeatureFilter {
+                    include_feature_keys: vec![
+                        "REGION".to_string(),
+                        "DNA_BIND".to_string(),
+                        "DOMAIN".to_string(),
+                    ],
+                    exclude_feature_keys: vec![],
+                },
+            },
+        )
+        .expect("inspect UniProt projection expert");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for UniProt projection");
+    };
+    let full_lane = view
+        .protein_lanes
+        .iter()
+        .find(|lane| lane.isoform_id == "TXFULL")
+        .expect("full lane");
+    let short_lane = view
+        .protein_lanes
+        .iter()
+        .find(|lane| lane.isoform_id == "TXSHORT")
+        .expect("short lane");
+    assert_eq!(full_lane.reference_end_aa, Some(60));
+    assert_eq!(short_lane.reference_end_aa, Some(40));
+    assert!(
+        view.transcript_lanes.iter().all(|lane| lane
+            .note
+            .as_deref()
+            .map(|note| !note.contains("fell back to feature exon spans"))
+            .unwrap_or(true)),
+        "compatible CDS inference should avoid exon-span fallback warnings"
     );
 }
 
@@ -4863,7 +5513,10 @@ SQ   SEQUENCE   11 AA;  1222 MW;  0000000000000000 CRC64;
     let expert = engine
         .inspect_feature_expert(
             "toy_reverse",
-            &FeatureExpertTarget::uniprot_projection("PREV0@toy_reverse".to_string()),
+            &FeatureExpertTarget::UniprotProjection {
+                projection_id: "PREV0@toy_reverse".to_string(),
+                protein_feature_filter: Default::default(),
+            },
         )
         .expect("inspect UniProt projection expert");
     let FeatureExpertView::IsoformArchitecture(view) = expert else {

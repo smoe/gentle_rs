@@ -14,7 +14,8 @@ use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     Arrangement, ArrangementMode, Container, ContainerKind, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ProteinFeatureFilter, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot,
 };
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
@@ -10972,6 +10973,40 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let protein_compare = parse_shell_line("inspect-feature-expert s protein-comparison")
+        .expect("parse transcript protein comparison target");
+    match protein_compare {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: None,
+                    protein_feature_filter: Default::default(),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let filtered_protein_compare = parse_shell_line(
+        "inspect-feature-expert s protein-comparison --transcript TX_TPROT",
+    )
+    .expect("parse filtered transcript protein comparison target");
+    match filtered_protein_compare {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: Some("TX_TPROT".to_string()),
+                    protein_feature_filter: Default::default(),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let uniprot = parse_shell_line("inspect-feature-expert s uniprot-projection PTEST1@seq_u")
         .expect("parse uniprot projection feature target");
     match uniprot {
@@ -10979,7 +11014,31 @@ fn parse_feature_expert_commands() {
             assert_eq!(seq_id, "s");
             assert_eq!(
                 target,
-                FeatureExpertTarget::uniprot_projection("PTEST1@seq_u".to_string())
+                FeatureExpertTarget::UniprotProjection {
+                    projection_id: "PTEST1@seq_u".to_string(),
+                    protein_feature_filter: Default::default(),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let filtered_uniprot = parse_shell_line(
+        "inspect-feature-expert s uniprot-projection PTEST1@seq_u --feature-key DOMAIN --feature-key REGION --feature-key-not VARIANT",
+    )
+    .expect("parse filtered uniprot projection feature target");
+    match filtered_uniprot {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::UniprotProjection {
+                    projection_id: "PTEST1@seq_u".to_string(),
+                    protein_feature_filter: ProteinFeatureFilter {
+                        include_feature_keys: vec!["DOMAIN".to_string(), "REGION".to_string()],
+                        exclude_feature_keys: vec!["VARIANT".to_string()],
+                    },
+                }
             );
         }
         other => panic!("unexpected command: {other:?}"),
@@ -11004,6 +11063,29 @@ fn parse_feature_expert_commands() {
                     enzyme: Some("EcoRI".to_string()),
                     recognition_start_1based: Some(100),
                     recognition_end_1based: Some(106),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let render_protein_compare = parse_shell_line(
+        "render-feature-expert-svg s protein-comparison --transcript TX_TPROT out.svg",
+    )
+    .expect("parse render-feature-expert-svg transcript protein comparison");
+    match render_protein_compare {
+        ShellCommand::RenderFeatureExpertSvg {
+            seq_id,
+            target,
+            output,
+        } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(output, "out.svg");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: Some("TX_TPROT".to_string()),
+                    protein_feature_filter: Default::default(),
                 }
             );
         }
@@ -11348,7 +11430,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         &mut engine,
         &ShellCommand::InspectFeatureExpert {
             seq_id: "seq_u".to_string(),
-            target: FeatureExpertTarget::uniprot_projection(projection_id.clone()),
+            target: FeatureExpertTarget::UniprotProjection {
+                projection_id: projection_id.clone(),
+                protein_feature_filter: Default::default(),
+            },
         },
     )
     .expect("inspect uniprot projection expert");
@@ -11364,7 +11449,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     assert_eq!(inspect.output["data"]["gene_symbol"].as_str(), Some("TOY1"));
     assert_eq!(
         inspect.output["data"]["panel_source"].as_str(),
-        Some("UniProt projection PTEST1 (PTEST1)")
+        Some("Transcript-native proteins with optional UniProt opinion PTEST1 (PTEST1)")
     );
     assert!(
         inspect.output["data"]["protein_lanes"]
@@ -11404,6 +11489,68 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .map(str::len),
         Some(18)
     );
+}
+
+#[test]
+fn execute_transcript_protein_comparison_expert_without_uniprot() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(Feature {
+        kind: "source".into(),
+        location: Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TPROT".to_string())),
+            ("transcript_id".into(), Some("TX_TPROT".to_string())),
+            ("label".into(), Some("TX_TPROT".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_tx_only".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let inspect = execute_shell_command(
+        &mut engine,
+        &ShellCommand::InspectFeatureExpert {
+            seq_id: "toy_tx_only".to_string(),
+            target: FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_TPROT".to_string()),
+                protein_feature_filter: Default::default(),
+            },
+        },
+    )
+    .expect("inspect transcript-native protein comparison expert");
+    assert!(!inspect.state_changed);
+    assert_eq!(
+        inspect.output["kind"].as_str(),
+        Some("isoform_architecture")
+    );
+    assert_eq!(
+        inspect.output["data"]["panel_id"].as_str(),
+        Some("protein_compare:TX_TPROT@toy_tx_only")
+    );
+    assert_eq!(
+        inspect.output["data"]["panel_source"].as_str(),
+        Some("Transcript-native protein derivation (external protein opinions optional)")
+    );
+    let protein_lanes = inspect.output["data"]["protein_lanes"]
+        .as_array()
+        .expect("protein lanes array");
+    assert_eq!(protein_lanes.len(), 1);
+    assert_eq!(
+        protein_lanes[0]["comparison"]["status"].as_str(),
+        Some("derived_only")
+    );
+    assert!(protein_lanes[0]["comparison"]["external_opinion"].is_null());
 }
 
 #[test]

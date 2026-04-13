@@ -12,6 +12,8 @@ pub use gentle_protocol::{
     SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
     SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
     SplicingMatrixRow, SplicingRange, SplicingScopePreset, SplicingTranscriptLane,
-    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView, TranscriptProteinComparison,
+    TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
+    TranscriptProteinExternalOpinion,
 };
 pub use gentle_render::{SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix};

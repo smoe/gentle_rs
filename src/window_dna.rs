@@ -34,6 +34,7 @@ enum DeferredAnalysisFocus {
     FlexibilityTrack(String),
     SequencingConfirmation(String),
     UniprotProjection(String),
+    TranscriptProtein(Option<String>),
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +118,10 @@ impl WindowDna {
             DeferredAnalysisFocus::UniprotProjection(projection_id) => {
                 self.main_area
                     .focus_uniprot_projection_expert(&projection_id);
+            }
+            DeferredAnalysisFocus::TranscriptProtein(transcript_id_filter) => {
+                self.main_area
+                    .focus_transcript_protein_expert(transcript_id_filter.as_deref());
             }
         }
     }
@@ -436,6 +441,20 @@ impl WindowDna {
         }
         self.main_area
             .focus_uniprot_projection_expert(projection_id);
+    }
+
+    pub fn focus_transcript_protein_expert(&mut self, transcript_id_filter: Option<&str>) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TranscriptProtein(
+                transcript_id_filter
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string()),
+            ));
+            return;
+        }
+        self.main_area
+            .focus_transcript_protein_expert(transcript_id_filter);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

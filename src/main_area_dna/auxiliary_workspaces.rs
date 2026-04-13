@@ -5087,6 +5087,24 @@ impl MainAreaDna {
         {
             ui.label(egui::RichText::new(format!("source: {source}")).size(font_size));
         }
+        if view
+            .panel_source
+            .as_deref()
+            .map(str::trim)
+            .map(|value| {
+                value.starts_with("UniProt projection ")
+                    || value.starts_with("Transcript-native protein")
+            })
+            .unwrap_or(false)
+        {
+            ui.label(
+                egui::RichText::new(
+                    "Protein Expert: transcript-native translation is primary; optional external protein opinions are treated as comparison overlays. CONFLICT stays hidden by default; the top panel keeps coordinate-true exon/intron context; the lower panel reuses shared genomic exon-family columns before handing off to isoform-local protein lanes; exon colors follow genomic exon family/position; membrane topology features render in a dedicated lower band.",
+                )
+                .size(font_size)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+        }
         if !view.warnings.is_empty() {
             ui.label(
                 egui::RichText::new(format!("warnings: {}", view.warnings.len()))
@@ -5157,25 +5175,58 @@ impl MainAreaDna {
                 .size(font_size),
         );
         egui::Grid::new("isoform_protein_grid")
-            .num_columns(5)
+            .num_columns(8)
             .striped(true)
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("isoform").strong().size(font_size));
-                ui.label(egui::RichText::new("expected aa").strong().size(font_size));
+                ui.label(egui::RichText::new("derived aa").strong().size(font_size));
                 ui.label(
                     egui::RichText::new("reference span")
                         .strong()
                         .size(font_size),
                 );
-                ui.label(egui::RichText::new("TA class").strong().size(font_size));
+                ui.label(
+                    egui::RichText::new("translation table/source")
+                        .strong()
+                        .size(font_size),
+                );
+                ui.label(egui::RichText::new("mode").strong().size(font_size));
+                ui.label(egui::RichText::new("external opinion").strong().size(font_size));
+                ui.label(egui::RichText::new("status").strong().size(font_size));
+                ui.label(egui::RichText::new("mismatch summary").strong().size(font_size));
                 ui.label(egui::RichText::new("domains").strong().size(font_size));
                 ui.end_row();
                 for lane in &view.protein_lanes {
+                    let comparison = lane.comparison.as_ref();
+                    let derived = comparison.and_then(|comparison| comparison.derived.as_ref());
+                    let external = comparison.and_then(|comparison| comparison.external_opinion.as_ref());
+                    let status = comparison.map(|comparison| comparison.status.as_str()).unwrap_or("-");
+                    let status_color = match comparison.map(|comparison| comparison.status) {
+                        Some(gentle_protocol::TranscriptProteinComparisonStatus::DerivedOnly)
+                        | Some(
+                            gentle_protocol::TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion,
+                        ) => egui::Color32::from_rgb(22, 101, 52),
+                        Some(
+                            gentle_protocol::TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion,
+                        ) => egui::Color32::from_rgb(180, 83, 9),
+                        Some(
+                            gentle_protocol::TranscriptProteinComparisonStatus::ExternalOpinionOnly,
+                        )
+                        | Some(gentle_protocol::TranscriptProteinComparisonStatus::NoTranscriptCds) => {
+                            egui::Color32::from_rgb(148, 163, 184)
+                        }
+                        None => egui::Color32::from_rgb(71, 85, 105),
+                    };
                     ui.label(egui::RichText::new(&lane.label).size(font_size));
                     ui.label(
                         egui::RichText::new(
-                            lane.expected_length_aa
-                                .map(|v| v.to_string())
+                            derived
+                                .map(|derivation| derivation.protein_length_aa.to_string())
+                                .or_else(|| {
+                                    lane.expected_length_aa
+                                        .filter(|value| *value > 0)
+                                        .map(|value| value.to_string())
+                                })
                                 .unwrap_or_else(|| "-".to_string()),
                         )
                         .monospace()
@@ -5194,8 +5245,58 @@ impl MainAreaDna {
                         .size(font_size),
                     );
                     ui.label(
-                        egui::RichText::new(lane.transactivation_class.as_deref().unwrap_or("-"))
-                            .size(font_size),
+                        egui::RichText::new(
+                            derived
+                                .map(|derivation| {
+                                    format!(
+                                        "{} ({})",
+                                        derivation.translation_table_label,
+                                        derivation.translation_table_source.as_str()
+                                    )
+                                })
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            derived
+                                .map(|derivation| derivation.derivation_mode.as_str().to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            external
+                                .map(|external| external.source_label.clone())
+                                .unwrap_or_else(|| "none".to_string()),
+                        )
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            status.replace('_', " "),
+                        )
+                        .size(font_size)
+                        .color(status_color),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            comparison
+                                .map(|comparison| {
+                                    if comparison.mismatch_reasons.is_empty() {
+                                        "-".to_string()
+                                    } else {
+                                        comparison.mismatch_reasons.join(" | ")
+                                    }
+                                })
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
                     );
                     ui.label(
                         egui::RichText::new(
@@ -5425,16 +5526,47 @@ impl MainAreaDna {
         if projection_id.is_empty() {
             return Err("UniProt projection_id must not be empty".to_string());
         }
-        match self.inspect_feature_expert_target(&FeatureExpertTarget::uniprot_projection(
-            projection_id.to_string(),
-        )) {
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::UniprotProjection {
+            projection_id: projection_id.to_string(),
+            protein_feature_filter: Default::default(),
+        }) {
             Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                 self.open_isoform_expert_window_for_view(&view.panel_id, &view);
-                self.op_status = format!("Opened UniProt protein expert for '{projection_id}'");
+                self.op_status = format!("Opened Protein Expert for UniProt projection '{projection_id}'");
                 Ok(view)
             }
             Ok(other) => Err(format!(
                 "Unexpected expert-view payload for UniProt projection: {other:?}"
+            )),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub(super) fn open_transcript_protein_expert(
+        &mut self,
+        transcript_id_filter: Option<&str>,
+    ) -> Result<IsoformArchitectureExpertView, String> {
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::ProteinComparison {
+            transcript_id_filter: transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            protein_feature_filter: Default::default(),
+        }) {
+            Ok(FeatureExpertView::IsoformArchitecture(view)) => {
+                self.open_isoform_expert_window_for_view(&view.panel_id, &view);
+                self.op_status = if let Some(transcript_id_filter) = transcript_id_filter
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    format!("Opened transcript-native Protein Expert for '{transcript_id_filter}'")
+                } else {
+                    "Opened transcript-native Protein Expert".to_string()
+                };
+                Ok(view)
+            }
+            Ok(other) => Err(format!(
+                "Unexpected expert-view payload for transcript protein comparison: {other:?}"
             )),
             Err(err) => Err(err),
         }
@@ -5449,10 +5581,13 @@ impl MainAreaDna {
             .panel_source
             .as_deref()
             .map(str::trim)
-            .map(|value| value.starts_with("UniProt projection "))
+            .map(|value| {
+                value.starts_with("UniProt projection ")
+                    || value.starts_with("Transcript-native protein")
+            })
             .unwrap_or(false)
         {
-            format!("UniProt Protein Expert - {} ({seq_id})", view.gene_symbol)
+            format!("Protein Expert - {} ({seq_id})", view.gene_symbol)
         } else {
             format!("Isoform Expert - {panel_id} ({seq_id})")
         }

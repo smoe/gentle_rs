@@ -599,8 +599,31 @@ UniProt mapping capability status:
   - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
 - shared feature-expert route: supported for stored UniProt genome projections
   via the same expert command family used by splicing/isoform inspection
-  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
-  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
+  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
+  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
+  - default behavior hides UniProt `CONFLICT` annotations unless they are
+    explicitly re-included with `--feature-key CONFLICT`
+  - each transcript now gets its own projected protein-coverage rail, so
+    missing or partial domains stay transcript-specific instead of every
+    isoform inheriting the full reference-protein annotation set
+  - when transcript features do not carry `cds_ranges_1based`, GENtle now
+    prefers compatible `CDS` features before falling back to exon spans, which
+    keeps RefSeq-style records closer to the actual encoded product
+  - exported UniProt-projection SVGs now combine:
+    - a coordinate-true genomic transcript/exon panel that preserves exon
+      positions and introns
+    - a shared genomic-exon-column transcript/product panel that reuses one
+      exon-family color across aligned transcript segments and translated
+      peptide segments
+    - isoform-local protein axes, which make skipped-exon domain loss easier to
+      read without discarding the genomic panel above
+  - those CDS/exon colors are now keyed by genomic exon family/position, not by
+    local segment order inside each transcript/product lane, so vertically
+    matching locus exons keep the same color even when transcript boundaries
+    differ slightly
+  - membrane/topology-style features (`SIGNAL`, `TRANSIT`, `TOPO_DOM`,
+    `TRANSMEM`, `INTRAMEM`) render in a dedicated lower band beneath the main
+    protein rail so dense labels stay readable
 - shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
   - `genbank fetch ACCESSION [--as-id ID]`
 - shared shell (`gentle_cli shell`, GUI shell): dbSNP-guided annotated region extraction
@@ -613,6 +636,8 @@ UniProt mapping capability status:
   shell sugar is not added yet:
   - `ImportUniprotEntrySequence`
   - `DeriveProteinSequences`
+    - transcript-first and self-sufficient; UniProt is optional comparison
+      evidence, not the source of truth for what peptide products exist
   - `ReverseTranslateProteinSequence`
 
 ## Build and run
@@ -1718,9 +1743,17 @@ Isoform architecture panel workflow:
   - same command family for splicing:
     - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
     - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
+  - same command family for transcript-first protein comparison without any
+    stored external protein evidence:
+    - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID]`
+    - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] OUTPUT.svg`
+    - this route opens the same transcript-first Protein Expert payload used by
+      the GUI `Open Derived Protein Expert` action
   - same command family for persisted UniProt protein mappings:
-    - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
-    - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
+    - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
+    - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
+    - `CONFLICT` is hidden by default; explicit include/exclude keys let you
+      trim noisy UniProt classes such as `VARIANT`, `STRAND`, or `HELIX`
   - direct coding-DNA query for one projected UniProt feature:
     - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
     - returns one structured report per matching transcript feature span, including:

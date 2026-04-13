@@ -3431,19 +3431,60 @@ UniProt mapping behavior:
   - `Use`
     - fill the form with the persisted projection id/sequence pairing
   - `Open Protein Expert`
-    - open a TP53-style isoform/protein architecture view for the stored
-      projection without re-running the mapping step
+    - open the shared Protein Expert with transcript-native translation as the
+      primary product model and the stored UniProt projection as optional
+      external evidence
+  - `Open Derived Protein Expert`
+    - open the same Protein Expert without requiring a stored UniProt
+      projection; the current transcript field acts as an optional transcript
+      filter for transcript-only inspection
   - `Render Protein Mapping SVG...` / `Render SVG...`
     - export the same stored projection directly through the shared
       `RenderFeatureExpertSvg` route without first opening the expert window
-- `Open Protein Expert` reuses the shared isoform-architecture canvas rather
-  than opening a first-class protein sequence window:
-  - transcript lanes come from the stored transcript/CDS projection
-  - the top protein lane uses the UniProt reference protein coordinate axis
-  - mapped UniProt interval annotations are rendered as protein-domain blocks
-    on that axis
-  - this keeps the GUI as a thin view over persisted
-    `gentle.uniprot_genome_projections.v1` state
+- `Open Protein Expert` and `Open Derived Protein Expert` both reuse the
+  shared isoform-architecture canvas rather than opening a separate
+  protein-sequence inspector:
+  - transcript-native CDS/protein derivation now defines the lower product
+    geometry whenever GENtle can derive it
+  - optional UniProt evidence is layered on top as one external opinion rather
+    than the source of truth for which protein products exist
+  - the Protein Expert details grid now shows per-row:
+    - derived protein length
+    - translation table / source
+    - derivation mode
+    - external opinion presence/source
+    - comparison status
+    - short mismatch summary
+  - transcript-specific protein lanes now clip to each transcript's projected
+    amino-acid coverage, so partial or missing domains remain tied to the
+    actual transcript product instead of every lane inheriting the full
+    reference annotation set
+  - low-confidence disagreements between transcript-native translation and the
+    external protein opinion remain visible as explicit warnings/status chips
+    instead of being silently flattened away
+  - the shared SVG/view layout now deliberately shows both:
+    - a coordinate-true exon/intron panel for locus context
+    - a lower shared-genomic-exon-column transcript/product panel with
+      isoform-local protein axes and shared exon-family colors
+    so exon skipping can be read at the product level without losing genomic
+    position context
+  - those shared CDS colors are now tied to genomic exon family/position, so
+    vertically aligned versions of the same exon keep one color across
+    different isoforms even when local peptide segment order or exact
+    boundaries change
+  - when transcript features omit `cds_ranges_1based`, compatible `CDS`
+    features are now preferred over whole-exon fallback so RefSeq-style locus
+    records preserve transcript-to-protein linkage more faithfully
+  - default protein-feature filtering now hides UniProt `CONFLICT`
+    annotations from that view/export path while reporting the hidden count in
+    the expert warnings block
+  - membrane/topology-style UniProt annotations (`SIGNAL`, `TRANSIT`,
+    `TRANSMEM`, `INTRAMEM`, `TOPO_DOM`) now render in a dedicated lower band
+    beneath the protein rail so sorting signals and topology segments stay
+    readable instead of colliding with ordinary domain overlays
+  - future external protein evidence sources should be able to plug into the
+    same compare window; Ensembl proteoform/protein annotations are the next
+    planned source, but are not wired up yet
 - The direct SVG-export affordance uses the same persisted projection state and
   target syntax as CLI/shell `render-feature-expert-svg ... uniprot-projection ...`,
   so GUI and non-GUI exports stay on one deterministic rendering path.

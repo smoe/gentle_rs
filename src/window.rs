@@ -72,6 +72,12 @@ impl Window {
         }
     }
 
+    pub fn focus_transcript_protein_expert(&mut self, transcript_id_filter: Option<&str>) {
+        match self {
+            Self::Dna(window) => window.focus_transcript_protein_expert(transcript_id_filter),
+        }
+    }
+
     pub fn sequence_id(&self) -> Option<String> {
         match self {
             Self::Dna(window) => window.sequence_id(),

@@ -20,8 +20,20 @@ const PROTEIN_DOMAIN_LABEL_ROW_PITCH: f32 = 12.0;
 const PROTEIN_DOMAIN_LABEL_ROW_GAP: f32 = 8.0;
 const PROTEIN_DOMAIN_LABEL_DOMAIN_GAP: f32 = 7.0;
 const PROTEIN_DOMAIN_HALF_HEIGHT: f32 = 7.0;
+const PROTEIN_TOPOLOGY_ROW_HEIGHT: f32 = 10.0;
+const PROTEIN_TOPOLOGY_ROW_GAP: f32 = 4.0;
+const PROTEIN_TOPOLOGY_TRACK_GAP: f32 = 8.0;
+const PROTEIN_TOPOLOGY_CHAR_W: f32 = 4.4;
+const PROTEIN_TOPOLOGY_LABEL_FONT_SIZE: f32 = 7.0;
 const PROTEIN_LANE_BOTTOM_PAD: f32 = 10.0;
-const PROTEIN_LANE_GAP: f32 = 12.0;
+const TRANSCRIPT_PRODUCT_LANE_GAP: f32 = 16.0;
+const TRANSCRIPT_PRODUCT_TOP_PAD: f32 = 10.0;
+const TRANSCRIPT_PRODUCT_CONNECTOR_GAP: f32 = 22.0;
+const COMPRESSED_EXON_HALF_HEIGHT: f32 = 7.0;
+const COMPRESSED_EXON_INTRON_GAP: f32 = 18.0;
+const COMPRESSED_EXON_MIN_WIDTH: f32 = 28.0;
+const COMPRESSED_EXON_MAX_WIDTH: f32 = 92.0;
+const PROTEIN_CONTRIBUTION_HALF_HEIGHT: f32 = 4.5;
 
 #[derive(Debug, Clone)]
 struct ProteinDomainLabelPlacement {
@@ -32,9 +44,113 @@ struct ProteinDomainLabelPlacement {
 }
 
 #[derive(Debug, Clone)]
-struct ProteinLaneLayout {
-    lane_height: f32,
+struct ProteinLabelLayout {
+    block_height: f32,
     placements: Vec<ProteinDomainLabelPlacement>,
+}
+
+#[derive(Debug, Clone)]
+struct ProteinIntervalRowLayout {
+    row_count: usize,
+    row_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ExonSegmentColor {
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct CompressedTranscriptExonBox {
+    exon_key: (usize, usize),
+    family_range: (usize, usize),
+    x1: f32,
+    x2: f32,
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct CompressedTranscriptBlock {
+    segment_index: usize,
+    exon_key: (usize, usize),
+    family_range: (usize, usize),
+    x1: f32,
+    x2: f32,
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct CompressedTranscriptLaneLayout {
+    exon_boxes: Vec<CompressedTranscriptExonBox>,
+    coding_blocks: Vec<CompressedTranscriptBlock>,
+}
+
+#[derive(Debug, Clone)]
+struct LocalProteinContributionSegment {
+    segment_index: usize,
+    exon_key: (usize, usize),
+    family_range: (usize, usize),
+    reference_aa_start: usize,
+    reference_aa_end: usize,
+    local_aa_start: usize,
+    local_aa_end: usize,
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct LocalProteinRect {
+    segment_index: usize,
+    exon_key: (usize, usize),
+    family_range: (usize, usize),
+    x1: f32,
+    x2: f32,
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct ExonFamilyRegistry {
+    family_ranges: Vec<(usize, usize)>,
+    family_index_by_key: BTreeMap<(usize, usize), usize>,
+}
+
+#[derive(Debug, Clone)]
+struct ExonFamilyColumn {
+    family_range: (usize, usize),
+    x1: f32,
+    x2: f32,
+    fill: &'static str,
+    stroke: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct LocalProteinFeaturePiece {
+    domain_index: usize,
+    x1: f32,
+    x2: f32,
+}
+
+#[derive(Debug, Clone)]
+struct LocalProteinLaneLayout {
+    local_length_aa: usize,
+    contribution_rects: Vec<LocalProteinRect>,
+    overlay_pieces: Vec<LocalProteinFeaturePiece>,
+    topology_pieces: Vec<LocalProteinFeaturePiece>,
+    overlay_labels: ProteinLabelLayout,
+    overlay_label_domain_indices: Vec<usize>,
+    topology_rows: ProteinIntervalRowLayout,
+    lane_height: f32,
+    reference_span_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProteinFeatureTrack {
+    Overlay,
+    Topology,
 }
 
 #[derive(Debug, Clone)]
@@ -155,11 +271,142 @@ fn estimate_protein_domain_label_box_width(label: &str) -> f32 {
         + PROTEIN_DOMAIN_LABEL_BOX_X_PAD * 2.0
 }
 
+fn protein_feature_key(label: &str) -> Option<&str> {
+    let trimmed = label.trim();
+    let prefix = trimmed.split(':').next().unwrap_or(trimmed).trim();
+    (!prefix.is_empty()).then_some(prefix)
+}
+
+fn protein_feature_track(label: &str) -> ProteinFeatureTrack {
+    match protein_feature_key(label)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "TOPO_DOM" | "TRANSMEM" | "INTRAMEM" | "SIGNAL" | "TRANSIT" => {
+            ProteinFeatureTrack::Topology
+        }
+        _ => ProteinFeatureTrack::Overlay,
+    }
+}
+
+fn topology_feature_fill(feature_label: &str) -> &'static str {
+    match protein_feature_key(feature_label)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "SIGNAL" | "TRANSIT" => "#86efac",
+        "TRANSMEM" | "INTRAMEM" => "#fca5a5",
+        "TOPO_DOM" => "#bfdbfe",
+        _ => "#cbd5e1",
+    }
+}
+
+fn topology_feature_stroke(feature_label: &str) -> &'static str {
+    match protein_feature_key(feature_label)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "SIGNAL" | "TRANSIT" => "#15803d",
+        "TRANSMEM" | "INTRAMEM" => "#b91c1c",
+        "TOPO_DOM" => "#1d4ed8",
+        _ => "#475569",
+    }
+}
+
+fn topology_feature_label(feature_label: &str) -> String {
+    let trimmed = feature_label.trim();
+    let note = trimmed
+        .split_once(':')
+        .map(|(_, note)| note.trim())
+        .filter(|note| !note.is_empty());
+    match protein_feature_key(trimmed)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "SIGNAL" => note.unwrap_or("signal peptide").to_string(),
+        "TRANSIT" => note.unwrap_or("transit peptide").to_string(),
+        "TRANSMEM" => note.unwrap_or("transmembrane").to_string(),
+        "INTRAMEM" => note.unwrap_or("intramembrane").to_string(),
+        "TOPO_DOM" => note.unwrap_or("topological domain").to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+fn compact_topology_label(feature_label: &str, available_width: f32) -> Option<String> {
+    let max_chars = ((available_width - 6.0) / PROTEIN_TOPOLOGY_CHAR_W).floor() as usize;
+    if max_chars < 3 {
+        return None;
+    }
+    Some(compact_protein_domain_label(
+        &topology_feature_label(feature_label),
+        max_chars,
+    ))
+}
+
+fn layout_interval_rows(intervals: &[(f32, f32)]) -> ProteinIntervalRowLayout {
+    #[derive(Debug, Clone)]
+    struct PendingInterval {
+        original_index: usize,
+        left: f32,
+        right: f32,
+    }
+
+    let mut pending = intervals
+        .iter()
+        .enumerate()
+        .map(|(original_index, (left, right))| PendingInterval {
+            original_index,
+            left: *left,
+            right: *right,
+        })
+        .collect::<Vec<_>>();
+    pending.sort_by(|a, b| {
+        a.left
+            .partial_cmp(&b.left)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                a.right
+                    .partial_cmp(&b.right)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+
+    let mut row_right_edges: Vec<f32> = Vec::new();
+    let mut row_indices = vec![0usize; intervals.len()];
+    for interval in pending {
+        let mut row_index = None;
+        for (idx, row_right) in row_right_edges.iter_mut().enumerate() {
+            if interval.left >= *row_right + PROTEIN_TOPOLOGY_ROW_GAP {
+                *row_right = interval.right;
+                row_index = Some(idx);
+                break;
+            }
+        }
+        let row_index = row_index.unwrap_or_else(|| {
+            row_right_edges.push(interval.right);
+            row_right_edges.len() - 1
+        });
+        row_indices[interval.original_index] = row_index;
+    }
+    ProteinIntervalRowLayout {
+        row_count: row_right_edges.len(),
+        row_indices,
+    }
+}
+
 fn layout_protein_domain_labels(
     domains: &[(f32, f32, String)],
     left: f32,
     right: f32,
-) -> ProteinLaneLayout {
+) -> ProteinLabelLayout {
     #[derive(Debug, Clone)]
     struct PendingLabel {
         domain_index: usize,
@@ -232,14 +479,601 @@ fn layout_protein_domain_labels(
             + (label_rows.saturating_sub(1) as f32) * PROTEIN_DOMAIN_LABEL_ROW_PITCH
             + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD
     };
-    let lane_height = label_band_height
-        + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP
-        + PROTEIN_DOMAIN_HALF_HEIGHT * 2.0
-        + PROTEIN_LANE_BOTTOM_PAD;
-
-    ProteinLaneLayout {
-        lane_height,
+    ProteinLabelLayout {
+        block_height: label_band_height,
         placements: placements.into_iter().flatten().collect(),
+    }
+}
+
+fn palette_exon_color(segment_index: usize) -> ExonSegmentColor {
+    const PALETTE: [ExonSegmentColor; 10] = [
+        ExonSegmentColor {
+            fill: "#2563eb",
+            stroke: "#1d4ed8",
+        },
+        ExonSegmentColor {
+            fill: "#16a34a",
+            stroke: "#15803d",
+        },
+        ExonSegmentColor {
+            fill: "#ea580c",
+            stroke: "#c2410c",
+        },
+        ExonSegmentColor {
+            fill: "#7c3aed",
+            stroke: "#6d28d9",
+        },
+        ExonSegmentColor {
+            fill: "#db2777",
+            stroke: "#be185d",
+        },
+        ExonSegmentColor {
+            fill: "#0891b2",
+            stroke: "#0e7490",
+        },
+        ExonSegmentColor {
+            fill: "#65a30d",
+            stroke: "#4d7c0f",
+        },
+        ExonSegmentColor {
+            fill: "#dc2626",
+            stroke: "#b91c1c",
+        },
+        ExonSegmentColor {
+            fill: "#d97706",
+            stroke: "#b45309",
+        },
+        ExonSegmentColor {
+            fill: "#0f766e",
+            stroke: "#115e59",
+        },
+    ];
+    PALETTE[segment_index % PALETTE.len()]
+}
+
+fn genomic_interval_key(start_1based: usize, end_1based: usize) -> (usize, usize) {
+    (start_1based.min(end_1based), start_1based.max(end_1based))
+}
+
+fn exon_identity_key(range: &gentle_protocol::SplicingRange) -> (usize, usize) {
+    genomic_interval_key(range.start_1based, range.end_1based)
+}
+
+fn exon_identity_attr(exon_key: (usize, usize)) -> String {
+    format!("{}..{}", exon_key.0, exon_key.1)
+}
+
+fn exon_family_attr(family_range: (usize, usize)) -> String {
+    format!("{}..{}", family_range.0, family_range.1)
+}
+
+fn best_matching_exon_identity_key(
+    ranges: &[gentle_protocol::SplicingRange],
+    genomic_start_1based: usize,
+    genomic_end_1based: usize,
+) -> Option<(usize, usize)> {
+    let target = genomic_interval_key(genomic_start_1based, genomic_end_1based);
+    let mut containing = ranges
+        .iter()
+        .map(exon_identity_key)
+        .filter(|(start, end)| *start <= target.0 && *end >= target.1)
+        .collect::<Vec<_>>();
+    containing.sort_by(|left, right| {
+        let left_len = left.1.saturating_sub(left.0).saturating_add(1);
+        let right_len = right.1.saturating_sub(right.0).saturating_add(1);
+        left_len.cmp(&right_len).then(left.cmp(right))
+    });
+    if let Some(best) = containing.into_iter().next() {
+        return Some(best);
+    }
+
+    let mut overlaps = ranges
+        .iter()
+        .map(exon_identity_key)
+        .filter_map(|key| {
+            let overlap_start = key.0.max(target.0);
+            let overlap_end = key.1.min(target.1);
+            (overlap_end >= overlap_start).then_some((key, overlap_end - overlap_start + 1))
+        })
+        .collect::<Vec<_>>();
+    overlaps.sort_by(|left, right| {
+        right.1
+            .cmp(&left.1)
+            .then_with(|| {
+                let left_len = left.0.1.saturating_sub(left.0.0).saturating_add(1);
+                let right_len = right.0.1.saturating_sub(right.0.0).saturating_add(1);
+                left_len.cmp(&right_len)
+            })
+            .then(left.0.cmp(&right.0))
+    });
+    overlaps.into_iter().map(|(key, _)| key).next()
+}
+
+fn lane_exon_identity_key_for_coding_range(
+    lane: &gentle_protocol::IsoformArchitectureTranscriptLane,
+    genomic_start_1based: usize,
+    genomic_end_1based: usize,
+) -> (usize, usize) {
+    best_matching_exon_identity_key(
+        &lane.transcript_exons,
+        genomic_start_1based,
+        genomic_end_1based,
+    )
+    .or_else(|| best_matching_exon_identity_key(&lane.exons, genomic_start_1based, genomic_end_1based))
+    .unwrap_or_else(|| genomic_interval_key(genomic_start_1based, genomic_end_1based))
+}
+
+fn build_exon_family_registry(view: &IsoformArchitectureExpertView) -> ExonFamilyRegistry {
+    let mut keys = BTreeSet::new();
+    for lane in &view.transcript_lanes {
+        let exon_ranges = if !lane.transcript_exons.is_empty() {
+            &lane.transcript_exons
+        } else {
+            &lane.exons
+        };
+        for exon in exon_ranges {
+            keys.insert(exon_identity_key(exon));
+        }
+        for segment in &lane.cds_to_protein_segments {
+            keys.insert(lane_exon_identity_key_for_coding_range(
+                lane,
+                segment.genomic_start_1based,
+                segment.genomic_end_1based,
+            ));
+        }
+    }
+    let mut sorted_keys = keys.into_iter().collect::<Vec<_>>();
+    sorted_keys.sort();
+
+    let mut family_ranges: Vec<(usize, usize)> = Vec::new();
+    let mut family_index_by_key: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    for key in sorted_keys {
+        let family_index = if let Some((_, family_end)) = family_ranges.last_mut() {
+            if key.0 <= *family_end {
+                *family_end = (*family_end).max(key.1);
+                family_ranges.len() - 1
+            } else {
+                family_ranges.push(key);
+                family_ranges.len() - 1
+            }
+        } else {
+            family_ranges.push(key);
+            0
+        };
+        family_index_by_key.insert(key, family_index);
+    }
+
+    ExonFamilyRegistry {
+        family_ranges,
+        family_index_by_key,
+    }
+}
+
+fn exon_family_index_for_key(
+    exon_key: (usize, usize),
+    exon_family_registry: &ExonFamilyRegistry,
+) -> usize {
+    if let Some(index) = exon_family_registry.family_index_by_key.get(&exon_key).copied() {
+        return index;
+    }
+    exon_family_registry
+        .family_ranges
+        .iter()
+        .enumerate()
+        .find_map(|(index, family_range)| {
+            let overlap_start = family_range.0.max(exon_key.0);
+            let overlap_end = family_range.1.min(exon_key.1);
+            (overlap_end >= overlap_start).then_some(index)
+        })
+        .unwrap_or(0)
+}
+
+fn exon_family_range_for_key(
+    exon_key: (usize, usize),
+    exon_family_registry: &ExonFamilyRegistry,
+) -> (usize, usize) {
+    exon_family_registry.family_ranges[exon_family_index_for_key(exon_key, exon_family_registry)]
+}
+
+fn exon_color_for_key(
+    exon_key: (usize, usize),
+    exon_family_registry: &ExonFamilyRegistry,
+) -> ExonSegmentColor {
+    palette_exon_color(exon_family_index_for_key(exon_key, exon_family_registry))
+}
+
+fn compressed_exon_width(exon_bp: usize) -> f32 {
+    let bp = exon_bp.max(1) as f32;
+    (18.0 + bp.sqrt() * 3.1).clamp(COMPRESSED_EXON_MIN_WIDTH, COMPRESSED_EXON_MAX_WIDTH)
+}
+
+fn layout_exon_family_columns(
+    exon_family_registry: &ExonFamilyRegistry,
+    left: f32,
+    right: f32,
+    reverse_display: bool,
+) -> BTreeMap<usize, ExonFamilyColumn> {
+    let mut ordered_families = exon_family_registry
+        .family_ranges
+        .iter()
+        .copied()
+        .enumerate()
+        .collect::<Vec<_>>();
+    if reverse_display {
+        ordered_families.reverse();
+    }
+
+    let raw_widths = ordered_families
+        .iter()
+        .map(|(_, family_range)| {
+            compressed_exon_width(
+                family_range
+                    .1
+                    .saturating_sub(family_range.0)
+                    .saturating_add(1),
+            )
+        })
+        .collect::<Vec<_>>();
+    let available_width = (right - left).max(1.0);
+    let raw_total = raw_widths.iter().sum::<f32>()
+        + COMPRESSED_EXON_INTRON_GAP * raw_widths.len().saturating_sub(1) as f32;
+    let scale = if raw_total > available_width {
+        (available_width / raw_total).clamp(0.18, 1.0)
+    } else {
+        1.0
+    };
+
+    let mut columns = BTreeMap::new();
+    let mut cursor_x = left;
+    for ((family_index, family_range), raw_width) in ordered_families.into_iter().zip(raw_widths) {
+        let width = (raw_width * scale).max(8.0);
+        let color = palette_exon_color(family_index);
+        columns.insert(
+            family_index,
+            ExonFamilyColumn {
+                family_range,
+                x1: cursor_x,
+                x2: cursor_x + width,
+                fill: color.fill,
+                stroke: color.stroke,
+            },
+        );
+        cursor_x += width + COMPRESSED_EXON_INTRON_GAP * scale;
+    }
+    columns
+}
+
+fn build_local_protein_contribution_segments(
+    lane: &gentle_protocol::IsoformArchitectureTranscriptLane,
+    exon_family_registry: &ExonFamilyRegistry,
+) -> Vec<LocalProteinContributionSegment> {
+    let mut local_start_aa = 1usize;
+    let mut out = Vec::new();
+    for (segment_index, segment) in lane.cds_to_protein_segments.iter().enumerate() {
+        let reference_start_aa = segment.aa_start.min(segment.aa_end);
+        let reference_end_aa = segment.aa_start.max(segment.aa_end);
+        if reference_end_aa < reference_start_aa {
+            continue;
+        }
+        let segment_len_aa = reference_end_aa
+            .saturating_sub(reference_start_aa)
+            .saturating_add(1);
+        if segment_len_aa == 0 {
+            continue;
+        }
+        let local_end_aa = local_start_aa
+            .saturating_add(segment_len_aa)
+            .saturating_sub(1);
+        let exon_key = lane_exon_identity_key_for_coding_range(
+            lane,
+            segment.genomic_start_1based,
+            segment.genomic_end_1based,
+        );
+        let family_range = exon_family_range_for_key(exon_key, exon_family_registry);
+        let color = exon_color_for_key(exon_key, exon_family_registry);
+        out.push(LocalProteinContributionSegment {
+            segment_index,
+            exon_key,
+            family_range,
+            reference_aa_start: reference_start_aa,
+            reference_aa_end: reference_end_aa,
+            local_aa_start: local_start_aa,
+            local_aa_end: local_end_aa,
+            fill: color.fill,
+            stroke: color.stroke,
+        });
+        local_start_aa = local_end_aa.saturating_add(1);
+    }
+    out
+}
+
+fn map_reference_interval_to_local_segments(
+    interval_start_aa: usize,
+    interval_end_aa: usize,
+    contributions: &[LocalProteinContributionSegment],
+    lane_reference_start_aa: Option<usize>,
+    lane_reference_end_aa: Option<usize>,
+) -> Vec<(usize, usize)> {
+    let start_aa = interval_start_aa.min(interval_end_aa);
+    let end_aa = interval_start_aa.max(interval_end_aa);
+    let mut out = Vec::new();
+    if !contributions.is_empty() {
+        for segment in contributions {
+            if segment.reference_aa_end < start_aa || segment.reference_aa_start > end_aa {
+                continue;
+            }
+            let overlap_start = start_aa.max(segment.reference_aa_start);
+            let overlap_end = end_aa.min(segment.reference_aa_end);
+            if overlap_end < overlap_start {
+                continue;
+            }
+            let local_start = segment
+                .local_aa_start
+                .saturating_add(overlap_start.saturating_sub(segment.reference_aa_start));
+            let local_end = segment
+                .local_aa_start
+                .saturating_add(overlap_end.saturating_sub(segment.reference_aa_start));
+            if local_end >= local_start {
+                out.push((local_start, local_end));
+            }
+        }
+        return out;
+    }
+
+    if let (Some(reference_start), Some(reference_end)) =
+        (lane_reference_start_aa, lane_reference_end_aa)
+    {
+        let overlap_start = start_aa.max(reference_start.min(reference_end));
+        let overlap_end = end_aa.min(reference_start.max(reference_end));
+        if overlap_end >= overlap_start {
+            let local_start =
+                overlap_start.saturating_sub(reference_start.min(reference_end)) + 1;
+            let local_end = overlap_end.saturating_sub(reference_start.min(reference_end)) + 1;
+            out.push((local_start, local_end));
+        }
+        return out;
+    }
+
+    if end_aa >= start_aa {
+        out.push((start_aa, end_aa));
+    }
+    out
+}
+
+fn layout_compressed_transcript_lane(
+    lane: &gentle_protocol::IsoformArchitectureTranscriptLane,
+    exon_family_columns: &BTreeMap<usize, ExonFamilyColumn>,
+    exon_family_registry: &ExonFamilyRegistry,
+) -> CompressedTranscriptLaneLayout {
+    let transcript_exons = if !lane.transcript_exons.is_empty() {
+        lane.transcript_exons.clone()
+    } else {
+        lane.exons.clone()
+    };
+    let mut lane_key_by_family = BTreeMap::new();
+    for exon in &transcript_exons {
+        let exon_key = exon_identity_key(exon);
+        let family_index = exon_family_index_for_key(exon_key, exon_family_registry);
+        lane_key_by_family.entry(family_index).or_insert(exon_key);
+    }
+
+    let mut exon_boxes = Vec::with_capacity(lane_key_by_family.len());
+    for (family_index, exon_key) in lane_key_by_family {
+        let Some(column) = exon_family_columns.get(&family_index) else {
+            continue;
+        };
+        exon_boxes.push(CompressedTranscriptExonBox {
+            exon_key,
+            family_range: column.family_range,
+            x1: column.x1,
+            x2: column.x2,
+            fill: column.fill,
+            stroke: column.stroke,
+        });
+    }
+    exon_boxes.sort_by(|left_box, right_box| {
+        left_box
+            .x1
+            .partial_cmp(&right_box.x1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let ordered_segments = lane
+        .cds_to_protein_segments
+        .iter()
+        .enumerate()
+        .map(|(segment_index, segment)| {
+            (
+                segment_index,
+                segment.genomic_start_1based.min(segment.genomic_end_1based),
+                segment.genomic_start_1based.max(segment.genomic_end_1based),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut coding_blocks = Vec::new();
+    for (segment_index, overlap_start, overlap_end) in ordered_segments {
+        let exon_key = lane_exon_identity_key_for_coding_range(lane, overlap_start, overlap_end);
+        let family_index = exon_family_index_for_key(exon_key, exon_family_registry);
+        let Some(column) = exon_family_columns.get(&family_index) else {
+            continue;
+        };
+        let family_start = column.family_range.0;
+        let family_end = column.family_range.1;
+        let family_len = family_end
+            .saturating_sub(family_start)
+            .saturating_add(1)
+            .max(1) as f32;
+        let clipped_start = overlap_start.max(family_start).min(family_end);
+        let clipped_end = overlap_end.min(family_end).max(family_start);
+        let start_offset = if lane.strand.trim() == "-" {
+            family_end.saturating_sub(clipped_end) as f32
+        } else {
+            clipped_start.saturating_sub(family_start) as f32
+        };
+        let end_offset_exclusive = if lane.strand.trim() == "-" {
+            family_end.saturating_sub(clipped_start).saturating_add(1) as f32
+        } else {
+            clipped_end.saturating_sub(family_start).saturating_add(1) as f32
+        };
+        let x1 = column.x1 + (start_offset / family_len) * (column.x2 - column.x1).max(1.0);
+        let x2 = column.x1
+            + (end_offset_exclusive / family_len) * (column.x2 - column.x1).max(1.0);
+        coding_blocks.push(CompressedTranscriptBlock {
+            segment_index,
+            exon_key,
+            family_range: column.family_range,
+            x1: x1.min(x2),
+            x2: x1.max(x2),
+            fill: column.fill,
+            stroke: column.stroke,
+        });
+    }
+
+    CompressedTranscriptLaneLayout {
+        exon_boxes,
+        coding_blocks,
+    }
+}
+
+fn layout_local_protein_lane(
+    transcript_lane: &gentle_protocol::IsoformArchitectureTranscriptLane,
+    protein_lane: &gentle_protocol::IsoformArchitectureProteinLane,
+    left: f32,
+    right: f32,
+    exon_family_registry: &ExonFamilyRegistry,
+) -> LocalProteinLaneLayout {
+    let contributions =
+        build_local_protein_contribution_segments(transcript_lane, exon_family_registry);
+    let local_length_aa = contributions
+        .last()
+        .map(|segment| segment.local_aa_end)
+        .or_else(|| protein_lane.expected_length_aa)
+        .or_else(|| {
+            match (protein_lane.reference_start_aa, protein_lane.reference_end_aa) {
+                (Some(start), Some(end)) => Some(end.max(start).saturating_sub(start.min(end)) + 1),
+                _ => None,
+            }
+        })
+        .unwrap_or_else(|| {
+            protein_lane
+                .domains
+                .iter()
+                .map(|domain| domain.end_aa.max(domain.start_aa))
+                .max()
+                .unwrap_or(1)
+        })
+        .max(1);
+    let local_span = local_length_aa as f32;
+    let x_for_local_edge = |edge_1based_exclusive: usize| -> f32 {
+        let clamped = edge_1based_exclusive.clamp(1, local_length_aa.saturating_add(1));
+        left
+            + ((clamped.saturating_sub(1)) as f32 / local_span) * (right - left).max(1.0)
+    };
+    let contribution_rects = contributions
+        .iter()
+        .map(|segment| LocalProteinRect {
+            segment_index: segment.segment_index,
+            exon_key: segment.exon_key,
+            family_range: segment.family_range,
+            x1: x_for_local_edge(segment.local_aa_start),
+            x2: x_for_local_edge(segment.local_aa_end.saturating_add(1)),
+            fill: segment.fill,
+            stroke: segment.stroke,
+        })
+        .collect::<Vec<_>>();
+
+    let mut overlay_unions = Vec::new();
+    let mut overlay_pieces = Vec::new();
+    let mut topology_pieces = Vec::new();
+    for (domain_index, domain) in protein_lane.domains.iter().enumerate() {
+        let local_ranges = map_reference_interval_to_local_segments(
+            domain.start_aa,
+            domain.end_aa.max(domain.start_aa),
+            &contributions,
+            protein_lane.reference_start_aa,
+            protein_lane.reference_end_aa,
+        );
+        if local_ranges.is_empty() {
+            continue;
+        }
+        let mut union_left = f32::MAX;
+        let mut union_right = f32::MIN;
+        for (local_start, local_end) in local_ranges {
+            let x1 = x_for_local_edge(local_start);
+            let x2 = x_for_local_edge(local_end.saturating_add(1));
+            union_left = union_left.min(x1.min(x2));
+            union_right = union_right.max(x1.max(x2));
+            let piece = LocalProteinFeaturePiece {
+                domain_index,
+                x1: x1.min(x2),
+                x2: x1.max(x2),
+            };
+            if protein_feature_track(&domain.name) == ProteinFeatureTrack::Topology {
+                topology_pieces.push(piece);
+            } else {
+                overlay_pieces.push(piece);
+            }
+        }
+        if union_right >= union_left {
+            overlay_unions.push((union_left, union_right, domain.name.clone(), domain_index));
+        }
+    }
+
+    let overlay_label_domain_indices = overlay_unions
+        .iter()
+        .map(|(_, _, _, domain_index)| *domain_index)
+        .collect::<Vec<_>>();
+    let overlay_labels = layout_protein_domain_labels(
+        &overlay_unions
+            .iter()
+            .map(|(x1, x2, label, _)| (*x1, *x2, label.clone()))
+            .collect::<Vec<_>>(),
+        left,
+        right,
+    );
+    let topology_rows = layout_interval_rows(
+        &topology_pieces
+            .iter()
+            .map(|piece| (piece.x1, piece.x2))
+            .collect::<Vec<_>>(),
+    );
+    let topology_block_height = if topology_rows.row_count == 0 {
+        0.0
+    } else {
+        topology_rows.row_count as f32 * PROTEIN_TOPOLOGY_ROW_HEIGHT
+            + (topology_rows.row_count.saturating_sub(1) as f32) * PROTEIN_TOPOLOGY_ROW_GAP
+    };
+    let lane_height = PROTEIN_DOMAIN_HALF_HEIGHT * 2.0
+        + PROTEIN_CONTRIBUTION_HALF_HEIGHT * 2.0
+        + if topology_block_height > 0.0 {
+            PROTEIN_TOPOLOGY_TRACK_GAP + topology_block_height
+        } else {
+            0.0
+        }
+        + if overlay_labels.block_height > 0.0 {
+            PROTEIN_DOMAIN_LABEL_DOMAIN_GAP + overlay_labels.block_height
+        } else {
+            0.0
+        }
+        + PROTEIN_LANE_BOTTOM_PAD;
+    let reference_span_label = match (
+        protein_lane.reference_start_aa,
+        protein_lane.reference_end_aa,
+    ) {
+        (Some(start), Some(end)) => Some(format!("ref {}..{}", start.min(end), start.max(end))),
+        _ => None,
+    };
+
+    LocalProteinLaneLayout {
+        local_length_aa,
+        contribution_rects,
+        overlay_pieces,
+        topology_pieces,
+        overlay_labels,
+        overlay_label_domain_indices,
+        topology_rows,
+        lane_height,
+        reference_span_label,
     }
 }
 
@@ -1668,6 +2502,12 @@ fn render_splicing(view: &SplicingExpertView) -> String {
 }
 
 fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
+    #[derive(Debug, Clone)]
+    struct PairedLaneLayout {
+        compressed: CompressedTranscriptLaneLayout,
+        protein: LocalProteinLaneLayout,
+    }
+
     let lane_count = view.transcript_lanes.len().max(1);
     let lane_h = 24.0_f32;
     let lane_gap = 10.0_f32;
@@ -1722,83 +2562,73 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         };
         left + rel * width
     };
+    let exon_family_registry = build_exon_family_registry(view);
+    let exon_family_columns =
+        layout_exon_family_columns(&exon_family_registry, left, right, dominant_strand_is_reverse);
 
-    let aa_max = view
-        .protein_lanes
+    let paired_lane_layouts = view
+        .transcript_lanes
         .iter()
-        .flat_map(|lane| lane.domains.iter().map(|domain| domain.end_aa))
-        .chain(
-            view.protein_lanes
-                .iter()
-                .filter_map(|lane| lane.expected_length_aa),
-        )
-        .chain(
-            view.protein_lanes
-                .iter()
-                .filter_map(|lane| lane.reference_end_aa),
-        )
+        .enumerate()
+        .map(|(idx, transcript_lane)| {
+            let fallback_protein_lane = gentle_protocol::IsoformArchitectureProteinLane {
+                isoform_id: transcript_lane.isoform_id.clone(),
+                label: transcript_lane.label.clone(),
+                transcript_id: transcript_lane.transcript_id.clone(),
+                expected_length_aa: None,
+                reference_start_aa: None,
+                reference_end_aa: None,
+                domains: vec![],
+                transactivation_class: transcript_lane.transactivation_class.clone(),
+                comparison: None,
+            };
+            let protein_lane = view
+                .protein_lanes
+                .get(idx)
+                .unwrap_or(&fallback_protein_lane);
+            PairedLaneLayout {
+                compressed: layout_compressed_transcript_lane(
+                    transcript_lane,
+                    &exon_family_columns,
+                    &exon_family_registry,
+                ),
+                protein: layout_local_protein_lane(
+                    transcript_lane,
+                    protein_lane,
+                    left,
+                    right,
+                    &exon_family_registry,
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+    let longest_local_product = paired_lane_layouts
+        .iter()
+        .map(|layout| layout.protein.local_length_aa)
         .max()
         .unwrap_or(1)
         .max(1);
-    let aa_span = aa_max as f32;
-    let x_for_aa = |aa_1based: usize| -> f32 {
-        let clamped = aa_1based.clamp(1, aa_max);
-        left + ((clamped.saturating_sub(1)) as f32 / aa_span) * width
-    };
-    let x_for_aa_f = |aa_1based: f32| -> f32 {
-        let clamped = aa_1based.clamp(1.0, aa_max as f32);
-        left + ((clamped - 1.0) / aa_span) * width
-    };
-    let protein_lane_layouts = view
-        .protein_lanes
-        .iter()
-        .map(|lane| {
-            let max_domain_end = lane
-                .domains
-                .iter()
-                .map(|domain| domain.end_aa.max(domain.start_aa))
-                .max()
-                .unwrap_or(1)
-                .max(1);
-            let lane_start = lane.reference_start_aa.unwrap_or(1).clamp(1, aa_max);
-            let inferred_end = lane
-                .expected_length_aa
-                .unwrap_or(max_domain_end)
-                .max(max_domain_end);
-            let lane_end = lane
-                .reference_end_aa
-                .unwrap_or(inferred_end)
-                .clamp(lane_start, aa_max);
-            let domains = lane
-                .domains
-                .iter()
-                .filter_map(|domain| {
-                    let domain_start = domain.start_aa.max(lane_start);
-                    let domain_end = domain.end_aa.max(domain.start_aa).min(lane_end);
-                    if domain_end < domain_start {
-                        return None;
-                    }
-                    let x1 = x_for_aa(domain_start);
-                    let x2 = x_for_aa(domain_end);
-                    let (domain_left, domain_right) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
-                    Some((domain_left, domain_right, domain.name.clone()))
-                })
-                .collect::<Vec<_>>();
-            layout_protein_domain_labels(&domains, left, right)
-        })
-        .collect::<Vec<_>>();
-    let protein_chart_top = top_header + exon_chart_h + 92.0;
-    let protein_chart_h = if protein_lane_layouts.is_empty() {
-        PROTEIN_DOMAIN_HALF_HEIGHT * 2.0 + PROTEIN_LANE_BOTTOM_PAD
+    let paired_chart_top = top_header + exon_chart_h + 106.0;
+    let paired_chart_h = if paired_lane_layouts.is_empty() {
+        TRANSCRIPT_PRODUCT_TOP_PAD
+            + COMPRESSED_EXON_HALF_HEIGHT * 2.0
+            + TRANSCRIPT_PRODUCT_CONNECTOR_GAP
+            + PROTEIN_DOMAIN_HALF_HEIGHT * 2.0
+            + PROTEIN_LANE_BOTTOM_PAD
     } else {
-        protein_lane_layouts
+        paired_lane_layouts
             .iter()
-            .map(|layout| layout.lane_height)
+            .map(|layout| {
+                TRANSCRIPT_PRODUCT_TOP_PAD
+                    + COMPRESSED_EXON_HALF_HEIGHT * 2.0
+                    + TRANSCRIPT_PRODUCT_CONNECTOR_GAP
+                    + layout.protein.lane_height
+            })
             .sum::<f32>()
-            + (protein_lane_layouts.len().saturating_sub(1) as f32) * PROTEIN_LANE_GAP
+            + TRANSCRIPT_PRODUCT_LANE_GAP * paired_lane_layouts.len().saturating_sub(1) as f32
     };
-    let footer_top = protein_chart_top + protein_chart_h + 64.0;
-    let dyn_h = (footer_top + 120.0).max(H + 140.0);
+    let footer_top = paired_chart_top + paired_chart_h + 64.0;
+    let dyn_h = (footer_top + 120.0).max(H + 180.0);
     let top_geometry_kind = if view
         .transcript_geometry_mode
         .trim()
@@ -1809,9 +2639,9 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         "exon"
     };
     let top_geometry_title = if top_geometry_kind == "cds" {
-        "A) transcript exons (faint) + CDS (solid) architecture (coordinate-true)"
+        "A) coordinate-true transcript architecture (faint transcript exons, colored CDS blocks)"
     } else {
-        "A) transcript / exon architecture (coordinate-true)"
+        "A) coordinate-true transcript / exon architecture"
     };
 
     let mut doc = Document::new()
@@ -1841,11 +2671,11 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         )
         .add(
             Text::new(format!(
-                "genomic span {}..{} | isoforms={} | protein max={} aa",
+                "genomic span {}..{} | isoforms={} | longest local product={} aa",
                 view.region_start_1based,
                 view.region_end_1based,
                 view.transcript_lanes.len(),
-                aa_max
+                longest_local_product
             ))
             .set("x", label_x)
             .set("y", 58)
@@ -1855,7 +2685,7 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         )
         .add(
             Text::new(format!(
-                "display orientation: transcript 5'->3' left-to-right (dominant strand {}) | top-panel geometry: {}",
+                "display orientation: transcript 5'->3' left-to-right (dominant strand {}) | top-panel geometry: {} | lower panel: exon-chain transcript + isoform-local protein axis",
                 if dominant_strand_is_reverse { "-" } else { "+" },
                 top_geometry_kind
             ))
@@ -1867,11 +2697,11 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         )
         .add(
             Text::new(top_geometry_title)
-            .set("x", label_x)
-            .set("y", 88)
-            .set("font-family", "monospace")
-            .set("font-size", 13)
-            .set("fill", "#111827"),
+                .set("x", label_x)
+                .set("y", 88)
+                .set("font-family", "monospace")
+                .set("font-size", 13)
+                .set("fill", "#111827"),
         )
         .add(
             Line::new()
@@ -1931,11 +2761,15 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                     .set("x2", x2)
                     .set("y2", y)
                     .set("stroke", "#6b7280")
-                    .set("stroke-width", 1.2),
+                    .set("stroke-width", 1.2)
+                    .set("data-track", "coordinate-intron"),
             );
         }
-        if top_geometry_kind == "cds" {
+        if top_geometry_kind == "cds" && !lane.transcript_exons.is_empty() {
             for exon in &lane.transcript_exons {
+                let exon_key = exon_identity_key(exon);
+                let family_range = exon_family_range_for_key(exon_key, &exon_family_registry);
+                let color = exon_color_for_key(exon_key, &exon_family_registry);
                 let xa = x_for_genomic(exon.start_1based);
                 let xb = x_for_genomic(exon.end_1based);
                 let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
@@ -1948,31 +2782,74 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                         .set("y", y - 7.5)
                         .set("width", (x2 - x1).max(1.0))
                         .set("height", 15.0)
-                        .set("fill", "#93c5fd")
+                        .set("fill", color.fill)
                         .set("fill-opacity", 0.25)
-                        .set("stroke", "#60a5fa")
-                        .set("stroke-width", 0.35),
+                        .set("stroke", color.stroke)
+                        .set("stroke-width", 0.35)
+                        .set("data-track", "coordinate-transcript-exon")
+                        .set("data-exon-key", exon_identity_attr(exon_key))
+                        .set("data-exon-family", exon_family_attr(family_range)),
                 );
             }
         }
-        for exon in &lane.exons {
-            let xa = x_for_genomic(exon.start_1based);
-            let xb = x_for_genomic(exon.end_1based);
-            let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
-            if (x2 - x1).abs() < 0.5 {
-                continue;
+        if !lane.cds_to_protein_segments.is_empty() {
+            for (segment_index, segment) in lane.cds_to_protein_segments.iter().enumerate() {
+                let exon_key = lane_exon_identity_key_for_coding_range(
+                    lane,
+                    segment.genomic_start_1based,
+                    segment.genomic_end_1based,
+                );
+                let family_range = exon_family_range_for_key(exon_key, &exon_family_registry);
+                let color = exon_color_for_key(exon_key, &exon_family_registry);
+                let xa = x_for_genomic(segment.genomic_start_1based);
+                let xb = x_for_genomic(segment.genomic_end_1based);
+                let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+                if (x2 - x1).abs() < 0.5 {
+                    continue;
+                }
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 7.5)
+                        .set("width", (x2 - x1).max(1.0))
+                        .set("height", 15.0)
+                        .set("fill", color.fill)
+                        .set("fill-opacity", if lane.mapped { 0.88 } else { 0.45 })
+                        .set("stroke", color.stroke)
+                        .set("stroke-width", 0.6)
+                        .set("data-track", "coordinate-cds-block")
+                        .set("data-segment-rank", segment_index + 1)
+                        .set("data-exon-key", exon_identity_attr(exon_key))
+                        .set("data-exon-family", exon_family_attr(family_range)),
+                );
             }
-            doc = doc.add(
-                Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - 7.5)
-                    .set("width", (x2 - x1).max(1.0))
-                    .set("height", 15.0)
-                    .set("fill", if lane.mapped { "#2563eb" } else { "#f59e0b" })
-                    .set("fill-opacity", if lane.mapped { 0.85 } else { 0.45 })
-                    .set("stroke", "#1f2937")
-                    .set("stroke-width", 0.5),
-            );
+        } else {
+            for (segment_index, exon) in lane.exons.iter().enumerate() {
+                let exon_key = exon_identity_key(exon);
+                let family_range = exon_family_range_for_key(exon_key, &exon_family_registry);
+                let color = exon_color_for_key(exon_key, &exon_family_registry);
+                let xa = x_for_genomic(exon.start_1based);
+                let xb = x_for_genomic(exon.end_1based);
+                let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+                if (x2 - x1).abs() < 0.5 {
+                    continue;
+                }
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 7.5)
+                        .set("width", (x2 - x1).max(1.0))
+                        .set("height", 15.0)
+                        .set("fill", if lane.mapped { color.fill } else { "#f59e0b" })
+                        .set("fill-opacity", if lane.mapped { 0.85 } else { 0.45 })
+                        .set("stroke", if lane.mapped { color.stroke } else { "#92400e" })
+                        .set("stroke-width", 0.5)
+                        .set("data-track", "coordinate-cds-block")
+                        .set("data-segment-rank", segment_index + 1)
+                        .set("data-exon-key", exon_identity_attr(exon_key))
+                        .set("data-exon-family", exon_family_attr(family_range)),
+                );
+            }
         }
         if let Some(tag) = lane.transactivation_class.as_deref() {
             doc = doc.add(
@@ -1983,313 +2860,398 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                     .set("font-size", 9)
                     .set("fill", "#374151"),
             );
-        }
-    }
-
-    let protein_axis_y = protein_chart_top - 14.0;
-    let genome_rail_y = top_header + exon_chart_h + 24.0;
-    let mut boundary_set: BTreeSet<usize> = BTreeSet::new();
-    for lane in &view.transcript_lanes {
-        let boundary_exons = if top_geometry_kind == "cds" && !lane.transcript_exons.is_empty() {
-            &lane.transcript_exons
-        } else {
-            &lane.exons
-        };
-        for exon in boundary_exons {
-            if exon.end_1based >= exon.start_1based {
-                boundary_set.insert(exon.start_1based);
-                boundary_set.insert(exon.end_1based);
-            }
-        }
-    }
-    let boundaries = boundary_set.into_iter().collect::<Vec<_>>();
-    if boundaries.len() >= 2 {
-        let mut ribbon_bins: BTreeMap<(i32, i32, i32, i32), (f32, f32, f32, f32, usize)> =
-            BTreeMap::new();
-        let quantize_coord = |value: f32| -> i32 { (value * 1000.0).round() as i32 };
-        let rail_x_a = x_for_genomic(*boundaries.first().unwrap_or(&region_start));
-        let rail_x_b = x_for_genomic(*boundaries.last().unwrap_or(&region_end));
-        let rail_left = rail_x_a.min(rail_x_b);
-        let rail_right = rail_x_a.max(rail_x_b);
-        doc = doc
-            .add(
-                Text::new("genome boundary rail")
-                    .set("x", label_x)
-                    .set("y", genome_rail_y + 4.0)
-                    .set("font-family", "monospace")
-                    .set("font-size", 10)
-                    .set("fill", "#4b5563"),
-            )
-            .add(
-                Line::new()
-                    .set("x1", rail_left)
-                    .set("y1", genome_rail_y)
-                    .set("x2", rail_right)
-                    .set("y2", genome_rail_y)
-                    .set("stroke", "#6b7280")
-                    .set("stroke-width", 1.0),
-            );
-        for boundary in &boundaries {
-            let x = x_for_genomic(*boundary);
-            doc = doc.add(
-                Line::new()
-                    .set("x1", x)
-                    .set("y1", genome_rail_y - 3.0)
-                    .set("x2", x)
-                    .set("y2", genome_rail_y + 3.0)
-                    .set("stroke", "#6b7280")
-                    .set("stroke-width", 0.8)
-                    .set("stroke-opacity", 0.8),
-            );
-        }
-        for flank in boundaries.windows(2) {
-            let flank_start = flank[0];
-            let flank_end_exclusive = flank[1];
-            if flank_end_exclusive <= flank_start {
-                continue;
-            }
-            for lane in &view.transcript_lanes {
-                if lane.cds_to_protein_segments.is_empty() {
-                    continue;
-                }
-                for segment in &lane.cds_to_protein_segments {
-                    if segment.aa_end < segment.aa_start {
-                        continue;
-                    }
-                    let seg_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
-                    let seg_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
-                    // Avoid boundary-only tail overlaps: when flank starts exactly at
-                    // a segment's inclusive end, this would otherwise create a tiny
-                    // duplicate ribbon that visually looks like a second edge mapping.
-                    if seg_end <= flank_start || seg_start >= flank_end_exclusive {
-                        continue;
-                    }
-                    let overlap_start = flank_start.max(seg_start);
-                    let overlap_end_exclusive = flank_end_exclusive.min(seg_end.saturating_add(1));
-                    if overlap_end_exclusive <= overlap_start {
-                        continue;
-                    }
-
-                    let seg_nt = seg_end.saturating_sub(seg_start).saturating_add(1).max(1) as f32;
-                    let aa_span = segment
-                        .aa_end
-                        .saturating_sub(segment.aa_start)
-                        .saturating_add(1)
-                        .max(1) as f32;
-                    let start_offset_nt = overlap_start.saturating_sub(seg_start) as f32;
-                    let end_offset_nt = overlap_end_exclusive.saturating_sub(seg_start) as f32;
-                    let aa_left_f = segment.aa_start as f32 + (start_offset_nt / seg_nt) * aa_span;
-                    let aa_right_f = segment.aa_start as f32 + (end_offset_nt / seg_nt) * aa_span;
-                    let aa_x_a = x_for_aa_f(aa_left_f);
-                    let aa_x_b = x_for_aa_f(aa_right_f);
-                    let (aa_left, aa_right) = if aa_x_a <= aa_x_b {
-                        (aa_x_a, aa_x_b)
-                    } else {
-                        (aa_x_b, aa_x_a)
-                    };
-                    let g_x_a = x_for_genomic(overlap_start);
-                    let g_x_b = x_for_genomic(overlap_end_exclusive);
-                    let (g_left, g_right) = if g_x_a <= g_x_b {
-                        (g_x_a, g_x_b)
-                    } else {
-                        (g_x_b, g_x_a)
-                    };
-                    if (g_right - g_left).abs() < 0.4 && (aa_right - aa_left).abs() < 0.4 {
-                        continue;
-                    }
-                    let key = (
-                        quantize_coord(g_left),
-                        quantize_coord(g_right),
-                        quantize_coord(aa_left),
-                        quantize_coord(aa_right),
-                    );
-                    let entry = ribbon_bins
-                        .entry(key)
-                        .or_insert((g_left, g_right, aa_left, aa_right, 0usize));
-                    entry.4 += 1;
-                }
-            }
-        }
-        for (_key, (g_left, g_right, aa_left, aa_right, support_count)) in ribbon_bins {
-            let opacity = (0.14 + support_count.saturating_sub(1) as f32 * 0.04).min(0.42);
-            let ribbon = Data::new()
-                .move_to((g_left, genome_rail_y + 0.5))
-                .line_to((g_right, genome_rail_y + 0.5))
-                .line_to((aa_right, protein_axis_y + 0.5))
-                .line_to((aa_left, protein_axis_y + 0.5))
-                .close();
-            let mut path = Path::new()
-                .set("d", ribbon)
-                .set("fill", "#64748b")
-                .set("fill-opacity", opacity);
-            if support_count > 1 {
-                path = path
-                    .set("stroke", "#475569")
-                    .set("stroke-opacity", 0.18)
-                    .set("stroke-width", 0.3);
-            }
-            doc = doc.add(path);
         }
     }
 
     doc = doc
         .add(
-            Text::new("B) protein domain architecture")
+            Text::new(
+                "B) shared genomic-exon columns + isoform-local protein products (same colors = one genomic exon family and its translated peptide contribution)",
+            )
+            .set("x", label_x)
+            .set("y", paired_chart_top - 34.0)
+            .set("font-family", "monospace")
+            .set("font-size", 13)
+            .set("fill", "#111827"),
+        )
+        .add(
+            Text::new("Each lower protein rail is isoform-local (1..length aa), while the top panel keeps true genomic exon and intron positions.")
                 .set("x", label_x)
-                .set("y", protein_chart_top - 32.0)
+                .set("y", paired_chart_top - 18.0)
                 .set("font-family", "monospace")
-                .set("font-size", 13)
-                .set("fill", "#111827"),
+                .set("font-size", 10)
+                .set("fill", "#475569"),
         )
         .add(
             Line::new()
                 .set("x1", left)
-                .set("y1", protein_chart_top - 14.0)
+                .set("y1", paired_chart_top - 12.0)
                 .set("x2", right)
-                .set("y2", protein_chart_top - 14.0)
+                .set("y2", paired_chart_top - 12.0)
                 .set("stroke", "#6b7280")
                 .set("stroke-width", 1.0),
-        )
-        .add(
-            Text::new("1 aa")
-                .set("x", left)
-                .set("y", protein_chart_top - 18.0)
-                .set("text-anchor", "start")
-                .set("font-family", "monospace")
-                .set("font-size", 10)
-                .set("fill", "#4b5563"),
-        )
-        .add(
-            Text::new(format!("{aa_max} aa"))
-                .set("x", right)
-                .set("y", protein_chart_top - 18.0)
-                .set("text-anchor", "end")
-                .set("font-family", "monospace")
-                .set("font-size", 10)
-                .set("fill", "#4b5563"),
         );
 
-    let mut protein_lane_top = protein_chart_top;
-    for (idx, lane) in view.protein_lanes.iter().enumerate() {
-        let layout = protein_lane_layouts
+    let mut paired_lane_top = paired_chart_top;
+    for (idx, transcript_lane) in view.transcript_lanes.iter().enumerate() {
+        let Some(layout) = paired_lane_layouts.get(idx) else {
+            continue;
+        };
+        let fallback_protein_lane = gentle_protocol::IsoformArchitectureProteinLane {
+            isoform_id: transcript_lane.isoform_id.clone(),
+            label: transcript_lane.label.clone(),
+            transcript_id: transcript_lane.transcript_id.clone(),
+            expected_length_aa: None,
+            reference_start_aa: None,
+            reference_end_aa: None,
+            domains: vec![],
+            transactivation_class: transcript_lane.transactivation_class.clone(),
+            comparison: None,
+        };
+        let protein_lane = view
+            .protein_lanes
             .get(idx)
-            .cloned()
-            .unwrap_or_else(|| layout_protein_domain_labels(&[], left, right));
-        let y = protein_lane_top + PROTEIN_DOMAIN_HALF_HEIGHT;
+            .unwrap_or(&fallback_protein_lane);
+        let transcript_y = paired_lane_top + TRANSCRIPT_PRODUCT_TOP_PAD + COMPRESSED_EXON_HALF_HEIGHT;
+        let protein_y = transcript_y
+            + COMPRESSED_EXON_HALF_HEIGHT
+            + TRANSCRIPT_PRODUCT_CONNECTOR_GAP
+            + PROTEIN_DOMAIN_HALF_HEIGHT;
+        let lane_label = transcript_lane
+            .transcript_id
+            .as_deref()
+            .map(|tx| format!("{} ({tx})", transcript_lane.label))
+            .unwrap_or_else(|| transcript_lane.label.clone());
         doc = doc.add(
-            Text::new(lane.label.clone())
+            Text::new(lane_label)
                 .set("x", left - 12.0)
-                .set("y", y + 3.5)
+                .set("y", transcript_y + 3.5)
                 .set("text-anchor", "end")
                 .set("font-family", "monospace")
                 .set("font-size", 10)
-                .set("fill", "#111827"),
+                .set("fill", if transcript_lane.mapped {
+                    "#111827"
+                } else {
+                    "#b45309"
+                }),
         );
-        let max_domain_end = lane
-            .domains
-            .iter()
-            .map(|domain| domain.end_aa.max(domain.start_aa))
-            .max()
-            .unwrap_or(1)
-            .max(1);
-        let lane_start = lane.reference_start_aa.unwrap_or(1).clamp(1, aa_max);
-        let inferred_end = lane
-            .expected_length_aa
-            .unwrap_or(max_domain_end)
-            .max(max_domain_end);
-        let lane_end = lane
-            .reference_end_aa
-            .unwrap_or(inferred_end)
-            .clamp(lane_start, aa_max);
-        let rail_left = x_for_aa(lane_start);
-        let rail_right = x_for_aa(lane_end);
+        let exon_boxes = &layout.compressed.exon_boxes;
+        for pair in exon_boxes.windows(2) {
+            let left_exon_right = pair[0].x2;
+            let right_exon_left = pair[1].x1;
+            doc = doc.add(
+                Line::new()
+                    .set("x1", left_exon_right)
+                    .set("y1", transcript_y)
+                    .set("x2", right_exon_left)
+                    .set("y2", transcript_y)
+                    .set("stroke", "#94a3b8")
+                    .set("stroke-width", 1.1)
+                    .set("stroke-dasharray", "4 3")
+                    .set("data-track", "compressed-intron"),
+            );
+        }
+        for exon_box in exon_boxes {
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", exon_box.x1)
+                    .set("y", transcript_y - COMPRESSED_EXON_HALF_HEIGHT)
+                    .set("width", (exon_box.x2 - exon_box.x1).max(1.0))
+                    .set("height", COMPRESSED_EXON_HALF_HEIGHT * 2.0)
+                    .set("fill", exon_box.fill)
+                    .set("fill-opacity", 0.26)
+                    .set("stroke", exon_box.stroke)
+                    .set("stroke-width", 0.5)
+                    .set("data-track", "compressed-transcript-exon")
+                    .set("data-exon-key", exon_identity_attr(exon_box.exon_key))
+                    .set("data-exon-family", exon_family_attr(exon_box.family_range)),
+            );
+        }
+        let mut transcript_segment_bounds: BTreeMap<usize, (f32, f32, &'static str, &'static str)> =
+            BTreeMap::new();
+        for block in &layout.compressed.coding_blocks {
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", block.x1)
+                    .set("y", transcript_y - COMPRESSED_EXON_HALF_HEIGHT)
+                    .set("width", (block.x2 - block.x1).max(1.0))
+                    .set("height", COMPRESSED_EXON_HALF_HEIGHT * 2.0)
+                    .set("fill", block.fill)
+                    .set("fill-opacity", if transcript_lane.mapped { 0.88 } else { 0.45 })
+                    .set("stroke", block.stroke)
+                    .set("stroke-width", 0.6)
+                    .set("data-track", "compressed-cds-block")
+                    .set("data-segment-rank", block.segment_index + 1)
+                    .set("data-exon-key", exon_identity_attr(block.exon_key))
+                    .set("data-exon-family", exon_family_attr(block.family_range)),
+            );
+            transcript_segment_bounds
+                .entry(block.segment_index)
+                .and_modify(|entry| {
+                    entry.0 = entry.0.min(block.x1);
+                    entry.1 = entry.1.max(block.x2);
+                })
+                .or_insert((block.x1, block.x2, block.fill, block.stroke));
+        }
+
+        for rect in &layout.protein.contribution_rects {
+            if let Some((tx_left, tx_right, fill, _stroke)) =
+                transcript_segment_bounds.get(&rect.segment_index)
+            {
+                let ribbon = Data::new()
+                    .move_to((*tx_left, transcript_y + COMPRESSED_EXON_HALF_HEIGHT + 0.5))
+                    .line_to((*tx_right, transcript_y + COMPRESSED_EXON_HALF_HEIGHT + 0.5))
+                    .line_to((rect.x2, protein_y - PROTEIN_CONTRIBUTION_HALF_HEIGHT - 0.5))
+                    .line_to((rect.x1, protein_y - PROTEIN_CONTRIBUTION_HALF_HEIGHT - 0.5))
+                    .close();
+                doc = doc.add(
+                    Path::new()
+                        .set("d", ribbon)
+                        .set("fill", *fill)
+                        .set("fill-opacity", 0.12)
+                        .set("stroke", "none")
+                        .set("data-track", "transcript-product-link")
+                        .set("data-segment-rank", rect.segment_index + 1)
+                        .set("data-exon-key", exon_identity_attr(rect.exon_key))
+                        .set("data-exon-family", exon_family_attr(rect.family_range)),
+                );
+            }
+        }
+
         doc = doc.add(
             Line::new()
-                .set("x1", rail_left)
-                .set("y1", y)
-                .set("x2", rail_right)
-                .set("y2", y)
+                .set("x1", left)
+                .set("y1", protein_y)
+                .set("x2", right)
+                .set("y2", protein_y)
                 .set("stroke", "#94a3b8")
-                .set("stroke-width", 2.0),
+                .set("stroke-width", 2.0)
+                .set("data-track", "protein-rail"),
         );
-        for (domain_idx, domain) in lane.domains.iter().enumerate() {
-            let domain_start = domain.start_aa.max(lane_start);
-            let domain_end = domain.end_aa.max(domain.start_aa).min(lane_end);
-            if domain_end < domain_start {
-                continue;
+        for rect in &layout.protein.contribution_rects {
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", rect.x1)
+                    .set("y", protein_y - PROTEIN_CONTRIBUTION_HALF_HEIGHT)
+                    .set("width", (rect.x2 - rect.x1).max(1.0))
+                    .set("height", PROTEIN_CONTRIBUTION_HALF_HEIGHT * 2.0)
+                    .set("rx", 1.5)
+                    .set("ry", 1.5)
+                    .set("fill", rect.fill)
+                    .set("fill-opacity", 0.32)
+                    .set("stroke", rect.stroke)
+                    .set("stroke-width", 0.45)
+                    .set("data-track", "protein-contribution")
+                    .set("data-segment-rank", rect.segment_index + 1)
+                    .set("data-exon-key", exon_identity_attr(rect.exon_key))
+                    .set("data-exon-family", exon_family_attr(rect.family_range)),
+            );
+        }
+
+        let topology_block_top = protein_y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_TOPOLOGY_TRACK_GAP;
+        let topology_block_height = if layout.protein.topology_rows.row_count == 0 {
+            0.0
+        } else {
+            layout.protein.topology_rows.row_count as f32 * PROTEIN_TOPOLOGY_ROW_HEIGHT
+                + (layout.protein.topology_rows.row_count.saturating_sub(1) as f32)
+                    * PROTEIN_TOPOLOGY_ROW_GAP
+        };
+        for (piece_idx, piece) in layout.protein.topology_pieces.iter().enumerate() {
+            let domain = &protein_lane.domains[piece.domain_index];
+            let row_index = layout
+                .protein
+                .topology_rows
+                .row_indices
+                .get(piece_idx)
+                .copied()
+                .unwrap_or(0);
+            let rect_y = topology_block_top
+                + row_index as f32 * (PROTEIN_TOPOLOGY_ROW_HEIGHT + PROTEIN_TOPOLOGY_ROW_GAP);
+            let rect_width = (piece.x2 - piece.x1).max(1.0);
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", piece.x1)
+                    .set("y", rect_y)
+                    .set("width", rect_width)
+                    .set("height", PROTEIN_TOPOLOGY_ROW_HEIGHT)
+                    .set("rx", 2.0)
+                    .set("ry", 2.0)
+                    .set("fill", topology_feature_fill(&domain.name))
+                    .set("fill-opacity", 0.9)
+                    .set("stroke", topology_feature_stroke(&domain.name))
+                    .set("stroke-width", 0.6)
+                    .set("data-track", "protein-topology")
+                    .set(
+                        "data-feature-key",
+                        protein_feature_key(&domain.name).unwrap_or("unknown"),
+                    ),
+            );
+            if let Some(label) = compact_topology_label(&domain.name, rect_width) {
+                doc = doc.add(
+                    Text::new(label)
+                        .set("x", (piece.x1 + piece.x2) * 0.5)
+                        .set(
+                            "y",
+                            rect_y + PROTEIN_TOPOLOGY_ROW_HEIGHT * 0.5
+                                + PROTEIN_TOPOLOGY_LABEL_FONT_SIZE * 0.35,
+                        )
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", PROTEIN_TOPOLOGY_LABEL_FONT_SIZE)
+                        .set("fill", "#111827"),
+                );
             }
-            let x1 = x_for_aa(domain_start);
-            let x2 = x_for_aa(domain_end);
+        }
+
+        let label_band_top = if topology_block_height > 0.0 {
+            topology_block_top + topology_block_height + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP
+        } else {
+            protein_y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP
+        };
+        for piece in &layout.protein.overlay_pieces {
+            let domain = &protein_lane.domains[piece.domain_index];
             let fill = domain.color_hex.as_deref().unwrap_or("#7c3aed");
             doc = doc.add(
                 Rectangle::new()
-                    .set("x", x1)
-                    .set("y", y - PROTEIN_DOMAIN_HALF_HEIGHT)
-                    .set("width", (x2 - x1).max(1.0))
+                    .set("x", piece.x1)
+                    .set("y", protein_y - PROTEIN_DOMAIN_HALF_HEIGHT)
+                    .set("width", (piece.x2 - piece.x1).max(1.0))
                     .set("height", PROTEIN_DOMAIN_HALF_HEIGHT * 2.0)
                     .set("fill", fill)
                     .set("fill-opacity", 0.82)
                     .set("stroke", "#1f2937")
-                    .set("stroke-width", 0.5),
+                    .set("stroke-width", 0.5)
+                    .set("data-track", "protein-overlay")
+                    .set(
+                        "data-feature-key",
+                        protein_feature_key(&domain.name).unwrap_or("unknown"),
+                    ),
             );
-            if let Some(label) = layout.placements.get(domain_idx) {
-                let label_band_top =
-                    y + PROTEIN_DOMAIN_HALF_HEIGHT + PROTEIN_DOMAIN_LABEL_DOMAIN_GAP;
-                let label_baseline_y = label_band_top
-                    + PROTEIN_DOMAIN_LABEL_FONT_SIZE
-                    + label.row_index as f32 * PROTEIN_DOMAIN_LABEL_ROW_PITCH;
-                let label_box_top = label_baseline_y - PROTEIN_DOMAIN_LABEL_FONT_SIZE;
-                let label_box_height =
-                    PROTEIN_DOMAIN_LABEL_FONT_SIZE + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 2.0;
-                let domain_center = (x1 + x2) * 0.5;
-                let leader_top = y + PROTEIN_DOMAIN_HALF_HEIGHT + 1.0;
-                let leader_bottom =
-                    (label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD - 1.0).max(leader_top);
-                doc = doc
-                    .add(
-                        Line::new()
-                            .set("x1", domain_center)
-                            .set("y1", leader_top)
-                            .set("x2", domain_center)
-                            .set("y2", leader_bottom)
-                            .set("stroke", "#94a3b8")
-                            .set("stroke-width", 0.8)
-                            .set("stroke-opacity", 0.9),
-                    )
-                    .add(
-                        Rectangle::new()
-                            .set("x", label.box_left)
-                            .set("y", label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD)
-                            .set("width", (label.box_right - label.box_left).max(1.0))
-                            .set("height", label_box_height)
-                            .set("rx", 2.0)
-                            .set("ry", 2.0)
-                            .set("fill", "#ffffff")
-                            .set("fill-opacity", 0.96)
-                            .set("stroke", "#cbd5e1")
-                            .set("stroke-width", 0.5),
-                    )
-                    .add(
-                        Text::new(label.compact_label.clone())
-                            .set("x", label.box_left + PROTEIN_DOMAIN_LABEL_BOX_X_PAD)
-                            .set("y", label_baseline_y + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 0.5)
-                            .set("font-family", "monospace")
-                            .set("font-size", PROTEIN_DOMAIN_LABEL_FONT_SIZE)
-                            .set("fill", "#334155"),
-                    );
+        }
+        for (label_idx, label) in layout.protein.overlay_labels.placements.iter().enumerate() {
+            let Some(&domain_index) = layout
+                .protein
+                .overlay_label_domain_indices
+                .get(label_idx)
+            else {
+                continue;
+            };
+            let anchor_domain = layout
+                .protein
+                .overlay_pieces
+                .iter()
+                .filter(|piece| piece.domain_index == domain_index)
+                .fold(None::<(f32, f32)>, |acc, piece| match acc {
+                    Some((left_edge, right_edge)) => {
+                        Some((left_edge.min(piece.x1), right_edge.max(piece.x2)))
+                    }
+                    None => Some((piece.x1, piece.x2)),
+                });
+            let Some((anchor_left, anchor_right)) = anchor_domain else {
+                continue;
+            };
+            let label_baseline_y = label_band_top
+                + PROTEIN_DOMAIN_LABEL_FONT_SIZE
+                + label.row_index as f32 * PROTEIN_DOMAIN_LABEL_ROW_PITCH;
+            let label_box_top = label_baseline_y - PROTEIN_DOMAIN_LABEL_FONT_SIZE;
+            let label_box_height =
+                PROTEIN_DOMAIN_LABEL_FONT_SIZE + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 2.0;
+            let domain_center = (anchor_left + anchor_right) * 0.5;
+            let leader_top = protein_y + PROTEIN_DOMAIN_HALF_HEIGHT + 1.0;
+            let leader_bottom =
+                (label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD - 1.0).max(leader_top);
+            doc = doc
+                .add(
+                    Line::new()
+                        .set("x1", domain_center)
+                        .set("y1", leader_top)
+                        .set("x2", domain_center)
+                        .set("y2", leader_bottom)
+                        .set("stroke", "#94a3b8")
+                        .set("stroke-width", 0.8)
+                        .set("stroke-opacity", 0.9),
+                )
+                .add(
+                    Rectangle::new()
+                        .set("x", label.box_left)
+                        .set("y", label_box_top - PROTEIN_DOMAIN_LABEL_BOX_Y_PAD)
+                        .set("width", (label.box_right - label.box_left).max(1.0))
+                        .set("height", label_box_height)
+                        .set("rx", 2.0)
+                        .set("ry", 2.0)
+                        .set("fill", "#ffffff")
+                        .set("fill-opacity", 0.96)
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 0.5),
+                )
+                .add(
+                    Text::new(label.compact_label.clone())
+                        .set("x", label.box_left + PROTEIN_DOMAIN_LABEL_BOX_X_PAD)
+                        .set("y", label_baseline_y + PROTEIN_DOMAIN_LABEL_BOX_Y_PAD * 0.5)
+                        .set("font-family", "monospace")
+                        .set("font-size", PROTEIN_DOMAIN_LABEL_FONT_SIZE)
+                        .set("fill", "#334155"),
+                );
+        }
+
+        let protein_note = match layout.protein.reference_span_label.as_deref() {
+            Some(reference_span) => format!(
+                "{} aa | {}",
+                layout.protein.local_length_aa, reference_span
+            ),
+            None => format!("{} aa", layout.protein.local_length_aa),
+        };
+        doc = doc.add(
+            Text::new(protein_note)
+                .set("x", right + 6.0)
+                .set("y", protein_y + 3.0)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#374151"),
+        );
+        if let Some(comparison) = protein_lane.comparison.as_ref() {
+            let status_label = match comparison.status {
+                gentle_protocol::TranscriptProteinComparisonStatus::DerivedOnly => None,
+                gentle_protocol::TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion => {
+                    None
+                }
+                gentle_protocol::TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion => {
+                    Some(("status=low_confidence_external_opinion", "#b45309"))
+                }
+                gentle_protocol::TranscriptProteinComparisonStatus::ExternalOpinionOnly => {
+                    Some(("status=external_opinion_only", "#64748b"))
+                }
+                gentle_protocol::TranscriptProteinComparisonStatus::NoTranscriptCds => {
+                    Some(("status=no_transcript_cds", "#64748b"))
+                }
+            };
+            if let Some((status_label, color)) = status_label {
+                doc = doc.add(
+                    Text::new(status_label)
+                        .set("x", right + 6.0)
+                        .set("y", protein_y + 15.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 8.5)
+                        .set("fill", color),
+                );
             }
         }
-        if let Some(tag) = lane.transactivation_class.as_deref() {
+        if let Some(tag) = protein_lane.transactivation_class.as_deref() {
             doc = doc.add(
                 Text::new(format!("TA={tag}"))
                     .set("x", right + 6.0)
-                    .set("y", y + 3.0)
+                    .set("y", transcript_y + 3.0)
                     .set("font-family", "monospace")
                     .set("font-size", 9)
                     .set("fill", "#374151"),
             );
         }
-        protein_lane_top += layout.lane_height + PROTEIN_LANE_GAP;
+
+        paired_lane_top += TRANSCRIPT_PRODUCT_TOP_PAD
+            + COMPRESSED_EXON_HALF_HEIGHT * 2.0
+            + TRANSCRIPT_PRODUCT_CONNECTOR_GAP
+            + layout.protein.lane_height
+            + TRANSCRIPT_PRODUCT_LANE_GAP;
     }
 
     let mut y = footer_top;
@@ -2349,16 +3311,17 @@ mod tests {
         IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
         IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, SplicingRange,
     };
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn isoform_test_view(transcript_strand: &str) -> IsoformArchitectureExpertView {
         IsoformArchitectureExpertView {
             seq_id: "tp53".to_string(),
             panel_id: "panel".to_string(),
             gene_symbol: "TP53".to_string(),
-            transcript_geometry_mode: "exon".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
             panel_source: Some("test".to_string()),
             region_start_1based: 101,
-            region_end_1based: 200,
+            region_end_1based: 220,
             instruction: "test".to_string(),
             transcript_lanes: vec![IsoformArchitectureTranscriptLane {
                 isoform_id: "i1".to_string(),
@@ -2369,60 +3332,69 @@ mod tests {
                 transcript_exons: vec![
                     SplicingRange {
                         start_1based: 105,
-                        end_1based: 125,
+                        end_1based: 138,
                     },
                     SplicingRange {
-                        start_1based: 145,
-                        end_1based: 165,
+                        start_1based: 148,
+                        end_1based: 186,
                     },
                 ],
                 exons: vec![
                     SplicingRange {
                         start_1based: 110,
-                        end_1based: 120,
+                        end_1based: 130,
                     },
                     SplicingRange {
                         start_1based: 150,
-                        end_1based: 160,
+                        end_1based: 176,
                     },
                 ],
                 introns: vec![SplicingRange {
-                    start_1based: 120,
-                    end_1based: 150,
+                    start_1based: 131,
+                    end_1based: 149,
                 }],
                 mapped: true,
                 transactivation_class: None,
-                cds_to_protein_segments: vec![IsoformArchitectureCdsAaSegment {
-                    genomic_start_1based: 110,
-                    genomic_end_1based: 120,
-                    aa_start: 10,
-                    aa_end: 20,
-                }],
+                cds_to_protein_segments: vec![
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 110,
+                        genomic_end_1based: 130,
+                        aa_start: 1,
+                        aa_end: 21,
+                    },
+                    IsoformArchitectureCdsAaSegment {
+                        genomic_start_1based: 150,
+                        genomic_end_1based: 176,
+                        aa_start: 22,
+                        aa_end: 48,
+                    },
+                ],
                 note: None,
             }],
             protein_lanes: vec![IsoformArchitectureProteinLane {
                 isoform_id: "i1".to_string(),
                 label: "iso1".to_string(),
                 transcript_id: Some("tx1".to_string()),
-                expected_length_aa: Some(100),
-                reference_start_aa: None,
-                reference_end_aa: None,
+                expected_length_aa: Some(48),
+                reference_start_aa: Some(1),
+                reference_end_aa: Some(48),
                 domains: vec![IsoformArchitectureProteinDomain {
                     name: "dbd".to_string(),
-                    start_aa: 10,
-                    end_aa: 60,
+                    start_aa: 8,
+                    end_aa: 38,
                     color_hex: Some("#ff0000".to_string()),
                 }],
                 transactivation_class: None,
+                comparison: None,
             }],
             warnings: vec![],
         }
     }
 
-    fn extract_exon_x_positions(svg: &str) -> Vec<f32> {
+    fn extract_track_x_positions(svg: &str, track: &str) -> Vec<f32> {
         let mut xs = Vec::new();
         for part in svg.split("<rect").skip(1) {
-            if !part.contains("fill=\"#2563eb\"") || !part.contains("height=\"15\"") {
+            if !part.contains(track) {
                 continue;
             }
             let Some(attr_start) = part.find("x=\"") else {
@@ -2439,8 +3411,85 @@ mod tests {
         xs
     }
 
-    fn connector_ribbon_count(svg: &str) -> usize {
-        svg.matches("fill=\"#64748b\"").count()
+    fn track_count(svg: &str, track: &str) -> usize {
+        svg.matches(track).count()
+    }
+
+    fn extract_fill_for_track_and_exon_key(
+        svg: &str,
+        element: &str,
+        track: &str,
+        exon_key: &str,
+    ) -> Option<String> {
+        for part in svg.split(element).skip(1) {
+            if !part.contains(track) || !part.contains(exon_key) {
+                continue;
+            }
+            let Some(attr_start) = part.find("fill=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 6..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            return Some(rest[..attr_end].to_string());
+        }
+        None
+    }
+
+    fn extract_fill_for_track_and_exon_family(
+        svg: &str,
+        element: &str,
+        track: &str,
+        exon_family: &str,
+    ) -> Option<String> {
+        for part in svg.split(element).skip(1) {
+            if !part.contains(track) || !part.contains(exon_family) {
+                continue;
+            }
+            let Some(attr_start) = part.find("fill=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 6..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            return Some(rest[..attr_end].to_string());
+        }
+        None
+    }
+
+    fn collect_track_xs_by_exon_family(
+        svg: &str,
+        track: &str,
+    ) -> BTreeMap<String, BTreeSet<String>> {
+        let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for part in svg.split("<rect").skip(1) {
+            if !part.contains(track) {
+                continue;
+            }
+            let Some(x_attr_start) = part.find("x=\"") else {
+                continue;
+            };
+            let x_rest = &part[x_attr_start + 3..];
+            let Some(x_attr_end) = x_rest.find('"') else {
+                continue;
+            };
+            let Ok(value) = x_rest[..x_attr_end].parse::<f32>() else {
+                continue;
+            };
+            let Some(family_attr_start) = part.find("data-exon-family=\"") else {
+                continue;
+            };
+            let family_rest = &part[family_attr_start + 18..];
+            let Some(family_attr_end) = family_rest.find('"') else {
+                continue;
+            };
+            out.entry(format!("{value:.2}"))
+                .or_default()
+                .insert(family_rest[..family_attr_end].to_string());
+        }
+        out
     }
 
     fn extract_first_protein_rail_y(svg: &str) -> Option<f32> {
@@ -2481,64 +3530,284 @@ mod tests {
         None
     }
 
+    fn extract_first_topology_rect_y(svg: &str) -> Option<f32> {
+        for part in svg.split("<rect").skip(1) {
+            if !part.contains("data-track=\"protein-topology\"") {
+                continue;
+            }
+            let Some(attr_start) = part.find(" y=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 4..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            if let Ok(value) = rest[..attr_end].parse::<f32>() {
+                return Some(value);
+            }
+        }
+        None
+    }
+
     #[test]
     fn isoform_renderer_keeps_forward_strand_exon_order_left_to_right() {
         let svg = render_isoform_architecture(&isoform_test_view("+"));
-        let exon_x = extract_exon_x_positions(&svg);
+        let exon_x = extract_track_x_positions(&svg, "data-track=\"coordinate-cds-block\"");
         assert_eq!(exon_x.len(), 2);
         assert!(exon_x[0] < exon_x[1]);
         assert!(svg.contains("dominant strand +"));
         assert!(svg.contains("101 bp"));
-        assert!(svg.contains("200 bp"));
+        assert!(svg.contains("220 bp"));
     }
 
     #[test]
     fn isoform_renderer_flips_reverse_strand_exons_but_keeps_them_visible() {
         let svg = render_isoform_architecture(&isoform_test_view("-"));
-        let exon_x = extract_exon_x_positions(&svg);
+        let exon_x = extract_track_x_positions(&svg, "data-track=\"coordinate-cds-block\"");
         assert_eq!(exon_x.len(), 2);
         assert!(exon_x[0] > exon_x[1]);
         assert!(svg.contains("dominant strand -"));
-        assert!(svg.contains("200 bp"));
+        assert!(svg.contains("220 bp"));
         assert!(svg.contains("101 bp"));
     }
 
     #[test]
     fn isoform_renderer_draws_cds_to_protein_connector_guides() {
         let view = isoform_test_view("+");
-        let lane_count = view.transcript_lanes.len().max(1) as f32;
-        let lane_h = 24.0_f32;
-        let lane_gap = 10.0_f32;
-        let top_header = 114.0_f32;
-        let exon_chart_h = lane_count * lane_h + (lane_count - 1.0) * lane_gap;
-        let protein_chart_top = top_header + exon_chart_h + 92.0;
-        let protein_axis_y = protein_chart_top - 14.0 + 0.5;
         let svg = render_isoform_architecture(&view);
-        assert!(svg.contains("genome boundary rail"));
-        assert!(svg.contains("fill=\"#64748b\""));
-        assert!(svg.contains("fill-opacity=\"0.14\""));
-        assert!(svg.contains(&format!(",{protein_axis_y}")));
-        assert!(!svg.contains(",233.5"));
+        assert_eq!(track_count(&svg, "data-track=\"compressed-cds-block\""), 2);
+        assert_eq!(track_count(&svg, "data-track=\"protein-contribution\""), 2);
+        assert_eq!(track_count(&svg, "data-track=\"transcript-product-link\""), 2);
+        assert!(svg.contains("isoform-local protein axis"));
     }
 
     #[test]
-    fn isoform_renderer_merges_duplicate_connector_ribbons() {
-        let single = isoform_test_view("+");
-        let single_svg = render_isoform_architecture(&single);
-        let single_count = connector_ribbon_count(&single_svg);
+    fn isoform_renderer_keeps_same_genomic_exon_color_across_isoforms_and_panels() {
+        let mut view = isoform_test_view("+");
+        view.transcript_lanes.push(IsoformArchitectureTranscriptLane {
+            isoform_id: "i2".to_string(),
+            label: "iso2".to_string(),
+            transcript_id: Some("tx2".to_string()),
+            transcript_feature_id: Some(2),
+            strand: "+".to_string(),
+            transcript_exons: vec![
+                SplicingRange {
+                    start_1based: 148,
+                    end_1based: 186,
+                },
+                SplicingRange {
+                    start_1based: 196,
+                    end_1based: 214,
+                },
+            ],
+            exons: vec![
+                SplicingRange {
+                    start_1based: 150,
+                    end_1based: 176,
+                },
+                SplicingRange {
+                    start_1based: 198,
+                    end_1based: 210,
+                },
+            ],
+            introns: vec![SplicingRange {
+                start_1based: 177,
+                end_1based: 197,
+            }],
+            mapped: true,
+            transactivation_class: None,
+            cds_to_protein_segments: vec![
+                IsoformArchitectureCdsAaSegment {
+                    genomic_start_1based: 150,
+                    genomic_end_1based: 176,
+                    aa_start: 1,
+                    aa_end: 27,
+                },
+                IsoformArchitectureCdsAaSegment {
+                    genomic_start_1based: 198,
+                    genomic_end_1based: 210,
+                    aa_start: 28,
+                    aa_end: 40,
+                },
+            ],
+            note: None,
+        });
+        view.protein_lanes.push(IsoformArchitectureProteinLane {
+            isoform_id: "i2".to_string(),
+            label: "iso2".to_string(),
+            transcript_id: Some("tx2".to_string()),
+            expected_length_aa: Some(40),
+            reference_start_aa: Some(1),
+            reference_end_aa: Some(40),
+            domains: vec![IsoformArchitectureProteinDomain {
+                name: "dbd-short".to_string(),
+                start_aa: 4,
+                end_aa: 24,
+                color_hex: Some("#00aa00".to_string()),
+            }],
+            transactivation_class: None,
+            comparison: None,
+        });
 
-        let mut duplicated = isoform_test_view("+");
-        let mut duplicated_lane = duplicated.transcript_lanes[0].clone();
-        duplicated_lane.isoform_id = "i2".to_string();
-        duplicated_lane.label = "iso2".to_string();
-        duplicated_lane.transcript_id = Some("tx2".to_string());
-        duplicated.transcript_lanes.push(duplicated_lane);
+        let svg = render_isoform_architecture(&view);
+        let exon_key = "data-exon-key=\"148..186\"";
+        let coordinate_fill = extract_fill_for_track_and_exon_key(
+            &svg,
+            "<rect",
+            "data-track=\"coordinate-cds-block\"",
+            exon_key,
+        )
+        .expect("coordinate fill");
+        let compressed_fill = extract_fill_for_track_and_exon_key(
+            &svg,
+            "<rect",
+            "data-track=\"compressed-cds-block\"",
+            exon_key,
+        )
+        .expect("compressed fill");
+        let protein_fill = extract_fill_for_track_and_exon_key(
+            &svg,
+            "<rect",
+            "data-track=\"protein-contribution\"",
+            exon_key,
+        )
+        .expect("protein contribution fill");
+        let link_fill = extract_fill_for_track_and_exon_key(
+            &svg,
+            "<path",
+            "data-track=\"transcript-product-link\"",
+            exon_key,
+        )
+        .expect("link fill");
+        assert_eq!(coordinate_fill, compressed_fill);
+        assert_eq!(compressed_fill, protein_fill);
+        assert_eq!(protein_fill, link_fill);
+    }
 
-        let duplicated_svg = render_isoform_architecture(&duplicated);
-        let duplicated_count = connector_ribbon_count(&duplicated_svg);
-        assert_eq!(duplicated_count, single_count);
-        assert!(duplicated_svg.contains("fill-opacity=\"0.18\""));
-        assert!(duplicated_svg.contains("stroke=\"#475569\""));
+    #[test]
+    fn isoform_renderer_uses_shared_genomic_exon_columns_in_lower_panel() {
+        let mut view = isoform_test_view("+");
+        view.transcript_lanes.push(IsoformArchitectureTranscriptLane {
+            isoform_id: "i2".to_string(),
+            label: "iso2".to_string(),
+            transcript_id: Some("tx2".to_string()),
+            transcript_feature_id: Some(2),
+            strand: "+".to_string(),
+            transcript_exons: vec![
+                SplicingRange {
+                    start_1based: 148,
+                    end_1based: 186,
+                },
+                SplicingRange {
+                    start_1based: 196,
+                    end_1based: 214,
+                },
+            ],
+            exons: vec![
+                SplicingRange {
+                    start_1based: 150,
+                    end_1based: 176,
+                },
+                SplicingRange {
+                    start_1based: 198,
+                    end_1based: 210,
+                },
+            ],
+            introns: vec![SplicingRange {
+                start_1based: 177,
+                end_1based: 197,
+            }],
+            mapped: true,
+            transactivation_class: None,
+            cds_to_protein_segments: vec![
+                IsoformArchitectureCdsAaSegment {
+                    genomic_start_1based: 150,
+                    genomic_end_1based: 176,
+                    aa_start: 1,
+                    aa_end: 27,
+                },
+                IsoformArchitectureCdsAaSegment {
+                    genomic_start_1based: 198,
+                    genomic_end_1based: 210,
+                    aa_start: 28,
+                    aa_end: 40,
+                },
+            ],
+            note: None,
+        });
+        view.protein_lanes.push(IsoformArchitectureProteinLane {
+            isoform_id: "i2".to_string(),
+            label: "iso2".to_string(),
+            transcript_id: Some("tx2".to_string()),
+            expected_length_aa: Some(40),
+            reference_start_aa: Some(1),
+            reference_end_aa: Some(40),
+            domains: vec![IsoformArchitectureProteinDomain {
+                name: "dbd-short".to_string(),
+                start_aa: 4,
+                end_aa: 24,
+                color_hex: Some("#00aa00".to_string()),
+            }],
+            transactivation_class: None,
+            comparison: None,
+        });
+
+        let svg = render_isoform_architecture(&view);
+        let column_families =
+            collect_track_xs_by_exon_family(&svg, "data-track=\"compressed-transcript-exon\"");
+        assert!(
+            column_families.values().all(|families| families.len() == 1),
+            "expected each compressed-transcript column x to map to one genomic exon family: {column_families:?}"
+        );
+
+        let shared_family = "data-exon-family=\"148..186\"";
+        let compressed_fill = extract_fill_for_track_and_exon_family(
+            &svg,
+            "<rect",
+            "data-track=\"compressed-transcript-exon\"",
+            shared_family,
+        )
+        .expect("compressed transcript family fill");
+        let protein_fill = extract_fill_for_track_and_exon_family(
+            &svg,
+            "<rect",
+            "data-track=\"protein-contribution\"",
+            shared_family,
+        )
+        .expect("protein family fill");
+        assert_eq!(compressed_fill, protein_fill);
+    }
+
+    #[test]
+    fn isoform_renderer_splits_domains_across_skipped_reference_gaps_on_local_axis() {
+        let mut view = isoform_test_view("+");
+        view.transcript_lanes[0].cds_to_protein_segments = vec![
+            IsoformArchitectureCdsAaSegment {
+                genomic_start_1based: 110,
+                genomic_end_1based: 130,
+                aa_start: 1,
+                aa_end: 21,
+            },
+            IsoformArchitectureCdsAaSegment {
+                genomic_start_1based: 150,
+                genomic_end_1based: 176,
+                aa_start: 30,
+                aa_end: 56,
+            },
+        ];
+        view.protein_lanes[0].expected_length_aa = Some(48);
+        view.protein_lanes[0].reference_start_aa = Some(1);
+        view.protein_lanes[0].reference_end_aa = Some(56);
+        view.protein_lanes[0].domains = vec![IsoformArchitectureProteinDomain {
+            name: "DOMAIN: split by skipped exon".to_string(),
+            start_aa: 18,
+            end_aa: 34,
+            color_hex: Some("#7c3aed".to_string()),
+        }];
+
+        let svg = render_isoform_architecture(&view);
+        assert_eq!(track_count(&svg, "data-track=\"protein-overlay\""), 2);
+        assert_eq!(track_count(&svg, "data-track=\"protein-contribution\""), 2);
     }
 
     #[test]
@@ -2621,5 +3890,53 @@ mod tests {
 
         let svg = render_isoform_architecture(&view);
         assert!(svg.contains("stroke=\"#cbd5e1\""));
+    }
+
+    #[test]
+    fn isoform_renderer_places_topology_features_in_dedicated_lower_band() {
+        let mut view = isoform_test_view("+");
+        view.protein_lanes[0].domains = vec![
+            IsoformArchitectureProteinDomain {
+                name: "SIGNAL: signal peptide".to_string(),
+                start_aa: 1,
+                end_aa: 14,
+                color_hex: Some("#22c55e".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "TOPO_DOM: luminal".to_string(),
+                start_aa: 8,
+                end_aa: 24,
+                color_hex: Some("#60a5fa".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "TRANSMEM: helix".to_string(),
+                start_aa: 25,
+                end_aa: 32,
+                color_hex: Some("#ef4444".to_string()),
+            },
+            IsoformArchitectureProteinDomain {
+                name: "DOMAIN: catalytic tail".to_string(),
+                start_aa: 34,
+                end_aa: 44,
+                color_hex: Some("#7c3aed".to_string()),
+            },
+        ];
+
+        let svg = render_isoform_architecture(&view);
+        let protein_y = extract_first_protein_rail_y(&svg).expect("protein rail y");
+        let topology_rect_y = extract_first_topology_rect_y(&svg).expect("topology rect y");
+        let label_box_y = extract_first_label_box_y(&svg).expect("protein label box y");
+        assert!(
+            topology_rect_y > protein_y,
+            "expected topology band below protein rail: topology_rect_y={topology_rect_y}, protein_y={protein_y}"
+        );
+        assert!(
+            label_box_y > topology_rect_y,
+            "expected overlay/domain labels below topology band: label_box_y={label_box_y}, topology_rect_y={topology_rect_y}"
+        );
+        assert!(svg.contains("data-track=\"protein-topology\""));
+        assert!(svg.contains("data-feature-key=\"SIGNAL\""));
+        assert!(svg.contains("data-feature-key=\"TOPO_DOM\""));
+        assert!(svg.contains("data-feature-key=\"TRANSMEM\""));
     }
 }

@@ -1015,6 +1015,9 @@ Sequencing-trace evidence notes:
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
 - `DeriveProteinSequences { seq_id, feature_ids[], scope?, output_prefix? }`
+  - this operation is self-sufficient and transcript-first: it does not depend
+    on UniProt or any other external protein evidence source to decide what
+    protein products exist
 - `ReverseTranslateProteinSequence { seq_id, output_id?, speed_profile?, speed_mark?, translation_table?, target_anneal_tm_c?, anneal_window_bp? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
@@ -1055,22 +1058,28 @@ Isoform-panel operation semantics (current):
   `gentle.isoform_panel_resource.v1` and binds them to one sequence context.
 - `strict=true` enforces hard failure when panel transcript mapping fails;
   `strict=false` records warnings and keeps partial mappings.
-- `RenderIsoformArchitectureSvg` emits a deterministic two-section architecture
-  SVG (transcript/exon lanes + protein/domain lanes) derived from the same
-  expert payload used by GUI/shell inspection.
-  - when CDS ranges are available for mapped transcripts, SVG rendering uses
-    dual coding in the top panel (faint full exons + solid CDS blocks) and
-    adds a genome boundary rail with semi-transparent flank ribbons mapping
-    boundary intervals to amino-acid spans on the shared protein reference axis
-    (`1 aa ... max aa`), so mapping is readable across all protein lanes.
-    Identical ribbons are merged and rendered once with support-weighted opacity.
+- `RenderIsoformArchitectureSvg` emits a deterministic multi-mode architecture
+  SVG derived from the same expert payload used by GUI/shell inspection.
+  - the top panel remains coordinate-true, preserving genomic exon positions
+    and introns
+  - when CDS ranges are available for mapped transcripts, the top panel uses
+    dual coding (faint full transcript exons + colored CDS blocks)
+  - the lower panel now adds a compressed transcript/product coupling view:
+    exon-chain transcript geometry, shared CDS colors, and isoform-local
+    protein axes
+  - shared CDS/exon colors are assigned by genomic exon family/position rather
+    than by within-lane segment order, so overlapping versions of the same
+    locus exon retain one color across different transcripts and proteoforms
+  - lower protein rails no longer force one shared amino-acid axis; instead
+    each isoform gets a local product axis while still staying linked back to
+    the genomic panel through the colored CDS segments above
 - `gentle.isoform_panel_resource.v1` supports optional protein reference-span
   hints per isoform:
   - `reference_start_aa` (1-based inclusive)
   - `reference_end_aa` (1-based inclusive)
-  - when present, protein lanes render and clip domains within this span while
-    keeping one shared amino-acid axis across isoforms (useful for TP53
-    N-terminus/C-terminus class overlays).
+  - when present, protein lanes clip domains within this span and project them
+    onto the isoform-local product axis (useful for TP53 N-terminus/C-terminus
+    class overlays and truncated proteoforms).
 - `gentle.isoform_panel_resource.v1` also supports panel-level transcript
   geometry mode:
   - `transcript_geometry_mode: exon|cds` (default `exon`)
@@ -1146,14 +1155,56 @@ external coding agent runtime, see:
   - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
 - shared feature-expert route now also accepts persisted UniProt projections as
   a target:
-  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID`
-  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID OUTPUT.svg`
+  - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID]`
+  - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] OUTPUT.svg`
+  - semantics:
+    - derive transcript CDS/protein products directly from the current sequence
+      state
+    - do not require any stored UniProt projection or other external protein
+      evidence
+    - optional `--transcript` narrows the compare window to one transcript id
+      while preserving the same source-neutral payload shape used by
+      external-opinion-backed protein experts
+  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
+  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
   - semantics:
     - resolve one persisted `gentle.uniprot_genome_projections.v1` record
     - build a shared `IsoformArchitectureView`
-    - transcript lanes come from the stored transcript/CDS-to-genome projection
-    - the protein lane uses the UniProt reference-protein coordinate system and
-      projected UniProt interval features
+    - transcript-native CDS/protein derivation is authoritative for transcript
+      and product geometry
+    - the persisted UniProt projection is consumed as one optional external
+      protein opinion layered onto that transcript-native product model
+    - each transcript/protein lane pair now clips to that transcript's mapped
+      amino-acid coverage and projected feature spans, so truncated isoforms do
+      not inherit full-length reference domains they do not encode
+    - rendered expert SVGs now preserve both:
+      - true genomic exon/intron position in the top panel
+      - transcript/product geometry in a lower panel whose transcript columns
+        are shared by genomic exon family while the protein rails stay
+        isoform-local
+      so skipped-exon proteoform differences become readable without throwing
+      away locus context
+    - if transcript features lack explicit `cds_ranges_1based`, the shared
+      projection path now prefers compatible `CDS` features before falling back
+      to whole-exon spans
+    - `FeatureExpertTarget::UniprotProjection` now carries a shared
+      `ProteinFeatureFilter { include_feature_keys[], exclude_feature_keys[] }`
+    - default filtering hides UniProt `CONFLICT` features unless the caller
+      explicitly re-includes them
+    - topology/membrane-style UniProt features (`SIGNAL`, `TRANSIT`,
+      `TOPO_DOM`, `TRANSMEM`, `INTRAMEM`) render in a dedicated lower band
+      beneath the protein rail instead of competing with the standard domain
+      label overlay
+    - per-transcript compare status is now source-neutral:
+      - `derived_only`
+      - `consistent_with_external_opinion`
+      - `low_confidence_external_opinion`
+      - `no_transcript_cds`
+      - `external_opinion_only`
+    - this comparison model is intentionally not UniProt-specific; future
+      external sources such as Ensembl proteoform/protein annotations are meant
+      to populate the same fields rather than replacing transcript-native
+      translation
 - UniProt feature-coding DNA query semantics:
   - resolves one persisted `gentle.uniprot_genome_projection.v1` record
   - matches `FEATURE_QUERY` case-insensitively against mapped UniProt feature
@@ -2394,6 +2445,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional `output_prefix`
 - Behavior:
   - derives one first-class protein sequence per selected/admitted transcript
+  - transcript-native translation is the authoritative product derivation path;
+    it does not consult UniProt or other external protein sources
   - uses annotated CDS translation when available
   - if CDS annotation is absent, falls back deterministically to:
     - an inferred ATG-start ORF on the derived transcript

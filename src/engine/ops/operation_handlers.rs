@@ -1124,7 +1124,7 @@ impl GentleEngine {
         Ok(())
     }
 
-    fn is_transcript_feature_for_derivation(feature: &gb_io::seq::Feature) -> bool {
+    pub(crate) fn is_transcript_feature_for_derivation(feature: &gb_io::seq::Feature) -> bool {
         let kind = feature.kind.to_string();
         kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
     }
@@ -1225,7 +1225,9 @@ impl GentleEngine {
             })
     }
 
-    fn merge_adjacent_ranges_0based(ranges_0based: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    pub(crate) fn merge_adjacent_ranges_0based(
+        ranges_0based: &[(usize, usize)],
+    ) -> Vec<(usize, usize)> {
         let mut sorted = ranges_0based.to_vec();
         sorted.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         let mut merged: Vec<(usize, usize)> = vec![];
@@ -1264,7 +1266,7 @@ impl GentleEngine {
         trimmed
     }
 
-    fn collect_matching_cds_features_for_derivation<'a>(
+    pub(crate) fn collect_matching_cds_features_for_derivation<'a>(
         source_features: &'a [gb_io::seq::Feature],
         source_feature: &gb_io::seq::Feature,
         exon_ranges_0based: &[(usize, usize)],
@@ -1309,7 +1311,7 @@ impl GentleEngine {
         matches
     }
 
-    fn map_source_ranges_to_transcript_local_ranges_0based(
+    pub(crate) fn map_source_ranges_to_transcript_local_ranges_0based(
         source_ranges_0based: &[(usize, usize)],
         exon_segments_forward: &[(usize, usize, usize, usize)],
         is_reverse: bool,
@@ -1347,6 +1349,68 @@ impl GentleEngine {
             merged = Self::merge_adjacent_ranges_0based(&merged);
         }
         merged
+    }
+
+    pub(crate) fn map_transcript_local_ranges_to_source_ranges_0based(
+        local_ranges_0based: &[(usize, usize)],
+        exon_segments_forward: &[(usize, usize, usize, usize)],
+        is_reverse: bool,
+        total_len: usize,
+    ) -> Vec<(usize, usize)> {
+        let mut forward_local_ranges = local_ranges_0based.to_vec();
+        if is_reverse {
+            forward_local_ranges = forward_local_ranges
+                .into_iter()
+                .map(|(start, end)| {
+                    (
+                        total_len.saturating_sub(end),
+                        total_len.saturating_sub(start),
+                    )
+                })
+                .collect();
+        }
+        let mut source_ranges = vec![];
+        for (local_start, local_end) in forward_local_ranges {
+            for (source_start, source_end, exon_local_start, exon_local_end) in exon_segments_forward {
+                let overlap_start = local_start.max(*exon_local_start);
+                let overlap_end = local_end.min(*exon_local_end);
+                if overlap_end <= overlap_start {
+                    continue;
+                }
+                let offset_start = overlap_start.saturating_sub(*exon_local_start);
+                let offset_end = overlap_end.saturating_sub(*exon_local_start);
+                let mapped_start = source_start.saturating_add(offset_start);
+                let mapped_end = source_start.saturating_add(offset_end);
+                if mapped_end > mapped_start && mapped_end <= *source_end {
+                    source_ranges.push((mapped_start, mapped_end));
+                }
+            }
+        }
+        Self::merge_adjacent_ranges_0based(&source_ranges)
+    }
+
+    pub(crate) fn resolve_transcript_source_cds_ranges_0based(
+        source_feature: &gb_io::seq::Feature,
+        source_features: &[gb_io::seq::Feature],
+        exon_ranges_0based: &[(usize, usize)],
+    ) -> Vec<(usize, usize)> {
+        let transcript_cds_ranges_0based =
+            Self::feature_qualifier_ranges_0based(source_feature, "cds_ranges_1based");
+        let matching_cds_features = Self::collect_matching_cds_features_for_derivation(
+            source_features,
+            source_feature,
+            exon_ranges_0based,
+        );
+        if !transcript_cds_ranges_0based.is_empty() {
+            transcript_cds_ranges_0based
+        } else {
+            Self::merge_adjacent_ranges_0based(
+                &matching_cds_features
+                    .iter()
+                    .flat_map(|feature| Self::feature_ranges_0based_for_derivation(feature))
+                    .collect::<Vec<_>>(),
+            )
+        }
     }
 
     fn infer_organelle_for_derivation(
@@ -1507,24 +1571,17 @@ impl GentleEngine {
         transcript_id: &str,
         transcript_label: &str,
     ) -> Result<Option<TranscriptProteinDerivation>, EngineError> {
-        let transcript_cds_ranges_0based =
-            Self::feature_qualifier_ranges_0based(source_feature, "cds_ranges_1based");
         let matching_cds_features = Self::collect_matching_cds_features_for_derivation(
             source_features,
             source_feature,
             exon_ranges_0based,
         );
         let representative_cds_feature = matching_cds_features.first().copied();
-        let source_cds_ranges_0based = if !transcript_cds_ranges_0based.is_empty() {
-            transcript_cds_ranges_0based
-        } else {
-            Self::merge_adjacent_ranges_0based(
-                &matching_cds_features
-                    .iter()
-                    .flat_map(|feature| Self::feature_ranges_0based_for_derivation(feature))
-                    .collect::<Vec<_>>(),
-            )
-        };
+        let source_cds_ranges_0based = Self::resolve_transcript_source_cds_ranges_0based(
+            source_feature,
+            source_features,
+            exon_ranges_0based,
+        );
         if source_cds_ranges_0based.is_empty() {
             return Ok(None);
         }
@@ -1646,7 +1703,7 @@ impl GentleEngine {
         }))
     }
 
-    fn infer_transcript_protein_derivation_without_annotation(
+    pub(crate) fn infer_transcript_protein_derivation_without_annotation(
         derived_sequence: &str,
         source_feature: &gb_io::seq::Feature,
         source_feature_id: usize,
@@ -2286,7 +2343,7 @@ impl GentleEngine {
         Ok(ids)
     }
 
-    fn derive_transcript_sequence_from_feature(
+    pub(crate) fn derive_transcript_sequence_from_feature(
         source_sequence_upper: &[u8],
         source_feature: &gb_io::seq::Feature,
         source_features: &[gb_io::seq::Feature],

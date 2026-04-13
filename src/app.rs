@@ -16194,6 +16194,38 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_transcript_protein_expert(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+    ) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.focus_transcript_protein_expert(transcript_id_filter);
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_transcript_protein_expert(transcript_id_filter);
+            return;
+        }
+        let exists = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if exists {
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            window.focus_transcript_protein_expert(transcript_id_filter);
+            self.new_windows.push(window);
+        }
+    }
+
     fn open_uniprot_projection_expert_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
         let seq_id = seq_id.trim();
         let projection_id = projection_id.trim();
@@ -16231,9 +16263,34 @@ Error: `{err}`"
         self.uniprot_map_seq_id = seq_id.to_string();
         self.uniprot_map_projection_id = projection_id.to_string();
         self.uniprot_status = format!(
-            "Opening UniProt protein expert for projection '{}' on '{}'",
+            "Opening Protein Expert for UniProt projection '{}' on '{}'",
             projection_id, seq_id
         );
+    }
+
+    fn open_transcript_protein_expert_from_dialog(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+    ) {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            self.uniprot_status = "seq_id is required for transcript-native Protein Expert".to_string();
+            return;
+        }
+        self.open_sequence_window_for_transcript_protein_expert(seq_id, transcript_id_filter);
+        self.uniprot_map_seq_id = seq_id.to_string();
+        self.uniprot_status = if let Some(transcript_id_filter) = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            format!(
+                "Opening transcript-native Protein Expert for '{}' on '{}'",
+                transcript_id_filter, seq_id
+            )
+        } else {
+            format!("Opening transcript-native Protein Expert on '{}'", seq_id)
+        };
     }
 
     fn fetch_uniprot_entry_from_dialog(&mut self) {
@@ -16407,7 +16464,10 @@ Error: `{err}`"
             .unwrap()
             .apply(Operation::RenderFeatureExpertSvg {
                 seq_id: seq_id.to_string(),
-                target: FeatureExpertTarget::uniprot_projection(projection_id.to_string()),
+                target: FeatureExpertTarget::UniprotProjection {
+                    projection_id: projection_id.to_string(),
+                    protein_feature_filter: Default::default(),
+                },
                 path: path_text.clone(),
             });
         match result {
@@ -16859,7 +16919,7 @@ Error: `{err}`"
             if ui
                 .button("Open Protein Expert")
                 .on_hover_text(
-                    "Open a TP53-style transcript/CDS -> UniProt reference protein mapping view for the current projection",
+                    "Open the Protein Expert with transcript-native translation as primary and the stored UniProt projection as optional external evidence",
                 )
                 .clicked()
             {
@@ -16872,6 +16932,19 @@ Error: `{err}`"
                         "Project an entry first or provide seq_id + entry_id to resolve a projection"
                             .to_string();
                 }
+            }
+            if ui
+                .button("Open Derived Protein Expert")
+                .on_hover_text(
+                    "Open the same Protein Expert without requiring any external UniProt projection; optional transcript filter uses the current transcript field",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                self.open_transcript_protein_expert_from_dialog(
+                    &seq_id,
+                    Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id).as_deref(),
+                );
             }
             if ui
                 .button("Render Protein Mapping SVG...")
@@ -16892,7 +16965,7 @@ Error: `{err}`"
             }
         });
         ui.small(
-            "Open Protein Expert and Render Protein Mapping SVG... both reuse the shared isoform-architecture canvas, but source transcript/CDS-to-protein geometry from the stored UniProt projection rather than a curated panel JSON.",
+            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Protein Mapping SVG... exports the current shared Protein Expert view for the stored UniProt projection.",
         );
         ui.separator();
         ui.label("Feature coding DNA query");

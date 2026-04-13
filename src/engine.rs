@@ -56,8 +56,8 @@ use crate::{
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
     tf_motifs,
     uniprot::{
-        UniprotAaGenomicSegment, UniprotEntry, UniprotEntrySummary, UniprotFeatureProjection,
-        UniprotGenomeProjection, UniprotGenomeProjectionSummary, UniprotTranscriptProjection,
+        UniprotAaGenomicSegment, UniprotEntry, UniprotEntrySummary, UniprotGenomeProjection,
+        UniprotGenomeProjectionSummary, UniprotTranscriptProjection,
         normalize_entry_id as normalize_uniprot_entry_id, parse_swiss_prot_text,
     },
 };
@@ -89,9 +89,10 @@ pub use gentle_protocol::{
     Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
     GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
     LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
-    Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily,
+    RackPhysicalTemplateKind, RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
 };
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
@@ -226,7 +227,9 @@ pub use crate::feature_expert::{
     SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
     SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
     SplicingMatrixRow, SplicingRange, SplicingScopePreset, SplicingTranscriptLane,
-    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView, TranscriptProteinComparison,
+    TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
+    TranscriptProteinExternalOpinion,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";

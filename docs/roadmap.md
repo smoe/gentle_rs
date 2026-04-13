@@ -1180,6 +1180,14 @@ order. Durable architecture constraints and decisions remain in
   - GUI follow-up now implemented:
     - `UniProt Mapping...` offers `Open Protein Expert` for the active
       projection and recent stored projections
+    - the same specialist now also offers `Open Derived Protein Expert`, so
+      transcript-native protein inspection no longer requires a stored UniProt
+      projection
+    - the same transcript-first protein expert is now also available over the
+      shared shell/CLI route via
+      `inspect-feature-expert SEQ_ID protein-comparison [--transcript ID]` and
+      `render-feature-expert-svg ... protein-comparison ...`, so transcript-only
+      inspection does not depend on the GUI either
     - the same specialist now also offers direct `Render Protein Mapping SVG...`
       affordances for the active/stored projection so inspection and export use
       one persisted projection handle
@@ -1196,6 +1204,45 @@ order. Durable architecture constraints and decisions remain in
       `render-feature-expert-svg ... uniprot-projection ...`, keeping the GUI
       as a thin presentation layer over persisted
       `gentle.uniprot_genome_projections.v1` state
+    - the shared UniProt protein-mapping view/export path now also applies a
+      default negative protein-feature filter for `CONFLICT` annotations and
+      renders membrane/topology annotations in a dedicated lower band so
+      transmembrane proteins remain readable in exported expert SVGs
+    - transcript/product pairing is now preserved more faithfully by clipping
+      each UniProt projection protein lane to that transcript's mapped
+      amino-acid coverage and projected feature spans, so missing or partial
+      domains stop being painted as if every isoform encoded the full
+      reference-protein feature set
+    - the shared isoform/projection renderer now combines:
+      - a coordinate-true exon/intron panel
+      - a shared-genomic-exon-column transcript/product coupling panel with
+        shared exon-family colors
+      - isoform-local protein axes
+      so skipped-exon proteoform differences are easier to read without losing
+      genomic context
+    - exon/CDS colors in that multi-mode renderer are now keyed by genomic exon
+      family/position rather than within-isoform segment order, so vertically
+      matching locus exons keep one color across transcripts and product lanes
+    - the lower transcript/product panel now also reuses those shared genomic
+      exon-family columns across isoforms, so visually aligned transcript
+      blocks stop drifting into different colors before feeding the protein
+      contribution lanes
+    - the shared UniProt projection fallback now also prefers compatible `CDS`
+      features when `mRNA` features lack explicit `cds_ranges_1based`, which
+      materially improves transcript-to-product alignment on RefSeq-style locus
+      records such as TP73
+    - the Protein Expert is now transcript-first:
+      - transcript-native translation defines transcript/product geometry
+      - UniProt is treated as one optional external protein opinion
+      - per-transcript comparison now records `derived_only`,
+        `consistent_with_external_opinion`,
+        `low_confidence_external_opinion`, `no_transcript_cds`, or
+        `external_opinion_only`
+      - the GUI details grid exposes translation table/source, derivation mode,
+        external-opinion source, status, and mismatch summaries inline
+    - future external protein evidence should reuse that same comparison
+      contract; Ensembl proteoform/protein annotations are the next planned
+      source, but are not implemented yet in this slice
   - container semantics follow-up:
     - persisted containers now default to `declared_contents_exclusive=true`
       so clean vials/tubes mean “only the listed members”

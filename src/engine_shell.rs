@@ -46,6 +46,7 @@ use crate::{
         RackProfileKind, RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        ProteinFeatureFilter,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
@@ -8077,9 +8078,9 @@ fn parse_feature_expert_target_tokens(
     tokens: &[String],
     context: &str,
 ) -> Result<FeatureExpertTarget, String> {
-    if tokens.len() < 2 {
+    if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | protein-comparison [--transcript ID] | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -8180,20 +8181,92 @@ fn parse_feature_expert_target_tokens(
             }
             Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
         }
+        "protein-comparison" => {
+            let mut transcript_id_filter: Option<String> = None;
+            let mut idx = 1usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--transcript", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--transcript must not be empty".to_string());
+                        }
+                        transcript_id_filter = Some(trimmed.to_string());
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} protein-comparison"
+                        ));
+                    }
+                }
+            }
+            Ok(FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter,
+                protein_feature_filter: ProteinFeatureFilter::default(),
+            })
+        }
         "uniprot-projection" => {
-            if tokens.len() != 2 {
+            if tokens.len() < 2 {
                 return Err(format!(
-                    "{context} uniprot-projection target expects exactly: uniprot-projection PROJECTION_ID"
+                    "{context} uniprot-projection target expects at least: uniprot-projection PROJECTION_ID"
                 ));
             }
             let projection_id = tokens[1].trim().to_string();
             if projection_id.is_empty() {
                 return Err("uniprot-projection PROJECTION_ID must not be empty".to_string());
             }
-            Ok(FeatureExpertTarget::uniprot_projection(projection_id))
+            let mut protein_feature_filter = ProteinFeatureFilter::default();
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-key" => {
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err(
+                                "--feature-key requires a UniProt feature key such as DOMAIN or REGION"
+                                    .to_string(),
+                            );
+                        }
+                        let value = tokens[idx].trim();
+                        if value.is_empty() {
+                            return Err("--feature-key must not be empty".to_string());
+                        }
+                        protein_feature_filter
+                            .include_feature_keys
+                            .push(value.to_string());
+                    }
+                    "--feature-key-not" => {
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err(
+                                "--feature-key-not requires a UniProt feature key such as VARIANT or STRAND"
+                                    .to_string(),
+                            );
+                        }
+                        let value = tokens[idx].trim();
+                        if value.is_empty() {
+                            return Err("--feature-key-not must not be empty".to_string());
+                        }
+                        protein_feature_filter
+                            .exclude_feature_keys
+                            .push(value.to_string());
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} uniprot-projection"
+                        ));
+                    }
+                }
+                idx += 1;
+            }
+            Ok(FeatureExpertTarget::UniprotProjection {
+                projection_id,
+                protein_feature_filter,
+            })
         }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|uniprot-projection)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform|protein-comparison|uniprot-projection)"
         )),
     }
 }
@@ -10932,7 +11005,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         "inspect-feature-expert" => {
-            if tokens.len() < 4 {
+            if tokens.len() < 3 {
                 return Err(token_error(cmd));
             }
             let seq_id = tokens[1].clone();
@@ -10941,7 +11014,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::InspectFeatureExpert { seq_id, target })
         }
         "render-feature-expert-svg" => {
-            if tokens.len() < 5 {
+            if tokens.len() < 4 {
                 return Err(token_error(cmd));
             }
             let seq_id = tokens[1].clone();

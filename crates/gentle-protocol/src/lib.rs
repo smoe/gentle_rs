@@ -693,6 +693,22 @@ impl SplicingScopePreset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ProteinFeatureFilter {
+    pub include_feature_keys: Vec<String>,
+    pub exclude_feature_keys: Vec<String>,
+}
+
+impl Default for ProteinFeatureFilter {
+    fn default() -> Self {
+        Self {
+            include_feature_keys: vec![],
+            exclude_feature_keys: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
     TfbsFeature {
@@ -715,8 +731,16 @@ pub enum FeatureExpertTarget {
     IsoformArchitecture {
         panel_id: String,
     },
+    ProteinComparison {
+        #[serde(default)]
+        transcript_id_filter: Option<String>,
+        #[serde(default)]
+        protein_feature_filter: ProteinFeatureFilter,
+    },
     UniprotProjection {
         projection_id: String,
+        #[serde(default)]
+        protein_feature_filter: ProteinFeatureFilter,
     },
 }
 
@@ -724,6 +748,7 @@ impl FeatureExpertTarget {
     pub fn uniprot_projection(projection_id: impl Into<String>) -> Self {
         Self::UniprotProjection {
             projection_id: projection_id.into(),
+            protein_feature_filter: ProteinFeatureFilter::default(),
         }
     }
 
@@ -754,8 +779,50 @@ impl FeatureExpertTarget {
             Self::IsoformArchitecture { panel_id } => {
                 format!("isoform architecture panel '{panel_id}'")
             }
-            Self::UniprotProjection { projection_id, .. } => {
-                format!("UniProt projection '{projection_id}'")
+            Self::ProteinComparison {
+                transcript_id_filter,
+                protein_feature_filter,
+            } => {
+                let mut out = "protein comparison".to_string();
+                if let Some(transcript_id_filter) = transcript_id_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                {
+                    out.push_str(&format!(" transcript={transcript_id_filter}"));
+                }
+                if !protein_feature_filter.include_feature_keys.is_empty() {
+                    out.push_str(&format!(
+                        " include={}",
+                        protein_feature_filter.include_feature_keys.join(",")
+                    ));
+                }
+                if !protein_feature_filter.exclude_feature_keys.is_empty() {
+                    out.push_str(&format!(
+                        " exclude={}",
+                        protein_feature_filter.exclude_feature_keys.join(",")
+                    ));
+                }
+                out
+            }
+            Self::UniprotProjection {
+                projection_id,
+                protein_feature_filter,
+            } => {
+                let mut out = format!("UniProt projection '{projection_id}'");
+                if !protein_feature_filter.include_feature_keys.is_empty() {
+                    out.push_str(&format!(
+                        " include={}",
+                        protein_feature_filter.include_feature_keys.join(",")
+                    ));
+                }
+                if !protein_feature_filter.exclude_feature_keys.is_empty() {
+                    out.push_str(&format!(
+                        " exclude={}",
+                        protein_feature_filter.exclude_feature_keys.join(",")
+                    ));
+                }
+                out
             }
         }
     }
@@ -904,6 +971,8 @@ pub struct IsoformArchitectureProteinLane {
     pub domains: Vec<IsoformArchitectureProteinDomain>,
     #[serde(default)]
     pub transactivation_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comparison: Option<TranscriptProteinComparison>,
 }
 
 fn default_isoform_transcript_geometry_mode() -> String {
@@ -2913,6 +2982,92 @@ pub struct TranscriptProteinDerivation {
     pub terminal_stop_trimmed: bool,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Optional external protein-evidence sources compared against
+/// transcript-native translation.
+pub enum ProteinExternalOpinionSource {
+    #[default]
+    Uniprot,
+    Ensembl,
+    Other,
+}
+
+impl ProteinExternalOpinionSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Uniprot => "uniprot",
+            Self::Ensembl => "ensembl",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Comparison status between transcript-native translation and one optional
+/// external protein opinion.
+pub enum TranscriptProteinComparisonStatus {
+    #[default]
+    DerivedOnly,
+    ConsistentWithExternalOpinion,
+    LowConfidenceExternalOpinion,
+    NoTranscriptCds,
+    ExternalOpinionOnly,
+}
+
+impl TranscriptProteinComparisonStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DerivedOnly => "derived_only",
+            Self::ConsistentWithExternalOpinion => "consistent_with_external_opinion",
+            Self::LowConfidenceExternalOpinion => "low_confidence_external_opinion",
+            Self::NoTranscriptCds => "no_transcript_cds",
+            Self::ExternalOpinionOnly => "external_opinion_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One optional external protein interpretation layered onto a
+/// transcript-native product.
+pub struct TranscriptProteinExternalOpinion {
+    #[serde(default)]
+    pub source: ProteinExternalOpinionSource,
+    pub source_id: String,
+    pub source_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_length_aa: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_start_aa: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_end_aa: Option<usize>,
+    #[serde(default)]
+    pub genomic_coding_ranges_1based: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Source-neutral transcript protein comparison record used by shared expert
+/// views.
+pub struct TranscriptProteinComparison {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default)]
+    pub status: TranscriptProteinComparisonStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived: Option<TranscriptProteinDerivation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_opinion: Option<TranscriptProteinExternalOpinion>,
+    #[serde(default)]
+    pub mismatch_reasons: Vec<String>,
+    #[serde(default)]
+    pub derived_only_exon_ranges_1based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub external_only_exon_ranges_1based: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

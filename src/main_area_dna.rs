@@ -4412,6 +4412,30 @@ mod tests {
     }
 
     #[test]
+    fn isoform_expert_window_title_uses_protein_expert_for_transcript_native_source() {
+        let view = IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "protein_compare@seq1".to_string(),
+            gene_symbol: "TP73".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
+            panel_source: Some(
+                "Transcript-native protein derivation (external protein opinions optional)"
+                    .to_string(),
+            ),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "protein".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![],
+            warnings: vec![],
+        };
+        assert_eq!(
+            MainAreaDna::isoform_expert_window_title("protein_compare@seq1", "seq1", &view),
+            "Protein Expert - TP73 (seq1)"
+        );
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -8228,6 +8252,22 @@ impl MainAreaDna {
                 "Could not open UniProt protein expert for '{}': {err}",
                 projection_id.trim()
             );
+        }
+    }
+
+    pub fn focus_transcript_protein_expert(&mut self, transcript_id_filter: Option<&str>) {
+        if let Err(err) = self.open_transcript_protein_expert(transcript_id_filter) {
+            self.op_status = if let Some(transcript_id_filter) = transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                format!(
+                    "Could not open transcript-native protein expert for '{}': {err}",
+                    transcript_id_filter
+                )
+            } else {
+                format!("Could not open transcript-native protein expert: {err}")
+            };
         }
     }
 

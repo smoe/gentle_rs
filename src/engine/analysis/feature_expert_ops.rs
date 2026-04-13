@@ -10,7 +10,8 @@
 //! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
-use crate::{AMINO_ACIDS, amino_acids::STOP_CODON, uniprot::UniprotFeature};
+use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
+use crate::uniprot::UniprotFeatureProjection;
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -24,6 +25,19 @@ pub(super) struct DbsnpResolvedPlacement {
     pub position_1based: usize,
     pub assembly_name: Option<String>,
     pub gene_symbols: Vec<String>,
+}
+
+#[derive(Clone)]
+struct DerivedProteinExpertTranscript {
+    transcript_id: String,
+    transcript_label: String,
+    transcript_feature_id: usize,
+    is_reverse: bool,
+    transcript_exons_1based: Vec<(usize, usize)>,
+    genomic_cds_ranges_1based: Vec<(usize, usize)>,
+    intron_ranges_1based: Vec<(usize, usize)>,
+    cds_to_protein_segments: Vec<IsoformArchitectureCdsAaSegment>,
+    derivation: Option<TranscriptProteinDerivation>,
 }
 
 impl GentleEngine {
@@ -2313,15 +2327,21 @@ impl GentleEngine {
             let mut cds_ranges =
                 Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based");
             if cds_ranges.is_empty() {
-                let mut fallback = vec![];
-                collect_location_ranges_usize(&feature.location, &mut fallback);
-                fallback.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-                fallback.retain(|(start, end)| end > start);
-                cds_ranges = fallback;
-                transcript_warnings.push(format!(
-                    "Transcript '{}' has no cds_ranges_1based qualifier; fell back to feature exon spans",
-                    transcript_id
-                ));
+                if let Some(inferred_cds_ranges) =
+                    Self::infer_cds_ranges_from_compatible_cds_features(features, feature)
+                {
+                    cds_ranges = inferred_cds_ranges;
+                } else {
+                    let mut fallback = vec![];
+                    collect_location_ranges_usize(&feature.location, &mut fallback);
+                    fallback.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                    fallback.retain(|(start, end)| end > start);
+                    cds_ranges = fallback;
+                    transcript_warnings.push(format!(
+                        "Transcript '{}' has no cds_ranges_1based qualifier or compatible CDS feature; fell back to feature exon spans",
+                        transcript_id
+                    ));
+                }
             }
             let aa_reference_segments =
                 Self::cds_ranges_to_reference_aa_segments(cds_ranges.clone(), is_reverse, Some(1))
@@ -2407,17 +2427,63 @@ impl GentleEngine {
         })
     }
 
-    fn uniprot_feature_domain_name(feature: &UniprotFeature) -> String {
-        let key = feature.key.trim();
-        let note = feature
-            .note
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+    fn uniprot_feature_domain_name_from_parts(
+        feature_key: &str,
+        feature_note: Option<&str>,
+    ) -> String {
+        let key = feature_key.trim();
+        let note = feature_note.map(str::trim).filter(|value| !value.is_empty());
         match note {
             Some(note) if !note.eq_ignore_ascii_case(key) => format!("{key}: {note}"),
             _ => key.to_string(),
         }
+    }
+
+    fn projected_uniprot_feature_domain(
+        feature_projection: &UniprotFeatureProjection,
+    ) -> Option<IsoformArchitectureProteinDomain> {
+        let projected_start = feature_projection
+            .genomic_segments
+            .iter()
+            .filter_map(|segment| {
+                if segment.aa_start == 0 || segment.aa_end < segment.aa_start {
+                    return None;
+                }
+                Some(segment.aa_start)
+            })
+            .min()?;
+        let projected_end = feature_projection
+            .genomic_segments
+            .iter()
+            .filter_map(|segment| {
+                if segment.aa_start == 0 || segment.aa_end < segment.aa_start {
+                    return None;
+                }
+                Some(segment.aa_end.max(segment.aa_start))
+            })
+            .max()?;
+        if projected_end < projected_start {
+            return None;
+        }
+        Some(IsoformArchitectureProteinDomain {
+            name: Self::uniprot_feature_domain_name_from_parts(
+                &feature_projection.feature_key,
+                feature_projection.feature_note.as_deref(),
+            ),
+            start_aa: projected_start,
+            end_aa: projected_end,
+            color_hex: Some(Self::uniprot_feature_color_hex(
+                &feature_projection.feature_key,
+            )),
+        })
+    }
+
+    fn uniprot_feature_hidden_by_default(feature_key: &str) -> bool {
+        matches!(feature_key.trim().to_ascii_uppercase().as_str(), "CONFLICT")
+    }
+
+    fn normalized_protein_feature_key(feature_key: &str) -> String {
+        feature_key.trim().to_ascii_uppercase()
     }
 
     fn uniprot_feature_color_hex(feature_key: &str) -> String {
@@ -2450,6 +2516,359 @@ impl GentleEngine {
         ranges
     }
 
+    fn local_ranges_0based_from_derivation(
+        derivation: Option<&TranscriptProteinDerivation>,
+    ) -> Vec<(usize, usize)> {
+        derivation
+            .into_iter()
+            .flat_map(|derivation| derivation.cds_ranges_1based.iter().copied())
+            .filter_map(|(start_1based, end_1based)| {
+                if start_1based == 0 || end_1based < start_1based {
+                    return None;
+                }
+                Some((start_1based.saturating_sub(1), end_1based))
+            })
+            .collect()
+    }
+
+    fn build_transcript_exon_segments_forward(
+        exon_ranges_0based: &[(usize, usize)],
+    ) -> Vec<(usize, usize, usize, usize)> {
+        let mut segments = vec![];
+        let mut local_cursor = 0usize;
+        for (start_0based, end_0based_exclusive) in exon_ranges_0based {
+            if *end_0based_exclusive <= *start_0based {
+                continue;
+            }
+            let local_start = local_cursor;
+            local_cursor = local_cursor.saturating_add(end_0based_exclusive - start_0based);
+            segments.push((
+                *start_0based,
+                *end_0based_exclusive,
+                local_start,
+                local_cursor,
+            ));
+        }
+        segments
+    }
+
+    fn build_transcript_introns_from_ranges_1based(
+        ranges_1based: &[(usize, usize)],
+    ) -> Vec<(usize, usize)> {
+        let mut ordered = ranges_1based.to_vec();
+        ordered.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut introns = vec![];
+        for pair in ordered.windows(2) {
+            if pair[1].0 > pair[0].1.saturating_add(1) {
+                introns.push((pair[0].1.saturating_add(1), pair[1].0.saturating_sub(1)));
+            }
+        }
+        introns
+    }
+
+    fn build_derived_protein_expert_transcript(
+        source_sequence_upper: &[u8],
+        source_feature: &gb_io::seq::Feature,
+        source_features: &[gb_io::seq::Feature],
+        source_feature_id: usize,
+        source_seq_id: &str,
+    ) -> Result<DerivedProteinExpertTranscript, EngineError> {
+        let exon_ranges_0based = Self::feature_location_ranges_0based(source_feature);
+        let exon_segments_forward = Self::build_transcript_exon_segments_forward(&exon_ranges_0based);
+        let transcript_exons_1based = Self::feature_location_ranges_1based(source_feature);
+        let (
+            derived_transcript,
+            transcript_id,
+            transcript_label,
+            is_reverse,
+            _exon_count,
+            annotated_derivation,
+        ) = Self::derive_transcript_sequence_from_feature(
+            source_sequence_upper,
+            source_feature,
+            source_features,
+            source_feature_id,
+            source_seq_id,
+        )?;
+        let derivation = match annotated_derivation {
+            Some(derivation) => Some(derivation),
+            None => Self::infer_transcript_protein_derivation_without_annotation(
+                &derived_transcript.get_forward_string(),
+                source_feature,
+                source_feature_id,
+                source_seq_id,
+                source_features,
+                &transcript_id,
+                &transcript_label,
+            )?,
+        };
+        let local_cds_ranges_0based = Self::local_ranges_0based_from_derivation(derivation.as_ref());
+        let genomic_cds_ranges_0based = if !local_cds_ranges_0based.is_empty() {
+            Self::map_transcript_local_ranges_to_source_ranges_0based(
+                &local_cds_ranges_0based,
+                &exon_segments_forward,
+                is_reverse,
+                derived_transcript.len(),
+            )
+        } else {
+            vec![]
+        };
+        let genomic_cds_ranges_1based = genomic_cds_ranges_0based
+            .iter()
+            .map(|(start_0based, end_0based_exclusive)| {
+                (start_0based.saturating_add(1), *end_0based_exclusive)
+            })
+            .collect::<Vec<_>>();
+        let cds_to_protein_segments = if genomic_cds_ranges_0based.is_empty() {
+            vec![]
+        } else {
+            Self::cds_ranges_to_reference_aa_segments(
+                genomic_cds_ranges_0based,
+                is_reverse,
+                Some(1),
+            )
+        };
+        let intron_ranges_1based =
+            Self::build_transcript_introns_from_ranges_1based(&genomic_cds_ranges_1based);
+        Ok(DerivedProteinExpertTranscript {
+            transcript_id,
+            transcript_label,
+            transcript_feature_id: source_feature_id,
+            is_reverse,
+            transcript_exons_1based,
+            genomic_cds_ranges_1based,
+            intron_ranges_1based,
+            cds_to_protein_segments,
+            derivation,
+        })
+    }
+
+    fn ranges_overlap_1based(left: (usize, usize), right: (usize, usize)) -> bool {
+        left.0 <= right.1 && right.0 <= left.1
+    }
+
+    fn internal_nonoverlapping_ranges_1based(
+        ranges_1based: &[(usize, usize)],
+        other_ranges_1based: &[(usize, usize)],
+        is_reverse: bool,
+    ) -> Vec<(usize, usize)> {
+        let ordered = Self::order_ranges_for_transcript(
+            ranges_1based
+                .iter()
+                .map(|(start_1based, end_1based)| {
+                    (start_1based.saturating_sub(1), *end_1based)
+                })
+                .collect(),
+            is_reverse,
+        )
+        .into_iter()
+        .map(|(start_0based, end_0based_exclusive)| {
+            (start_0based.saturating_add(1), end_0based_exclusive)
+        })
+        .collect::<Vec<_>>();
+        ordered
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, range)| {
+                let internal = idx > 0 && idx + 1 < ordered.len();
+                let overlaps_other = other_ranges_1based
+                    .iter()
+                    .copied()
+                    .any(|other| Self::ranges_overlap_1based(*range, other));
+                (internal && !overlaps_other).then_some(*range)
+            })
+            .collect()
+    }
+
+    fn map_genomic_range_to_local_aa_ranges(
+        genomic_start_1based: usize,
+        genomic_end_1based: usize,
+        transcript_segments: &[IsoformArchitectureCdsAaSegment],
+        is_reverse: bool,
+    ) -> Vec<(usize, usize)> {
+        let interval_start = genomic_start_1based.min(genomic_end_1based);
+        let interval_end = genomic_start_1based.max(genomic_end_1based);
+        let mut out = vec![];
+        for segment in transcript_segments {
+            let segment_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
+            let segment_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
+            let overlap_start = interval_start.max(segment_start);
+            let overlap_end = interval_end.min(segment_end);
+            if overlap_end < overlap_start {
+                continue;
+            }
+            let local_start = if is_reverse {
+                segment
+                    .aa_start
+                    .saturating_add(segment_end.saturating_sub(overlap_end) / 3)
+            } else {
+                segment
+                    .aa_start
+                    .saturating_add(overlap_start.saturating_sub(segment_start) / 3)
+            };
+            let local_end = if is_reverse {
+                segment.aa_start.saturating_add(
+                    segment_end
+                        .saturating_sub(overlap_start)
+                        .saturating_add(1)
+                        / 3,
+                )
+            } else {
+                segment.aa_start.saturating_add(
+                    overlap_end
+                        .saturating_sub(segment_start)
+                        .saturating_add(1)
+                        / 3,
+                )
+            }
+            .saturating_sub(1);
+            if local_end >= local_start {
+                out.push((local_start, local_end));
+            }
+        }
+        out
+    }
+
+    fn projected_uniprot_feature_domain_on_transcript(
+        feature_projection: &UniprotFeatureProjection,
+        transcript_segments: &[IsoformArchitectureCdsAaSegment],
+        is_reverse: bool,
+    ) -> Option<IsoformArchitectureProteinDomain> {
+        if transcript_segments.is_empty() {
+            return Self::projected_uniprot_feature_domain(feature_projection);
+        }
+        let mut mapped_local_ranges = vec![];
+        for genomic_segment in &feature_projection.genomic_segments {
+            mapped_local_ranges.extend(Self::map_genomic_range_to_local_aa_ranges(
+                genomic_segment.genomic_start_1based,
+                genomic_segment.genomic_end_1based,
+                transcript_segments,
+                is_reverse,
+            ));
+        }
+        let projected_start = mapped_local_ranges.iter().map(|(start, _)| *start).min()?;
+        let projected_end = mapped_local_ranges.iter().map(|(_, end)| *end).max()?;
+        (projected_end >= projected_start).then(|| IsoformArchitectureProteinDomain {
+            name: Self::uniprot_feature_domain_name_from_parts(
+                &feature_projection.feature_key,
+                feature_projection.feature_note.as_deref(),
+            ),
+            start_aa: projected_start,
+            end_aa: projected_end,
+            color_hex: Some(Self::uniprot_feature_color_hex(
+                &feature_projection.feature_key,
+            )),
+        })
+    }
+
+    fn build_uniprot_external_opinion_summary(
+        projection_id: &str,
+        entry: &UniprotEntry,
+        transcript: &UniprotTranscriptProjection,
+    ) -> gentle_protocol::TranscriptProteinExternalOpinion {
+        let expected_length_aa = (entry.sequence_length > 0).then_some(entry.sequence_length);
+        let reference_start_aa = transcript.aa_segments.iter().map(|segment| segment.aa_start).min();
+        let reference_end_aa = transcript.aa_segments.iter().map(|segment| segment.aa_end).max();
+        gentle_protocol::TranscriptProteinExternalOpinion {
+            source: gentle_protocol::ProteinExternalOpinionSource::Uniprot,
+            source_id: projection_id.to_string(),
+            source_label: format!("UniProt {} ({})", entry.entry_id, entry.accession),
+            expected_length_aa,
+            reference_start_aa,
+            reference_end_aa,
+            genomic_coding_ranges_1based: Self::uniprot_projection_segment_ranges(
+                &transcript.aa_segments,
+            ),
+        }
+    }
+
+    fn build_transcript_protein_comparison(
+        transcript_id: &str,
+        transcript_label: &str,
+        is_reverse: bool,
+        derivation: Option<&TranscriptProteinDerivation>,
+        derived_coding_ranges_1based: &[(usize, usize)],
+        external_opinion: Option<gentle_protocol::TranscriptProteinExternalOpinion>,
+    ) -> gentle_protocol::TranscriptProteinComparison {
+        let external_ranges_1based = external_opinion
+            .as_ref()
+            .map(|opinion| opinion.genomic_coding_ranges_1based.clone())
+            .unwrap_or_default();
+        let derived_only_internal = Self::internal_nonoverlapping_ranges_1based(
+            derived_coding_ranges_1based,
+            &external_ranges_1based,
+            is_reverse,
+        );
+        let external_only_internal = Self::internal_nonoverlapping_ranges_1based(
+            &external_ranges_1based,
+            derived_coding_ranges_1based,
+            is_reverse,
+        );
+        let mut mismatch_reasons = vec![];
+        if !derived_only_internal.is_empty() {
+            mismatch_reasons.push(format!(
+                "Derived transcript translation contains internal coding exon(s) absent from the external protein opinion: {}",
+                derived_only_internal
+                    .iter()
+                    .map(|(start, end)| format!("{start}..{end}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !external_only_internal.is_empty() {
+            mismatch_reasons.push(format!(
+                "External protein opinion contains internal coding exon(s) absent from the transcript-native translation: {}",
+                external_only_internal
+                    .iter()
+                    .map(|(start, end)| format!("{start}..{end}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if let (Some(derivation), Some(external_opinion)) = (derivation, external_opinion.as_ref()) {
+            if let Some(external_length_aa) = external_opinion.expected_length_aa
+                && derivation.protein_length_aa > 0
+                && derivation.protein_length_aa != external_length_aa
+            {
+                mismatch_reasons.push(format!(
+                    "Transcript-native product length is {} aa, while the external protein opinion expects {} aa.",
+                    derivation.protein_length_aa, external_length_aa
+                ));
+            }
+        }
+
+        let has_derived = derivation
+            .map(|derivation| {
+                derivation.protein_length_aa > 0 || !derivation.cds_ranges_1based.is_empty()
+            })
+            .unwrap_or(false);
+        let has_external = external_opinion.is_some();
+        let status = match (has_derived, has_external) {
+            (true, false) => gentle_protocol::TranscriptProteinComparisonStatus::DerivedOnly,
+            (true, true) if mismatch_reasons.is_empty() => {
+                gentle_protocol::TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion
+            }
+            (true, true) => {
+                gentle_protocol::TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion
+            }
+            (false, true) => {
+                gentle_protocol::TranscriptProteinComparisonStatus::ExternalOpinionOnly
+            }
+            (false, false) => gentle_protocol::TranscriptProteinComparisonStatus::NoTranscriptCds,
+        };
+
+        gentle_protocol::TranscriptProteinComparison {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            status,
+            derived: derivation.cloned(),
+            external_opinion,
+            mismatch_reasons,
+            derived_only_exon_ranges_1based: derived_only_internal,
+            external_only_exon_ranges_1based: external_only_internal,
+        }
+    }
+
     fn feature_location_ranges_1based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
         let mut ranges = vec![];
         let mut raw_ranges = vec![];
@@ -2476,22 +2895,111 @@ impl GentleEngine {
         ranges
     }
 
-    pub(super) fn build_uniprot_projection_expert_view(
+    fn feature_location_ranges_0based(feature: &gb_io::seq::Feature) -> Vec<(usize, usize)> {
+        let mut ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges.retain(|(start, end)| *end > *start);
+        ranges
+    }
+
+    fn is_cds_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature.kind.eq_ignore_ascii_case("CDS")
+    }
+
+    fn ranges_fully_covered_0based(
+        candidate_ranges: &[(usize, usize)],
+        container_ranges: &[(usize, usize)],
+    ) -> bool {
+        candidate_ranges.iter().all(|(candidate_start, candidate_end)| {
+            container_ranges.iter().any(|(container_start, container_end)| {
+                candidate_start >= container_start && candidate_end <= container_end
+            })
+        })
+    }
+
+    fn infer_cds_ranges_from_compatible_cds_features(
+        features: &[gb_io::seq::Feature],
+        transcript_feature: &gb_io::seq::Feature,
+    ) -> Option<Vec<(usize, usize)>> {
+        let transcript_ranges = Self::feature_location_ranges_0based(transcript_feature);
+        if transcript_ranges.is_empty() {
+            return None;
+        }
+        let transcript_is_reverse = feature_is_reverse(transcript_feature);
+        let mut candidates: BTreeSet<Vec<(usize, usize)>> = BTreeSet::new();
+        for feature in features {
+            if !Self::is_cds_feature(feature) || feature_is_reverse(feature) != transcript_is_reverse
+            {
+                continue;
+            }
+            let candidate_ranges = Self::feature_location_ranges_0based(feature);
+            if candidate_ranges.is_empty() {
+                continue;
+            }
+            if Self::ranges_fully_covered_0based(&candidate_ranges, &transcript_ranges) {
+                candidates.insert(candidate_ranges);
+            }
+        }
+        if candidates.is_empty() {
+            return None;
+        }
+        let mut ranked = candidates.into_iter().collect::<Vec<_>>();
+        ranked.sort_by(|left, right| {
+            let left_bp = left
+                .iter()
+                .map(|(start, end)| end.saturating_sub(*start))
+                .sum::<usize>();
+            let right_bp = right
+                .iter()
+                .map(|(start, end)| end.saturating_sub(*start))
+                .sum::<usize>();
+            right_bp
+                .cmp(&left_bp)
+                .then(left.len().cmp(&right.len()))
+                .then(left.cmp(right))
+        });
+        let best = ranked.first()?.clone();
+        let best_bp = best
+            .iter()
+            .map(|(start, end)| end.saturating_sub(*start))
+            .sum::<usize>();
+        let competing_best = ranked.iter().skip(1).any(|ranges| {
+            let bp = ranges
+                .iter()
+                .map(|(start, end)| end.saturating_sub(*start))
+                .sum::<usize>();
+            bp == best_bp && ranges != &best
+        });
+        if competing_best {
+            return None;
+        }
+        Some(best)
+    }
+
+    pub(super) fn build_transcript_protein_expert_view(
         &self,
         seq_id: &str,
-        projection_id: &str,
+        transcript_id_filter: Option<&str>,
+        protein_feature_filter: &ProteinFeatureFilter,
     ) -> Result<IsoformArchitectureExpertView, EngineError> {
-        let projection = self.get_uniprot_genome_projection(projection_id)?;
-        if projection.seq_id != seq_id {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "UniProt projection '{}' belongs to '{}' rather than '{}'",
-                    projection_id, projection.seq_id, seq_id
-                ),
-            });
-        }
-        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        self.build_optional_external_protein_expert_view(
+            seq_id,
+            transcript_id_filter,
+            None,
+            None,
+            protein_feature_filter,
+        )
+    }
+
+    fn build_optional_external_protein_expert_view(
+        &self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        projection: Option<&UniprotGenomeProjection>,
+        entry: Option<&UniprotEntry>,
+        protein_feature_filter: &ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
         let dna = self
             .state
             .sequences
@@ -2501,97 +3009,360 @@ impl GentleEngine {
                 message: format!("Sequence '{seq_id}' not found"),
             })?;
         let features = dna.features();
-        let mut warnings = projection.warnings.clone();
-        let mut transcript_lanes = vec![];
-        let mut protein_lanes = vec![];
-        let mut mapped_ranges: Vec<(usize, usize)> = vec![];
-
-        let mut protein_domains = entry
-            .features
+        let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
+        let normalized_filter = transcript_id_filter
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty());
+        let include_feature_keys = protein_feature_filter
+            .include_feature_keys
             .iter()
-            .filter_map(|feature| {
+            .map(|value| Self::normalized_protein_feature_key(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+        let exclude_feature_keys = protein_feature_filter
+            .exclude_feature_keys
+            .iter()
+            .map(|value| Self::normalized_protein_feature_key(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>();
+
+        let mut warnings = projection.map(|projection| projection.warnings.clone()).unwrap_or_default();
+        if let Some(entry) = entry {
+            let mut hidden_feature_counts: BTreeMap<String, usize> = BTreeMap::new();
+            let mut explicit_filter_hidden_counts: BTreeMap<String, usize> = BTreeMap::new();
+            for feature in &entry.features {
                 let (Some(start_aa), Some(end_aa)) =
                     (feature.interval.start_aa, feature.interval.end_aa)
                 else {
-                    return None;
+                    continue;
                 };
-                if start_aa == 0 || end_aa < start_aa || feature.key.eq_ignore_ascii_case("CHAIN") {
-                    return None;
+                if start_aa == 0 || end_aa < start_aa || feature.key.eq_ignore_ascii_case("CHAIN")
+                {
+                    continue;
                 }
-                Some(IsoformArchitectureProteinDomain {
-                    name: Self::uniprot_feature_domain_name(feature),
-                    start_aa,
-                    end_aa,
-                    color_hex: Some(Self::uniprot_feature_color_hex(&feature.key)),
-                })
-            })
-            .collect::<Vec<_>>();
-        protein_domains.sort_by(|left, right| {
-            left.start_aa
-                .cmp(&right.start_aa)
-                .then(left.end_aa.cmp(&right.end_aa))
-                .then(left.name.cmp(&right.name))
-        });
+                let normalized_key = Self::normalized_protein_feature_key(&feature.key);
+                if Self::uniprot_feature_hidden_by_default(&normalized_key)
+                    && !include_feature_keys.contains(&normalized_key)
+                {
+                    *hidden_feature_counts.entry(normalized_key.clone()).or_insert(0) += 1;
+                    continue;
+                }
+                if (!include_feature_keys.is_empty() && !include_feature_keys.contains(&normalized_key))
+                    || exclude_feature_keys.contains(&normalized_key)
+                {
+                    *explicit_filter_hidden_counts
+                        .entry(normalized_key.clone())
+                        .or_insert(0) += 1;
+                }
+            }
+            if !hidden_feature_counts.is_empty() {
+                let summary = hidden_feature_counts
+                    .iter()
+                    .map(|(feature_key, count)| format!("{feature_key} x{count}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                warnings.push(format!(
+                    "Default external protein-feature filter hid {summary}; hidden feature classes can be added back later through explicit filter controls."
+                ));
+            }
+            if !explicit_filter_hidden_counts.is_empty() {
+                let summary = explicit_filter_hidden_counts
+                    .iter()
+                    .map(|(feature_key, count)| format!("{feature_key} x{count}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                warnings.push(format!(
+                    "Protein-feature filter hid {summary} for this protein expert view."
+                ));
+            }
+        }
 
-        for transcript in &projection.transcript_projections {
-            let mut transcript_warnings = transcript.warnings.clone();
-            let feature = transcript.transcript_feature_id.and_then(|feature_id| {
-                features
-                    .get(feature_id)
-                    .map(|feature| (feature_id, feature))
+        let mut derived_transcripts: Vec<DerivedProteinExpertTranscript> = vec![];
+        let mut derived_key_index: HashMap<String, usize> = HashMap::new();
+        for (feature_id, feature) in features.iter().enumerate() {
+            if !Self::is_transcript_feature_for_derivation(feature) {
+                continue;
+            }
+            let match_keys = Self::feature_transcript_match_keys(feature, feature_id);
+            if let Some(filter) = normalized_filter.as_ref()
+                && !match_keys.iter().any(|key| key == filter)
+            {
+                continue;
+            }
+            match Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                feature_id,
+                seq_id,
+            ) {
+                Ok(derived) => {
+                    let row_index = derived_transcripts.len();
+                    for key in match_keys {
+                        derived_key_index.entry(key).or_insert(row_index);
+                    }
+                    derived_transcripts.push(derived);
+                }
+                Err(err) => warnings.push(format!(
+                    "Transcript feature n-{} could not be prepared for transcript-native protein comparison: {}",
+                    feature_id + 1,
+                    err.message
+                )),
+            }
+        }
+
+        let projection_transcripts = projection
+            .map(|projection| projection.transcript_projections.clone())
+            .unwrap_or_default();
+        let mut external_key_index: HashMap<String, usize> = HashMap::new();
+        for (idx, transcript) in projection_transcripts.iter().enumerate() {
+            let key = Self::normalize_transcript_probe(&transcript.transcript_id);
+            if !key.is_empty() {
+                external_key_index.entry(key).or_insert(idx);
+            }
+        }
+
+        let mut transcript_lanes = vec![];
+        let mut protein_lanes = vec![];
+        let mut region_ranges_1based: Vec<(usize, usize)> = vec![];
+        let mut matched_external_indices = BTreeSet::new();
+
+        for derived in &derived_transcripts {
+            let transcript_key = Self::normalize_transcript_probe(&derived.transcript_id);
+            let external_projection = external_key_index
+                .get(&transcript_key)
+                .and_then(|idx| projection_transcripts.get(*idx));
+            if let Some(external_idx) = external_key_index.get(&transcript_key) {
+                matched_external_indices.insert(*external_idx);
+            }
+
+            let external_opinion = if let (Some(projection), Some(entry), Some(external_projection)) =
+                (projection, entry, external_projection)
+            {
+                Some(Self::build_uniprot_external_opinion_summary(
+                    &projection.projection_id,
+                    entry,
+                    external_projection,
+                ))
+            } else {
+                None
+            };
+            if let Some(derivation) = derived.derivation.as_ref() {
+                for warning in &derivation.warnings {
+                    warnings.push(format!(
+                        "Transcript '{}': {}",
+                        derived.transcript_id, warning
+                    ));
+                }
+            }
+            let comparison = Self::build_transcript_protein_comparison(
+                &derived.transcript_id,
+                &derived.transcript_label,
+                derived.is_reverse,
+                derived.derivation.as_ref(),
+                &derived.genomic_cds_ranges_1based,
+                external_opinion,
+            );
+
+            let transcript_note = match comparison.status {
+                gentle_protocol::TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion => {
+                    Some(format!(
+                        "low_confidence_external_opinion: {}",
+                        comparison.mismatch_reasons.join(" | ")
+                    ))
+                }
+                gentle_protocol::TranscriptProteinComparisonStatus::ExternalOpinionOnly => Some(
+                    "Only an external protein opinion was available; transcript-native CDS translation could not be derived."
+                        .to_string(),
+                ),
+                gentle_protocol::TranscriptProteinComparisonStatus::NoTranscriptCds => Some(
+                    "Transcript-native CDS translation could not be derived for this transcript."
+                        .to_string(),
+                ),
+                _ => None,
+            };
+
+            let domains = external_projection
+                .into_iter()
+                .flat_map(|external_projection| external_projection.feature_projections.iter())
+                .filter_map(|feature_projection| {
+                    let normalized_key =
+                        Self::normalized_protein_feature_key(&feature_projection.feature_key);
+                    if Self::uniprot_feature_hidden_by_default(&normalized_key)
+                        && !include_feature_keys.contains(&normalized_key)
+                    {
+                        return None;
+                    }
+                    if (!include_feature_keys.is_empty()
+                        && !include_feature_keys.contains(&normalized_key))
+                        || exclude_feature_keys.contains(&normalized_key)
+                    {
+                        return None;
+                    }
+                    Self::projected_uniprot_feature_domain_on_transcript(
+                        feature_projection,
+                        &derived.cds_to_protein_segments,
+                        derived.is_reverse,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            region_ranges_1based.extend(derived.transcript_exons_1based.iter().copied());
+            region_ranges_1based.extend(derived.genomic_cds_ranges_1based.iter().copied());
+
+            transcript_lanes.push(IsoformArchitectureTranscriptLane {
+                isoform_id: derived.transcript_id.clone(),
+                label: derived.transcript_label.clone(),
+                transcript_id: Some(derived.transcript_id.clone()),
+                transcript_feature_id: Some(derived.transcript_feature_id),
+                strand: if derived.is_reverse {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                transcript_exons: Self::range_vec_1based_to_splicing(
+                    derived.transcript_exons_1based.clone(),
+                ),
+                exons: Self::range_vec_1based_to_splicing(
+                    derived.genomic_cds_ranges_1based.clone(),
+                ),
+                introns: Self::range_vec_1based_to_splicing(derived.intron_ranges_1based.clone()),
+                mapped: derived
+                    .derivation
+                    .as_ref()
+                    .map(|derivation| derivation.protein_length_aa > 0)
+                    .unwrap_or(false),
+                transactivation_class: None,
+                cds_to_protein_segments: derived.cds_to_protein_segments.clone(),
+                note: transcript_note,
             });
-            let transcript_exon_ranges = feature
+
+            protein_lanes.push(IsoformArchitectureProteinLane {
+                isoform_id: derived.transcript_id.clone(),
+                label: derived.transcript_label.clone(),
+                transcript_id: Some(derived.transcript_id.clone()),
+                expected_length_aa: derived
+                    .derivation
+                    .as_ref()
+                    .map(|derivation| derivation.protein_length_aa)
+                    .filter(|value| *value > 0)
+                    .or_else(|| {
+                        comparison
+                            .external_opinion
+                            .as_ref()
+                            .and_then(|opinion| opinion.expected_length_aa)
+                    }),
+                reference_start_aa: comparison
+                    .external_opinion
+                    .as_ref()
+                    .and_then(|opinion| opinion.reference_start_aa),
+                reference_end_aa: comparison
+                    .external_opinion
+                    .as_ref()
+                    .and_then(|opinion| opinion.reference_end_aa),
+                domains,
+                transactivation_class: None,
+                comparison: Some(comparison),
+            });
+        }
+
+        for (external_idx, transcript) in projection_transcripts.iter().enumerate() {
+            if matched_external_indices.contains(&external_idx) {
+                continue;
+            }
+            let transcript_key = Self::normalize_transcript_probe(&transcript.transcript_id);
+            if let Some(filter) = normalized_filter.as_ref() && &transcript_key != filter {
+                continue;
+            }
+            let transcript_feature = transcript
+                .transcript_feature_id
+                .and_then(|feature_id| features.get(feature_id).map(|feature| (feature_id, feature)));
+            let transcript_exons = transcript_feature
                 .as_ref()
                 .map(|(_, feature)| Self::feature_location_ranges_1based(feature))
                 .unwrap_or_default();
-            let cds_ranges = Self::uniprot_projection_segment_ranges(&transcript.aa_segments);
-            if cds_ranges.is_empty() {
-                transcript_warnings.push(format!(
-                    "Transcript '{}' has no mapped amino-acid/genome segments in projection '{}'",
-                    transcript.transcript_id, projection.projection_id
-                ));
-            }
-            let mut intron_ranges = vec![];
-            for pair in cds_ranges.windows(2) {
-                if pair[1].0 > pair[0].1.saturating_add(1) {
-                    intron_ranges.push((pair[0].1.saturating_add(1), pair[1].0.saturating_sub(1)));
-                }
-            }
-            mapped_ranges.extend(cds_ranges.iter().copied());
-
-            let coverage_start = transcript
-                .aa_segments
-                .iter()
-                .map(|segment| segment.aa_start)
-                .min();
-            let coverage_end = transcript
-                .aa_segments
-                .iter()
-                .map(|segment| segment.aa_end)
-                .max();
-            let transcript_note = if transcript_warnings.is_empty() {
-                match (coverage_start, coverage_end) {
-                    (Some(start), Some(end)) => Some(format!(
-                        "UniProt reference coverage {}..{} aa ({} mapped feature spans)",
-                        start,
-                        end,
-                        transcript.feature_projections.len()
+            let transcript_label = transcript_feature
+                .as_ref()
+                .and_then(|(_, feature)| {
+                    Self::first_nonempty_feature_qualifier(
+                        feature,
+                        &["label", "name", "standard_name", "product", "transcript_id", "gene"],
+                    )
+                })
+                .unwrap_or_else(|| transcript.transcript_id.clone());
+            let is_reverse = transcript_feature
+                .as_ref()
+                .map(|(_, feature)| feature_is_reverse(feature))
+                .unwrap_or_else(|| transcript.strand.trim() == "-");
+            let external_ranges_1based = Self::uniprot_projection_segment_ranges(&transcript.aa_segments);
+            let comparison = if let (Some(projection), Some(entry)) = (projection, entry) {
+                Self::build_transcript_protein_comparison(
+                    &transcript.transcript_id,
+                    &transcript_label,
+                    is_reverse,
+                    None,
+                    &[],
+                    Some(Self::build_uniprot_external_opinion_summary(
+                        &projection.projection_id,
+                        entry,
+                        transcript,
                     )),
-                    _ => None,
-                }
+                )
             } else {
-                Some(transcript_warnings.join(" | "))
+                Self::build_transcript_protein_comparison(
+                    &transcript.transcript_id,
+                    &transcript_label,
+                    is_reverse,
+                    None,
+                    &[],
+                    None,
+                )
             };
+            let mut domains = transcript
+                .feature_projections
+                .iter()
+                .filter_map(|feature_projection| {
+                    let normalized_key =
+                        Self::normalized_protein_feature_key(&feature_projection.feature_key);
+                    if Self::uniprot_feature_hidden_by_default(&normalized_key)
+                        && !include_feature_keys.contains(&normalized_key)
+                    {
+                        return None;
+                    }
+                    if (!include_feature_keys.is_empty()
+                        && !include_feature_keys.contains(&normalized_key))
+                        || exclude_feature_keys.contains(&normalized_key)
+                    {
+                        return None;
+                    }
+                    Self::projected_uniprot_feature_domain(feature_projection)
+                })
+                .collect::<Vec<_>>();
+            domains.sort_by(|left, right| {
+                left.start_aa
+                    .cmp(&right.start_aa)
+                    .then(left.end_aa.cmp(&right.end_aa))
+                    .then(left.name.cmp(&right.name))
+            });
+
+            region_ranges_1based.extend(transcript_exons.iter().copied());
+            region_ranges_1based.extend(external_ranges_1based.iter().copied());
 
             transcript_lanes.push(IsoformArchitectureTranscriptLane {
                 isoform_id: transcript.transcript_id.clone(),
-                label: transcript.transcript_id.clone(),
+                label: transcript_label.clone(),
                 transcript_id: Some(transcript.transcript_id.clone()),
                 transcript_feature_id: transcript.transcript_feature_id,
-                strand: transcript.strand.clone(),
-                transcript_exons: Self::range_vec_1based_to_splicing(transcript_exon_ranges),
-                exons: Self::range_vec_1based_to_splicing(cds_ranges.clone()),
-                introns: Self::range_vec_1based_to_splicing(intron_ranges),
+                strand: if is_reverse {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                transcript_exons: Self::range_vec_1based_to_splicing(transcript_exons),
+                exons: Self::range_vec_1based_to_splicing(external_ranges_1based.clone()),
+                introns: Self::range_vec_1based_to_splicing(
+                    Self::build_transcript_introns_from_ranges_1based(&external_ranges_1based),
+                ),
                 mapped: !transcript.aa_segments.is_empty(),
                 transactivation_class: None,
                 cds_to_protein_segments: transcript
@@ -2604,73 +3375,134 @@ impl GentleEngine {
                         aa_end: segment.aa_end,
                     })
                     .collect(),
-                note: transcript_note,
+                note: Some(
+                    "Only an external protein opinion was available; transcript-native CDS translation could not be derived."
+                        .to_string(),
+                ),
             });
-
             protein_lanes.push(IsoformArchitectureProteinLane {
                 isoform_id: transcript.transcript_id.clone(),
-                label: transcript.transcript_id.clone(),
+                label: transcript_label,
                 transcript_id: Some(transcript.transcript_id.clone()),
-                expected_length_aa: Some(entry.sequence_length.max(1)),
-                reference_start_aa: Some(1),
-                reference_end_aa: Some(entry.sequence_length.max(1)),
-                domains: protein_domains.clone(),
+                expected_length_aa: comparison
+                    .external_opinion
+                    .as_ref()
+                    .and_then(|opinion| opinion.expected_length_aa),
+                reference_start_aa: comparison
+                    .external_opinion
+                    .as_ref()
+                    .and_then(|opinion| opinion.reference_start_aa),
+                reference_end_aa: comparison
+                    .external_opinion
+                    .as_ref()
+                    .and_then(|opinion| opinion.reference_end_aa),
+                domains,
                 transactivation_class: None,
+                comparison: Some(comparison),
             });
         }
 
         if transcript_lanes.is_empty() {
-            warnings.push(format!(
-                "UniProt projection '{}' has no transcript projections to display",
-                projection.projection_id
-            ));
+            let descriptor = normalized_filter
+                .as_deref()
+                .map(|filter| format!(" matching transcript '{filter}'"))
+                .unwrap_or_default();
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Sequence '{}' has no transcript/protein expert rows{}",
+                    seq_id, descriptor
+                ),
+            });
         }
 
-        let (region_start_1based, region_end_1based) = if mapped_ranges.is_empty() {
-            (1, dna.len().max(1))
-        } else {
-            let start = mapped_ranges
-                .iter()
-                .map(|(start, _)| *start)
-                .min()
-                .unwrap_or(1);
-            let end = mapped_ranges
-                .iter()
-                .map(|(_, end)| *end)
-                .max()
-                .unwrap_or(start);
-            (start.max(1), end.max(start))
-        };
-
-        let gene_symbol = entry
-            .gene_names
+        let region_start_1based = region_ranges_1based
             .iter()
-            .find(|value| !value.trim().is_empty())
-            .cloned()
-            .unwrap_or_else(|| {
+            .map(|(start, _)| *start)
+            .min()
+            .unwrap_or(1);
+        let region_end_1based = region_ranges_1based
+            .iter()
+            .map(|(_, end)| *end)
+            .max()
+            .unwrap_or_else(|| dna.len().max(1));
+        let gene_symbol = entry
+            .and_then(|entry| {
                 entry
-                    .protein_name
-                    .clone()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| entry.primary_id.clone())
+                    .gene_names
+                    .iter()
+                    .find(|value| !value.trim().is_empty())
+                    .cloned()
+                    .or_else(|| {
+                        entry
+                            .protein_name
+                            .clone()
+                            .filter(|value| !value.trim().is_empty())
+                    })
+            })
+            .or_else(|| {
+                features.iter().find_map(|feature| {
+                    Self::first_nonempty_feature_qualifier(
+                        feature,
+                        &["gene", "gene_id", "locus_tag", "standard_name", "name"],
+                    )
+                })
+            })
+            .unwrap_or_else(|| seq_id.to_string());
+        let panel_id = projection
+            .map(|projection| projection.projection_id.clone())
+            .unwrap_or_else(|| match normalized_filter.as_deref() {
+                Some(filter) => format!("protein_compare:{filter}@{seq_id}"),
+                None => format!("protein_compare@{seq_id}"),
             });
+        let panel_source = if let Some(entry) = entry {
+            Some(format!(
+                "Transcript-native proteins with optional UniProt opinion {} ({})",
+                entry.entry_id, entry.accession
+            ))
+        } else {
+            Some("Transcript-native protein derivation (external protein opinions optional)".to_string())
+        };
 
         Ok(IsoformArchitectureExpertView {
             seq_id: seq_id.to_string(),
-            panel_id: projection.projection_id.clone(),
+            panel_id,
             gene_symbol,
             transcript_geometry_mode: IsoformTranscriptGeometryMode::Cds.as_str().to_string(),
-            panel_source: Some(format!(
-                "UniProt projection {} ({})",
-                entry.entry_id, entry.accession
-            )),
-            region_start_1based,
-            region_end_1based,
+            panel_source,
+            region_start_1based: region_start_1based.max(1),
+            region_end_1based: region_end_1based.max(region_start_1based.max(1)),
             instruction: ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION.to_string(),
             transcript_lanes,
             protein_lanes,
             warnings,
         })
+    }
+
+    pub(super) fn build_uniprot_projection_expert_view(
+        &self,
+        seq_id: &str,
+        projection_id: &str,
+        protein_feature_filter: &ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        if projection.seq_id != seq_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "UniProt projection '{}' belongs to '{}' rather than '{}'",
+                    projection_id, projection.seq_id, seq_id
+                ),
+            });
+        }
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        self.build_optional_external_protein_expert_view(
+            seq_id,
+            projection.transcript_id_filter.as_deref(),
+            Some(&projection),
+            Some(&entry),
+            protein_feature_filter,
+        )
     }
 
     pub(super) fn upsert_uniprot_projection(
@@ -3332,6 +4164,7 @@ impl GentleEngine {
                 reference_end_aa: isoform.reference_end_aa,
                 domains,
                 transactivation_class: isoform.transactivation_class.clone(),
+                comparison: None,
             });
         }
 
@@ -4072,8 +4905,25 @@ impl GentleEngine {
             FeatureExpertTarget::IsoformArchitecture { panel_id } => self
                 .build_isoform_architecture_expert_view(seq_id, panel_id)
                 .map(FeatureExpertView::IsoformArchitecture),
-            FeatureExpertTarget::UniprotProjection { projection_id, .. } => self
-                .build_uniprot_projection_expert_view(seq_id, projection_id)
+            FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter,
+                protein_feature_filter,
+            } => self
+                .build_transcript_protein_expert_view(
+                    seq_id,
+                    transcript_id_filter.as_deref(),
+                    protein_feature_filter,
+                )
+                .map(FeatureExpertView::IsoformArchitecture),
+            FeatureExpertTarget::UniprotProjection {
+                projection_id,
+                protein_feature_filter,
+            } => self
+                .build_uniprot_projection_expert_view(
+                    seq_id,
+                    projection_id,
+                    protein_feature_filter,
+                )
                 .map(FeatureExpertView::IsoformArchitecture),
         }
     }
