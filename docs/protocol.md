@@ -2618,7 +2618,7 @@ Construct reasoning graph foundation (implemented first slice):
       profiles, helper profile, host-route steps, medium conditions, and
       required/forbidden host traits
     - existing sequence facts: restriction sites plus sequence-feature spans
-      such as exon/CDS/gene/transcript/UTR/promoter/TFBS when present
+      such as exon/CDS/gene/transcript/UTR/promoter/TFBS/variant when present
   - deterministic hard-rule fact/decision population for:
     - propagation-host context
     - expression-host context
@@ -2632,6 +2632,15 @@ Construct reasoning graph foundation (implemented first slice):
       (for example nutrient omission, antibiotic selection agent, heat shock,
       and temperature signals)
     - helper/MCS context
+    - variant-effect context derived from overlap of mapped variant markers
+      against promoter/enhancer/TFBS/CDS/exon/UTR/splice evidence already in
+      the graph
+    - variant-assay context that maps the same deterministic overlap rules onto
+      first assay-family suggestions such as:
+      - promoter/regulatory reporter follow-up
+      - allele-paired coding-expression comparison
+      - minigene splice follow-up
+      - UTR reporter / translation comparison
     - selection/complementation context built from engine-owned
       selection/complementation rules, currently seeded with:
       - the proline-rescue baseline (`proA`/`proB`-style annotated construct
@@ -2659,9 +2668,11 @@ Construct reasoning graph foundation (implemented first slice):
     engine-owned graph payload (no adapter-local graph recomputation)
   - ClawBio/OpenClaw-facing run-bundle export integration:
     - deterministic per-sequence summary rows for concise agent consumption
+      including additive variant effect tags and suggested assay-family ids
     - embedded stored reasoning graphs for full offline inspection/replay
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
+  - dbSNP / VCF-generated variant markers => `hard_fact`
   - exon/splice annotations with explicit cDNA-style qualifier hints =>
     `hard_fact`
   - imported/derived sequence annotations => `reliable_annotation`

@@ -24,6 +24,7 @@
 
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
+    amino_acids::{STOP_CODON, UNKNOWN_CODON},
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
@@ -183,6 +184,38 @@ struct ConstructRestrictionMethylationConflict {
     upstream_step_id: String,
     downstream_step_id: String,
     rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructVariantCodingPrediction {
+    cds_label: String,
+    transcript_label: Option<String>,
+    effect_tag: String,
+    codon_index_1based: usize,
+    ref_codon: String,
+    alt_codon: String,
+    ref_amino_acid: String,
+    alt_amino_acid: String,
+    translation_table: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructVariantReasoningSummary {
+    evidence_id: String,
+    label: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    strand: Option<String>,
+    variant_class: Option<String>,
+    genomic_ref: Option<String>,
+    genomic_alt: Option<String>,
+    overlapping_roles: Vec<String>,
+    overlapping_labels: Vec<String>,
+    gene_labels: Vec<String>,
+    transcript_labels: Vec<String>,
+    effect_tags: Vec<String>,
+    suggested_assay_ids: Vec<String>,
+    coding_predictions: Vec<ConstructVariantCodingPrediction>,
 }
 
 pub use crate::feature_expert::{
@@ -11012,6 +11045,7 @@ impl GentleEngine {
             "PROMOTER" => Some(ConstructRole::Promoter),
             "ENHANCER" => Some(ConstructRole::Enhancer),
             "TERMINATOR" => Some(ConstructRole::Terminator),
+            "VARIATION" | "VARIANT" | "SNP" | "SNV" | "MUTATION" => Some(ConstructRole::Variant),
             "SIG_PEPTIDE" | "SIGNAL_PEPTIDE" => Some(ConstructRole::SignalPeptide),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Some(ConstructRole::Tfbs),
             "REGULATORY" | "MISC_FEATURE" => {
@@ -11043,6 +11077,18 @@ impl GentleEngine {
         feature: &gb_io::seq::Feature,
         role: ConstructRole,
     ) -> EvidenceClass {
+        if role == ConstructRole::Variant {
+            let generated = Self::feature_qualifier_text(feature, "gentle_generated")
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            if generated == GENOME_VCF_TRACK_GENERATED_TAG
+                || generated == DBSNP_VARIANT_MARKER_GENERATED_TAG
+            {
+                return EvidenceClass::HardFact;
+            }
+            return EvidenceClass::ReliableAnnotation;
+        }
         if role == ConstructRole::Tfbs {
             return EvidenceClass::SoftHypothesis;
         }
@@ -11059,8 +11105,20 @@ impl GentleEngine {
         if Self::construct_reasoning_feature_has_cdna_confirmation_hint(feature) {
             tags.push("cdna_confirmed".to_string());
         }
+        if let Some(generated) = Self::feature_qualifier_text(feature, "gentle_generated")
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+        {
+            tags.push(generated);
+        }
         if let Some(regulatory_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
             tags.push(regulatory_class.trim().to_ascii_lowercase());
+        }
+        if let Some(variant_class) = Self::feature_qualifier_text(feature, "vcf_variant_class")
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+        {
+            tags.push(variant_class);
         }
         tags.sort();
         tags.dedup();
@@ -11068,10 +11126,23 @@ impl GentleEngine {
     }
 
     fn construct_reasoning_feature_rationale(
-        _feature: &gb_io::seq::Feature,
+        feature: &gb_io::seq::Feature,
         role: ConstructRole,
         evidence_class: EvidenceClass,
     ) -> String {
+        if role == ConstructRole::Variant {
+            let generated = Self::feature_qualifier_text(feature, "gentle_generated")
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            if generated == GENOME_VCF_TRACK_GENERATED_TAG {
+                return "Variant marker imported from a VCF track; locus and observed allele annotation are treated as an inspectable hard fact.".to_string();
+            }
+            if generated == DBSNP_VARIANT_MARKER_GENERATED_TAG {
+                return "Variant marker imported from dbSNP / NCBI Variation; locus identity is treated as an inspectable hard fact while downstream functional impact remains to be reasoned from context.".to_string();
+            }
+            return "Variant annotation imported from the sequence record as inspectable construct-planning context.".to_string();
+        }
         if role == ConstructRole::Tfbs {
             return "TFBS-style annotation is kept as a soft hypothesis because binding evidence is context-sensitive.".to_string();
         }
@@ -11444,6 +11515,391 @@ impl GentleEngine {
         }
 
         evidence
+    }
+
+    fn construct_reasoning_ranges_for_feature(
+        feature: &gb_io::seq::Feature,
+    ) -> Vec<(usize, usize)> {
+        let mut ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges
+    }
+
+    fn construct_reasoning_first_range_for_feature(
+        feature: &gb_io::seq::Feature,
+    ) -> Option<(usize, usize)> {
+        Self::construct_reasoning_ranges_for_feature(feature)
+            .into_iter()
+            .find(|(start, end)| end > start)
+    }
+
+    fn construct_reasoning_ranges_overlap(
+        left_start: usize,
+        left_end_exclusive: usize,
+        right_start: usize,
+        right_end_exclusive: usize,
+    ) -> bool {
+        left_start < right_end_exclusive && right_start < left_end_exclusive
+    }
+
+    fn construct_reasoning_normalized_dna_qualifier(
+        feature: &gb_io::seq::Feature,
+        key: &str,
+    ) -> Option<String> {
+        let value = Self::feature_qualifier_text(feature, key)?;
+        let normalized = Self::normalize_dna_text(&value).to_ascii_uppercase();
+        (!normalized.is_empty()).then_some(normalized)
+    }
+
+    fn construct_reasoning_feature_translation_table(feature: &gb_io::seq::Feature) -> usize {
+        for key in ["transl_table", "translation_table"] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key)
+                .and_then(|raw| raw.trim().parse::<usize>().ok())
+                .filter(|value| *value > 0)
+            {
+                return value;
+            }
+        }
+        1
+    }
+
+    fn construct_reasoning_feature_codon_start_offset(feature: &gb_io::seq::Feature) -> usize {
+        if let Some(value) = Self::feature_qualifier_text(feature, "codon_start")
+            .and_then(|raw| raw.trim().parse::<usize>().ok())
+            .filter(|value| (1..=3).contains(value))
+        {
+            return value.saturating_sub(1);
+        }
+        if let Some(value) = Self::feature_qualifier_text(feature, "phase")
+            .and_then(|raw| raw.trim().parse::<usize>().ok())
+            .filter(|value| *value <= 2)
+        {
+            return value;
+        }
+        0
+    }
+
+    fn construct_reasoning_aa_display(aa: char) -> String {
+        if aa == STOP_CODON {
+            "*".to_string()
+        } else if aa == UNKNOWN_CODON {
+            "X".to_string()
+        } else {
+            aa.to_string()
+        }
+    }
+
+    fn construct_reasoning_translate_codon(codon: &[u8; 3], translation_table: usize) -> char {
+        crate::AMINO_ACIDS.codon2aa(*codon, Some(translation_table))
+    }
+
+    fn construct_reasoning_predict_variant_coding_effects(
+        dna: &DNAsequence,
+        variant_feature: &gb_io::seq::Feature,
+    ) -> Vec<ConstructVariantCodingPrediction> {
+        let Some((variant_start_0based, variant_end_0based_exclusive)) =
+            Self::construct_reasoning_first_range_for_feature(variant_feature)
+        else {
+            return vec![];
+        };
+        if variant_end_0based_exclusive.saturating_sub(variant_start_0based) != 1 {
+            return vec![];
+        }
+        let Some(reference_allele) =
+            Self::construct_reasoning_normalized_dna_qualifier(variant_feature, "vcf_ref")
+        else {
+            return vec![];
+        };
+        let Some(alternate_allele) =
+            Self::construct_reasoning_normalized_dna_qualifier(variant_feature, "vcf_alt")
+        else {
+            return vec![];
+        };
+        if reference_allele.len() != 1 || alternate_allele.len() != 1 {
+            return vec![];
+        }
+
+        let sequence = dna.get_forward_string().to_ascii_uppercase();
+        let bytes = sequence.as_bytes();
+        if variant_start_0based >= bytes.len() {
+            return vec![];
+        }
+        let sequence_ref = bytes[variant_start_0based] as char;
+        let expected_ref = reference_allele.as_bytes()[0] as char;
+        if sequence_ref.to_ascii_uppercase() != expected_ref.to_ascii_uppercase() {
+            return vec![];
+        }
+
+        let mut predictions = vec![];
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if Self::construct_reasoning_role_from_feature(feature) != Some(ConstructRole::Cds) {
+                continue;
+            }
+            let ranges = Self::construct_reasoning_ranges_for_feature(feature);
+            if ranges.is_empty()
+                || !ranges.iter().any(|(start, end)| {
+                    Self::construct_reasoning_ranges_overlap(
+                        variant_start_0based,
+                        variant_end_0based_exclusive,
+                        *start,
+                        *end,
+                    )
+                })
+            {
+                continue;
+            }
+
+            let is_reverse = feature_is_reverse(feature);
+            let mut ordered_ranges = ranges
+                .iter()
+                .copied()
+                .filter(|(start, end)| end > start && *end <= bytes.len())
+                .collect::<Vec<_>>();
+            ordered_ranges.sort();
+            if is_reverse {
+                ordered_ranges.reverse();
+            }
+            if ordered_ranges.is_empty() {
+                continue;
+            }
+
+            let mut oriented_bases: Vec<u8> = vec![];
+            let mut oriented_positions: Vec<usize> = vec![];
+            for (start, end) in &ordered_ranges {
+                if is_reverse {
+                    for pos in (*start..*end).rev() {
+                        let rc = Self::reverse_complement_bytes(&[bytes[pos]]);
+                        if let Some(base) = rc.first() {
+                            oriented_bases.push(*base);
+                            oriented_positions.push(pos);
+                        }
+                    }
+                } else {
+                    oriented_bases.extend_from_slice(&bytes[*start..*end]);
+                    oriented_positions.extend(*start..*end);
+                }
+            }
+            let codon_offset = Self::construct_reasoning_feature_codon_start_offset(feature);
+            if codon_offset >= oriented_bases.len() {
+                continue;
+            }
+            let trimmed_bases = &oriented_bases[codon_offset..];
+            let trimmed_positions = &oriented_positions[codon_offset..];
+            let Some(variant_index_in_cds) = trimmed_positions
+                .iter()
+                .position(|pos| *pos == variant_start_0based)
+            else {
+                continue;
+            };
+            let codon_start_0based = (variant_index_in_cds / 3) * 3;
+            if codon_start_0based + 3 > trimmed_bases.len() {
+                continue;
+            }
+
+            let ref_codon = [
+                trimmed_bases[codon_start_0based],
+                trimmed_bases[codon_start_0based + 1],
+                trimmed_bases[codon_start_0based + 2],
+            ];
+            let mut alt_codon = ref_codon;
+            let codon_pos = variant_index_in_cds % 3;
+            let oriented_ref = if is_reverse {
+                Self::reverse_complement(&reference_allele)
+            } else {
+                reference_allele.clone()
+            };
+            let oriented_alt = if is_reverse {
+                Self::reverse_complement(&alternate_allele)
+            } else {
+                alternate_allele.clone()
+            };
+            if oriented_ref.len() != 1 || oriented_alt.len() != 1 {
+                continue;
+            }
+            if ref_codon[codon_pos].to_ascii_uppercase()
+                != oriented_ref.as_bytes()[0].to_ascii_uppercase()
+            {
+                continue;
+            }
+            alt_codon[codon_pos] = oriented_alt.as_bytes()[0].to_ascii_uppercase();
+
+            let translation_table = Self::construct_reasoning_feature_translation_table(feature);
+            let ref_aa = Self::construct_reasoning_translate_codon(&ref_codon, translation_table);
+            let alt_aa = Self::construct_reasoning_translate_codon(&alt_codon, translation_table);
+            let effect_tag = if ref_aa == alt_aa {
+                "synonymous_variant"
+            } else if alt_aa == STOP_CODON {
+                "nonsense_variant"
+            } else if ref_aa == STOP_CODON {
+                "stop_lost_variant"
+            } else if ref_aa == UNKNOWN_CODON || alt_aa == UNKNOWN_CODON {
+                "coding_variant_candidate"
+            } else {
+                "missense_variant"
+            };
+            let transcript_label = Self::first_nonempty_feature_qualifier(
+                feature,
+                &["transcript_id", "transcript_name", "product"],
+            );
+            predictions.push(ConstructVariantCodingPrediction {
+                cds_label: Self::feature_display_label(feature, feature_id),
+                transcript_label,
+                effect_tag: effect_tag.to_string(),
+                codon_index_1based: codon_start_0based / 3 + 1,
+                ref_codon: String::from_utf8_lossy(&ref_codon).to_string(),
+                alt_codon: String::from_utf8_lossy(&alt_codon).to_string(),
+                ref_amino_acid: Self::construct_reasoning_aa_display(ref_aa),
+                alt_amino_acid: Self::construct_reasoning_aa_display(alt_aa),
+                translation_table,
+            });
+        }
+
+        predictions.sort_by(|left, right| {
+            left.cds_label
+                .to_ascii_lowercase()
+                .cmp(&right.cds_label.to_ascii_lowercase())
+                .then_with(|| left.codon_index_1based.cmp(&right.codon_index_1based))
+        });
+        predictions.dedup_by(|left, right| {
+            left.cds_label == right.cds_label
+                && left.codon_index_1based == right.codon_index_1based
+                && left.effect_tag == right.effect_tag
+        });
+        predictions
+    }
+
+    fn construct_reasoning_variant_summary(
+        dna: &DNAsequence,
+        variant_feature: &gb_io::seq::Feature,
+        variant_evidence: &DesignEvidence,
+        evidence: &[DesignEvidence],
+    ) -> ConstructVariantReasoningSummary {
+        let overlapping = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && row.evidence_id != variant_evidence.evidence_id
+                    && row.role != ConstructRole::Variant
+                    && Self::construct_reasoning_ranges_overlap(
+                        variant_evidence.start_0based,
+                        variant_evidence.end_0based_exclusive,
+                        row.start_0based,
+                        row.end_0based_exclusive,
+                    )
+            })
+            .collect::<Vec<_>>();
+        let has_role = |role| overlapping.iter().any(|row| row.role == role);
+        let labels_for_role = |role| {
+            overlapping
+                .iter()
+                .filter(|row| row.role == role)
+                .map(|row| row.label.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+
+        let coding_predictions =
+            Self::construct_reasoning_predict_variant_coding_effects(dna, variant_feature);
+
+        let mut effect_tags = vec![];
+        if has_role(ConstructRole::Promoter) {
+            effect_tags.push("promoter_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Enhancer) {
+            effect_tags.push("enhancer_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Tfbs) {
+            effect_tags.push("tfbs_overlap_candidate".to_string());
+        }
+        if has_role(ConstructRole::Promoter) || has_role(ConstructRole::Enhancer) {
+            effect_tags.push("regulatory_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Promoter) && has_role(ConstructRole::Tfbs) {
+            effect_tags.push("promoter_tfbs_regulatory_candidate".to_string());
+        }
+        if has_role(ConstructRole::Cds) || !coding_predictions.is_empty() {
+            effect_tags.push("coding_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Exon) && !has_role(ConstructRole::Cds) {
+            effect_tags.push("exonic_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::SpliceBoundary) {
+            effect_tags.push("splice_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Utr5Prime) || has_role(ConstructRole::Utr3Prime) {
+            effect_tags.push("utr_variant_candidate".to_string());
+        }
+        if has_role(ConstructRole::Gene) || has_role(ConstructRole::Transcript) {
+            effect_tags.push("genic_variant_candidate".to_string());
+        }
+        effect_tags.extend(
+            coding_predictions
+                .iter()
+                .map(|row| row.effect_tag.clone())
+                .collect::<Vec<_>>(),
+        );
+        effect_tags.sort();
+        effect_tags.dedup();
+
+        let mut suggested_assay_ids = vec![];
+        if has_role(ConstructRole::Promoter) {
+            suggested_assay_ids.push("allele_paired_promoter_luciferase_reporter".to_string());
+        } else if has_role(ConstructRole::Enhancer) || has_role(ConstructRole::Tfbs) {
+            suggested_assay_ids.push("allele_paired_regulatory_reporter".to_string());
+        }
+        if has_role(ConstructRole::SpliceBoundary) {
+            suggested_assay_ids.push("minigene_splicing_assay".to_string());
+        }
+        if has_role(ConstructRole::Cds) || !coding_predictions.is_empty() {
+            suggested_assay_ids.push("allele_paired_expression_compare".to_string());
+        }
+        if (has_role(ConstructRole::Utr5Prime) || has_role(ConstructRole::Utr3Prime))
+            && !suggested_assay_ids
+                .iter()
+                .any(|value| value == "allele_paired_promoter_luciferase_reporter")
+        {
+            suggested_assay_ids.push("utr_reporter_translation_compare".to_string());
+        }
+        suggested_assay_ids.sort();
+        suggested_assay_ids.dedup();
+
+        let overlapping_roles = overlapping
+            .iter()
+            .map(|row| row.role.as_str().to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let overlapping_labels = overlapping
+            .iter()
+            .map(|row| row.label.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        ConstructVariantReasoningSummary {
+            evidence_id: variant_evidence.evidence_id.clone(),
+            label: variant_evidence.label.clone(),
+            start_0based: variant_evidence.start_0based,
+            end_0based_exclusive: variant_evidence.end_0based_exclusive,
+            strand: variant_evidence.strand.clone(),
+            variant_class: Self::feature_qualifier_text(variant_feature, "vcf_variant_class"),
+            genomic_ref: Self::construct_reasoning_normalized_dna_qualifier(
+                variant_feature,
+                "vcf_ref",
+            ),
+            genomic_alt: Self::construct_reasoning_normalized_dna_qualifier(
+                variant_feature,
+                "vcf_alt",
+            ),
+            overlapping_roles,
+            overlapping_labels,
+            gene_labels: labels_for_role(ConstructRole::Gene),
+            transcript_labels: labels_for_role(ConstructRole::Transcript),
+            effect_tags,
+            suggested_assay_ids,
+            coding_predictions,
+        }
     }
 
     fn construct_reasoning_label_match_token(label: &str) -> String {
@@ -12856,6 +13312,204 @@ impl GentleEngine {
             ));
         }
 
+        let variant_evidence_rows = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan && row.role == ConstructRole::Variant
+            })
+            .collect::<Vec<_>>();
+        if !variant_evidence_rows.is_empty() {
+            let mut variant_summaries = vec![];
+            for (feature_id, feature) in dna.features().iter().enumerate() {
+                if Self::construct_reasoning_role_from_feature(feature)
+                    != Some(ConstructRole::Variant)
+                {
+                    continue;
+                }
+                let Some((start_0based, end_0based_exclusive)) =
+                    Self::construct_reasoning_first_range_for_feature(feature)
+                else {
+                    continue;
+                };
+                let label = Self::feature_display_label(feature, feature_id);
+                let label_token = Self::construct_reasoning_label_match_token(&label);
+                let Some(variant_evidence) = variant_evidence_rows.iter().find(|row| {
+                    row.start_0based == start_0based
+                        && row.end_0based_exclusive == end_0based_exclusive
+                        && Self::construct_reasoning_label_match_token(&row.label) == label_token
+                }) else {
+                    continue;
+                };
+                variant_summaries.push(Self::construct_reasoning_variant_summary(
+                    dna,
+                    feature,
+                    variant_evidence,
+                    evidence,
+                ));
+            }
+
+            variant_summaries.sort_by(|left, right| {
+                left.start_0based.cmp(&right.start_0based).then_with(|| {
+                    left.label
+                        .to_ascii_lowercase()
+                        .cmp(&right.label.to_ascii_lowercase())
+                })
+            });
+
+            let variant_effect_tags = variant_summaries
+                .iter()
+                .flat_map(|row| row.effect_tags.iter().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let suggested_variant_assay_ids = variant_summaries
+                .iter()
+                .flat_map(|row| row.suggested_assay_ids.iter().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let variant_labels = variant_summaries
+                .iter()
+                .map(|row| row.label.clone())
+                .collect::<Vec<_>>();
+            let coding_prediction_count = variant_summaries
+                .iter()
+                .map(|row| row.coding_predictions.len())
+                .sum::<usize>();
+            let mut variant_related_evidence_ids = variant_evidence_rows
+                .iter()
+                .map(|row| row.evidence_id.clone())
+                .collect::<Vec<_>>();
+            variant_related_evidence_ids.extend(evidence.iter().filter_map(|row| {
+                (row.scope == EvidenceScope::SequenceSpan
+                    && row.role != ConstructRole::Variant
+                    && variant_evidence_rows.iter().any(|variant| {
+                        Self::construct_reasoning_ranges_overlap(
+                            variant.start_0based,
+                            variant.end_0based_exclusive,
+                            row.start_0based,
+                            row.end_0based_exclusive,
+                        )
+                    }))
+                .then(|| row.evidence_id.clone())
+            }));
+            variant_related_evidence_ids.sort();
+            variant_related_evidence_ids.dedup();
+
+            let variant_effect_status = if !variant_effect_tags.is_empty() {
+                "effect_candidates_detected"
+            } else {
+                "variant_context_recorded"
+            };
+            let variant_effect_label = match variant_effect_status {
+                "effect_candidates_detected" => "Variant effect candidates derived".to_string(),
+                _ => "Variant context recorded".to_string(),
+            };
+            let variant_effect_rationale = if variant_effect_tags.is_empty() {
+                format!(
+                    "Detected {} variant marker(s) ({}) but the current deterministic overlap rules did not yet classify promoter/TFBS/CDS/UTR/splice effect candidates for them.",
+                    variant_summaries.len(),
+                    variant_labels.join(", ")
+                )
+            } else {
+                let coding_text = if coding_prediction_count > 0 {
+                    format!(
+                        " {} codon-level coding prediction(s) were possible because allele-bearing VCF context was available.",
+                        coding_prediction_count
+                    )
+                } else {
+                    " Codon-level refinement remains absent for markers without explicit allele context.".to_string()
+                };
+                format!(
+                    "Variant placement against promoter/TFBS/CDS/UTR/splice annotations yields deterministic effect candidate tag(s): {}. Variant(s): {}.{}",
+                    variant_effect_tags.join(", "),
+                    variant_labels.join(", "),
+                    coding_text
+                )
+            };
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_variant_effect_context",
+                "variant_effect_context",
+                variant_effect_label,
+                variant_effect_rationale.clone(),
+                variant_related_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": variant_effect_status,
+                    "variant_count": variant_summaries.len(),
+                    "variant_labels": variant_labels,
+                    "effect_tags": variant_effect_tags,
+                    "variants": variant_summaries,
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_variant_effect_context",
+                "evaluate_variant_effect_context",
+                "Evaluate Variant Effect Context".to_string(),
+                variant_effect_rationale,
+                variant_related_evidence_ids.clone(),
+                vec!["fact_variant_effect_context".to_string()],
+                json!({
+                    "variant_count": variant_summaries.len(),
+                    "coding_prediction_count": coding_prediction_count,
+                }),
+            ));
+
+            let variant_assay_status = if !suggested_variant_assay_ids.is_empty() {
+                "assay_candidates_suggested"
+            } else {
+                "no_assay_rule_matched"
+            };
+            let variant_assay_label = match variant_assay_status {
+                "assay_candidates_suggested" => "Variant follow-up assays suggested".to_string(),
+                _ => "Variant follow-up assays require manual review".to_string(),
+            };
+            let variant_assay_rationale = if suggested_variant_assay_ids.is_empty() {
+                "Variant markers are present, but the current deterministic assay suggester did not match a promoter/regulatory, coding, splice, or UTR assay family from the available overlap evidence.".to_string()
+            } else {
+                format!(
+                    "Current deterministic assay-family rules suggest {} from the mapped variant context (for example promoter -> reporter, CDS -> paired expression, splice -> minigene, UTR -> reporter/translation compare).",
+                    suggested_variant_assay_ids.join(", ")
+                )
+            };
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_variant_assay_context",
+                "variant_assay_context",
+                variant_assay_label,
+                variant_assay_rationale.clone(),
+                variant_related_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": variant_assay_status,
+                    "suggested_assay_ids": suggested_variant_assay_ids,
+                    "variant_labels": variant_summaries
+                        .iter()
+                        .map(|row| row.label.clone())
+                        .collect::<Vec<_>>(),
+                    "variant_assay_map": variant_summaries
+                        .iter()
+                        .map(|row| json!({
+                            "label": row.label,
+                            "suggested_assay_ids": row.suggested_assay_ids,
+                            "effect_tags": row.effect_tags,
+                        }))
+                        .collect::<Vec<_>>(),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_suggest_variant_follow_up_assays",
+                "suggest_variant_follow_up_assays",
+                "Suggest Variant Follow-up Assays".to_string(),
+                variant_assay_rationale,
+                variant_related_evidence_ids,
+                vec!["fact_variant_assay_context".to_string()],
+                json!({
+                    "variant_count": variant_summaries.len(),
+                    "suggested_assay_ids": suggested_variant_assay_ids,
+                }),
+            ));
+        }
+
         (facts, decisions)
     }
 
@@ -12936,7 +13590,7 @@ impl GentleEngine {
             facts,
             decisions,
             notes: vec![
-                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation evidence, interpreted growth-condition signals, host-route restriction/methylation review, and first hard-rule host/helper/selection summary decisions."
+                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation/variant evidence, interpreted growth-condition signals, host-route restriction/methylation review, and first hard-rule host/helper/selection/variant summary decisions."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

@@ -2400,6 +2400,8 @@ pub struct ProcessRunBundleConstructReasoningSummary {
     pub medium_conditions: Vec<String>,
     pub growth_condition_signals: Vec<String>,
     pub supported_selection_rule_ids: Vec<String>,
+    pub variant_effect_tags: Vec<String>,
+    pub suggested_variant_assay_ids: Vec<String>,
     pub summary_lines: Vec<String>,
     pub warning_lines: Vec<String>,
 }
@@ -2420,6 +2422,8 @@ impl Default for ProcessRunBundleConstructReasoningSummary {
             medium_conditions: vec![],
             growth_condition_signals: vec![],
             supported_selection_rule_ids: vec![],
+            variant_effect_tags: vec![],
+            suggested_variant_assay_ids: vec![],
             summary_lines: vec![],
             warning_lines: vec![],
         }

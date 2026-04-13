@@ -9023,7 +9023,27 @@ fn test_export_process_run_bundle_decision_trace_partial_statuses_and_ordering()
 
 #[test]
 fn test_export_process_run_bundle_includes_construct_reasoning_summary_and_graphs() {
-    let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGT").expect("sequence");
+    let mut dna = DNAsequence::from_sequence("ATGGAATTTATGCGTATG").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("Demo CDS".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3, 4),
+        qualifiers: vec![
+            ("label".into(), Some("rsBundle".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_VCF_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("vcf_ref".into(), Some("G".to_string())),
+            ("vcf_alt".into(), Some("A".to_string())),
+            ("vcf_variant_class".into(), Some("snv".to_string())),
+        ],
+    });
+    dna.update_computed_features();
     let mut state = ProjectState::default();
     state.sequences.insert("reasoning_demo".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
@@ -9099,9 +9119,27 @@ fn test_export_process_run_bundle_includes_construct_reasoning_summary_and_graph
     );
     assert!(
         summary
+            .variant_effect_tags
+            .iter()
+            .any(|tag| tag == "coding_variant_candidate")
+    );
+    assert!(
+        summary
+            .suggested_variant_assay_ids
+            .iter()
+            .any(|assay| assay == "allele_paired_expression_compare")
+    );
+    assert!(
+        summary
             .summary_lines
             .iter()
             .any(|line| line.contains("Helper profile: puc19"))
+    );
+    assert!(
+        summary
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("Variant effect tags:"))
     );
 }
 
@@ -21854,6 +21892,214 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
         .expect("persisted graph");
     assert_eq!(persisted.graph_id, graph.graph_id);
     assert_eq!(persisted.evidence.len(), graph.evidence.len());
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_regulatory_variant_effect_and_assay_context() {
+    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "promoter".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(4, 7),
+        qualifiers: vec![("label".into(), Some("SP1 motif".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(5, 6),
+        qualifiers: vec![
+            ("label".into(), Some("rsDemoReg".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+            ("db_xref".into(), Some("dbSNP:rsDemoReg".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("variant_reg_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("variant_reg_demo", None, None)
+        .expect("build graph");
+
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::Variant
+            && row.evidence_class == EvidenceClass::HardFact
+            && row.label == "rsDemoReg"
+    }));
+
+    let variant_effect = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_effect_context")
+        .expect("variant effect fact");
+    assert_eq!(
+        variant_effect
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("effect_candidates_detected")
+    );
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("promoter_tfbs_regulatory_candidate") }))
+            .unwrap_or(false)
+    );
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("promoter_variant_candidate")))
+            .unwrap_or(false)
+    );
+
+    let variant_assay = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_assay_context")
+        .expect("variant assay fact");
+    assert_eq!(
+        variant_assay
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("assay_candidates_suggested")
+    );
+    assert!(
+        variant_assay
+            .value_json
+            .get("suggested_assay_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
+            .unwrap_or(false)
+    );
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "suggest_variant_follow_up_assays"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_variant_assay_context")
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_coding_variant_consequence_and_expression_assay() {
+    let mut dna = DNAsequence::from_sequence("ATGGAATTT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "transcript".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("TP73-201".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: gb_io::seq::Location::simple_range(0, 9),
+        qualifiers: vec![("label".into(), Some("TP73 CDS".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3, 4),
+        qualifiers: vec![
+            ("label".into(), Some("rsCoding".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_VCF_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("vcf_ref".into(), Some("G".to_string())),
+            ("vcf_alt".into(), Some("A".to_string())),
+            ("vcf_variant_class".into(), Some("snv".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("variant_coding_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("variant_coding_demo", None, None)
+        .expect("build graph");
+
+    let variant_effect = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_effect_context")
+        .expect("variant effect fact");
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("coding_variant_candidate")))
+            .unwrap_or(false)
+    );
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("missense_variant")))
+            .unwrap_or(false)
+    );
+    assert!(
+        variant_effect
+            .value_json
+            .get("variants")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|rows| rows.first())
+            .and_then(|row| row.get("coding_predictions"))
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("effect_tag").and_then(serde_json::Value::as_str)
+                    == Some("missense_variant")
+                    && row.get("ref_codon").and_then(serde_json::Value::as_str) == Some("GAA")
+                    && row.get("alt_codon").and_then(serde_json::Value::as_str) == Some("AAA")
+            }))
+            .unwrap_or(false)
+    );
+
+    let variant_assay = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_assay_context")
+        .expect("variant assay fact");
+    assert!(
+        variant_assay
+            .value_json
+            .get("suggested_assay_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("allele_paired_expression_compare") }))
+            .unwrap_or(false)
+    );
 }
 
 #[test]

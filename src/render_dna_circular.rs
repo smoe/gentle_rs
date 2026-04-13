@@ -829,6 +829,7 @@ impl RenderDnaCircular {
             ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => Color32::from_rgb(16, 185, 129),
             ConstructRole::Cds => Color32::from_rgb(79, 70, 229),
             ConstructRole::Terminator => Color32::from_rgb(220, 38, 38),
+            ConstructRole::Variant => Color32::from_rgb(236, 72, 153),
             ConstructRole::SignalPeptide | ConstructRole::LocalizationSignal => {
                 Color32::from_rgb(236, 72, 153)
             }

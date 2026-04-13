@@ -103,6 +103,44 @@ impl GentleEngine {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let variant_effect_tags = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "variant_effect_context")
+            .map(|fact| {
+                fact.value_json
+                    .get("effect_tags")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        let suggested_variant_assay_ids = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "variant_assay_context")
+            .map(|fact| {
+                fact.value_json
+                    .get("suggested_assay_ids")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
 
         let mut summary_lines = vec![];
         if !graph.objective.goal.trim().is_empty() {
@@ -126,6 +164,8 @@ impl GentleEngine {
             "growth_condition_context",
             "helper_context",
             "selection_context",
+            "variant_effect_context",
+            "variant_assay_context",
         ] {
             if let Some(fact) = graph.facts.iter().find(|fact| fact.fact_type == fact_type) {
                 if let Some(status) = fact_statuses.get(fact_type) {
@@ -145,6 +185,18 @@ impl GentleEngine {
             summary_lines.push(format!(
                 "Supported selection rules: {}",
                 supported_selection_rule_ids.join(", ")
+            ));
+        }
+        if !variant_effect_tags.is_empty() {
+            summary_lines.push(format!(
+                "Variant effect tags: {}",
+                variant_effect_tags.join(", ")
+            ));
+        }
+        if !suggested_variant_assay_ids.is_empty() {
+            summary_lines.push(format!(
+                "Suggested variant assays: {}",
+                suggested_variant_assay_ids.join(", ")
             ));
         }
         summary_lines.retain(|line| !line.trim().is_empty());
@@ -189,6 +241,8 @@ impl GentleEngine {
             medium_conditions: graph.objective.medium_conditions.clone(),
             growth_condition_signals,
             supported_selection_rule_ids,
+            variant_effect_tags,
+            suggested_variant_assay_ids,
             summary_lines,
             warning_lines,
         }

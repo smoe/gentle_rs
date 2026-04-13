@@ -1472,8 +1472,8 @@ Controls:
 9. Reasoning
    - Toggles the read-only construct-reasoning overlay for the active sequence.
    - Current first slice auto-refreshes the engine-derived graph and paints
-     evidence spans from restriction sites and sequence annotations directly on
-     the linear DNA map.
+     evidence spans from restriction sites, sequence annotations, and variant
+     markers directly on the linear DNA map.
    - Hovering an evidence span shows a compact "why is this here?" tooltip.
    - Clicking an evidence span routes the side-panel details view to that exact
      reasoning record (role, class, range, rationale, provenance, and notes).
@@ -1484,6 +1484,11 @@ Controls:
    - That inspector now also surfaces host-route restriction/methylation review
      when route notes encode traits such as `hsdR- M+`, `dam+`, `dcm+`,
      `hsdR+`, or `MDRS+`.
+   - Variant-aware reasoning now also appears there as non-sequence facts:
+     promoter / TFBS / CDS / UTR / splice overlaps are summarized as likely
+     effect candidates, and the same shared engine rules surface first assay
+     suggestions such as paired promoter-luciferase reporters, allele-paired
+     coding-expression comparison, minigene splicing, or UTR reporter assays.
    - The adjacent `Why` menu filters visible reasoning spans by role and
      evidence class without changing the underlying engine graph.
 10. Ctx mRNA (shown in `cDNA` mode)

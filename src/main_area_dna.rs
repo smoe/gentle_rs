@@ -6928,6 +6928,63 @@ mod tests {
     }
 
     #[test]
+    fn refresh_description_cache_includes_variant_reasoning_context() {
+        let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(0, 9),
+            qualifiers: vec![("label".into(), Some("Demo CDS".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: "variation".into(),
+            location: Location::simple_range(3, 4),
+            qualifiers: vec![
+                ("label".into(), Some("rsGui".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("genome_vcf_track".to_string()),
+                ),
+                ("vcf_ref".into(), Some("G".to_string())),
+                ("vcf_alt".into(), Some("A".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_variant".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .build_construct_reasoning_graph("seq_reasoning_variant", None, None)
+            .expect("build graph");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area =
+            MainAreaDna::new(dna, Some("seq_reasoning_variant".to_string()), Some(engine));
+
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert!(reasoning.fact_entries.iter().any(|entry| {
+            entry.title == "Variant effect candidates derived"
+                && entry
+                    .detail_lines
+                    .iter()
+                    .any(|line| line.contains("coding_variant_candidate"))
+        }));
+        assert!(reasoning.fact_entries.iter().any(|entry| {
+            entry.title == "Variant follow-up assays suggested"
+                && entry
+                    .detail_lines
+                    .iter()
+                    .any(|line| line.contains("allele_paired_expression_compare"))
+        }));
+    }
+
+    #[test]
     fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -14371,6 +14428,7 @@ impl MainAreaDna {
             ConstructRole::Cds => "CDS",
             ConstructRole::Utr3Prime => "3' UTR",
             ConstructRole::Terminator => "Terminator",
+            ConstructRole::Variant => "Variant",
             ConstructRole::Linker => "Linker",
             ConstructRole::Tag => "Tag",
             ConstructRole::SignalPeptide => "Signal peptide",
@@ -14618,6 +14676,32 @@ impl MainAreaDna {
                     .unwrap_or_default();
                 if !rules.is_empty() {
                     detail_lines.push(format!("rules: {}", rules.join(", ")));
+                }
+            }
+            "variant_effect_context" => {
+                let variant_labels =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "variant_labels");
+                if !variant_labels.is_empty() {
+                    detail_lines.push(format!("variants: {}", variant_labels.join(", ")));
+                }
+                let effect_tags =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "effect_tags");
+                if !effect_tags.is_empty() {
+                    detail_lines.push(format!("effect_tags: {}", effect_tags.join(", ")));
+                }
+            }
+            "variant_assay_context" => {
+                let variant_labels =
+                    Self::construct_reasoning_json_string_list(&fact.value_json, "variant_labels");
+                if !variant_labels.is_empty() {
+                    detail_lines.push(format!("variants: {}", variant_labels.join(", ")));
+                }
+                let assay_ids = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "suggested_assay_ids",
+                );
+                if !assay_ids.is_empty() {
+                    detail_lines.push(format!("assays: {}", assay_ids.join(", ")));
                 }
             }
             _ => {}

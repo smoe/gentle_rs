@@ -3904,6 +3904,16 @@ Post-baseline follow-ups:
     tallies for Dam, Dcm, and EcoK-like sites. The resulting review signal now
     flows automatically into both the GUI inspector and ClawBio/OpenClaw run
     bundles.
+  - Done (2026-04-13, variant-effect / assay slice): mapped variant markers
+    now enter the same engine-owned construct-reasoning graph as first-class
+    `variant` evidence spans, deterministic overlap rules now derive promoter /
+    TFBS / CDS / UTR / splice effect candidates from them, allele-bearing
+    VCF-backed coding variants receive first codon-level consequence tags
+    (`synonymous`, `missense`, `nonsense`, `stop_lost` when derivable), and
+    the same graph now emits first assay-family suggestions such as
+    allele-paired promoter luciferase, regulatory reporter, minigene splicing,
+    UTR reporter, or allele-paired coding-expression comparison. Those summary
+    tags now also flow through the ClawBio/OpenClaw run-bundle export block.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.
     - ClawBio/OpenClaw is the main agent-facing surface for reasoning output,
@@ -3915,6 +3925,16 @@ Post-baseline follow-ups:
     annotation with helper/vector and host-context reasoning:
     - broaden the starter host-profile catalog and add helper/vector profile
       catalogs with inspectable source notes
+    - deepen variant consequence reasoning beyond the current overlap-first
+      slice:
+      - transcript-aware multi-isoform coding consequence comparison
+      - promoter-window defaults tied to gene orientation and distance
+      - richer TFBS/JASPAR delta scoring instead of overlap-only hypotheses
+      - deeper splice consequence scoring beyond explicit splice-boundary
+        overlap
+      - nanopore direct-sequencing evidence as a future input for variant
+        confirmation, haplotype phasing, methylation-aware interpretation, and
+        promoter / transcript consequence review
     - broaden complementation/selection reasoning beyond the current
       small built-in rule seed set
     - broaden growth-condition interpretation beyond the current nutrient /
