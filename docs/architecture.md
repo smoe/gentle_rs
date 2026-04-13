@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-11
+Last updated: 2026-04-13
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -278,6 +278,32 @@ Operation graph-inspectability rule:
   must project dedicated graph-visible artifact nodes linked by operation id.
 - Frontends must not keep operation outcomes only in status text; graph
   projection is a definition-of-done requirement.
+
+Computational artifact provenance rule:
+
+- Persisted non-sequence computational outputs that may influence sample
+  interpretation or bench decisions must not remain metadata-only.
+- Such outputs should carry one stable artifact/report id plus enough portable
+  provenance to answer:
+  - which operation/run produced this?
+  - which sequences and non-sequence inputs did it rely on?
+  - which parameter regime or effective settings were used?
+  - how can a GUI/CLI/agent reopen or export the same artifact again?
+- Minimum portable provenance fields for persisted computational artifacts:
+  - `artifact_id` or `report_id`
+  - `op_id`
+  - `run_id`
+  - upstream `seq_id` / related sequence ids
+  - external input descriptors when applicable
+    (path/accession/import id and checksum when practical)
+  - generated timestamp
+  - request/effective parameter summary or a pointer to the stored request
+- If the output is persisted and sample-relevant, it should project as a
+  graph-visible analysis artifact node rather than living only in a hidden
+  metadata store.
+- Transient helper overlays may remain session-local only when they are
+  clearly marked as derived helper state, not final scientific conclusions,
+  and can be regenerated deterministically from persisted inputs/reports.
 
 ## 2. Core architecture rule
 

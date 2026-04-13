@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-12
+Last updated: 2026-04-13
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -4088,6 +4088,24 @@ Post-baseline follow-ups:
   - next: deeper whole-trace browsing and follow-on confirmation polish
 - Detailed sequencing-confirmation design note:
   - `docs/sequencing_confirmation_plan.md`
+- Start a computational-provenance parity track so persisted computational
+  conclusions become as inspectable and lineage-visible as wet-lab-derived
+  sequence products:
+  - design note: `docs/computational_provenance_plan.md`
+  - priority rollout:
+    - RNA-read interpretation reports first
+    - primer/qPCR design reports next
+    - then projection/annotation artifacts (for example UniProt projections,
+      isoform/expert-view artifacts, grouped TFBS summaries where persisted)
+    - then construct reasoning / planning traces as sample-linked artifacts
+    - then upcoming protein-side self/reverse-translation and related
+      reasoning outputs
+  - shared contract goal:
+    persisted computational artifacts should converge on one portable
+    provenance vocabulary (`artifact/report id`, `op_id`, `run_id`,
+    upstream sequence ids, non-sequence input descriptors, effective
+    settings, reopen/export identity) instead of each family inventing its own
+    opaque metadata story
 - Legacy `gentle-m` intake note:
   - priority/rationale/code-mining plan is tracked in
     `docs/legacy_gentle_m_intake.md`
