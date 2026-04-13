@@ -41156,6 +41156,37 @@ mod tests {
         );
     }
 
+    fn collect_rendered_text_from_shape(shape: &egui::epaint::Shape, out: &mut Vec<String>) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                let raw = text.galley.job.text.trim();
+                if !raw.is_empty() {
+                    out.push(raw.to_string());
+                }
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect_rendered_text_from_shape(shape, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn render_routine_assistant_contents_texts(app: &mut GENtleApp) -> Vec<String> {
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+            app.render_routine_assistant_contents(ui);
+        });
+        let full_output = ctx.end_pass();
+        let mut texts = Vec::new();
+        for clipped in full_output.shapes {
+            collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+        }
+        texts
+    }
+
     #[test]
     fn open_routine_assistant_dialog_focuses_existing_window_without_resetting_state() {
         let mut app = GENtleApp::default();
@@ -41407,6 +41438,51 @@ mod tests {
                 .variant_derived_preferred_routine_families
                 .iter()
                 .any(|family| family == "gibson")
+        );
+    }
+
+    #[test]
+    fn routine_assistant_compare_stage_renders_sequence_aware_planning_summary() {
+        let mut app = GENtleApp::default();
+        app.routine_assistant_stage = RoutineAssistantStage::Compare;
+        app.routine_assistant_selected_routine_id = "gibson.demo_overlap".to_string();
+        app.routine_assistant_candidates = vec![CloningRoutineCatalogRow {
+            routine_id: "gibson.demo_overlap".to_string(),
+            title: "Gibson Demo Overlap".to_string(),
+            family: "gibson".to_string(),
+            status: "implemented".to_string(),
+            summary: Some("Assembly-compatible demo routine.".to_string()),
+            ..Default::default()
+        }];
+        app.routine_assistant_explain_output = Some(serde_json::json!({
+            "planning": {
+                "seq_id": "variant_demo_seq",
+                "estimate": {
+                    "composite_meta_score": 0.93,
+                    "local_fit_score": 0.81,
+                    "estimated_time_hours": 4.5,
+                    "estimated_cost": 12.0,
+                    "explanation": {
+                        "routine_family_alignment_bonus": 0.16,
+                        "routine_family_alignment_sources": ["variant_derived"]
+                    }
+                }
+            },
+            "alternatives": []
+        }));
+
+        let texts = render_routine_assistant_contents_texts(&mut app);
+        assert!(
+            texts.iter().any(|text| text.contains(
+                "sequence-aware planning: score 0.930 | fit 0.810 | time 4.50 h | cost 12.00"
+            )),
+            "rendered texts: {texts:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|text| text.contains("alignment bonus: +0.16 (variant_derived)")),
+            "rendered texts: {texts:?}"
         );
     }
 
