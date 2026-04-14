@@ -38,8 +38,8 @@ enough annotated context to make the selection easy.
 
 ## Fastest Path
 
-1. open [`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb)
-2. keep the map in linear mode
+1. open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`
+2. keep the loaded TP73 map in linear mode
 3. drag-select one short core region of interest
 4. right-click that selection
 5. choose `Simple PCR from selection`
@@ -47,6 +47,10 @@ enough annotated context to make the selection easy.
    - `max primer distance from core`
    - `max amplicon`
 7. click `Design Primer Pairs`
+
+If you prefer to start without the tutorial menu, you can instead open
+[`test_files/tp73.ncbi.gb`](../../test_files/tp73.ncbi.gb) directly and follow
+the same steps.
 
 ## Step-by-Step
 

@@ -201,8 +201,8 @@ Use the labels above as trust/maintenance signals:
 
 ### Path B1: GUI-first simple PCR
 
-1. Read [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md)
-2. Start from one map selection and the `Simple PCR from selection` context-menu action
+1. Open `File -> Open Tutorial Project...` -> `Core (9)` -> `18. Simple PCR From a Selected Core Region`
+2. Follow [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) from the loaded TP73 starter project
 3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
 
 ### Path B2: Protein workflow sanity checks
