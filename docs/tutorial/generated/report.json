@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 17,
+  "chapter_count": 18,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -25,29 +25,31 @@
     "chapters/15_gibson_specialist_testing_baseline.md",
     "chapters/16_gibson_arrangements_baseline.md",
     "chapters/17_tp53_uniprot_projection_online.md",
+    "chapters/18_simple_pcr_selection_gui.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "503f9f3cd7ab085e07430fcf9181541e7b39b146",
+    "README.md": "ffd8c8abf22976664ac793436972fa64c437e78f",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "1d56292528e620716ad579b993fb59cb8a7be40b",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "80c62a541003c3d2c0ce94e24a087fcfd9a05eae",
-    "chapters/03_load_and_digest_pgex.md": "ab06b7588d64d3f616d79e286b19ac5b80339f0e",
-    "chapters/04_gibson_two_fragment_overlap_preview.md": "c4e3b9213341b8823898526849a2e101343649c5",
-    "chapters/05_guides_filter_and_generate_oligos.md": "67daa98164e6d6cece8c305c1f1ebe03204036ea",
-    "chapters/06_digest_ligation_extract_region_minimal.md": "e1bc39f0c1f27ad42f3f1739ca4cee5c306247da",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "0bec409c2b174dfba39d613c59690d33176b82a7",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "7a93c9e7a1a7ad9e5c8f69c4c2f968b570f1eb2d",
+    "chapters/03_load_and_digest_pgex.md": "25090e5db3cc174d45305a558fb52aad4a2ace84",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "72ebe39148094de48d8f080f7738eb7f9ae0c7f5",
+    "chapters/05_guides_filter_and_generate_oligos.md": "6e27c2390c091205eec38e9d12fb768a1a6d9dc4",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "e44ff379c7ba39047f5d470273fa2764a59ae05d",
     "chapters/07_guides_export_csv_and_protocol.md": "d9b106bf9d8367f65e67040bfcc6ae659da4a2d5",
-    "chapters/08_contribute_to_gentle_development.md": "345a122068eae2a2185758f4d60dc5ca5e3d8b1a",
-    "chapters/09_prepare_reference_genome_online.md": "1716f4ea3d552a35275399ceb132a33009b11415",
-    "chapters/10_tp53_isoform_architecture_online.md": "a5997f9e5e167c0f894d579eaea40cad02a4f874",
-    "chapters/11_tp63_anchor_extension_online.md": "de686d2a7a5e881f75e2e749395573e7bb5723a3",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "71e89491d39bcfd92bdc986d7517dc618d81d5cf",
-    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "5aae2ea7b4cf52a34a62e2a3fed126354ce2c1ed",
-    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "85ea8f4af63e6fc85a3d4c82623f5d8d0cfd3b2c",
-    "chapters/15_gibson_specialist_testing_baseline.md": "c1b558b982b723e777a893bb1ff9c6ba6cef3f7b",
-    "chapters/16_gibson_arrangements_baseline.md": "f13ee38520753a4ed1dee9d4e905d39eaf4fe9bf",
-    "chapters/17_tp53_uniprot_projection_online.md": "9b0c482214c319283a77824675cd12b04c711811"
+    "chapters/08_contribute_to_gentle_development.md": "8923435d92dca9d53dbb9297b8b371ae9016302a",
+    "chapters/09_prepare_reference_genome_online.md": "8c5bc2b7f693526054aa2599397f944dd57ff1ba",
+    "chapters/10_tp53_isoform_architecture_online.md": "cb809158f1ea130cb8d866049f738690f630a783",
+    "chapters/11_tp63_anchor_extension_online.md": "53aa4697bdf701f5796dedf51a548cd84833fece",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "ece26b041f6dd1143d01cdc1113d431783ccb732",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "fb225786bc1670f7170adad5fa693a7686baa537",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "b30d245a21f59fd400dbde2bd8872b2720a702c2",
+    "chapters/15_gibson_specialist_testing_baseline.md": "d0867ef396c906bf3acc60eec73f30030ed9cb7c",
+    "chapters/16_gibson_arrangements_baseline.md": "52cf6351e6f94b89b09d67933d38214e91e07f55",
+    "chapters/17_tp53_uniprot_projection_online.md": "1e84a4cdab41f430a61bc8ec0c03ce072feab8b8",
+    "chapters/18_simple_pcr_selection_gui.md": "313ae63978d312899a80e4dd10f515cdc4ad1d9b"
   },
   "chapters": [
     {
@@ -313,6 +315,20 @@
         "artifact_exports"
       ],
       "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "simple_pcr_selection_gui",
+      "order": 18,
+      "title": "Simple PCR From a Selected Core Region",
+      "tier": "core",
+      "example_id": "simple_pcr_selection_gui",
+      "example_source": "docs/examples/workflows/simple_pcr_selection_gui.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows"
+      ],
+      "executed": true,
       "retained_artifacts": []
     }
   ]

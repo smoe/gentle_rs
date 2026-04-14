@@ -17389,10 +17389,7 @@ Error: `{err}`"
                             .unwrap_or("auto"),
                         report
                             .target_anneal_tm_c
-                            .map(|tm| format!(
-                                "{tm:.1} °C / {} bp",
-                                report.anneal_window_bp
-                            ))
+                            .map(|tm| format!("{tm:.1} °C / {} bp", report.anneal_window_bp))
                             .unwrap_or_else(|| "-".to_string()),
                         if result.warnings.is_empty() {
                             "-".to_string()
@@ -17665,7 +17662,7 @@ Error: `{err}`"
                 ui.monospace(
                     report
                         .target_anneal_tm_c
-                        .map(|tm| { format!("{tm:.1} °C / {} bp", report.anneal_window_bp) })
+                        .map(|tm| format!("{tm:.1} °C / {} bp", report.anneal_window_bp))
                         .unwrap_or_else(|| "-".to_string()),
                 );
                 ui.end_row();

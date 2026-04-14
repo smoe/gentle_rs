@@ -830,9 +830,7 @@ impl Default for ProteinFeatureFilter {
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
     #[serde(alias = "TfbsFeature")]
-    TfbsFeature {
-        feature_id: usize,
-    },
+    TfbsFeature { feature_id: usize },
     #[serde(alias = "RestrictionSite")]
     RestrictionSite {
         cut_pos_1based: usize,
@@ -850,9 +848,7 @@ pub enum FeatureExpertTarget {
         scope: SplicingScopePreset,
     },
     #[serde(alias = "IsoformArchitecture")]
-    IsoformArchitecture {
-        panel_id: String,
-    },
+    IsoformArchitecture { panel_id: String },
     #[serde(alias = "ProteinComparison")]
     ProteinComparison {
         #[serde(default)]

@@ -1781,6 +1781,9 @@ order. Durable architecture constraints and decisions remain in
 - DNA-sequence feature trees now cache their derived grouping/filter/viewport
   model across frames and only rebuild when sequence or relevant view/filter
   inputs change, reducing CPU load for feature-dense windows.
+- DNA-sequence windows now keep a stable bottom-panel topology when the
+  sequence text panel is hidden or auto-hidden, reducing hosted/macOS repaint
+  churn and transient relayout artifacts during text-panel toggles.
 - DNA-sequence window top controls are now split into stable rows instead of a
   single large wrapped toolbar:
   - map/navigation

@@ -4912,6 +4912,26 @@ mod tests {
     }
 
     #[test]
+    fn sequence_panel_layout_config_keeps_visible_panel_resizable() {
+        let config = MainAreaDna::sequence_panel_layout_config(800.0, true);
+        assert!(config.resizable);
+        assert_eq!(config.exact_height_px, None);
+        assert_eq!(config.default_height_px, 400.0);
+        assert_eq!(config.min_height_px, 200.0);
+        assert_eq!(config.max_height_px, 400.0);
+    }
+
+    #[test]
+    fn sequence_panel_layout_config_collapses_hidden_panel() {
+        let config = MainAreaDna::sequence_panel_layout_config(800.0, false);
+        assert!(!config.resizable);
+        assert_eq!(config.exact_height_px, Some(0.0));
+        assert_eq!(config.default_height_px, 0.0);
+        assert_eq!(config.min_height_px, 0.0);
+        assert_eq!(config.max_height_px, 0.0);
+    }
+
+    #[test]
     fn linear_base_auto_hide_uses_width_cache_fallback() {
         let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
         let mut area = MainAreaDna::new(dna, None, None);
@@ -8275,6 +8295,15 @@ struct FeatureTreeCache {
     model: FeatureTreeComputedModel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SequencePanelLayoutConfig {
+    resizable: bool,
+    exact_height_px: Option<f32>,
+    default_height_px: f32,
+    min_height_px: f32,
+    max_height_px: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
@@ -8719,6 +8748,48 @@ impl MainAreaDna {
         } else {
             FEATURE_TREE_DEFAULT_SPLIT_FRACTION
         }
+    }
+
+    fn sequence_panel_layout_config(
+        full_height: f32,
+        sequence_panel_visible: bool,
+    ) -> SequencePanelLayoutConfig {
+        if !sequence_panel_visible {
+            return SequencePanelLayoutConfig {
+                resizable: false,
+                exact_height_px: Some(0.0),
+                default_height_px: 0.0,
+                min_height_px: 0.0,
+                max_height_px: 0.0,
+            };
+        }
+        SequencePanelLayoutConfig {
+            resizable: true,
+            exact_height_px: None,
+            default_height_px: full_height / 2.0,
+            min_height_px: full_height / 4.0,
+            max_height_px: full_height / 2.0,
+        }
+    }
+
+    fn sequence_bottom_panel(
+        panel_id: egui::Id,
+        full_height: f32,
+        sequence_panel_visible: bool,
+    ) -> egui::Panel {
+        let config = Self::sequence_panel_layout_config(full_height, sequence_panel_visible);
+        let mut panel = egui::Panel::bottom(panel_id)
+            .frame(Frame::NONE)
+            .resizable(config.resizable);
+        if let Some(exact_height_px) = config.exact_height_px {
+            panel = panel.exact_size(exact_height_px);
+        } else {
+            panel = panel
+                .default_size(config.default_height_px)
+                .max_size(config.max_height_px)
+                .min_size(config.min_height_px);
+        }
+        panel
     }
 
     fn extended_top_panel_visible(&self) -> bool {
@@ -10240,49 +10311,26 @@ impl MainAreaDna {
         });
 
         if self.show_map {
-            if self.show_sequence && !auto_hidden_sequence_panel {
-                let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
-                crate::egui_compat::show_bottom_panel(
-                    ctx,
-                    bottom_panel_id,
-                    egui::Panel::bottom(bottom_panel_id)
-                        .frame(Frame::NONE)
-                        .resizable(true)
-                        .default_size(full_height / 2.0)
-                        .max_size(full_height / 2.0)
-                        .min_size(full_height / 4.0),
-                    |ui| {
+            let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
+            crate::egui_compat::show_bottom_panel(
+                ctx,
+                bottom_panel_id,
+                Self::sequence_bottom_panel(bottom_panel_id, full_height, sequence_panel_visible),
+                |ui| {
+                    if sequence_panel_visible {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
-                    },
-                );
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default().frame(Frame::NONE),
-                    |ui| {
-                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                        self.render_middle(ctx, ui);
-                    },
-                );
-            } else if auto_hidden_sequence_panel {
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default().frame(Frame::NONE),
-                    |ui| {
-                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                        self.render_middle(ctx, ui);
-                    },
-                );
-            } else {
-                crate::egui_compat::show_central_panel(
-                    ctx,
-                    egui::CentralPanel::default().frame(Frame::NONE),
-                    |ui| {
-                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                        self.render_middle(ctx, ui);
-                    },
-                );
-            }
+                    }
+                },
+            );
+            crate::egui_compat::show_central_panel(
+                ctx,
+                egui::CentralPanel::default().frame(Frame::NONE),
+                |ui| {
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                    self.render_middle(ctx, ui);
+                },
+            );
         } else {
             crate::egui_compat::show_central_panel(
                 ctx,
@@ -10346,41 +10394,26 @@ impl MainAreaDna {
         });
 
         if self.show_map {
-            if self.show_sequence && !auto_hidden_sequence_panel {
-                let bottom_panel_id = egui::Id::new(("dna_sequence_embedded", panel_scope.clone()));
-                crate::egui_compat::show_bottom_panel_inside(
-                    ui,
-                    egui::Panel::bottom(bottom_panel_id)
-                        .frame(Frame::NONE)
-                        .resizable(true)
-                        .default_size(full_height / 2.0)
-                        .max_size(full_height / 2.0)
-                        .min_size(full_height / 4.0),
-                    |ui| {
+            let bottom_panel_id = egui::Id::new(("dna_sequence_embedded", panel_scope.clone()));
+            crate::egui_compat::show_bottom_panel_inside(
+                ui,
+                Self::sequence_bottom_panel(bottom_panel_id, full_height, sequence_panel_visible),
+                |ui| {
+                    if sequence_panel_visible {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
-                    },
-                );
-                crate::egui_compat::show_central_panel_inside(
-                    ui,
-                    egui::CentralPanel::default().frame(Frame::NONE),
-                    |ui| {
-                        let ctx = ui.ctx().clone();
-                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                        self.render_middle(&ctx, ui);
-                    },
-                );
-            } else {
-                crate::egui_compat::show_central_panel_inside(
-                    ui,
-                    egui::CentralPanel::default().frame(Frame::NONE),
-                    |ui| {
-                        let ctx = ui.ctx().clone();
-                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                        self.render_middle(&ctx, ui);
-                    },
-                );
-            }
+                    }
+                },
+            );
+            crate::egui_compat::show_central_panel_inside(
+                ui,
+                egui::CentralPanel::default().frame(Frame::NONE),
+                |ui| {
+                    let ctx = ui.ctx().clone();
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
+                    self.render_middle(&ctx, ui);
+                },
+            );
         } else {
             crate::egui_compat::show_central_panel_inside(
                 ui,

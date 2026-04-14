@@ -178,6 +178,9 @@ A DNA window is split into two visual areas:
 - Sequence panel: text-oriented sequence rows
 
 Both panels can be shown/hidden from the toolbar.
+- On macOS-hosted windows, the sequence-text toggle now keeps a stable
+  bottom-panel layout slot even while hidden/auto-hidden, reducing repaint
+  churn and transient relayout artifacts when switching the text panel on/off.
 
 The project main window (lineage page) supports two views:
 
