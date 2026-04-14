@@ -1346,6 +1346,9 @@ order. Durable architecture constraints and decisions remain in
          record codon-choice diagnostics (`preferred` vs alternative synonymous
          picks, fallback codons, GC fraction, realized anneal-window Tm), and
          lineage shows a compact diagnostics summary for those artifacts
+       - hand-written manual sanity-check tutorials now exist for:
+         - transcript-native Protein Expert open/export
+         - imported-protein reverse translation plus lineage/provenance audit
        - add named presets / control bundles for common goals
          (`balanced`, `fast expression`, `slow translation`, `anneal-aware`)
        - consider stronger local optimization for annealing/GC/repeat

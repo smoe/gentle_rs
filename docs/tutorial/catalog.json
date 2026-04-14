@@ -177,6 +177,34 @@
         "primer_design"
       ],
       "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length."
+    },
+    {
+      "id": "protein_transcript_native_expert_gui",
+      "title": "Transcript-Native Protein Expert Sanity Check",
+      "path": "docs/tutorial/protein_transcript_native_expert_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export."
+    },
+    {
+      "id": "protein_reverse_translation_gui",
+      "title": "Reverse Translate an Imported Protein and Audit the Result",
+      "path": "docs/tutorial/protein_reverse_translation_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen."
     }
   ]
 }

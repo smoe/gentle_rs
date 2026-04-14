@@ -3643,6 +3643,9 @@ Protein-evidence behavior:
   than opening their own dedicated protein-only window, but first-class
   protein sequences imported from Ensembl or derived from transcripts can now
   drive reverse-translation workflows from the same specialist.
+- Manual GUI sanity-check walkthroughs for these newer protein paths now live in:
+  - [`docs/tutorial/protein_transcript_native_expert_gui.md`](./tutorial/protein_transcript_native_expert_gui.md)
+  - [`docs/tutorial/protein_reverse_translation_gui.md`](./tutorial/protein_reverse_translation_gui.md)
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 - Persisted UniProt projections now also appear in the project lineage
   graph/table as analysis artifacts linked from the source sequence.

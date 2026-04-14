@@ -34,6 +34,13 @@ If you want the simplest possible PCR walkthrough first:
 - Use the simple-PCR selection tutorial:
   [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md)
 
+If you want to manually sanity-check the newer protein workflows:
+
+- Start with the transcript-native Protein Expert tutorial:
+  [`docs/tutorial/protein_transcript_native_expert_gui.md`](./protein_transcript_native_expert_gui.md)
+- Then continue with the reverse-translation and lineage-audit tutorial:
+  [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md)
+
 If you are GUI-first and want one concrete pharmacogenomic handoff into cloning:
 
 - Use the VKORC1 / rs9923231 PGx-alert-to-mammalian-reporter walkthrough:
@@ -144,6 +151,8 @@ Treat the tutorial catalog as three confidence bands:
 | --- | --- | --- | --- | --- |
 | [`docs/tutorial/generated/README.md`](./generated/README.md) | Executable tutorial collection | `generated+checked` | Reproducible learning paths, CLI parity, CI-backed examples | Generated from `docs/tutorial/sources/` and executable workflows through the runtime manifest; validated by `tutorial-check`. |
 | [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Beginner PCR setup from one selected core region | Hand-written short path for core ROI + maximum primer distance + maximum amplicon using the selection context menu and PCR Designer starter block. |
+| [`docs/tutorial/protein_transcript_native_expert_gui.md`](./protein_transcript_native_expert_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Local transcript-native protein expert validation | Hand-written manual check for `Protein Evidence... -> Open Derived Protein Expert` and derived-only SVG export without external protein evidence. |
+| [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Protein import, reverse translation, provenance inspection, lineage audit | Hand-written manual check for Ensembl protein import, reverse translation result inspection, and reverse-translation lineage reopen. |
 | [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `manual/hybrid` | GUI-first pharmacogenomic reporter planning | Hand-written narrative, but intentionally mapped to engine/CLI operations and linked to executable workflow material. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
@@ -195,6 +204,13 @@ Use the labels above as trust/maintenance signals:
 1. Read [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md)
 2. Start from one map selection and the `Simple PCR from selection` context-menu action
 3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
+
+### Path B2: Protein workflow sanity checks
+
+1. Read [`docs/tutorial/protein_transcript_native_expert_gui.md`](./protein_transcript_native_expert_gui.md)
+2. Verify transcript-native Protein Expert open/export from one local project
+3. Continue with [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md)
+4. Confirm reverse-translation provenance and lineage reopen behavior
 
 ### Path C: Gibson specialist testing
 
