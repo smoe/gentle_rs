@@ -2567,6 +2567,16 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     is advisory rather than a full sequence optimizer
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
+  - persisted reverse-translation report metadata under
+    `reverse_translation_reports`:
+    - stable `report_id`
+    - `op_id` / `run_id`
+    - source protein sequence id
+    - created coding-sequence id
+    - effective translation table / label / source
+    - resolved speed profile / source / reference species
+    - optional speed mark and annealing-Tm steering inputs
+    - warnings captured during codon selection / qualifier synthesis
   - one full-span synthetic local `CDS` feature with:
     - protein provenance
     - translation table/label

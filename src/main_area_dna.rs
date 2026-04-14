@@ -1524,6 +1524,7 @@ mod tests {
             genome_annotation_projection: None,
             sequence_alignment: None,
             protein_derivation_report: None,
+            reverse_translation_report: None,
             sequencing_confirmation_report: None,
             sequencing_trace_import_report: Some(SequencingTraceImportReport {
                 schema: "gentle.sequencing_trace_import_report.v2".to_string(),
@@ -3398,6 +3399,7 @@ mod tests {
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 protein_derivation_report: None,
+                reverse_translation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,

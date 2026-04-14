@@ -1331,6 +1331,9 @@ order. Durable architecture constraints and decisions remain in
     3. Reverse-translation ergonomics
        - keep the current deterministic codon-bias + optional annealing-Tm hint
          path, but add stronger diagnostics explaining codon choice
+       - persisted reverse-translation reports now also appear as lineage
+         analysis artifacts and reopen the created coding sequence from lineage
+         with stored translation-table / speed-profile provenance
        - add named presets / control bundles for common goals
          (`balanced`, `fast expression`, `slow translation`, `anneal-aware`)
        - consider stronger local optimization for annealing/GC/repeat
@@ -4204,26 +4207,31 @@ Post-baseline follow-ups:
         `op_id` / `run_id`, appear in GUI lineage as analysis artifacts, and
         reopen the UniProt protein expert on the selected projection with
         entry/filter/transcript-count detail
-	    - then protein-side self/reverse-translation and related reasoning outputs
-	      - shipped baseline: persisted transcript-native protein-derivation
-	        reports now carry stable `report_id` plus `op_id` / `run_id`, appear
-	        in GUI lineage as analysis artifacts, and reopen the Derived Protein
-	        Expert on the selected derivation with derivation-mode/protein-count
-	        detail
-	      - next: extend the same artifact pattern to reverse/self-translation
-	        planning outputs and protein-to-DNA handoff reasoning
-	    - then construct reasoning / planning traces as sample-linked artifacts
-	      - shipped baseline: persisted construct-reasoning graphs now carry
-	        stable `graph_id` plus `op_id` / `run_id`, appear in GUI lineage as
-	        analysis artifacts, and reopen the sequence window on the selected
-	        reasoning graph with objective/goal/evidence detail
-	    - then RNA-read interpretation reports
-	      - shipped baseline: persisted RNA-read reports now carry `op_id` /
-	        `run_id`, appear in GUI lineage as analysis artifacts, and reopen the
-	        RNA-read Mapping workspace on the selected report with
-	        profile/report-mode/origin/read-count detail
-	      - next: decide whether linked gene-support summaries/audits should stay
-	        subordinate exports or become explicit companion artifacts
+    - then protein-side self/reverse-translation and related reasoning outputs
+      - shipped baseline: persisted transcript-native protein-derivation
+        reports now carry stable `report_id` plus `op_id` / `run_id`, appear
+        in GUI lineage as analysis artifacts, and reopen the Derived Protein
+        Expert on the selected derivation with derivation-mode/protein-count
+        detail
+      - shipped baseline: persisted reverse-translation reports now carry
+        stable `report_id` plus `op_id` / `run_id`, appear in GUI lineage as
+        analysis artifacts, and reopen the created coding-sequence window on
+        the selected report with speed-profile / translation-table /
+        coding-length detail
+      - next: extend the same artifact pattern to self-translation planning
+        outputs and broader protein-to-DNA handoff reasoning
+    - then construct reasoning / planning traces as sample-linked artifacts
+      - shipped baseline: persisted construct-reasoning graphs now carry
+        stable `graph_id` plus `op_id` / `run_id`, appear in GUI lineage as
+        analysis artifacts, and reopen the sequence window on the selected
+        reasoning graph with objective/goal/evidence detail
+    - then RNA-read interpretation reports
+      - shipped baseline: persisted RNA-read reports now carry `op_id` /
+        `run_id`, appear in GUI lineage as analysis artifacts, and reopen the
+        RNA-read Mapping workspace on the selected report with
+        profile/report-mode/origin/read-count detail
+      - next: decide whether linked gene-support summaries/audits should stay
+        subordinate exports or become explicit companion artifacts
   - shared contract goal:
     persisted computational artifacts should converge on one portable
     provenance vocabulary (`artifact/report id`, `op_id`, `run_id`,

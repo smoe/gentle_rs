@@ -1759,6 +1759,7 @@ enum LineageAnalysisKind {
     PrimerDesign,
     QpcrDesign,
     ProteinDerivation,
+    ReverseTranslation,
     ConstructReasoning,
     UniprotProjection,
     SequencingConfirmation,
@@ -1773,6 +1774,7 @@ impl LineageAnalysisKind {
             Self::PrimerDesign => "primer_design",
             Self::QpcrDesign => "qpcr_design",
             Self::ProteinDerivation => "protein_derivation",
+            Self::ReverseTranslation => "reverse_translation",
             Self::ConstructReasoning => "construct_reasoning",
             Self::UniprotProjection => "uniprot_projection",
             Self::SequencingConfirmation => "sequencing_confirmation",
@@ -5398,6 +5400,36 @@ Error: `{err}`"
         );
     }
 
+    fn open_sequence_window_for_reverse_translation_report(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        let coding_seq_id = report_id
+            .trim()
+            .is_empty()
+            .then_some(None)
+            .unwrap_or_else(|| {
+                self.engine
+                    .read()
+                    .unwrap()
+                    .get_reverse_translation_report(report_id)
+                    .ok()
+                    .and_then(|report| {
+                        if report.protein_seq_id.eq_ignore_ascii_case(seq_id) {
+                            Some(report.coding_seq_id)
+                        } else {
+                            None
+                        }
+                    })
+            });
+        if let Some(coding_seq_id) = coding_seq_id.as_deref() {
+            self.open_sequence_window(coding_seq_id);
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+    }
+
     fn open_sequence_window_for_construct_reasoning_graph(&mut self, seq_id: &str, graph_id: &str) {
         if !graph_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -5544,6 +5576,9 @@ Error: `{err}`"
             }
             LineageAnalysisKind::ProteinDerivation => {
                 self.open_sequence_window_for_protein_derivation_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::ReverseTranslation => {
+                self.open_sequence_window_for_reverse_translation_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::ConstructReasoning => {
                 self.open_sequence_window_for_construct_reasoning_graph(seq_id, artifact_id);
@@ -14675,6 +14710,7 @@ Error: `{err}`"
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 protein_derivation_report: None,
+                reverse_translation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -31075,6 +31111,72 @@ Error: `{err}`"
                 }
             }
 
+            let reverse_translation_summaries = engine.list_reverse_translation_reports(None);
+            for summary in reverse_translation_summaries {
+                let node_id = format!("analysis:reverse_translate:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:reverse_translate:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Reverse translate protein sequence: protein={}, report_id={}",
+                        summary.protein_seq_id, summary.report_id
+                    )
+                });
+                let protein_seq_id = summary.protein_seq_id.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: protein_seq_id.clone(),
+                    display_name: summary.coding_seq_id.clone(),
+                    origin: "ReverseTranslation".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![protein_seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::ReverseTranslation),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: Some(summary.coding_seq_id.clone()),
+                    analysis_mode: Some(summary.speed_profile_summary.clone()),
+                    analysis_status: None,
+                    analysis_point_count: Some(summary.translation_table),
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.coding_length_bp),
+                    analysis_variant_count: Some(summary.protein_length_aa),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&protein_seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
             let construct_reasoning_summaries =
                 engine.list_construct_reasoning_graph_summaries(None);
             for summary in construct_reasoning_summaries {
@@ -33425,6 +33527,12 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::ProteinDerivation);
         }
+        if row.node_id.starts_with("analysis:reverse_translate:")
+            || row.node_id.starts_with("analysis:reverse_translation:")
+            || row.origin.eq_ignore_ascii_case("reversetranslation")
+        {
+            return Some(LineageAnalysisKind::ReverseTranslation);
+        }
         if row.node_id.starts_with("analysis:construct_reasoning:")
             || row.node_id.starts_with("analysis:reasoning:")
             || row.origin.eq_ignore_ascii_case("constructreasoning")
@@ -33504,6 +33612,18 @@ Error: `{err}`"
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:protein_derivation:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:reverse_translate:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:reverse_translation:") {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -34415,6 +34535,16 @@ Error: `{err}`"
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::ReverseTranslation) => {
+                                                        format!(
+                                                            "{} | profile={} | table={} | bp={} | aa={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::ConstructReasoning) => {
                                                         format!(
                                                             "{} | objective={} | evidence={} | decisions={} | candidates={}",
@@ -35031,6 +35161,16 @@ Error: `{err}`"
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::ReverseTranslation) => {
+                                                        format!(
+                                                            "reverse_translation={} | profile={} | table={} | coding_bp={} | protein_aa={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::ConstructReasoning) => {
                                                         format!(
                                                             "construct_reasoning={} | objective={} | evidence={} | decisions={} | candidates={}",
@@ -35282,6 +35422,21 @@ Error: `{err}`"
                                                                 .as_deref()
                                                                 .unwrap_or("-"),
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::ReverseTranslation) => {
+                                                        ui.small(format!(
+                                                            "protein={} | product={} | profile={} | table={} | coding_bp={} | protein_aa={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
                                                         ));
                                                     }
                                                     Some(LineageAnalysisKind::ConstructReasoning) => {
@@ -36000,6 +36155,10 @@ Error: `{err}`"
                                                 "Open Derived Protein Expert",
                                                 "Open the transcript-native Protein Expert on this persisted protein-derivation artifact",
                                             ),
+                                            Some(LineageAnalysisKind::ReverseTranslation) => (
+                                                "Open Coding Sequence",
+                                                "Open the created coding-DNA product for this persisted reverse-translation artifact",
+                                            ),
                                             Some(LineageAnalysisKind::ConstructReasoning) => (
                                                 "Open Construct Reasoning",
                                                 "Open the sequence window on this persisted construct-reasoning graph",
@@ -36273,6 +36432,7 @@ Error: `{err}`"
                             &selected_row,
                         ) {
                             Some(LineageAnalysisKind::SequencingConfirmation) => "baseline sequence",
+                            Some(LineageAnalysisKind::ReverseTranslation) => "product sequence",
                             _ => "reference sequence",
                         };
                         ui.small(format!("{reference_label}={reference_seq_id}"));
@@ -36285,6 +36445,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::PrimerDesign)
                             | Some(LineageAnalysisKind::QpcrDesign) => "backend",
                             Some(LineageAnalysisKind::ProteinDerivation) => "derivation_mode",
+                            Some(LineageAnalysisKind::ReverseTranslation) => "speed_profile",
                             Some(LineageAnalysisKind::ConstructReasoning) => "objective_id",
                             Some(LineageAnalysisKind::UniprotProjection) => "entry_id",
                             _ => "mode/model",
@@ -36298,6 +36459,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::RnaReadInterpretation) => {
                                 "report_mode/origin_mode"
                             }
+                            Some(LineageAnalysisKind::ReverseTranslation) => "product_seq_id",
                             Some(LineageAnalysisKind::ConstructReasoning) => "goal",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_filter",
                             _ => "status",
@@ -36311,6 +36473,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::RnaReadInterpretation) => {
                                 "seed_passed_count"
                             }
+                            Some(LineageAnalysisKind::ReverseTranslation) => "translation_table",
                             Some(LineageAnalysisKind::ConstructReasoning) => "evidence_count",
                             _ => "point_count",
                         };
@@ -36335,6 +36498,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
                             Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
                             Some(LineageAnalysisKind::ProteinDerivation) => "protein_count",
+                            Some(LineageAnalysisKind::ReverseTranslation) => "coding_bp",
                             Some(LineageAnalysisKind::ConstructReasoning) => "candidate_count",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_count",
                             _ => "target_count",
@@ -36348,6 +36512,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::RnaReadInterpretation) => {
                                 "aligned_read_count"
                             }
+                            Some(LineageAnalysisKind::ReverseTranslation) => "protein_aa",
                             Some(LineageAnalysisKind::ConstructReasoning) => "decision_count",
                             _ => "variant_count",
                         };
@@ -36375,6 +36540,9 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
                             Some(LineageAnalysisKind::ProteinDerivation) => {
                                 "Open Derived Protein Expert"
+                            }
+                            Some(LineageAnalysisKind::ReverseTranslation) => {
+                                "Open Coding Sequence"
                             }
                             Some(LineageAnalysisKind::ConstructReasoning) => {
                                 "Open Construct Reasoning"
@@ -45493,6 +45661,40 @@ mod tests {
     }
 
     #[test]
+    fn open_lineage_analysis_artifact_opens_reverse_translation_product_sequence() {
+        let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+        protein.set_name("Toy protein");
+        protein.set_molecule_type("protein");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_reverse".to_string(), protein);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let report_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::ReverseTranslateProteinSequence {
+                    seq_id: "seq_reverse".to_string(),
+                    output_id: Some("seq_reverse_coding".to_string()),
+                    speed_profile: Some(crate::engine::TranslationSpeedProfile::Ecoli),
+                    speed_mark: Some(crate::engine::TranslationSpeedMark::Slow),
+                    translation_table: None,
+                    target_anneal_tm_c: None,
+                    anneal_window_bp: None,
+                })
+                .expect("reverse translate")
+                .op_id
+        };
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::ReverseTranslation,
+            "seq_reverse",
+            &report_id,
+        );
+
+        assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
     fn open_lineage_analysis_artifact_opens_construct_reasoning_graph() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -48520,6 +48722,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 protein_derivation_report: None,
+                reverse_translation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -48580,6 +48783,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 protein_derivation_report: None,
+                reverse_translation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -48625,6 +48829,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 genome_annotation_projection: None,
                 sequence_alignment: None,
                 protein_derivation_report: None,
+                reverse_translation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -48675,6 +48880,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             }),
             sequence_alignment: None,
             protein_derivation_report: None,
+            reverse_translation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -49041,6 +49247,21 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 LineageAnalysisKind::ProteinDerivation,
                 "seq_protein".to_string(),
                 "tp73_protein".to_string(),
+            ))
+        );
+
+        let mut reverse_translation_row =
+            make_lineage_row("analysis:reverse_translate:tp73_coding", "seq_reverse");
+        reverse_translation_row.kind = LineageNodeKind::Analysis;
+        reverse_translation_row.display_name.clear();
+        reverse_translation_row.analysis_kind = None;
+        reverse_translation_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&reverse_translation_row),
+            Some((
+                LineageAnalysisKind::ReverseTranslation,
+                "seq_reverse".to_string(),
+                "tp73_coding".to_string(),
             ))
         );
 
@@ -49872,6 +50093,67 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                 .any(|(from, to, op_id)| from == "n_protein_source"
                     && to == &format!("analysis:protein_derive:{protein_op_id}")
                     && op_id == &protein_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_reverse_translation_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+            protein.set_name("Toy protein");
+            protein.set_molecule_type("protein");
+            state.sequences.insert("seq_reverse".to_string(), protein);
+            insert_test_lineage_node(state, "n_reverse", "seq_reverse");
+        }
+
+        let reverse_op_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::ReverseTranslateProteinSequence {
+                    seq_id: "seq_reverse".to_string(),
+                    output_id: Some("seq_reverse_coding".to_string()),
+                    speed_profile: Some(crate::engine::TranslationSpeedProfile::Ecoli),
+                    speed_mark: Some(crate::engine::TranslationSpeedMark::Slow),
+                    translation_table: Some(11),
+                    target_anneal_tm_c: Some(58.0),
+                    anneal_window_bp: Some(9),
+                })
+                .expect("reverse translate")
+                .op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == format!("analysis:reverse_translate:{reverse_op_id}"))
+            .expect("reverse-translation lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::ReverseTranslation)
+        );
+        assert_eq!(
+            row.analysis_artifact_id.as_deref(),
+            Some(reverse_op_id.as_str())
+        );
+        assert_eq!(row.analysis_reference_seq_id.as_deref(), Some("seq_reverse_coding"));
+        assert_eq!(row.analysis_mode.as_deref(), Some("ecoli:slow"));
+        assert_eq!(row.analysis_point_count, Some(11));
+        assert_eq!(row.analysis_target_count, Some(9));
+        assert_eq!(row.analysis_variant_count, Some(3));
+        assert_eq!(row.created_by_op, reverse_op_id);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_reverse"
+                    && to == &format!("analysis:reverse_translate:{reverse_op_id}")
+                    && op_id == &reverse_op_id)
         );
     }
 

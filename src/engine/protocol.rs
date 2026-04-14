@@ -1084,6 +1084,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protein_derivation_report: Option<ProteinDerivationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverse_translation_report: Option<ReverseTranslationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_trace_import_report: Option<SequencingTraceImportReport>,
@@ -1855,6 +1857,68 @@ pub struct ProteinDerivationReportSummary {
     pub effective_output_prefix: String,
     pub derived_count: usize,
     pub derivation_mode_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted reverse-translation artifact for one protein-to-coding-DNA run.
+///
+/// The created coding sequence remains the first-class biological product in
+/// project state. This report is the computational provenance companion that
+/// captures the translation table, codon-bias profile resolution, optional Tm
+/// steering, and operation/run linkage needed for lineage-visible audit and
+/// reopen behavior.
+pub struct ReverseTranslationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub protein_seq_id: String,
+    pub coding_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_output_id: Option<String>,
+    pub effective_output_id: String,
+    pub protein_length_aa: usize,
+    pub coding_length_bp: usize,
+    pub translation_table: usize,
+    pub translation_table_label: String,
+    pub translation_table_source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_speed_profile: Option<TranslationSpeedProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_speed_profile: Option<TranslationSpeedProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_speed_profile_source: Option<TranslationSpeedProfileSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_speed_reference_species: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_mark: Option<TranslationSpeedMark>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_anneal_tm_c: Option<f64>,
+    pub anneal_window_bp: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact lineage/listing summary for one persisted reverse-translation report.
+pub struct ReverseTranslationReportSummary {
+    pub report_id: String,
+    pub protein_seq_id: String,
+    pub coding_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub protein_length_aa: usize,
+    pub coding_length_bp: usize,
+    pub translation_table: usize,
+    pub speed_profile_summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

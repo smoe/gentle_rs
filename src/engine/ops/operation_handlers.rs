@@ -4759,6 +4759,7 @@ impl GentleEngine {
             genome_annotation_projection: None,
             sequence_alignment: None,
             protein_derivation_report: None,
+            reverse_translation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -9346,6 +9347,11 @@ impl GentleEngine {
                         anneal_window_bp,
                     );
                 warnings.extend(reverse_translation_warnings);
+                let requested_output_id = output_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
                 let base_seq_id = output_id
                     .as_deref()
                     .map(str::trim)
@@ -9409,7 +9415,43 @@ impl GentleEngine {
                         target_tm, anneal_window_bp
                     ));
                 }
+                let report = ReverseTranslationReport {
+                    schema: REVERSE_TRANSLATION_REPORT_SCHEMA.to_string(),
+                    report_id: result.op_id.clone(),
+                    protein_seq_id: seq_id.clone(),
+                    coding_seq_id: coding_seq_id.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    op_id: Some(result.op_id.clone()),
+                    run_id: Some(run_id.to_string()),
+                    requested_output_id,
+                    effective_output_id: coding_seq_id.clone(),
+                    protein_length_aa: protein_sequence.len(),
+                    coding_length_bp: coding_sequence.len(),
+                    translation_table: effective_translation_table,
+                    translation_table_label: effective_translation_table_label.clone(),
+                    translation_table_source: effective_translation_table_source,
+                    requested_speed_profile: speed_profile,
+                    resolved_speed_profile: speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.profile),
+                    resolved_speed_profile_source: speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.source),
+                    translation_speed_reference_species: speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.reference_species.clone()),
+                    speed_mark,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                    warnings: warnings.clone(),
+                };
+                self.upsert_reverse_translation_report(report.clone())?;
+                result.messages.push(format!(
+                    "Stored reverse-translation report '{}' for '{}' -> '{}'.",
+                    report.report_id, report.protein_seq_id, report.coding_seq_id
+                ));
                 result.warnings.extend(warnings);
+                result.reverse_translation_report = Some(report);
             }
             Operation::ComputeDotplot {
                 seq_id,
