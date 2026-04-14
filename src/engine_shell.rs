@@ -44,7 +44,8 @@ use crate::{
         PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
         ProteinFeatureFilter, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
         RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
-        RenderSvgMode, RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
+        RenderSvgMode, ReverseTranslationReport, ReverseTranslationReportSummary,
+        RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
@@ -53,7 +54,7 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1482,6 +1483,25 @@ pub enum ShellCommand {
         confirmation_report_id: Option<String>,
         min_3prime_anneal_bp: usize,
         predicted_read_length_bp: usize,
+    },
+    ReverseTranslateRun {
+        seq_id: String,
+        output_id: Option<String>,
+        speed_profile: Option<TranslationSpeedProfile>,
+        speed_mark: Option<TranslationSpeedMark>,
+        translation_table: Option<usize>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: Option<usize>,
+    },
+    ReverseTranslateListReports {
+        protein_seq_id: Option<String>,
+    },
+    ReverseTranslateShowReport {
+        report_id: String,
+    },
+    ReverseTranslateExportReport {
+        report_id: String,
+        path: String,
     },
     RnaReadsInterpret {
         seq_id: String,
@@ -6895,6 +6915,50 @@ impl ShellCommand {
                 min_3prime_anneal_bp,
                 predicted_read_length_bp,
             ),
+            Self::ReverseTranslateRun {
+                seq_id,
+                output_id,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+            } => format!(
+                "reverse-translate protein '{}' (output_id='{}', speed_profile='{}', speed_mark='{}', translation_table={}, target_anneal_tm_c={}, anneal_window_bp={})",
+                seq_id,
+                output_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+                speed_profile
+                    .map(TranslationSpeedProfile::as_str)
+                    .unwrap_or("default"),
+                speed_mark.map(TranslationSpeedMark::as_str).unwrap_or("-"),
+                translation_table
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                target_anneal_tm_c
+                    .map(|value| format!("{value:.1}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                anneal_window_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+            ),
+            Self::ReverseTranslateListReports { protein_seq_id } => format!(
+                "list persisted reverse-translation reports{}",
+                protein_seq_id
+                    .as_deref()
+                    .map(|value| format!(" for '{}'", value))
+                    .unwrap_or_default()
+            ),
+            Self::ReverseTranslateShowReport { report_id } => {
+                format!("show reverse-translation report '{}'", report_id)
+            }
+            Self::ReverseTranslateExportReport { report_id, path } => format!(
+                "export reverse-translation report '{}' to '{}'",
+                report_id, path
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -7310,6 +7374,7 @@ impl ShellCommand {
                 | Self::SplicingRefsDerive { .. }
                 | Self::SeqTraceImport { .. }
                 | Self::SeqConfirmRun { .. }
+                | Self::ReverseTranslateRun { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
@@ -12483,6 +12548,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "seq-trace" | "seq_trace" | "seqtrace" => parse_seq_trace_command(tokens),
         "seq-confirm" | "seq_confirm" | "seqconfirm" => parse_seq_confirm_command(tokens),
         "seq-primer" | "seq_primer" | "seqprimer" => parse_seq_primer_command(tokens),
+        "reverse-translate" | "reverse_translate" | "reversetranslate" => {
+            parse_reverse_translate_command(tokens)
+        }
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -18107,6 +18175,148 @@ fn execute_sequencing_command(
     }
 }
 
+fn format_reverse_translation_report_summary_row(row: &ReverseTranslationReportSummary) -> String {
+    format!(
+        "{}: {} -> {} (aa={}, bp={}, table={}, speed={}, diagnostics={})",
+        row.report_id,
+        row.protein_seq_id,
+        row.coding_seq_id,
+        row.protein_length_aa,
+        row.coding_length_bp,
+        row.translation_table,
+        row.speed_profile_summary,
+        row.diagnostics_summary
+    )
+}
+
+fn format_reverse_translation_report_detail_summary(report: &ReverseTranslationReport) -> String {
+    let speed_summary = match (
+        report
+            .resolved_speed_profile
+            .map(TranslationSpeedProfile::as_str),
+        report.speed_mark.map(TranslationSpeedMark::as_str),
+    ) {
+        (Some(profile), Some(mark)) => format!("{profile}:{mark}"),
+        (Some(profile), None) => profile.to_string(),
+        (None, Some(mark)) => format!("mark:{mark}"),
+        (None, None) => "none".to_string(),
+    };
+    let diagnostics = [
+        Some(format!(
+            "preferred={}",
+            report.preferred_synonymous_choice_count
+        )),
+        Some(format!(
+            "alternative={}",
+            report.alternative_synonymous_choice_count
+        )),
+        Some(format!("fallback={}", report.fallback_unknown_codon_count)),
+        report.gc_fraction.map(|value| format!("gc={value:.3}")),
+        report
+            .realized_anneal_tm_c
+            .map(|value| format!("tm={value:.1}C")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(", ");
+    format!(
+        "protein='{}' coding='{}' aa={} bp={} table={} ('{}') speed={} diagnostics={} warnings={}",
+        report.protein_seq_id,
+        report.coding_seq_id,
+        report.protein_length_aa,
+        report.coding_length_bp,
+        report.translation_table,
+        report.translation_table_label,
+        speed_summary,
+        diagnostics,
+        report.warnings.len()
+    )
+}
+
+#[inline(never)]
+fn execute_protein_sequence_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::ReverseTranslateRun {
+            seq_id,
+            output_id,
+            speed_profile,
+            speed_mark,
+            translation_table,
+            target_anneal_tm_c,
+            anneal_window_bp,
+        } => {
+            let op_result = engine
+                .apply(Operation::ReverseTranslateProteinSequence {
+                    seq_id: seq_id.clone(),
+                    output_id: output_id.clone(),
+                    speed_profile: *speed_profile,
+                    speed_mark: *speed_mark,
+                    translation_table: *translation_table,
+                    target_anneal_tm_c: *target_anneal_tm_c,
+                    anneal_window_bp: *anneal_window_bp,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.reverse_translation_report.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ReverseTranslateListReports { protein_seq_id } => {
+            let rows = engine.list_reverse_translation_reports(protein_seq_id.as_deref());
+            let summary_rows = rows
+                .iter()
+                .map(format_reverse_translation_report_summary_row)
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.reverse_translation_report_list.v1",
+                    "report_count": rows.len(),
+                    "reports": rows,
+                    "summary_rows": summary_rows,
+                }),
+            })
+        }
+        ShellCommand::ReverseTranslateShowReport { report_id } => {
+            let report = engine
+                .get_reverse_translation_report(report_id)
+                .map_err(|e| e.to_string())?;
+            let summary = format_reverse_translation_report_detail_summary(&report);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "summary": summary,
+                }),
+            })
+        }
+        ShellCommand::ReverseTranslateExportReport { report_id, path } => {
+            let report = engine
+                .export_reverse_translation_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.reverse_translation_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "protein_seq_id": report.protein_seq_id,
+                    "coding_seq_id": report.coding_seq_id,
+                }),
+            })
+        }
+        _ => unreachable!("non-protein-sequence command passed to protein helper"),
+    }
+}
+
 #[inline(never)]
 fn execute_rna_reads_command(
     engine: &mut GentleEngine,
@@ -19088,6 +19298,15 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::SeqPrimerSuggest { .. }
     ) {
         return execute_sequencing_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::ReverseTranslateRun { .. }
+            | ShellCommand::ReverseTranslateListReports { .. }
+            | ShellCommand::ReverseTranslateShowReport { .. }
+            | ShellCommand::ReverseTranslateExportReport { .. }
+    ) {
+        return execute_protein_sequence_command(engine, command);
     }
     if matches!(
         command,
@@ -21335,6 +21554,12 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SeqConfirmExportReport { .. }
         | ShellCommand::SeqConfirmExportSupportTsv { .. }
         | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
+        ShellCommand::ReverseTranslateRun { .. }
+        | ShellCommand::ReverseTranslateListReports { .. }
+        | ShellCommand::ReverseTranslateShowReport { .. }
+        | ShellCommand::ReverseTranslateExportReport { .. } => {
+            execute_protein_sequence_command(engine, command)?
+        }
         ShellCommand::RnaReadsInterpret { .. }
         | ShellCommand::RnaReadsAlignReport { .. }
         | ShellCommand::RnaReadsListReports { .. }

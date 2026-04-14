@@ -1349,6 +1349,10 @@ order. Durable architecture constraints and decisions remain in
        - hand-written manual sanity-check tutorials now exist for:
          - transcript-native Protein Expert open/export
          - imported-protein reverse translation plus lineage/provenance audit
+       - shipped follow-on: shared shell / direct CLI now also expose
+         `reverse-translate run|list-reports|show-report|export-report` so the
+         same persisted reverse-translation artifacts are inspectable without
+         falling back to raw `apply_operation` payloads
        - add named presets / control bundles for common goals
          (`balanced`, `fast expression`, `slow translation`, `anneal-aware`)
        - consider stronger local optimization for annealing/GC/repeat
@@ -4233,6 +4237,10 @@ Post-baseline follow-ups:
         analysis artifacts, and reopen the created coding-sequence window on
         the selected report with speed-profile / translation-table /
         coding-length detail
+      - shipped follow-on: shared shell / direct CLI now also expose
+        `reverse-translate run|list-reports|show-report|export-report` so the
+        same persisted reverse-translation artifacts are easy to create,
+        inspect, and export outside the GUI lineage flow
       - next: extend the same artifact pattern to self-translation planning
         outputs and broader protein-to-DNA handoff reasoning
     - then construct reasoning / planning traces as sample-linked artifacts

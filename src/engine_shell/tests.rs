@@ -524,6 +524,56 @@ fn parse_seq_primer_suggest_command() {
 }
 
 #[test]
+fn parse_reverse_translate_command_family() {
+    let run = parse_shell_line(
+        "reverse-translate run prot --output-id prot_coding --speed-profile ecoli --speed-mark slow --translation-table 11 --target-anneal-tm-c 58.0 --anneal-window-bp 9",
+    )
+    .expect("parse reverse-translate run");
+    assert!(matches!(
+        run,
+        ShellCommand::ReverseTranslateRun {
+            seq_id,
+            output_id,
+            speed_profile,
+            speed_mark,
+            translation_table,
+            target_anneal_tm_c,
+            anneal_window_bp,
+        }
+            if seq_id == "prot"
+                && output_id.as_deref() == Some("prot_coding")
+                && speed_profile == Some(TranslationSpeedProfile::Ecoli)
+                && speed_mark == Some(TranslationSpeedMark::Slow)
+                && translation_table == Some(11)
+                && target_anneal_tm_c == Some(58.0)
+                && anneal_window_bp == Some(9)
+    ));
+
+    let list = parse_shell_line("reverse-translate list-reports prot")
+        .expect("parse reverse-translate list-reports");
+    assert!(matches!(
+        list,
+        ShellCommand::ReverseTranslateListReports { protein_seq_id }
+            if protein_seq_id.as_deref() == Some("prot")
+    ));
+
+    let show = parse_shell_line("reverse-translate show-report revtx_1")
+        .expect("parse reverse-translate show-report");
+    assert!(matches!(
+        show,
+        ShellCommand::ReverseTranslateShowReport { report_id } if report_id == "revtx_1"
+    ));
+
+    let export = parse_shell_line("reverse-translate export-report revtx_1 out.json")
+        .expect("parse reverse-translate export-report");
+    assert!(matches!(
+        export,
+        ShellCommand::ReverseTranslateExportReport { report_id, path }
+            if report_id == "revtx_1" && path == "out.json"
+    ));
+}
+
+#[test]
 fn parse_seq_primer_suggest_command_allows_report_only_mode() {
     let cmd = parse_shell_line(
         "seq-primer suggest construct --confirmation-report construct_report --min-3prime-anneal-bp 20 --predicted-read-length-bp 650",
@@ -806,6 +856,88 @@ fn execute_seq_confirm_run_with_baseline_exposes_variant_rows() {
         run.output["report"]["variants"][0]["classification"].as_str(),
         Some("intended_edit_confirmed")
     );
+}
+
+#[test]
+fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
+    let td = tempdir().expect("tempdir");
+    let export_path = td.path().join("reverse_translation_report.json");
+
+    let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+    protein.set_name("Toy protein");
+    protein.set_molecule_type("protein");
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("prot".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReverseTranslateRun {
+            seq_id: "prot".to_string(),
+            output_id: Some("prot_coding".to_string()),
+            speed_profile: Some(TranslationSpeedProfile::Ecoli),
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            translation_table: Some(11),
+            target_anneal_tm_c: Some(58.0),
+            anneal_window_bp: Some(9),
+        },
+    )
+    .expect("execute reverse-translate run");
+    assert!(run.state_changed);
+    assert_eq!(
+        run.output["report"]["protein_seq_id"].as_str(),
+        Some("prot")
+    );
+    assert_eq!(
+        run.output["report"]["coding_seq_id"].as_str(),
+        Some("prot_coding")
+    );
+    let report_id = run.output["report"]["report_id"]
+        .as_str()
+        .expect("reverse-translation report id")
+        .to_string();
+
+    let list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReverseTranslateListReports {
+            protein_seq_id: Some("prot".to_string()),
+        },
+    )
+    .expect("list reverse-translation reports");
+    assert_eq!(list.output["report_count"].as_u64(), Some(1));
+    assert!(
+        list.output["summary_rows"][0]
+            .as_str()
+            .is_some_and(|value| value.contains("gc="))
+    );
+
+    let show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReverseTranslateShowReport {
+            report_id: report_id.clone(),
+        },
+    )
+    .expect("show reverse-translation report");
+    assert!(
+        show.output["summary"]
+            .as_str()
+            .is_some_and(|value| value.contains("speed=ecoli:slow"))
+    );
+
+    let export = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReverseTranslateExportReport {
+            report_id: report_id.clone(),
+            path: export_path.display().to_string(),
+        },
+    )
+    .expect("export reverse-translation report");
+    assert_eq!(
+        export.output["report_id"].as_str(),
+        Some(report_id.as_str())
+    );
+    assert!(export_path.exists());
 }
 
 #[test]

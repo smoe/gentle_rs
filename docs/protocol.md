@@ -2595,6 +2595,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - optional speed mark
     - optional annealing-target heuristic settings
     - warnings
+  - shared shell / direct CLI inspection route:
+    - `reverse-translate run PROTEIN_SEQ_ID ...`
+    - `reverse-translate list-reports [PROTEIN_SEQ_ID]`
+    - `reverse-translate show-report REPORT_ID`
+    - `reverse-translate export-report REPORT_ID OUTPUT.json`
   - one full-span synthetic local `CDS` feature with:
     - protein provenance
     - translation table/label

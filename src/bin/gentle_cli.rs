@@ -27,6 +27,9 @@ use std::{
     path::Path,
 };
 
+#[cfg(test)]
+use gentle::engine::{TranslationSpeedMark, TranslationSpeedProfile};
+
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
@@ -661,6 +664,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
   gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
   gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
+  gentle_cli [--state PATH|--project PATH] reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]\n  \
+  gentle_cli [--state PATH|--project PATH] reverse-translate list-reports [PROTEIN_SEQ_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] reverse-translate show-report REPORT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] reverse-translate export-report REPORT_ID OUTPUT.json\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
@@ -712,6 +719,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "flex",
     "splicing-refs",
     "align",
+    "reverse-translate",
     "rna-reads",
     "tracks",
     "genbank",
@@ -3855,6 +3863,38 @@ mod tests {
             Some(ShellCommand::UniprotFetch { query, entry_id }) => {
                 assert_eq!(query, "P04637");
                 assert_eq!(entry_id.as_deref(), Some("tp53_human"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_reverse_translate() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "reverse-translate".to_string(),
+            "run".to_string(),
+            "prot".to_string(),
+            "--output-id".to_string(),
+            "prot_coding".to_string(),
+            "--speed-profile".to_string(),
+            "ecoli".to_string(),
+            "--speed-mark".to_string(),
+            "slow".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::ReverseTranslateRun {
+                seq_id,
+                output_id,
+                speed_profile,
+                speed_mark,
+                ..
+            }) => {
+                assert_eq!(seq_id, "prot");
+                assert_eq!(output_id.as_deref(), Some("prot_coding"));
+                assert_eq!(speed_profile, Some(TranslationSpeedProfile::Ecoli));
+                assert_eq!(speed_mark, Some(TranslationSpeedMark::Slow));
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

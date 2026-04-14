@@ -631,14 +631,20 @@ UniProt mapping capability status:
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`, `FetchDbSnpRegion`
-- additional protein-sequence operations are available today through the shared
-  engine contract (`apply_operation` / workflow JSON), even though dedicated
-  shell sugar is not added yet:
+- reverse-translation is now also available through dedicated shared-shell /
+  direct CLI commands:
+  - `reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]`
+  - `reverse-translate list-reports [PROTEIN_SEQ_ID]`
+  - `reverse-translate show-report REPORT_ID`
+  - `reverse-translate export-report REPORT_ID OUTPUT.json`
+  backed by `ReverseTranslateProteinSequence` plus persisted
+  reverse-translation report inspection/export routes.
+- additional protein-sequence operations are still available through the shared
+  engine contract (`apply_operation` / workflow JSON):
   - `ImportUniprotEntrySequence`
   - `DeriveProteinSequences`
     - transcript-first and self-sufficient; UniProt is optional comparison
       evidence, not the source of truth for what peptide products exist
-  - `ReverseTranslateProteinSequence`
 
 ## Build and run
 

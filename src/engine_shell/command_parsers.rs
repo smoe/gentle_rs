@@ -3353,6 +3353,221 @@ pub(super) fn parse_seq_confirm_command(tokens: &[String]) -> Result<ShellComman
     }
 }
 
+fn parse_translation_speed_profile_for_shell(
+    raw: &str,
+    context: &str,
+) -> Result<TranslationSpeedProfile, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "human" => Ok(TranslationSpeedProfile::Human),
+        "mouse" => Ok(TranslationSpeedProfile::Mouse),
+        "yeast" => Ok(TranslationSpeedProfile::Yeast),
+        "ecoli" | "e_coli" | "e-coli" => Ok(TranslationSpeedProfile::Ecoli),
+        other => Err(format!(
+            "Unknown --speed-profile '{other}' for {context} (expected human, mouse, yeast, or ecoli)"
+        )),
+    }
+}
+
+fn parse_translation_speed_mark_for_shell(
+    raw: &str,
+    context: &str,
+) -> Result<TranslationSpeedMark, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fast" => Ok(TranslationSpeedMark::Fast),
+        "slow" => Ok(TranslationSpeedMark::Slow),
+        other => Err(format!(
+            "Unknown --speed-mark '{other}' for {context} (expected fast or slow)"
+        )),
+    }
+}
+
+pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "reverse-translate requires a subcommand: run, list-reports, show-report, export-report"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "reverse-translate run requires PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("reverse-translate run PROTEIN_SEQ_ID must not be empty".to_string());
+            }
+            let mut output_id: Option<String> = None;
+            let mut speed_profile: Option<TranslationSpeedProfile> = None;
+            let mut speed_mark: Option<TranslationSpeedMark> = None;
+            let mut translation_table: Option<usize> = None;
+            let mut target_anneal_tm_c: Option<f64> = None;
+            let mut anneal_window_bp: Option<usize> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--output-id" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "reverse-translate run")?;
+                        let trimmed = raw.trim();
+                        output_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    "--speed-profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--speed-profile",
+                            "reverse-translate run",
+                        )?;
+                        speed_profile = Some(parse_translation_speed_profile_for_shell(
+                            &raw,
+                            "reverse-translate run",
+                        )?);
+                    }
+                    "--speed-mark" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--speed-mark",
+                            "reverse-translate run",
+                        )?;
+                        speed_mark = Some(parse_translation_speed_mark_for_shell(
+                            &raw,
+                            "reverse-translate run",
+                        )?);
+                    }
+                    "--translation-table" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--translation-table",
+                            "reverse-translate run",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --translation-table value '{raw}' for reverse-translate run: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(
+                                "--translation-table for reverse-translate run must be >= 1"
+                                    .to_string(),
+                            );
+                        }
+                        translation_table = Some(parsed);
+                    }
+                    "--target-anneal-tm-c" | "--target-anneal-tm" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "reverse-translate run")?;
+                        target_anneal_tm_c = Some(raw.parse::<f64>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for reverse-translate run: {e}")
+                        })?);
+                    }
+                    "--anneal-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anneal-window-bp",
+                            "reverse-translate run",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --anneal-window-bp value '{raw}' for reverse-translate run: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(
+                                "--anneal-window-bp for reverse-translate run must be >= 1"
+                                    .to_string(),
+                            );
+                        }
+                        anneal_window_bp = Some(parsed);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for reverse-translate run"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReverseTranslateRun {
+                seq_id,
+                output_id,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+            })
+        }
+        "list-reports" => {
+            let mut protein_seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--protein" | "--protein-seq-id" | "--seq-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "reverse-translate list-reports",
+                        )?;
+                        let trimmed = raw.trim();
+                        protein_seq_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        if protein_seq_id.is_none() && !other.starts_with('-') {
+                            protein_seq_id = Some(other.to_string());
+                            idx += 1;
+                        } else {
+                            return Err(format!(
+                                "Unknown option '{other}' for reverse-translate list-reports"
+                            ));
+                        }
+                    }
+                }
+            }
+            Ok(ShellCommand::ReverseTranslateListReports { protein_seq_id })
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("reverse-translate show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::ReverseTranslateShowReport {
+                report_id: tokens[2].trim().to_string(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "reverse-translate export-report requires REPORT_ID OUTPUT.json".to_string(),
+                );
+            }
+            Ok(ShellCommand::ReverseTranslateExportReport {
+                report_id: tokens[2].trim().to_string(),
+                path: tokens[3].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown reverse-translate subcommand '{other}' (expected run, list-reports, show-report, export-report)"
+        )),
+    }
+}
+
 pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("seq-primer requires a subcommand: suggest".to_string());

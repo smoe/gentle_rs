@@ -1,5 +1,5 @@
 {
-   "command_count": 305,
+   "command_count": 309,
    "commands": [
       {
          "aliases": [
@@ -2190,6 +2190,74 @@
          "path": "seq-primer suggest",
          "summary": "Suggest sequencing-primer overlay spans on the expected construct, annotate saved-report coverage, rank the best existing primer hit for each unresolved locus, and propose fresh primers when no good hit exists.",
          "usage": "seq-primer suggest EXPECTED_SEQ_ID [--primers ID[,ID...]] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
+      },
+      {
+         "aliases": [
+            "reverse_translate run",
+            "reversetranslate run"
+         ],
+         "engine_operations": [
+            "ReverseTranslateProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate run",
+         "summary": "Reverse-translate one protein sequence into a synthetic coding-DNA product with optional codon-speed and annealing-Tm steering.",
+         "usage": "reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]"
+      },
+      {
+         "aliases": [
+            "reverse_translate list-reports",
+            "reversetranslate list-reports"
+         ],
+         "engine_operations": [
+            "ListReverseTranslationReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate list-reports",
+         "summary": "List persisted reverse-translation reports, optionally filtered by source protein sequence id.",
+         "usage": "reverse-translate list-reports [PROTEIN_SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "reverse_translate show-report",
+            "reversetranslate show-report"
+         ],
+         "engine_operations": [
+            "ShowReverseTranslationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate show-report",
+         "summary": "Inspect one persisted reverse-translation report, including codon-choice diagnostics and resolved translation-table metadata.",
+         "usage": "reverse-translate show-report REPORT_ID"
+      },
+      {
+         "aliases": [
+            "reverse_translate export-report",
+            "reversetranslate export-report"
+         ],
+         "engine_operations": [
+            "ExportReverseTranslationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate export-report",
+         "summary": "Export one reverse-translation report as pretty-printed JSON.",
+         "usage": "reverse-translate export-report REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],
