@@ -1325,6 +1325,9 @@ order. Durable architecture constraints and decisions remain in
            invertebrate / yeast buckets while preserving deterministic behavior
          - surface the same provenance more broadly in GUI inspection/export
            flows beyond the current Protein Expert/details paths
+         - Protein Evidence `Feature coding DNA query` now also shows the
+           requested/resolved speed-profile summary with source/reference
+           provenance in the GUI report header and status text
     3. Reverse-translation ergonomics
        - keep the current deterministic codon-bias + optional annealing-Tm hint
          path, but add stronger diagnostics explaining codon choice

@@ -3604,6 +3604,8 @@ Protein-evidence behavior:
   - `speed profile`
     - `Auto`, `Human`, `Mouse`, `Yeast`, or `E. coli`
   - result panel:
+    - requested/resolved translation-speed profile summary with source and
+      reference species
     - transcript-specific amino-acid span
     - genomic coding DNA in coding-strand orientation
     - optional translation-speed optimized DNA

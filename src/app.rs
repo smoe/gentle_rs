@@ -17160,6 +17160,31 @@ Error: `{err}`"
         }
     }
 
+    fn format_uniprot_feature_speed_resolution_summary(
+        report: &UniprotFeatureCodingDnaQueryReport,
+    ) -> String {
+        let requested = report
+            .requested_translation_speed_profile
+            .map(|profile| profile.as_str())
+            .unwrap_or("auto");
+        let resolved = report
+            .resolved_translation_speed_profile
+            .map(|profile| profile.as_str())
+            .unwrap_or("auto-unresolved");
+        let source = report
+            .resolved_translation_speed_profile_source
+            .map(|source| source.as_str())
+            .unwrap_or("unspecified");
+        let reference = report
+            .resolved_translation_speed_reference_species
+            .as_deref()
+            .unwrap_or("-");
+        format!(
+            "requested={} | resolved={} | source={} | ref={}",
+            requested, resolved, source, reference
+        )
+    }
+
     fn query_uniprot_feature_coding_dna_from_dialog(&mut self) {
         let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields() else {
             self.uniprot_status = "Project an entry first or provide seq_id + entry_id to resolve a projection before querying coding DNA.".to_string();
@@ -17184,20 +17209,17 @@ Error: `{err}`"
             );
         match result {
             Ok(report) => {
-                let resolved_profile = report
-                    .resolved_translation_speed_profile
-                    .map(|profile| profile.as_str().to_string())
-                    .unwrap_or_else(|| "auto-unresolved".to_string());
+                let speed_summary = Self::format_uniprot_feature_speed_resolution_summary(&report);
                 self.uniprot_feature_report = Some(report);
                 self.uniprot_status = format!(
-                    "UniProt feature coding DNA query: ok (projection='{}', matches={}, mode={}, speed_profile={})",
+                    "UniProt feature coding DNA query: ok (projection='{}', matches={}, mode={}, {})",
                     projection_id,
                     self.uniprot_feature_report
                         .as_ref()
                         .map(|report| report.match_count)
                         .unwrap_or(0),
                     self.uniprot_feature_query_mode.as_str(),
-                    resolved_profile,
+                    speed_summary,
                 );
             }
             Err(err) => {
@@ -17216,15 +17238,36 @@ Error: `{err}`"
             "Feature coding DNA matches ({})",
             report.match_count
         ));
-        ui.small(format!(
-            "projection={} | mode={} | speed_profile={}",
-            report.projection_id,
-            report.query_mode.as_str(),
-            report
-                .resolved_translation_speed_profile
-                .map(|profile| profile.as_str())
-                .unwrap_or("auto-unresolved")
-        ));
+        egui::Grid::new("uniprot_feature_coding_report_summary")
+            .num_columns(2)
+            .spacing([12.0, 4.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("projection");
+                ui.monospace(&report.projection_id);
+                ui.end_row();
+                ui.strong("mode");
+                ui.monospace(report.query_mode.as_str());
+                ui.end_row();
+                ui.strong("speed profile");
+                ui.monospace(Self::format_uniprot_feature_speed_resolution_summary(
+                    report,
+                ));
+                ui.end_row();
+                ui.strong("optimized DNA");
+                ui.label(
+                    if report
+                        .matches
+                        .iter()
+                        .any(|row| row.translation_speed_optimized_dna.is_some())
+                    {
+                        "available for at least one match"
+                    } else {
+                        "not available"
+                    },
+                );
+                ui.end_row();
+            });
         if !report.warnings.is_empty() {
             ui.small(report.warnings.join(" | "));
         }
@@ -41225,7 +41268,9 @@ mod tests {
             RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
             RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            RoutineDecisionTraceStore, SequenceOrigin,
+            RoutineDecisionTraceStore, SequenceOrigin, TranslationSpeedProfile,
+            TranslationSpeedProfileSource, UniprotFeatureCodingDnaQueryMode,
+            UniprotFeatureCodingDnaQueryReport,
         },
         ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
         genomes::{
@@ -47365,6 +47410,38 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(!state.sequences.contains_key("TOY_USE"));
         assert_eq!(app.uniprot_entry_id, "TOY_USE");
         assert_eq!(app.uniprot_query, "PUSE1");
+    }
+
+    #[test]
+    fn uniprot_feature_speed_resolution_summary_mentions_source_and_reference() {
+        let report = UniprotFeatureCodingDnaQueryReport {
+            schema: "gentle.uniprot_feature_coding_dna_query.v1".to_string(),
+            projection_id: "P1@seq".to_string(),
+            entry_id: "P1".to_string(),
+            seq_id: "seq".to_string(),
+            feature_query: "DNA-binding".to_string(),
+            transcript_filter: Some("TX1".to_string()),
+            query_mode: UniprotFeatureCodingDnaQueryMode::Both,
+            requested_translation_speed_profile: Some(TranslationSpeedProfile::Mouse),
+            resolved_translation_speed_profile: Some(TranslationSpeedProfile::Mouse),
+            resolved_translation_speed_profile_source: Some(
+                TranslationSpeedProfileSource::SourceOrganismScientificName,
+            ),
+            resolved_translation_speed_reference_species: Some(
+                "Mus musculus domesticus".to_string(),
+            ),
+            match_count: 1,
+            matches: vec![],
+            warnings: vec![],
+        };
+        let summary = GENtleApp::format_uniprot_feature_speed_resolution_summary(&report);
+        assert!(summary.contains("requested=mouse"), "{summary}");
+        assert!(summary.contains("resolved=mouse"), "{summary}");
+        assert!(
+            summary.contains("source=source_organism_scientific_name"),
+            "{summary}"
+        );
+        assert!(summary.contains("ref=Mus musculus domesticus"), "{summary}");
     }
 
     #[test]
