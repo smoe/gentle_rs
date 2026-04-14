@@ -78,15 +78,36 @@ impl Window {
         }
     }
 
-    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
+    pub fn focus_uniprot_projection_expert(
+        &mut self,
+        projection_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
         match self {
-            Self::Dna(window) => window.focus_uniprot_projection_expert(projection_id),
+            Self::Dna(window) => {
+                window.focus_uniprot_projection_expert(projection_id, protein_feature_filter)
+            }
         }
     }
 
     pub fn focus_transcript_protein_expert(&mut self, transcript_id_filter: Option<&str>) {
         match self {
             Self::Dna(window) => window.focus_transcript_protein_expert(transcript_id_filter),
+        }
+    }
+
+    pub fn focus_ensembl_entry_protein_expert(
+        &mut self,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
+        match self {
+            Self::Dna(window) => window.focus_ensembl_entry_protein_expert(
+                transcript_id_filter,
+                entry_id,
+                protein_feature_filter,
+            ),
         }
     }
 

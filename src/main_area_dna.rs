@@ -5115,6 +5115,63 @@ mod tests {
     }
 
     #[test]
+    fn isoform_expert_window_title_uses_protein_expert_for_ensembl_backed_source() {
+        let view = IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "ENSP00000362111".to_string(),
+            gene_symbol: "TP73".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
+            panel_source: Some(
+                "Transcript-native proteins with optional Ensembl opinion ENSP00000362111 (ENST00000378295)"
+                    .to_string(),
+            ),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "protein".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![],
+            warnings: vec![],
+        };
+        assert_eq!(
+            MainAreaDna::isoform_expert_window_title("ENSP00000362111", "seq1", &view),
+            "Protein Expert - TP73 (seq1)"
+        );
+    }
+
+    #[test]
+    fn collect_open_auxiliary_window_entries_describes_transcript_first_panel_as_protein_expert() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.show_isoform_expert_window = true;
+        area.isoform_expert_window_panel_id = Some("ENSP00000362111".to_string());
+        area.isoform_expert_window_view = Some(Arc::new(IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "ENSP00000362111".to_string(),
+            gene_symbol: "TP73".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
+            panel_source: Some(
+                "Transcript-native proteins with optional Ensembl opinion ENSP00000362111 (ENST00000378295)"
+                    .to_string(),
+            ),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "protein".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![],
+            warnings: vec![],
+        }));
+
+        let entries = area.collect_open_auxiliary_window_entries();
+        assert!(
+            entries.iter().any(|(_, title, description)| {
+                title == "Protein Expert - TP73 (seq1)"
+                    && description == "Protein Expert 'ENSP00000362111' on 'seq1'"
+            }),
+            "expected transcript-first protein panel to be described as Protein Expert"
+        );
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -9060,8 +9117,13 @@ impl MainAreaDna {
         self.show_sequencing_confirmation_report(normalized_id);
     }
 
-    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
-        if let Err(err) = self.open_uniprot_projection_expert(projection_id) {
+    pub fn focus_uniprot_projection_expert(
+        &mut self,
+        projection_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
+        if let Err(err) = self.open_uniprot_projection_expert(projection_id, protein_feature_filter)
+        {
             self.op_status = format!(
                 "Could not open UniProt protein expert for '{}': {err}",
                 projection_id.trim()
@@ -9081,6 +9143,35 @@ impl MainAreaDna {
                 )
             } else {
                 format!("Could not open transcript-native protein expert: {err}")
+            };
+        }
+    }
+
+    pub fn focus_ensembl_entry_protein_expert(
+        &mut self,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
+        if let Err(err) = self.open_ensembl_entry_protein_expert(
+            transcript_id_filter,
+            entry_id,
+            protein_feature_filter,
+        ) {
+            self.op_status = if let Some(transcript_id_filter) = transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                format!(
+                    "Could not open Ensembl protein expert for '{}' / '{}': {err}",
+                    entry_id.trim(),
+                    transcript_id_filter
+                )
+            } else {
+                format!(
+                    "Could not open Ensembl protein expert for '{}': {err}",
+                    entry_id.trim()
+                )
             };
         }
     }
@@ -25120,7 +25211,20 @@ impl MainAreaDna {
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        self.render_isoform_architecture_expert_view_ui(ui, &view);
+                        egui::ScrollArea::both()
+                            .id_salt(format!(
+                                "isoform_expert_window_scroll_embedded_{}_{}",
+                                view.seq_id, panel_id
+                            ))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                ui.set_min_size(Vec2::new(1040.0, 620.0));
+                                self.render_isoform_architecture_expert_view_ui(ui, &view);
+                            });
                     });
                 self.show_isoform_expert_window = open;
                 return;
@@ -25129,7 +25233,20 @@ impl MainAreaDna {
             crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                self.render_isoform_architecture_expert_view_ui(ui, &view);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "isoform_expert_window_scroll_viewport_{}_{}",
+                        view.seq_id, panel_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(Vec2::new(1040.0, 620.0));
+                        self.render_isoform_architecture_expert_view_ui(ui, &view);
+                    });
             });
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {

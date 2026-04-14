@@ -104,7 +104,7 @@ impl GENtleApp {
             return Some(Self::embedded_window_layer_from_title("Agent Assistant"));
         }
         if viewport_id == Self::uniprot_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("UniProt Mapping"));
+            return Some(Self::embedded_window_layer_from_title("Protein Evidence"));
         }
         if viewport_id == Self::genbank_viewport_id() {
             return Some(Self::embedded_window_layer_from_title(
@@ -293,8 +293,9 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::uniprot_viewport_id()),
                 viewport_id: Self::uniprot_viewport_id(),
-                title: "UniProt Mapping".to_string(),
-                detail: "UniProt entry fetch/import/projection tools".to_string(),
+                title: "Protein Evidence".to_string(),
+                detail: "UniProt/Ensembl protein evidence fetch, import, and compare tools"
+                    .to_string(),
             });
         }
         if self.show_genbank_dialog {

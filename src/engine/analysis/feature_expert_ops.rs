@@ -12,7 +12,8 @@
 use super::*;
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinEntrySummary, build_entry_from_rest_payloads,
-    normalize_entry_id as normalize_ensembl_protein_entry_id, resolve_query as resolve_ensembl_query,
+    normalize_entry_id as normalize_ensembl_protein_entry_id,
+    resolve_query as resolve_ensembl_query,
 };
 use crate::uniprot::UniprotFeatureProjection;
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
@@ -1326,7 +1327,9 @@ impl GentleEngine {
         mut store: EnsemblProteinEntryStore,
     ) -> Result<(), EngineError> {
         if store.entries.is_empty() {
-            self.state.metadata.remove(ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY);
+            self.state
+                .metadata
+                .remove(ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY);
             return Ok(());
         }
         store.schema = ENSEMBL_PROTEIN_ENTRIES_SCHEMA.to_string();
@@ -2160,11 +2163,7 @@ impl GentleEngine {
             .unwrap_or_else(|| DEFAULT_ENSEMBL_REST_ENDPOINT.to_string())
     }
 
-    fn fetch_ensembl_rest_text(
-        url: &str,
-        label: &str,
-        query: &str,
-    ) -> Result<String, EngineError> {
+    fn fetch_ensembl_rest_text(url: &str, label: &str, query: &str) -> Result<String, EngineError> {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(45))
             .build()
@@ -2229,9 +2228,11 @@ impl GentleEngine {
                     Self::fetch_ensembl_rest_text(&lookup_url, "protein lookup", query)?;
                 let lookup = crate::ensembl_protein::parse_translation_lookup_json(&lookup_json)
                     .map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("Could not parse Ensembl protein lookup for '{query}': {e}"),
-                })?;
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not parse Ensembl protein lookup for '{query}': {e}"
+                        ),
+                    })?;
                 (
                     Some(lookup_url),
                     Some(lookup_json),
@@ -2243,11 +2244,13 @@ impl GentleEngine {
             }
         };
 
-        let transcript_lookup_source_url = format!(
-            "{base_url}/lookup/id/{transcript_id}?content-type=application/json;expand=1"
-        );
-        let transcript_lookup_json =
-            Self::fetch_ensembl_rest_text(&transcript_lookup_source_url, "transcript lookup", query)?;
+        let transcript_lookup_source_url =
+            format!("{base_url}/lookup/id/{transcript_id}?content-type=application/json;expand=1");
+        let transcript_lookup_json = Self::fetch_ensembl_rest_text(
+            &transcript_lookup_source_url,
+            "transcript lookup",
+            query,
+        )?;
         let transcript_lookup = crate::ensembl_protein::parse_transcript_lookup_json(
             &transcript_lookup_json,
         )
@@ -2255,13 +2258,16 @@ impl GentleEngine {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse Ensembl transcript lookup for '{query}': {e}"),
         })?;
-        let protein_id = transcript_lookup.translation_id.clone().ok_or_else(|| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: format!(
-                "Transcript '{}' from Ensembl query '{}' has no translated protein stable ID",
-                transcript_lookup.transcript_id, query
-            ),
-        })?;
+        let protein_id = transcript_lookup
+            .translation_id
+            .clone()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript '{}' from Ensembl query '{}' has no translated protein stable ID",
+                    transcript_lookup.transcript_id, query
+                ),
+            })?;
 
         let sequence_source_url = format!(
             "{base_url}/sequence/id/{protein_id}?type=protein;content-type=application/json"
@@ -3481,7 +3487,10 @@ impl GentleEngine {
                 continue;
             }
             let match_keys = Self::feature_transcript_match_keys(feature, feature_id);
-            if !match_keys.iter().any(|key| key == &normalized_entry_transcript) {
+            if !match_keys
+                .iter()
+                .any(|key| key == &normalized_entry_transcript)
+            {
                 continue;
             }
             match Self::build_derived_protein_expert_transcript(
@@ -3787,8 +3796,11 @@ impl GentleEngine {
         protein_feature_filter: &ProteinFeatureFilter,
     ) -> Result<IsoformArchitectureExpertView, EngineError> {
         let entry = self.get_ensembl_protein_entry(entry_id)?;
-        let external_source =
-            self.build_ensembl_external_protein_opinion_source(seq_id, transcript_id_filter, &entry)?;
+        let external_source = self.build_ensembl_external_protein_opinion_source(
+            seq_id,
+            transcript_id_filter,
+            &entry,
+        )?;
         self.build_external_protein_expert_view_from_source(
             seq_id,
             transcript_id_filter,

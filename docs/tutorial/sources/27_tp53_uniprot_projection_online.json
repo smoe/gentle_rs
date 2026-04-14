@@ -15,7 +15,7 @@
     ],
     "gui_steps": [
       "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
-      "Open `File -> UniProt Mapping...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.",
+      "Open `File -> Protein Evidence...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.",
       "Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts.",
       "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
       "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."

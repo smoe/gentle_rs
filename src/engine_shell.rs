@@ -8281,8 +8281,7 @@ fn parse_feature_expert_target_tokens(
                         transcript_id_filter = Some(trimmed.to_string());
                     }
                     "--ensembl-entry" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--ensembl-entry", context)?;
+                        let raw = parse_option_path(tokens, &mut idx, "--ensembl-entry", context)?;
                         let trimmed = raw.trim();
                         if trimmed.is_empty() {
                             return Err("--ensembl-entry must not be empty".to_string());
@@ -8310,7 +8309,7 @@ fn parse_feature_expert_target_tokens(
                     "--feature-key-not" => {
                         if idx + 1 >= tokens.len() {
                             return Err(
-                                "--feature-key-not requires a protein feature key".to_string(),
+                                "--feature-key-not requires a protein feature key".to_string()
                             );
                         }
                         let value = tokens[idx + 1].trim();
@@ -10541,8 +10540,7 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_ensembl_protein_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "ensembl-protein requires a subcommand: fetch, list, show, import-sequence"
-                .to_string(),
+            "ensembl-protein requires a subcommand: fetch, list, show, import-sequence".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -10601,7 +10599,7 @@ fn parse_ensembl_protein_command(tokens: &[String]) -> Result<ShellCommand, Stri
             let entry_id = tokens[2].trim().to_string();
             if entry_id.is_empty() {
                 return Err(
-                    "ensembl-protein import-sequence ENTRY_ID must not be empty".to_string(),
+                    "ensembl-protein import-sequence ENTRY_ID must not be empty".to_string()
                 );
             }
             let mut output_id: Option<String> = None;
@@ -10623,7 +10621,10 @@ fn parse_ensembl_protein_command(tokens: &[String]) -> Result<ShellCommand, Stri
                     }
                 }
             }
-            Ok(ShellCommand::EnsemblProteinImportSequence { entry_id, output_id })
+            Ok(ShellCommand::EnsemblProteinImportSequence {
+                entry_id,
+                output_id,
+            })
         }
         other => Err(format!(
             "Unknown ensembl-protein subcommand '{other}' (expected fetch|list|show|import-sequence)"
@@ -19446,9 +19447,8 @@ fn execute_shell_command_with_options_inner(
             let rows = engine.list_ensembl_protein_entries();
             ShellRunResult {
                 state_changed: false,
-                output: serde_json::to_value(rows).map_err(|e| {
-                    format!("Could not serialize Ensembl protein entry list: {e}")
-                })?,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize Ensembl protein entry list: {e}"))?,
             }
         }
         ShellCommand::UniprotShow { entry_id } => {
@@ -19490,7 +19490,10 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::EnsemblProteinImportSequence { entry_id, output_id } => {
+        ShellCommand::EnsemblProteinImportSequence {
+            entry_id,
+            output_id,
+        } => {
             let op_result = engine
                 .apply(Operation::ImportEnsemblProteinSequence {
                     entry_id: entry_id.clone(),

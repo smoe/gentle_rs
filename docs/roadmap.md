@@ -1191,7 +1191,7 @@ order. Durable architecture constraints and decisions remain in
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
       `uniprot projection-show`, `uniprot feature-coding-dna`
   - GUI follow-up now implemented:
-    - `UniProt Mapping...` offers `Open Protein Expert` for the active
+    - `Protein Evidence...` offers `Open Protein Expert` for the active
       projection and recent stored projections
     - the same specialist now also offers `Open Derived Protein Expert`, so
       transcript-native protein inspection no longer requires a stored UniProt
@@ -1273,10 +1273,21 @@ order. Durable architecture constraints and decisions remain in
           the transcript-first Protein Expert payload
         - live Ensembl REST smoke validation now succeeds against
           `ENSP00000288602` / `ENST00000288602`
-      - GUI follow-up still pending:
-        add a dedicated Ensembl protein picker/import affordance so GUI users
-        can populate the same external-opinion path without dropping to the
-        shell first
+      - GUI follow-up now implemented:
+        - the same `Protein Evidence...` specialist now also exposes a
+          dedicated Ensembl section with fetch, sequence import, expert-open,
+          and direct SVG-export affordances
+        - recent stored Ensembl entries now expose `Select`, `Open Protein
+          Expert`, `Render SVG...`, and `Import Sequence` actions so GUI users
+          can populate the transcript-first external-opinion path without
+          dropping to the shell first
+        - GUI-driven Protein Expert open/export paths now also expose shared
+          external protein feature include/exclude filters, so users can refine
+          annotation overlays without leaving the transcript-first window flow
+        - the same specialist now also shows an inline detail summary for the
+          currently selected Ensembl entry, including feature-key rollup and a
+          transcript-sync affordance when the active compare filter disagrees
+          with the stored Ensembl transcript
   - container semantics follow-up:
     - persisted containers now default to `declared_contents_exclusive=true`
       so clean vials/tubes mean “only the listed members”
@@ -1665,7 +1676,7 @@ order. Durable architecture constraints and decisions remain in
 - DNA sequence windows now expose direct genome-anchor extension controls
   (`Extend 5'` / `Extend 3'` with bp + optional output ID) next to anchor
   status, using shared `ExtendGenomeAnchor` engine semantics (same as shell/CLI).
-- File menu now includes a dedicated `UniProt Mapping...` specialist dialog
+- File menu now includes a dedicated `Protein Evidence...` specialist dialog
   (fetch/import/project) backed directly by shared UniProt engine operations
   (`FetchUniprotSwissProt`, `ImportUniprotSwissProt`,
   `ProjectUniprotToGenome`) and a recent-entry table for quick `entry_id`

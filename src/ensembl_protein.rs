@@ -292,7 +292,10 @@ pub fn parse_transcript_lookup_json(text: &str) -> Result<EnsemblTranscriptLooku
             .as_ref()
             .map(|translation| normalize_entry_id(&translation.id))
             .filter(|value| !value.is_empty()),
-        translation_version: raw.translation.as_ref().and_then(|translation| translation.version),
+        translation_version: raw
+            .translation
+            .as_ref()
+            .and_then(|translation| translation.version),
         gene_id: raw
             .parent
             .map(|value| normalize_entry_id(&value))
@@ -355,7 +358,10 @@ pub fn parse_protein_features_json(text: &str) -> Result<Vec<EnsemblProteinFeatu
             qualifiers.insert("seq_region_name".to_string(), value);
         }
         if let Some(value) = normalize_optional_text(feature.parent) {
-            qualifiers.insert("parent_transcript_id".to_string(), normalize_entry_id(&value));
+            qualifiers.insert(
+                "parent_transcript_id".to_string(),
+                normalize_entry_id(&value),
+            );
         }
         if let Some(value) = feature.translation_id {
             qualifiers.insert("translation_internal_id".to_string(), value.to_string());
@@ -408,7 +414,11 @@ pub fn build_entry_from_rest_payloads(
     let protein_id = transcript_lookup
         .translation_id
         .clone()
-        .or_else(|| protein_lookup.as_ref().map(|lookup| lookup.protein_id.clone()))
+        .or_else(|| {
+            protein_lookup
+                .as_ref()
+                .map(|lookup| lookup.protein_id.clone())
+        })
         .ok_or_else(|| {
             format!(
                 "Ensembl transcript '{}' did not expose a translation/protein stable ID",
@@ -452,14 +462,20 @@ pub fn build_entry_from_rest_payloads(
         protein_id,
         protein_version: transcript_lookup
             .translation_version
-            .or_else(|| protein_lookup.as_ref().and_then(|lookup| lookup.protein_version))
+            .or_else(|| {
+                protein_lookup
+                    .as_ref()
+                    .and_then(|lookup| lookup.protein_version)
+            })
             .or(sequence.version),
         transcript_id: transcript_lookup.transcript_id,
         transcript_version: transcript_lookup.transcript_version,
         gene_id: transcript_lookup.gene_id,
         gene_symbol,
         transcript_display_name: transcript_lookup.transcript_display_name,
-        species: transcript_lookup.species.or_else(|| protein_lookup.and_then(|lookup| lookup.species)),
+        species: transcript_lookup
+            .species
+            .or_else(|| protein_lookup.and_then(|lookup| lookup.species)),
         sequence: sequence.sequence.clone(),
         sequence_length: sequence.sequence.len(),
         features,

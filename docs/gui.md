@@ -2024,7 +2024,7 @@ GENtle tracks open native windows and can raise a selected one to front.
   Configuration open probe is active to reduce first-frame contention.
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
-  Planning, Agent Assistant, UniProt Mapping, Operation History)
+  Planning, Agent Assistant, Protein Evidence, Operation History)
 - In hosted/macOS mode, selecting a listed window now also raises the embedded
   egui child window to the front instead of only requesting viewport focus.
 - Shortcut: `Cmd+Backtick` focuses the main project window
@@ -3377,7 +3377,7 @@ Use the top application menu:
   - the file picker supports selecting multiple sequence files at once
   - selected files are imported sequentially through the normal per-file import path
   - each successfully imported file opens its own sequence window
-- `File -> UniProt Mapping...`
+- `File -> Protein Evidence...`
 - `File -> Open Project...`
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
@@ -3479,14 +3479,16 @@ Shortcut:
 - `Cmd+Shift+P` opens `Prepare Reference Genome...`.
 - `Cmd+Shift+L` opens `BLAST Genome Sequence...`.
 
-UniProt mapping behavior:
+Protein-evidence behavior:
 
-- `UniProt Mapping...` opens a specialist window for:
+- `Protein Evidence...` opens a specialist window for:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
   - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
   - coding-DNA lookup for one mapped protein feature against a stored
     projection (`query_uniprot_feature_coding_dna`)
+  - online Ensembl protein/transcript fetch (`FetchEnsemblProtein`)
+  - Ensembl protein sequence import (`ImportEnsemblProteinSequence`)
 - The dialog shows a compact table of recent imported UniProt entries
   (entry/accession/source/import timestamp) and `Select` buttons to fill the
   active `entry_id`/query in the form.
@@ -3509,6 +3511,12 @@ UniProt mapping behavior:
   - `Render Protein Mapping SVG...` / `Render SVG...`
     - export the same stored projection directly through the shared
       `RenderFeatureExpertSvg` route without first opening the expert window
+- the specialist window itself now scrolls vertically, so the UniProt,
+  transcript-native, and Ensembl sections stay reachable on smaller viewports
+- the same specialist now also exposes external protein feature include/exclude
+  fields, reusing the shared `ProteinFeatureFilter` contract so GUI-driven
+  Protein Expert open/export paths can filter keys such as `DOMAIN`,
+  `DNA_BIND`, or `CONFLICT` without dropping to the shell
 - `Open Protein Expert` and `Open Derived Protein Expert` both reuse the
   shared isoform-architecture canvas rather than opening a separate
   protein-sequence inspector:
@@ -3553,10 +3561,24 @@ UniProt mapping behavior:
     `TRANSMEM`, `INTRAMEM`, `TOPO_DOM`) now render in a dedicated lower band
     beneath the protein rail so sorting signals and topology segments stay
     readable instead of colliding with ordinary domain overlays
+  - the Protein Expert window itself now scrolls both vertically and
+    horizontally, so wide transcript/protein comparison tables stay readable
+    even when mismatch notes and domain inventories get dense
   - future external protein evidence sources should be able to plug into the
-    same compare window; Ensembl protein-entry import/compare is now available
-    through the shared engine/shell path, while a dedicated GUI picker/import
-    flow is still the follow-up
+    same compare window; Ensembl protein-entry import/compare now also has a
+    dedicated GUI section with:
+    - `Fetch Ensembl`
+    - `Open Ensembl Protein Expert`
+    - `Render Ensembl Protein SVG...`
+    - `Import Sequence`
+    - a recent-entry table whose `Select`, `Open Protein Expert`,
+      `Render SVG...`, and `Import Sequence` actions all reuse the same
+      transcript-first Protein Expert path and current `seq_id`/transcript
+      selection
+    - the currently selected Ensembl entry now also shows an inline detail
+      panel with transcript/gene/species context, feature-key summary, alias
+      preview, and a one-click `Use entry transcript` affordance when the
+      active transcript filter disagrees with the stored Ensembl transcript
 - The direct SVG-export affordance uses the same persisted projection state and
   target syntax as CLI/shell `render-feature-expert-svg ... uniprot-projection ...`,
   so GUI and non-GUI exports stay on one deterministic rendering path.

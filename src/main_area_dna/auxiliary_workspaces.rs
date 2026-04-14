@@ -5175,7 +5175,7 @@ impl MainAreaDna {
                 .size(font_size),
         );
         egui::Grid::new("isoform_protein_grid")
-            .num_columns(8)
+            .num_columns(9)
             .striped(true)
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("isoform").strong().size(font_size));
@@ -5521,6 +5521,7 @@ impl MainAreaDna {
     pub(super) fn open_uniprot_projection_expert(
         &mut self,
         projection_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
     ) -> Result<IsoformArchitectureExpertView, String> {
         let projection_id = projection_id.trim();
         if projection_id.is_empty() {
@@ -5528,7 +5529,7 @@ impl MainAreaDna {
         }
         match self.inspect_feature_expert_target(&FeatureExpertTarget::UniprotProjection {
             projection_id: projection_id.to_string(),
-            protein_feature_filter: Default::default(),
+            protein_feature_filter,
         }) {
             Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                 self.open_isoform_expert_window_for_view(&view.panel_id, &view);
@@ -5570,6 +5571,47 @@ impl MainAreaDna {
             }
             Ok(other) => Err(format!(
                 "Unexpected expert-view payload for transcript protein comparison: {other:?}"
+            )),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub(super) fn open_ensembl_entry_protein_expert(
+        &mut self,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, String> {
+        let entry_id = entry_id.trim();
+        if entry_id.is_empty() {
+            return Err("Ensembl protein entry_id must not be empty".to_string());
+        }
+        match self.inspect_feature_expert_target(&FeatureExpertTarget::ProteinComparison {
+            transcript_id_filter: transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            protein_feature_filter,
+            external_source: Some(gentle_protocol::ProteinExternalOpinionSource::Ensembl),
+            external_entry_id: Some(entry_id.to_string()),
+        }) {
+            Ok(FeatureExpertView::IsoformArchitecture(view)) => {
+                self.open_isoform_expert_window_for_view(&view.panel_id, &view);
+                self.op_status = if let Some(transcript_id_filter) = transcript_id_filter
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    format!(
+                        "Opened Ensembl Protein Expert for '{}' / '{}'",
+                        entry_id, transcript_id_filter
+                    )
+                } else {
+                    format!("Opened Ensembl Protein Expert for '{}'", entry_id)
+                };
+                Ok(view)
+            }
+            Ok(other) => Err(format!(
+                "Unexpected expert-view payload for Ensembl protein comparison: {other:?}"
             )),
             Err(err) => Err(err),
         }
@@ -5670,13 +5712,13 @@ impl MainAreaDna {
                         .panel_source
                         .as_deref()
                         .map(str::trim)
-                        .map(|value| value.starts_with("UniProt projection "))
+                        .map(|value| {
+                            value.starts_with("UniProt projection ")
+                                || value.starts_with("Transcript-native protein")
+                        })
                         .unwrap_or(false)
                     {
-                        format!(
-                            "UniProt protein reference mapping '{}' on '{}'",
-                            panel_id, view.seq_id
-                        )
+                        format!("Protein Expert '{}' on '{}'", panel_id, view.seq_id)
                     } else {
                         format!(
                             "Isoform architecture panel '{panel_id}' on '{}'",

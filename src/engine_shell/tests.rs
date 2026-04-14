@@ -11,14 +11,13 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
-use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::engine::{
     Arrangement, ArrangementMode, Container, ContainerKind, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
+    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
+    RackProfileKind, RackProfileSnapshot,
 };
+use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
     write_demo_pool_json, write_demo_workflow_json, write_demo_workflow_with_shebang,
@@ -11621,7 +11620,10 @@ fn parse_ensembl_protein_commands() {
     )
     .expect("parse ensembl-protein import-sequence");
     match import {
-        ShellCommand::EnsemblProteinImportSequence { entry_id, output_id } => {
+        ShellCommand::EnsemblProteinImportSequence {
+            entry_id,
+            output_id,
+        } => {
             assert_eq!(entry_id, "ENSP00000288602");
             assert_eq!(output_id.as_deref(), Some("braf_ens_protein"));
         }
@@ -12070,10 +12072,7 @@ fn execute_ensembl_protein_list_show_import_and_compare() {
     .expect("execute ensembl-protein import-sequence");
     assert!(imported.state_changed);
     assert!(
-        engine
-            .state()
-            .sequences
-            .contains_key("toy_ens_import"),
+        engine.state().sequences.contains_key("toy_ens_import"),
         "imported Ensembl protein sequence should exist in state"
     );
 

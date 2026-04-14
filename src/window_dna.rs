@@ -35,8 +35,16 @@ enum DeferredAnalysisFocus {
     PrimerDesign(String),
     QpcrDesign(String),
     SequencingConfirmation(String),
-    UniprotProjection(String),
+    UniprotProjection {
+        projection_id: String,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    },
     TranscriptProtein(Option<String>),
+    EnsemblProtein {
+        transcript_id_filter: Option<String>,
+        entry_id: String,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -123,13 +131,27 @@ impl WindowDna {
                 self.main_area
                     .focus_sequencing_confirmation_report(&report_id);
             }
-            DeferredAnalysisFocus::UniprotProjection(projection_id) => {
+            DeferredAnalysisFocus::UniprotProjection {
+                projection_id,
+                protein_feature_filter,
+            } => {
                 self.main_area
-                    .focus_uniprot_projection_expert(&projection_id);
+                    .focus_uniprot_projection_expert(&projection_id, protein_feature_filter);
             }
             DeferredAnalysisFocus::TranscriptProtein(transcript_id_filter) => {
                 self.main_area
                     .focus_transcript_protein_expert(transcript_id_filter.as_deref());
+            }
+            DeferredAnalysisFocus::EnsemblProtein {
+                transcript_id_filter,
+                entry_id,
+                protein_feature_filter,
+            } => {
+                self.main_area.focus_ensembl_entry_protein_expert(
+                    transcript_id_filter.as_deref(),
+                    &entry_id,
+                    protein_feature_filter,
+                );
             }
         }
     }
@@ -458,15 +480,20 @@ impl WindowDna {
             .focus_sequencing_confirmation_report(report_id);
     }
 
-    pub fn focus_uniprot_projection_expert(&mut self, projection_id: &str) {
+    pub fn focus_uniprot_projection_expert(
+        &mut self,
+        projection_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
         if self.pending_dna_load.is_some() {
-            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::UniprotProjection(
-                projection_id.to_string(),
-            ));
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::UniprotProjection {
+                projection_id: projection_id.to_string(),
+                protein_feature_filter,
+            });
             return;
         }
         self.main_area
-            .focus_uniprot_projection_expert(projection_id);
+            .focus_uniprot_projection_expert(projection_id, protein_feature_filter);
     }
 
     pub fn focus_transcript_protein_expert(&mut self, transcript_id_filter: Option<&str>) {
@@ -481,6 +508,34 @@ impl WindowDna {
         }
         self.main_area
             .focus_transcript_protein_expert(transcript_id_filter);
+    }
+
+    pub fn focus_ensembl_entry_protein_expert(
+        &mut self,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
+        let normalized_entry_id = entry_id.trim();
+        if normalized_entry_id.is_empty() {
+            return;
+        }
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::EnsemblProtein {
+                transcript_id_filter: transcript_id_filter
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string()),
+                entry_id: normalized_entry_id.to_string(),
+                protein_feature_filter,
+            });
+            return;
+        }
+        self.main_area.focus_ensembl_entry_protein_expert(
+            transcript_id_filter,
+            normalized_entry_id,
+            protein_feature_filter,
+        );
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

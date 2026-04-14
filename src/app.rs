@@ -87,6 +87,7 @@ use crate::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
         parse_shell_line,
     },
+    ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
@@ -831,6 +832,11 @@ pub struct GENtleApp {
     uniprot_query: String,
     uniprot_entry_id: String,
     uniprot_swiss_path: String,
+    ensembl_protein_query: String,
+    ensembl_protein_entry_id: String,
+    ensembl_protein_output_id: String,
+    protein_feature_key_include: String,
+    protein_feature_key_exclude: String,
     uniprot_linked_accession: String,
     uniprot_linked_as_id: String,
     uniprot_map_seq_id: String,
@@ -2395,6 +2401,11 @@ impl Default for GENtleApp {
             uniprot_query: String::new(),
             uniprot_entry_id: String::new(),
             uniprot_swiss_path: String::new(),
+            ensembl_protein_query: String::new(),
+            ensembl_protein_entry_id: String::new(),
+            ensembl_protein_output_id: String::new(),
+            protein_feature_key_include: String::new(),
+            protein_feature_key_exclude: String::new(),
             uniprot_linked_accession: String::new(),
             uniprot_linked_as_id: String::new(),
             uniprot_map_seq_id: String::new(),
@@ -4685,9 +4696,9 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenSequence,
             },
             CommandPaletteEntry {
-                title: "UniProt Mapping".to_string(),
-                detail: "Fetch/import UniProt entry and map features onto sequence".to_string(),
-                keywords: "uniprot swiss-prot accession protein map".to_string(),
+                title: "Protein Evidence".to_string(),
+                detail: "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native products".to_string(),
+                keywords: "uniprot swiss-prot ensembl protein map compare evidence".to_string(),
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
@@ -5433,7 +5444,11 @@ Error: `{err}`"
                 self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::UniprotProjection => {
-                self.open_sequence_window_for_uniprot_projection_expert(seq_id, artifact_id);
+                self.open_sequence_window_for_uniprot_projection_expert(
+                    seq_id,
+                    artifact_id,
+                    Default::default(),
+                );
             }
             LineageAnalysisKind::SequencingConfirmation => {
                 self.open_sequence_window_for_sequencing_confirmation_report(seq_id, artifact_id);
@@ -16096,6 +16111,32 @@ Error: `{err}`"
         }
     }
 
+    fn parse_protein_feature_key_list(value: &str) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut keys = Vec::new();
+        for part in value.split(|c: char| c == ',' || c == ';' || c.is_whitespace()) {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if seen.insert(trimmed.to_string()) {
+                keys.push(trimmed.to_string());
+            }
+        }
+        keys
+    }
+
+    fn protein_feature_filter_from_dialog(&self) -> gentle_protocol::ProteinFeatureFilter {
+        gentle_protocol::ProteinFeatureFilter {
+            include_feature_keys: Self::parse_protein_feature_key_list(
+                &self.protein_feature_key_include,
+            ),
+            exclude_feature_keys: Self::parse_protein_feature_key_list(
+                &self.protein_feature_key_exclude,
+            ),
+        }
+    }
+
     fn fetch_genbank_accession_from_dialog(&mut self) {
         let accession = self.genbank_accession.trim().to_string();
         if accession.is_empty() {
@@ -16210,6 +16251,66 @@ Error: `{err}`"
         rows
     }
 
+    fn sort_ensembl_protein_entries_recent(
+        mut rows: Vec<EnsemblProteinEntrySummary>,
+    ) -> Vec<EnsemblProteinEntrySummary> {
+        rows.sort_by(|left, right| {
+            right
+                .imported_at_unix_ms
+                .cmp(&left.imported_at_unix_ms)
+                .then_with(|| left.entry_id.cmp(&right.entry_id))
+        });
+        rows
+    }
+
+    fn recent_ensembl_protein_entries_for_dialog(
+        &self,
+        limit: usize,
+    ) -> Vec<EnsemblProteinEntrySummary> {
+        let rows = self.engine.read().unwrap().list_ensembl_protein_entries();
+        let mut rows = Self::sort_ensembl_protein_entries_recent(rows);
+        let cap = limit.max(1);
+        if rows.len() > cap {
+            rows.truncate(cap);
+        }
+        rows
+    }
+
+    fn selected_ensembl_protein_entry_for_dialog(&self) -> Option<EnsemblProteinEntry> {
+        let entry_id = self.ensembl_protein_entry_id.trim();
+        if entry_id.is_empty() {
+            return None;
+        }
+        self.engine
+            .read()
+            .unwrap()
+            .get_ensembl_protein_entry(entry_id)
+            .ok()
+    }
+
+    fn summarize_ensembl_protein_feature_keys(
+        entry: &EnsemblProteinEntry,
+        limit: usize,
+    ) -> Vec<String> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for feature in &entry.features {
+            let label = if !feature.feature_key.trim().is_empty() {
+                feature.feature_key.trim().to_string()
+            } else if !feature.feature_type.trim().is_empty() {
+                feature.feature_type.trim().to_string()
+            } else {
+                "feature".to_string()
+            };
+            *counts.entry(label).or_insert(0) += 1;
+        }
+        let mut rows = counts.into_iter().collect::<Vec<_>>();
+        rows.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        rows.into_iter()
+            .take(limit.max(1))
+            .map(|(label, count)| format!("{label} x{count}"))
+            .collect()
+    }
+
     fn sort_uniprot_projections_recent(
         mut rows: Vec<UniprotGenomeProjectionSummary>,
     ) -> Vec<UniprotGenomeProjectionSummary> {
@@ -16260,6 +16361,7 @@ Error: `{err}`"
         &mut self,
         seq_id: &str,
         projection_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
     ) {
         if projection_id.trim().is_empty() {
             self.open_sequence_window(seq_id);
@@ -16268,14 +16370,17 @@ Error: `{err}`"
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
             if let Some(window) = self.windows.get(&viewport_id) {
                 if let Ok(mut window) = window.write() {
-                    window.focus_uniprot_projection_expert(projection_id);
+                    window.focus_uniprot_projection_expert(
+                        projection_id,
+                        protein_feature_filter.clone(),
+                    );
                 }
             }
             self.queue_focus_viewport(viewport_id);
             return;
         }
         if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
-            window.focus_uniprot_projection_expert(projection_id);
+            window.focus_uniprot_projection_expert(projection_id, protein_feature_filter.clone());
             return;
         }
         let exists = self
@@ -16287,7 +16392,7 @@ Error: `{err}`"
             .contains_key(seq_id);
         if exists {
             let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
-            window.focus_uniprot_projection_expert(projection_id);
+            window.focus_uniprot_projection_expert(projection_id, protein_feature_filter);
             self.new_windows.push(window);
         }
     }
@@ -16320,6 +16425,52 @@ Error: `{err}`"
         if exists {
             let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
             window.focus_transcript_protein_expert(transcript_id_filter);
+            self.new_windows.push(window);
+        }
+    }
+
+    fn open_sequence_window_for_ensembl_protein_expert(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
+    ) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.focus_ensembl_entry_protein_expert(
+                        transcript_id_filter,
+                        entry_id,
+                        protein_feature_filter.clone(),
+                    );
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.focus_ensembl_entry_protein_expert(
+                transcript_id_filter,
+                entry_id,
+                protein_feature_filter.clone(),
+            );
+            return;
+        }
+        let exists = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if exists {
+            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+            window.focus_ensembl_entry_protein_expert(
+                transcript_id_filter,
+                entry_id,
+                protein_feature_filter,
+            );
             self.new_windows.push(window);
         }
     }
@@ -16357,7 +16508,12 @@ Error: `{err}`"
                 return;
             }
         }
-        self.open_sequence_window_for_uniprot_projection_expert(seq_id, projection_id);
+        let protein_feature_filter = self.protein_feature_filter_from_dialog();
+        self.open_sequence_window_for_uniprot_projection_expert(
+            seq_id,
+            projection_id,
+            protein_feature_filter,
+        );
         self.uniprot_map_seq_id = seq_id.to_string();
         self.uniprot_map_projection_id = projection_id.to_string();
         self.uniprot_status = format!(
@@ -16389,6 +16545,69 @@ Error: `{err}`"
             )
         } else {
             format!("Opening transcript-native Protein Expert on '{}'", seq_id)
+        };
+    }
+
+    fn open_ensembl_protein_expert_from_dialog(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+    ) {
+        let seq_id = seq_id.trim();
+        let entry_id = entry_id.trim();
+        if seq_id.is_empty() {
+            self.uniprot_status = "seq_id is required for Ensembl Protein Expert".to_string();
+            return;
+        }
+        if entry_id.is_empty() {
+            self.uniprot_status =
+                "entry_id is required before opening an Ensembl Protein Expert".to_string();
+            return;
+        }
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .get_ensembl_protein_entry(entry_id)
+        {
+            Ok(entry) => {
+                if transcript_id_filter
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                {
+                    self.uniprot_map_transcript_id = entry.transcript_id.clone();
+                }
+            }
+            Err(err) => {
+                self.uniprot_status =
+                    format!("Could not open Ensembl Protein Expert: {}", err.message);
+                return;
+            }
+        }
+        let protein_feature_filter = self.protein_feature_filter_from_dialog();
+        self.open_sequence_window_for_ensembl_protein_expert(
+            seq_id,
+            transcript_id_filter,
+            entry_id,
+            protein_feature_filter,
+        );
+        self.uniprot_map_seq_id = seq_id.to_string();
+        self.ensembl_protein_entry_id = entry_id.to_string();
+        self.uniprot_status = if let Some(transcript_id_filter) = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            format!(
+                "Opening Ensembl Protein Expert for '{}' / '{}' on '{}'",
+                entry_id, transcript_id_filter, seq_id
+            )
+        } else {
+            format!(
+                "Opening Ensembl Protein Expert for '{}' on '{}'",
+                entry_id, seq_id
+            )
         };
     }
 
@@ -16441,6 +16660,74 @@ Error: `{err}`"
             }
             Err(err) => {
                 self.uniprot_status = format!("UniProt import failed: {}", err.message);
+            }
+        }
+    }
+
+    fn fetch_ensembl_protein_from_dialog(&mut self) {
+        let query = self.ensembl_protein_query.trim().to_string();
+        if query.is_empty() {
+            self.uniprot_status = "Ensembl protein query cannot be empty".to_string();
+            return;
+        }
+        let entry_id_override = Self::uniprot_optional_trimmed(&self.ensembl_protein_entry_id);
+        let op = Operation::FetchEnsemblProtein {
+            query,
+            entry_id: entry_id_override.clone(),
+        };
+        match self.engine.write().unwrap().apply(op) {
+            Ok(result) => {
+                if let Some(row) = self.recent_ensembl_protein_entries_for_dialog(1).first() {
+                    self.ensembl_protein_entry_id = row.entry_id.clone();
+                    if self.ensembl_protein_query.trim().is_empty() {
+                        self.ensembl_protein_query = row.protein_id.clone();
+                    }
+                    if self.uniprot_map_transcript_id.trim().is_empty() {
+                        self.uniprot_map_transcript_id = row.transcript_id.clone();
+                    }
+                } else if let Some(entry_id_override) = entry_id_override {
+                    self.ensembl_protein_entry_id = entry_id_override;
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "Ensembl protein fetch: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("Ensembl protein fetch failed: {}", err.message);
+            }
+        }
+    }
+
+    fn import_ensembl_protein_sequence_from_dialog(&mut self) {
+        let entry_id = self.ensembl_protein_entry_id.trim().to_string();
+        if entry_id.is_empty() {
+            self.uniprot_status =
+                "entry_id is required before importing an Ensembl protein sequence".to_string();
+            return;
+        }
+        let op = Operation::ImportEnsemblProteinSequence {
+            entry_id,
+            output_id: Self::uniprot_optional_trimmed(&self.ensembl_protein_output_id),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "Ensembl protein sequence import: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status =
+                    format!("Ensembl protein sequence import failed: {}", err.message);
             }
         }
     }
@@ -16550,6 +16837,20 @@ Error: `{err}`"
         format!("{stem}.protein_compare.svg")
     }
 
+    fn default_ensembl_protein_svg_file_name(
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+    ) -> String {
+        let descriptor = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{}_{}_{}", seq_id.trim(), value, entry_id.trim()))
+            .unwrap_or_else(|| format!("{}_{}", seq_id.trim(), entry_id.trim()));
+        let stem = Self::sanitize_file_stem(&descriptor, "ensembl_protein_compare");
+        format!("{stem}.protein_compare.svg")
+    }
+
     fn export_uniprot_projection_svg_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
         let seq_id = seq_id.trim();
         let projection_id = projection_id.trim();
@@ -16570,6 +16871,7 @@ Error: `{err}`"
             return;
         };
         let path_text = path.display().to_string();
+        let protein_feature_filter = self.protein_feature_filter_from_dialog();
         let result = self
             .engine
             .write()
@@ -16578,7 +16880,7 @@ Error: `{err}`"
                 seq_id: seq_id.to_string(),
                 target: FeatureExpertTarget::UniprotProjection {
                     projection_id: projection_id.to_string(),
-                    protein_feature_filter: Default::default(),
+                    protein_feature_filter,
                 },
                 path: path_text.clone(),
             });
@@ -16658,6 +16960,82 @@ Error: `{err}`"
             Err(err) => {
                 self.uniprot_status = format!(
                     "Could not export transcript-native Protein Expert SVG: {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn export_ensembl_protein_svg_from_dialog(
+        &mut self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+    ) {
+        let seq_id = seq_id.trim();
+        let entry_id = entry_id.trim();
+        if seq_id.is_empty() {
+            self.uniprot_status =
+                "seq_id is required before exporting Ensembl Protein Expert SVG".to_string();
+            return;
+        }
+        if entry_id.is_empty() {
+            self.uniprot_status =
+                "entry_id is required before exporting Ensembl Protein Expert SVG".to_string();
+            return;
+        }
+        let normalized_filter = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let default_file_name = Self::default_ensembl_protein_svg_file_name(
+            seq_id,
+            normalized_filter.as_deref(),
+            entry_id,
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            self.uniprot_status = "Ensembl Protein Expert SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let protein_feature_filter = self.protein_feature_filter_from_dialog();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: seq_id.to_string(),
+                target: FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: normalized_filter.clone(),
+                    protein_feature_filter,
+                    external_source: Some(gentle_protocol::ProteinExternalOpinionSource::Ensembl),
+                    external_entry_id: Some(entry_id.to_string()),
+                },
+                path: path_text.clone(),
+            });
+        match result {
+            Ok(op_result) => {
+                self.uniprot_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                    if let Some(transcript_id_filter) = normalized_filter.as_deref() {
+                        format!(
+                            "Wrote Ensembl Protein Expert SVG for '{}' / '{}' to '{}'",
+                            entry_id, transcript_id_filter, path_text
+                        )
+                    } else {
+                        format!(
+                            "Wrote Ensembl Protein Expert SVG for '{}' to '{}'",
+                            entry_id, path_text
+                        )
+                    }
+                });
+            }
+            Err(err) => {
+                self.uniprot_status = format!(
+                    "Could not export Ensembl Protein Expert SVG: {}",
                     err.message
                 );
             }
@@ -16992,12 +17370,12 @@ Error: `{err}`"
             }
         }
 
-        let close_hover = Self::specialist_window_close_hover_text("UniProt Mapping");
+        let close_hover = Self::specialist_window_close_hover_text("Protein Evidence");
         if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
             close_requested = true;
         }
         ui.label(
-            "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
+            "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native protein derivation.",
         );
         ui.horizontal(|ui| {
             ui.label("entry_id");
@@ -17158,8 +17536,23 @@ Error: `{err}`"
                 }
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("feature include");
+            ui.text_edit_singleline(&mut self.protein_feature_key_include)
+                .on_hover_text(
+                    "Optional external protein feature keys to include (comma or whitespace separated, for example DOMAIN DNA_BIND PF02196)",
+                );
+            ui.label("exclude");
+            ui.text_edit_singleline(&mut self.protein_feature_key_exclude)
+                .on_hover_text(
+                    "Optional external protein feature keys to exclude (comma or whitespace separated, for example CONFLICT REGION)",
+                );
+        });
         ui.small(
-            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Derived Protein SVG... exports the transcript-native view directly, while Render Protein Mapping SVG... exports the shared Protein Expert view for the stored UniProt projection.",
+            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Derived Protein SVG... exports the transcript-native view directly, while Render Protein Mapping SVG... exports the shared Protein Expert view for the stored UniProt projection. The Ensembl section below reuses that same compare window with fetched Ensembl protein entries as optional external evidence.",
+        );
+        ui.small(
+            "The feature include/exclude fields above apply to external protein annotation overlays used by Open Protein Expert, Render Protein Mapping SVG..., Open Ensembl Protein Expert, and Render Ensembl Protein SVG.... Derived-only transcript Protein Expert views ignore them. CONFLICT stays hidden by default unless explicitly re-included.",
         );
         ui.separator();
         ui.label("Feature coding DNA query");
@@ -17386,6 +17779,298 @@ Error: `{err}`"
                         });
                 });
         }
+        ui.separator();
+        ui.label("Ensembl protein evidence");
+        ui.small(
+            "Fetch one Ensembl protein or transcript through the shared REST-backed engine path, reuse it as optional external evidence in the Protein Expert, or import the protein as a standalone sequence.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("query");
+            ui.text_edit_singleline(&mut self.ensembl_protein_query)
+                .on_hover_text(
+                    "Ensembl protein or transcript identifier to fetch (for example ENSP... or ENST...)",
+                );
+            if ui
+                .button("Fetch Ensembl")
+                .on_hover_text(
+                    "Fetch one Ensembl protein entry into project metadata for later compare/import reuse",
+                )
+                .clicked()
+            {
+                self.fetch_ensembl_protein_from_dialog();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("entry_id");
+            ui.text_edit_singleline(&mut self.ensembl_protein_entry_id).on_hover_text(
+                "Stable project entry identifier for the fetched Ensembl protein evidence",
+            );
+            ui.label("output_id");
+            ui.text_edit_singleline(&mut self.ensembl_protein_output_id).on_hover_text(
+                "Optional sequence id override when importing the Ensembl protein as a standalone sequence",
+            );
+            if ui
+                .button("Import Sequence")
+                .on_hover_text(
+                    "Import the selected Ensembl protein entry as a first-class protein sequence in the project",
+                )
+                .clicked()
+            {
+                self.import_ensembl_protein_sequence_from_dialog();
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui
+                .button("Open Ensembl Protein Expert")
+                .on_hover_text(
+                    "Open the shared Protein Expert with the selected Ensembl protein entry as optional external evidence",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                let transcript_filter =
+                    Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id);
+                let entry_id = self.ensembl_protein_entry_id.trim().to_string();
+                self.open_ensembl_protein_expert_from_dialog(
+                    &seq_id,
+                    transcript_filter.as_deref(),
+                    &entry_id,
+                );
+            }
+            if ui
+                .button("Render Ensembl Protein SVG...")
+                .on_hover_text(
+                    "Export the Ensembl-backed Protein Expert directly as an SVG through the shared feature-expert route",
+                )
+                .clicked()
+            {
+                let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                let transcript_filter =
+                    Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id);
+                let entry_id = self.ensembl_protein_entry_id.trim().to_string();
+                self.export_ensembl_protein_svg_from_dialog(
+                    &seq_id,
+                    transcript_filter.as_deref(),
+                    &entry_id,
+                );
+            }
+        });
+        ui.small(
+            "Ensembl compare/export reuses the same seq_id / transcript filter controls above. If transcript is empty, the fetched entry's transcript will be used when available.",
+        );
+        let recent_ensembl_entries = self.recent_ensembl_protein_entries_for_dialog(12);
+        ui.label(format!(
+            "Recent Ensembl protein entries ({})",
+            recent_ensembl_entries.len()
+        ));
+        if recent_ensembl_entries.is_empty() {
+            ui.small("No Ensembl protein entries fetched in this project yet.");
+        } else {
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    egui::Grid::new("ensembl_recent_entries_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("entry_id");
+                            ui.strong("protein_id");
+                            ui.strong("transcript_id");
+                            ui.strong("gene");
+                            ui.strong("AA");
+                            ui.strong("imported_ms");
+                            ui.strong("source_query");
+                            ui.strong("actions");
+                            ui.end_row();
+                            for row in &recent_ensembl_entries {
+                                ui.monospace(&row.entry_id);
+                                ui.monospace(&row.protein_id);
+                                ui.monospace(&row.transcript_id);
+                                ui.label(row.gene_symbol.as_deref().unwrap_or("-"));
+                                ui.label(row.sequence_length.to_string());
+                                ui.label(row.imported_at_unix_ms.to_string());
+                                ui.label(row.source_query.as_deref().unwrap_or("-"));
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .small_button("Select")
+                                        .on_hover_text(
+                                            "Use this row as the active Ensembl protein evidence entry",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.ensembl_protein_entry_id = row.entry_id.clone();
+                                        self.ensembl_protein_query = row.protein_id.clone();
+                                        if self.uniprot_map_transcript_id.trim().is_empty() {
+                                            self.uniprot_map_transcript_id =
+                                                row.transcript_id.clone();
+                                        }
+                                    }
+                                    if ui
+                                        .small_button("Open Protein Expert")
+                                        .on_hover_text(
+                                            "Open the shared Protein Expert with this Ensembl entry as optional external evidence",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.ensembl_protein_entry_id = row.entry_id.clone();
+                                        if self.uniprot_map_transcript_id.trim().is_empty() {
+                                            self.uniprot_map_transcript_id =
+                                                row.transcript_id.clone();
+                                        }
+                                        let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                                        let transcript_filter =
+                                            Self::uniprot_optional_trimmed(
+                                                &self.uniprot_map_transcript_id,
+                                            );
+                                        self.open_ensembl_protein_expert_from_dialog(
+                                            &seq_id,
+                                            transcript_filter.as_deref(),
+                                            &row.entry_id,
+                                        );
+                                    }
+                                    if ui
+                                        .small_button("Import Sequence")
+                                        .on_hover_text(
+                                            "Import this Ensembl protein entry as a standalone sequence",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.ensembl_protein_entry_id = row.entry_id.clone();
+                                        self.import_ensembl_protein_sequence_from_dialog();
+                                    }
+                                    if ui
+                                        .small_button("Render SVG...")
+                                        .on_hover_text(
+                                            "Export this Ensembl-backed Protein Expert directly as SVG",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.ensembl_protein_entry_id = row.entry_id.clone();
+                                        if self.uniprot_map_transcript_id.trim().is_empty() {
+                                            self.uniprot_map_transcript_id =
+                                                row.transcript_id.clone();
+                                        }
+                                        let seq_id = self.uniprot_map_seq_id.trim().to_string();
+                                        let transcript_filter =
+                                            Self::uniprot_optional_trimmed(
+                                                &self.uniprot_map_transcript_id,
+                                            );
+                                        self.export_ensembl_protein_svg_from_dialog(
+                                            &seq_id,
+                                            transcript_filter.as_deref(),
+                                            &row.entry_id,
+                                        );
+                                    }
+                                });
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+        if let Some(entry) = self.selected_ensembl_protein_entry_for_dialog() {
+            ui.separator();
+            ui.label("Selected Ensembl evidence");
+            ui.small(
+                "Stored Ensembl protein evidence stays optional here: transcript-native translation remains the authoritative product model, while this record acts as one external comparison opinion.",
+            );
+            let current_transcript_filter =
+                Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id);
+            if current_transcript_filter
+                .as_deref()
+                .map(|value| value != entry.transcript_id)
+                .unwrap_or(false)
+            {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        format!(
+                            "Current transcript filter '{}' differs from Ensembl transcript '{}'.",
+                            current_transcript_filter.as_deref().unwrap_or("-"),
+                            entry.transcript_id
+                        ),
+                    );
+                    if ui
+                        .small_button("Use entry transcript")
+                        .on_hover_text(
+                            "Replace the current transcript filter with the transcript recorded in this Ensembl protein entry",
+                        )
+                        .clicked()
+                    {
+                        self.uniprot_map_transcript_id = entry.transcript_id.clone();
+                    }
+                });
+            }
+            egui::Grid::new("ensembl_selected_entry_grid")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("entry_id");
+                    ui.monospace(&entry.entry_id);
+                    ui.end_row();
+                    ui.strong("protein_id");
+                    ui.monospace(&entry.protein_id);
+                    ui.end_row();
+                    ui.strong("transcript_id");
+                    ui.monospace(&entry.transcript_id);
+                    ui.end_row();
+                    ui.strong("gene");
+                    ui.label(
+                        entry
+                            .gene_symbol
+                            .as_deref()
+                            .or(entry.gene_id.as_deref())
+                            .unwrap_or("-"),
+                    );
+                    ui.end_row();
+                    ui.strong("transcript label");
+                    ui.label(entry.transcript_display_name.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("species");
+                    ui.label(entry.species.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("derived aa");
+                    ui.monospace(entry.sequence_length.to_string());
+                    ui.end_row();
+                    ui.strong("feature count");
+                    ui.monospace(entry.features.len().to_string());
+                    ui.end_row();
+                    ui.strong("source query");
+                    ui.label(entry.source_query.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                });
+            let feature_key_summary = Self::summarize_ensembl_protein_feature_keys(&entry, 8);
+            if !feature_key_summary.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong("feature keys");
+                    ui.monospace(feature_key_summary.join(", "));
+                });
+            }
+            if !entry.aliases.is_empty() {
+                let mut aliases = entry.aliases.clone();
+                aliases.sort();
+                if aliases.len() > 8 {
+                    aliases.truncate(8);
+                    aliases.push("...".to_string());
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong("aliases");
+                    ui.monospace(aliases.join(", "));
+                });
+            }
+        } else if !self.ensembl_protein_entry_id.trim().is_empty() {
+            ui.separator();
+            ui.colored_label(
+                egui::Color32::from_rgb(180, 83, 9),
+                format!(
+                    "Selected Ensembl entry '{}' is not currently available in project metadata.",
+                    self.ensembl_protein_entry_id.trim()
+                ),
+            );
+        }
         if !self.uniprot_status.trim().is_empty() {
             ui.separator();
             ui.monospace(self.uniprot_status.clone());
@@ -17399,22 +18084,31 @@ Error: `{err}`"
         }
 
         let builder = egui::ViewportBuilder::default()
-            .with_title("UniProt Mapping")
-            .with_inner_size([940.0, 520.0])
-            .with_min_inner_size([780.0, 420.0]);
+            .with_title("Protein Evidence")
+            .with_inner_size([1040.0, 680.0])
+            .with_min_inner_size([820.0, 480.0]);
         ctx.show_viewport_immediate(Self::uniprot_viewport_id(), builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, Self::uniprot_viewport_id());
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_uniprot_dialog;
                 let mut close_requested = false;
-                egui::Window::new("UniProt Mapping")
+                egui::Window::new("Protein Evidence")
                     .open(&mut open)
                     .collapsible(false)
                     .resizable(true)
-                    .default_size(Vec2::new(940.0, 520.0))
-                    .min_size(Vec2::new(780.0, 420.0))
+                    .default_size(Vec2::new(1040.0, 680.0))
+                    .min_size(Vec2::new(820.0, 480.0))
                     .show(ctx, |ui| {
-                        close_requested = self.render_uniprot_dialog_contents(ui);
+                        egui::ScrollArea::vertical()
+                            .id_salt("protein_evidence_embedded_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                close_requested = self.render_uniprot_dialog_contents(ui);
+                            });
                     });
                 if close_requested {
                     open = false;
@@ -17425,7 +18119,16 @@ Error: `{err}`"
 
             let mut close_requested = false;
             crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                close_requested = self.render_uniprot_dialog_contents(ui);
+                egui::ScrollArea::vertical()
+                    .id_salt("protein_evidence_viewport_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        close_requested = self.render_uniprot_dialog_contents(ui);
+                    });
             });
 
             if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
@@ -28544,9 +29247,9 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("UniProt Mapping...")
+                    .button("Protein Evidence...")
                     .on_hover_text(
-                        "Fetch/import UniProt SWISS-PROT entries and map them onto sequences",
+                        "Fetch/import UniProt or Ensembl protein evidence and compare it against sequences",
                     )
                     .clicked()
                 {
@@ -40002,6 +40705,7 @@ mod tests {
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             RoutineDecisionTraceStore, SequenceOrigin,
         },
+        ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
             EnsemblQuickInstallPreview, HelperConstructInterpretation, PrepareGenomePlan,
@@ -46104,6 +46808,156 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             ),
             "grch38_tp53_ENST00000269305.protein_compare.svg"
         );
+    }
+
+    #[test]
+    fn default_ensembl_protein_svg_file_name_uses_seq_entry_and_optional_transcript() {
+        assert_eq!(
+            GENtleApp::default_ensembl_protein_svg_file_name(
+                "grch38_tp53",
+                None,
+                "ENSP00000269305"
+            ),
+            "grch38_tp53_ENSP00000269305.protein_compare.svg"
+        );
+        assert_eq!(
+            GENtleApp::default_ensembl_protein_svg_file_name(
+                "grch38_tp53",
+                Some("ENST00000269305"),
+                "ENSP00000269305"
+            ),
+            "grch38_tp53_ENST00000269305_ENSP00000269305.protein_compare.svg"
+        );
+    }
+
+    #[test]
+    fn sort_ensembl_protein_entries_recent_prefers_newer_rows_then_entry_id() {
+        let rows = vec![
+            EnsemblProteinEntrySummary {
+                entry_id: "ENSP_B".to_string(),
+                protein_id: "ENSP_B".to_string(),
+                transcript_id: "ENST_B".to_string(),
+                imported_at_unix_ms: 100,
+                ..Default::default()
+            },
+            EnsemblProteinEntrySummary {
+                entry_id: "ENSP_A".to_string(),
+                protein_id: "ENSP_A".to_string(),
+                transcript_id: "ENST_A".to_string(),
+                imported_at_unix_ms: 100,
+                ..Default::default()
+            },
+            EnsemblProteinEntrySummary {
+                entry_id: "ENSP_NEW".to_string(),
+                protein_id: "ENSP_NEW".to_string(),
+                transcript_id: "ENST_NEW".to_string(),
+                imported_at_unix_ms: 250,
+                ..Default::default()
+            },
+        ];
+        let sorted = GENtleApp::sort_ensembl_protein_entries_recent(rows);
+        let ordered_ids = sorted
+            .iter()
+            .map(|row| row.entry_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ordered_ids, vec!["ENSP_NEW", "ENSP_A", "ENSP_B"]);
+    }
+
+    #[test]
+    fn protein_feature_filter_from_dialog_parses_include_and_exclude_keys() {
+        let mut app = GENtleApp::default();
+        app.protein_feature_key_include = "DOMAIN, DNA_BIND PF02196 DOMAIN".to_string();
+        app.protein_feature_key_exclude = "CONFLICT; REGION\nCHAIN".to_string();
+        let filter = app.protein_feature_filter_from_dialog();
+        assert_eq!(
+            filter.include_feature_keys,
+            vec!["DOMAIN", "DNA_BIND", "PF02196"]
+        );
+        assert_eq!(
+            filter.exclude_feature_keys,
+            vec!["CONFLICT", "REGION", "CHAIN"]
+        );
+    }
+
+    #[test]
+    fn summarize_ensembl_protein_feature_keys_prefers_frequency_then_name() {
+        let entry = EnsemblProteinEntry {
+            entry_id: "ENSP_TEST".to_string(),
+            protein_id: "ENSP_TEST".to_string(),
+            transcript_id: "ENST_TEST".to_string(),
+            features: vec![
+                EnsemblProteinFeature {
+                    feature_key: "DOMAIN".to_string(),
+                    ..Default::default()
+                },
+                EnsemblProteinFeature {
+                    feature_key: "DOMAIN".to_string(),
+                    ..Default::default()
+                },
+                EnsemblProteinFeature {
+                    feature_key: "REGION".to_string(),
+                    ..Default::default()
+                },
+                EnsemblProteinFeature {
+                    feature_key: String::new(),
+                    feature_type: "signal_peptide".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let summary = GENtleApp::summarize_ensembl_protein_feature_keys(&entry, 8);
+        assert_eq!(
+            summary,
+            vec![
+                "DOMAIN x2".to_string(),
+                "REGION x1".to_string(),
+                "signal_peptide x1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn selected_ensembl_protein_entry_for_dialog_resolves_aliases() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            "gentle.ensembl_protein_entries.v1".to_string(),
+            serde_json::json!({
+                "schema": "gentle.ensembl_protein_entries.v1",
+                "updated_at_unix_ms": 1u128,
+                "entries": {
+                    "ENSP_TEST": {
+                        "schema": "gentle.ensembl_protein_entry.v1",
+                        "entry_id": "ENSP_TEST",
+                        "protein_id": "ENSP_TEST",
+                        "transcript_id": "ENST_TEST",
+                        "aliases": ["ensp_test_alias"],
+                        "sequence": "MSTNPKPQR",
+                        "sequence_length": 9,
+                        "features": [],
+                        "source": "ensembl_rest",
+                        "imported_at_unix_ms": 1u128,
+                        "transcript_lookup_source_url": "https://example.invalid/transcript",
+                        "sequence_source_url": "https://example.invalid/sequence",
+                        "feature_source_url": "https://example.invalid/features",
+                        "raw_transcript_lookup_json": "{}",
+                        "raw_sequence_json": "{}",
+                        "raw_feature_json": "[]"
+                    }
+                }
+            }),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.ensembl_protein_entry_id = "ensp_test_alias".to_string();
+
+        let selected = app
+            .selected_ensembl_protein_entry_for_dialog()
+            .expect("selected entry");
+        assert_eq!(selected.entry_id, "ENSP_TEST");
+        assert_eq!(selected.transcript_id, "ENST_TEST");
     }
 
     #[test]
