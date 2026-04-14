@@ -1334,6 +1334,10 @@ order. Durable architecture constraints and decisions remain in
        - persisted reverse-translation reports now also appear as lineage
          analysis artifacts and reopen the created coding sequence from lineage
          with stored translation-table / speed-profile provenance
+       - shipped follow-on: persisted reverse-translation reports now also
+         record codon-choice diagnostics (`preferred` vs alternative synonymous
+         picks, fallback codons, GC fraction, realized anneal-window Tm), and
+         lineage shows a compact diagnostics summary for those artifacts
        - add named presets / control bundles for common goals
          (`balanced`, `fast expression`, `slow translation`, `anneal-aware`)
        - consider stronger local optimization for annealing/GC/repeat

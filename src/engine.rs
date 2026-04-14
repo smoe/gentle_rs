@@ -7872,6 +7872,38 @@ impl GentleEngine {
         summary
     }
 
+    fn summarize_reverse_translation_diagnostics(report: &ReverseTranslationReport) -> String {
+        let mut parts = Vec::new();
+        let synonym_total =
+            report.preferred_synonymous_choice_count + report.alternative_synonymous_choice_count;
+        if synonym_total > 0 {
+            parts.push(format!(
+                "preferred={}/{}",
+                report.preferred_synonymous_choice_count, synonym_total
+            ));
+            if report.alternative_synonymous_choice_count > 0 {
+                parts.push(format!(
+                    "alt={}",
+                    report.alternative_synonymous_choice_count
+                ));
+            }
+        }
+        if report.fallback_unknown_codon_count > 0 {
+            parts.push(format!("fallback={}", report.fallback_unknown_codon_count));
+        }
+        if let Some(gc_fraction) = report.gc_fraction {
+            parts.push(format!("gc={:.0}%", gc_fraction * 100.0));
+        }
+        if let Some(realized_tm) = report.realized_anneal_tm_c {
+            parts.push(format!("tm={realized_tm:.1}C"));
+        }
+        if parts.is_empty() {
+            "-".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+
     fn normalize_primer_design_report_id(raw: &str) -> Result<String, EngineError> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
@@ -8112,6 +8144,7 @@ impl GentleEngine {
                 coding_length_bp: report.coding_length_bp,
                 translation_table: report.translation_table,
                 speed_profile_summary: Self::summarize_reverse_translation_speed_profile(report),
+                diagnostics_summary: Self::summarize_reverse_translation_diagnostics(report),
             })
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| {

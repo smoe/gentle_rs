@@ -31152,7 +31152,7 @@ Error: `{err}`"
                     analysis_artifact_id: Some(summary.report_id.clone()),
                     analysis_reference_seq_id: Some(summary.coding_seq_id.clone()),
                     analysis_mode: Some(summary.speed_profile_summary.clone()),
-                    analysis_status: None,
+                    analysis_status: Some(summary.diagnostics_summary.clone()),
                     analysis_point_count: Some(summary.translation_table),
                     analysis_bin_count: None,
                     analysis_read_count: None,
@@ -36459,7 +36459,7 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::RnaReadInterpretation) => {
                                 "report_mode/origin_mode"
                             }
-                            Some(LineageAnalysisKind::ReverseTranslation) => "product_seq_id",
+                            Some(LineageAnalysisKind::ReverseTranslation) => "diagnostics",
                             Some(LineageAnalysisKind::ConstructReasoning) => "goal",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_filter",
                             _ => "status",
@@ -50146,6 +50146,11 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
             Some("seq_reverse_coding")
         );
         assert_eq!(row.analysis_mode.as_deref(), Some("ecoli:slow"));
+        assert!(
+            row.analysis_status
+                .as_deref()
+                .is_some_and(|value| value.contains("gc="))
+        );
         assert_eq!(row.analysis_point_count, Some(11));
         assert_eq!(row.analysis_target_count, Some(9));
         assert_eq!(row.analysis_variant_count, Some(3));

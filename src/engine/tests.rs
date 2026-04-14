@@ -7739,11 +7739,20 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
     );
     assert_eq!(report.speed_mark.map(|mark| mark.as_str()), Some("slow"));
     assert_eq!(report.coding_length_bp, 9);
+    assert_eq!(
+        report.preferred_synonymous_choice_count
+            + report.alternative_synonymous_choice_count
+            + report.fallback_unknown_codon_count,
+        2
+    );
+    assert!(report.gc_fraction.unwrap_or(0.0) > 0.0);
+    assert!(report.realized_anneal_tm_c.unwrap_or(0.0) > 0.0);
     let listed = engine.list_reverse_translation_reports(Some("prot"));
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].report_id, result.op_id);
     assert_eq!(listed[0].coding_seq_id, "prot_coding");
     assert_eq!(listed[0].speed_profile_summary, "ecoli:slow");
+    assert!(listed[0].diagnostics_summary.contains("gc="));
     assert_eq!(
         engine
             .get_reverse_translation_report(&result.op_id)

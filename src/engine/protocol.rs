@@ -1919,6 +1919,13 @@ pub struct ReverseTranslationReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_anneal_tm_c: Option<f64>,
     pub anneal_window_bp: usize,
+    pub preferred_synonymous_choice_count: usize,
+    pub alternative_synonymous_choice_count: usize,
+    pub fallback_unknown_codon_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realized_anneal_tm_c: Option<f64>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -1939,6 +1946,7 @@ pub struct ReverseTranslationReportSummary {
     pub coding_length_bp: usize,
     pub translation_table: usize,
     pub speed_profile_summary: String,
+    pub diagnostics_summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

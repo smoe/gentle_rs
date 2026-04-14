@@ -2343,6 +2343,78 @@ impl GentleEngine {
         (dna, warnings)
     }
 
+    fn reverse_translation_choice_diagnostics(
+        protein_sequence: &str,
+        coding_sequence: &str,
+        translation_table: usize,
+        preferred_species_label: Option<&str>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: usize,
+    ) -> (usize, usize, usize, Option<f64>, Option<f64>) {
+        let mut preferred_synonymous_choice_count = 0usize;
+        let mut alternative_synonymous_choice_count = 0usize;
+        let mut fallback_unknown_codon_count = 0usize;
+
+        for (aa_index, aa) in protein_sequence.chars().enumerate() {
+            let codon_start = aa_index.saturating_mul(3);
+            let codon_end = codon_start.saturating_add(3);
+            let Some(chosen_codon) = coding_sequence.get(codon_start..codon_end) else {
+                break;
+            };
+            let chosen_codon = chosen_codon.to_ascii_uppercase();
+            if chosen_codon
+                .chars()
+                .any(|ch| !matches!(ch, 'A' | 'C' | 'G' | 'T'))
+            {
+                fallback_unknown_codon_count = fallback_unknown_codon_count.saturating_add(1);
+                continue;
+            }
+
+            let aa = if aa == '*' {
+                STOP_CODON
+            } else {
+                aa.to_ascii_uppercase()
+            };
+            let candidates = AMINO_ACIDS
+                .aa2codons(aa, Some(translation_table))
+                .into_iter()
+                .map(|codon| String::from_utf8_lossy(&codon).to_ascii_uppercase())
+                .collect::<Vec<_>>();
+            if candidates.len() <= 1 {
+                continue;
+            }
+            let preferred = preferred_species_label
+                .and_then(|label| AMINO_ACIDS.preferred_species_codon(aa, label))
+                .or_else(|| AMINO_ACIDS.preferred_species_codon(aa, "Default"))
+                .map(|codon| codon.to_ascii_uppercase());
+            if let Some(preferred) = preferred {
+                if chosen_codon == preferred {
+                    preferred_synonymous_choice_count =
+                        preferred_synonymous_choice_count.saturating_add(1);
+                } else {
+                    alternative_synonymous_choice_count =
+                        alternative_synonymous_choice_count.saturating_add(1);
+                }
+            }
+        }
+
+        let gc_fraction = Self::sequence_gc_fraction(coding_sequence.as_bytes());
+        let realized_anneal_tm_c = target_anneal_tm_c.map(|_| {
+            let window_len = anneal_window_bp.max(6).min(coding_sequence.len());
+            let suffix =
+                &coding_sequence.as_bytes()[coding_sequence.len().saturating_sub(window_len)..];
+            Self::estimate_primer_tm_c(suffix)
+        });
+
+        (
+            preferred_synonymous_choice_count,
+            alternative_synonymous_choice_count,
+            fallback_unknown_codon_count,
+            gc_fraction,
+            realized_anneal_tm_c,
+        )
+    }
+
     fn build_transcript_derived_protein_sequence(
         protein_sequence: &str,
         seq_name: &str,
@@ -9415,6 +9487,20 @@ impl GentleEngine {
                         target_tm, anneal_window_bp
                     ));
                 }
+                let (
+                    preferred_synonymous_choice_count,
+                    alternative_synonymous_choice_count,
+                    fallback_unknown_codon_count,
+                    gc_fraction,
+                    realized_anneal_tm_c,
+                ) = Self::reverse_translation_choice_diagnostics(
+                    &protein_sequence,
+                    &coding_sequence,
+                    effective_translation_table,
+                    preferred_species_label,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                );
                 let report = ReverseTranslationReport {
                     schema: REVERSE_TRANSLATION_REPORT_SCHEMA.to_string(),
                     report_id: result.op_id.clone(),
@@ -9443,6 +9529,11 @@ impl GentleEngine {
                     speed_mark,
                     target_anneal_tm_c,
                     anneal_window_bp,
+                    preferred_synonymous_choice_count,
+                    alternative_synonymous_choice_count,
+                    fallback_unknown_codon_count,
+                    gc_fraction,
+                    realized_anneal_tm_c,
                     warnings: warnings.clone(),
                 };
                 self.upsert_reverse_translation_report(report.clone())?;

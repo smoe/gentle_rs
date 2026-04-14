@@ -2576,6 +2576,12 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - effective translation table / label / source
     - resolved speed profile / source / reference species
     - optional speed mark and annealing-Tm steering inputs
+    - codon-choice diagnostics:
+      - `preferred_synonymous_choice_count`
+      - `alternative_synonymous_choice_count`
+      - `fallback_unknown_codon_count`
+      - `gc_fraction`
+      - `realized_anneal_tm_c`
     - warnings captured during codon selection / qualifier synthesis
   - one full-span synthetic local `CDS` feature with:
     - protein provenance

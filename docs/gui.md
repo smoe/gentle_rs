@@ -1397,6 +1397,8 @@ Node click behavior in lineage `Graph` view:
   - `ProteinDerivation`: opens the Derived Protein Expert on the saved report
   - `ReverseTranslation`: opens the created coding-sequence window referenced
     by the saved report
+    - the selected-node detail panel also shows a compact codon-choice
+      diagnostics summary (`preferred`, fallback count, GC, realized suffix Tm)
   - `UniprotProjection`: opens the UniProt Protein Expert on the saved
     projection
 - Single-click on the dedicated `Gibson cloning` operation node in graph view,
