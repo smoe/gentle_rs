@@ -2414,6 +2414,8 @@ pub enum Operation {
         display_intensity_gain: Option<f32>,
         #[serde(default)]
         overlay_x_axis_mode: DotplotOverlayXAxisMode,
+        #[serde(default)]
+        overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef>,
     },
     RenderFeatureExpertSvg {
         seq_id: SeqId,
@@ -14659,6 +14661,7 @@ impl GentleEngine {
         seq_id: String,
         label: String,
         color_rgb: [u8; 3],
+        transcript_feature_id: Option<usize>,
         mode: DotplotMode,
         span_start_0based: usize,
         span_end_0based: usize,
@@ -14670,6 +14673,7 @@ impl GentleEngine {
             seq_id,
             label,
             color_rgb,
+            transcript_feature_id,
             mode,
             span_start_0based,
             span_end_0based,
@@ -14732,6 +14736,97 @@ impl GentleEngine {
             interval_count: intervals.len(),
             intervals,
         })
+    }
+
+    fn dotplot_transcript_feature_exon_local_starts(
+        feature: &gb_io::seq::Feature,
+    ) -> Vec<((usize, usize), usize, usize)> {
+        let mut exon_ranges: Vec<(usize, usize)> = vec![];
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+        exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        exon_ranges.dedup();
+        exon_ranges.retain(|(start, end)| *end > *start);
+        let is_reverse = feature_is_reverse(feature);
+        let ordered = if is_reverse {
+            exon_ranges.iter().copied().rev().collect::<Vec<_>>()
+        } else {
+            exon_ranges.clone()
+        };
+        let mut local_cursor = 0usize;
+        let mut out = vec![];
+        for (start_0based, end_0based_exclusive) in ordered {
+            let exon_len = end_0based_exclusive.saturating_sub(start_0based);
+            out.push((
+                (start_0based.saturating_add(1), end_0based_exclusive),
+                local_cursor,
+                exon_len,
+            ));
+            local_cursor = local_cursor.saturating_add(exon_len);
+        }
+        out
+    }
+
+    fn build_dotplot_overlay_anchor_exons(
+        &self,
+        reference_seq_id: &str,
+        query_specs: &[DotplotOverlayQuerySpec],
+        query_series: &[DotplotQuerySeries],
+    ) -> Vec<DotplotOverlayAnchorExon> {
+        let Some(reference_dna) = self.state.sequences.get(reference_seq_id) else {
+            return vec![];
+        };
+        let mut exon_support: BTreeMap<(usize, usize), Vec<DotplotOverlayAnchorSeriesSupport>> =
+            BTreeMap::new();
+        for (query, series) in query_specs.iter().zip(query_series.iter()) {
+            let Some(transcript_feature_id) = query.transcript_feature_id else {
+                continue;
+            };
+            let Some(feature) = reference_dna.features().get(transcript_feature_id) else {
+                continue;
+            };
+            for ((start_1based, end_1based), transcript_local_start_0based, exon_len_bp) in
+                Self::dotplot_transcript_feature_exon_local_starts(feature)
+            {
+                let transcript_local_end_0based =
+                    transcript_local_start_0based.saturating_add(exon_len_bp);
+                if transcript_local_start_0based < series.span_start_0based
+                    || transcript_local_end_0based > series.span_end_0based
+                {
+                    continue;
+                }
+                exon_support
+                    .entry((start_1based, end_1based))
+                    .or_default()
+                    .push(DotplotOverlayAnchorSeriesSupport {
+                        series_id: series.series_id.clone(),
+                        transcript_feature_id: Some(transcript_feature_id),
+                        query_start_0based: transcript_local_start_0based
+                            .saturating_sub(series.span_start_0based),
+                    });
+            }
+        }
+        exon_support
+            .into_iter()
+            .filter_map(|((start_1based, end_1based), supporting_series)| {
+                if supporting_series.len() < 2 {
+                    return None;
+                }
+                let max_query_start_0based = supporting_series
+                    .iter()
+                    .map(|support| support.query_start_0based)
+                    .max()
+                    .unwrap_or(0);
+                Some(DotplotOverlayAnchorExon {
+                    exon: DotplotOverlayAnchorExonRef {
+                        start_1based,
+                        end_1based,
+                    },
+                    support_series_count: supporting_series.len(),
+                    max_query_start_0based,
+                    supporting_series,
+                })
+            })
+            .collect()
     }
 
     fn dotplot_boxplot_quantile(sorted: &[usize], q: f64) -> Option<usize> {
@@ -15009,6 +15104,7 @@ impl GentleEngine {
             query_seq_id.trim().to_string(),
             query_label.clone(),
             Self::default_dotplot_series_color(0),
+            None,
             mode,
             0,
             query_bytes.len(),
@@ -15038,6 +15134,7 @@ impl GentleEngine {
             series_count: 1,
             query_series: vec![primary_series],
             reference_annotation: None,
+            overlay_anchor_exons: vec![],
         })
     }
 

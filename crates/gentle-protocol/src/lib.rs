@@ -501,6 +501,7 @@ pub enum DotplotOverlayXAxisMode {
     PercentLength,
     LeftAlignedBp,
     RightAlignedBp,
+    SharedExonAnchor,
 }
 
 impl DotplotOverlayXAxisMode {
@@ -509,6 +510,7 @@ impl DotplotOverlayXAxisMode {
             Self::PercentLength => "percent_length",
             Self::LeftAlignedBp => "left_aligned_bp",
             Self::RightAlignedBp => "right_aligned_bp",
+            Self::SharedExonAnchor => "shared_exon_anchor",
         }
     }
 
@@ -517,6 +519,7 @@ impl DotplotOverlayXAxisMode {
             Self::PercentLength => "% transcript",
             Self::LeftAlignedBp => "bp left-aligned",
             Self::RightAlignedBp => "bp right-aligned",
+            Self::SharedExonAnchor => "shared exon anchored",
         }
     }
 
@@ -525,6 +528,7 @@ impl DotplotOverlayXAxisMode {
             Self::PercentLength => "x: transcript length (%)",
             Self::LeftAlignedBp => "x: isoform query bp (left-aligned)",
             Self::RightAlignedBp => "x: isoform query bp (right-aligned)",
+            Self::SharedExonAnchor => "x: isoform query bp (shared exon anchored)",
         }
     }
 
@@ -535,14 +539,16 @@ impl DotplotOverlayXAxisMode {
     ) -> usize {
         match self {
             Self::PercentLength => average_query_span_bp.max(1),
-            Self::LeftAlignedBp | Self::RightAlignedBp => max_query_span_bp.max(1),
+            Self::LeftAlignedBp | Self::RightAlignedBp | Self::SharedExonAnchor => {
+                max_query_span_bp.max(1)
+            }
         }
     }
 
     pub fn axis_edge_labels(self, max_query_span_bp: usize) -> (String, String) {
         match self {
             Self::PercentLength => ("0%".to_string(), "100%".to_string()),
-            Self::LeftAlignedBp | Self::RightAlignedBp => {
+            Self::LeftAlignedBp | Self::RightAlignedBp | Self::SharedExonAnchor => {
                 ("1".to_string(), max_query_span_bp.max(1).to_string())
             }
         }
@@ -570,6 +576,9 @@ impl DotplotOverlayXAxisMode {
                 let offset_bp = max_query_span_bp.saturating_sub(query_span_bp);
                 ((offset_bp.saturating_add(query_local_bp)) as f32 / max_query_span_max as f32)
                     .clamp(0.0, 1.0)
+            }
+            Self::SharedExonAnchor => {
+                (query_local_bp as f32 / max_query_span_max as f32).clamp(0.0, 1.0)
             }
         }
     }
@@ -607,6 +616,10 @@ impl DotplotOverlayXAxisMode {
                     Some(span_start_0based.saturating_add(global_bp - offset_bp))
                 }
             }
+            Self::SharedExonAnchor => Some(
+                span_start_0based
+                    .saturating_add((axis_fraction * max_query_span_max as f32).round() as usize),
+            ),
         }
     }
 }
@@ -1614,6 +1627,8 @@ pub struct DotplotQuerySeries {
     pub seq_id: String,
     pub label: String,
     pub color_rgb: [u8; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
     #[serde(default)]
     pub mode: DotplotMode,
     pub span_start_0based: usize,
@@ -1641,11 +1656,44 @@ pub struct DotplotReferenceAnnotationTrack {
     pub intervals: Vec<DotplotReferenceAnnotationInterval>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct DotplotOverlayAnchorExonRef {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+impl DotplotOverlayAnchorExonRef {
+    pub fn token(&self) -> String {
+        format!("{}..{}", self.start_1based, self.end_1based)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotOverlayAnchorSeriesSupport {
+    pub series_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub query_start_0based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotOverlayAnchorExon {
+    pub exon: DotplotOverlayAnchorExonRef,
+    pub support_series_count: usize,
+    pub max_query_start_0based: usize,
+    pub supporting_series: Vec<DotplotOverlayAnchorSeriesSupport>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct DotplotOverlayQuerySpec {
     pub seq_id: String,
     pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
     #[serde(default)]
     pub span_start_0based: Option<usize>,
     #[serde(default)]
@@ -1682,6 +1730,8 @@ pub struct DotplotView {
     pub query_series: Vec<DotplotQuerySeries>,
     #[serde(default)]
     pub reference_annotation: Option<DotplotReferenceAnnotationTrack>,
+    #[serde(default)]
+    pub overlay_anchor_exons: Vec<DotplotOverlayAnchorExon>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1701,6 +1751,13 @@ pub struct DotplotViewSummary {
     pub max_mismatches: usize,
     pub point_count: usize,
     pub series_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DotplotOverlayResolvedAnchorSeries {
+    pub series_index: usize,
+    pub shift_bp: usize,
+    pub plotted_span_end_0based: usize,
 }
 
 impl DotplotView {
@@ -1723,6 +1780,7 @@ impl DotplotView {
                 seq_id: self.seq_id.clone(),
                 label,
                 color_rgb: [29, 78, 216],
+                transcript_feature_id: None,
                 mode: self.mode,
                 span_start_0based: self.span_start_0based,
                 span_end_0based: self.span_end_0based,
@@ -1756,10 +1814,57 @@ impl DotplotView {
         if let Some(annotation) = self.reference_annotation.as_mut() {
             annotation.interval_count = annotation.intervals.len();
         }
+        for anchor in &mut self.overlay_anchor_exons {
+            anchor.support_series_count = anchor.supporting_series.len();
+        }
     }
 
     pub fn primary_series(&self) -> Option<&DotplotQuerySeries> {
         self.query_series.first()
+    }
+
+    pub fn overlay_anchor_by_ref(
+        &self,
+        exon: &DotplotOverlayAnchorExonRef,
+    ) -> Option<&DotplotOverlayAnchorExon> {
+        self.overlay_anchor_exons
+            .iter()
+            .find(|anchor| anchor.exon == *exon)
+    }
+
+    pub fn resolve_overlay_anchor_series(
+        &self,
+        exon: &DotplotOverlayAnchorExonRef,
+    ) -> Vec<DotplotOverlayResolvedAnchorSeries> {
+        let Some(anchor) = self.overlay_anchor_by_ref(exon) else {
+            return vec![];
+        };
+        let mut resolved = vec![];
+        for support in &anchor.supporting_series {
+            let Some(series_index) = self
+                .query_series
+                .iter()
+                .position(|series| series.series_id == support.series_id)
+            else {
+                continue;
+            };
+            let Some(series) = self.query_series.get(series_index) else {
+                continue;
+            };
+            let shift_bp = anchor
+                .max_query_start_0based
+                .saturating_sub(support.query_start_0based);
+            let series_span_bp = series
+                .span_end_0based
+                .saturating_sub(series.span_start_0based)
+                .max(1);
+            resolved.push(DotplotOverlayResolvedAnchorSeries {
+                series_index,
+                shift_bp,
+                plotted_span_end_0based: shift_bp.saturating_add(series_span_bp),
+            });
+        }
+        resolved
     }
 }
 

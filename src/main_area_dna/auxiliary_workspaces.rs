@@ -24,6 +24,7 @@ pub(super) struct DotplotOpsUiState {
     pub(super) overlay_enabled: bool,
     pub(super) overlay_transcript_feature_ids: Vec<usize>,
     pub(super) overlay_x_axis_mode: DotplotOverlayXAxisMode,
+    pub(super) overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef>,
     pub(super) dotplot_id: String,
     pub(super) display_density_threshold: f32,
     pub(super) display_intensity_gain: f32,
@@ -49,6 +50,7 @@ impl Default for DotplotOpsUiState {
             overlay_enabled: false,
             overlay_transcript_feature_ids: vec![],
             overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
             dotplot_id: "dotplot_primary".to_string(),
             display_density_threshold: 0.0,
             display_intensity_gain: 1.0,
@@ -227,6 +229,59 @@ impl MainAreaDna {
             .sort_unstable();
         self.dotplot_ui.overlay_transcript_feature_ids.dedup();
         before != self.dotplot_ui.overlay_transcript_feature_ids
+    }
+
+    pub(super) fn dotplot_overlay_anchor_choices(
+        &self,
+    ) -> Vec<(DotplotOverlayAnchorExonRef, usize)> {
+        let Some(view) = self.dotplot_overlay_reference_view() else {
+            return vec![];
+        };
+        let selected_feature_ids = self
+            .dotplot_ui
+            .overlay_transcript_feature_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if selected_feature_ids.len() < 2 {
+            return vec![];
+        }
+        view.unique_exons
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, exon)| {
+                let support_count = view
+                    .matrix_rows
+                    .iter()
+                    .filter(|row| {
+                        selected_feature_ids.contains(&row.transcript_feature_id)
+                            && row.exon_presence.get(idx).copied().unwrap_or(false)
+                    })
+                    .count();
+                if support_count < 2 {
+                    None
+                } else {
+                    Some((
+                        DotplotOverlayAnchorExonRef {
+                            start_1based: exon.start_1based,
+                            end_1based: exon.end_1based,
+                        },
+                        support_count,
+                    ))
+                }
+            })
+            .collect()
+    }
+
+    pub(super) fn sync_dotplot_overlay_anchor_selection(&mut self) -> bool {
+        let choices = self.dotplot_overlay_anchor_choices();
+        let before = self.dotplot_ui.overlay_anchor_exon.clone();
+        if let Some(selected) = self.dotplot_ui.overlay_anchor_exon.as_ref()
+            && !choices.iter().any(|(exon, _)| exon == selected)
+        {
+            self.dotplot_ui.overlay_anchor_exon = None;
+        }
+        before != self.dotplot_ui.overlay_anchor_exon
     }
 
     pub(super) fn current_dotplot_query_seq_id(&self) -> Option<String> {
@@ -1260,6 +1315,7 @@ impl MainAreaDna {
                 Ok(DotplotOverlayQuerySpec {
                     seq_id,
                     label: choice.label,
+                    transcript_feature_id: Some(choice.transcript_feature_id),
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: choice.mode,
@@ -2304,6 +2360,7 @@ impl MainAreaDna {
             color: egui::Color32,
             span_start_0based: usize,
             span_end_0based: usize,
+            shift_bp: usize,
             cells: HashMap<(i32, i32), usize>,
             visible_cells: HashMap<(i32, i32), egui::Color32>,
         }
@@ -2376,9 +2433,84 @@ impl MainAreaDna {
                 .saturating_sub(view.reference_span_start_0based)
                 .max(1);
             let reference_span_max = reference_span.saturating_sub(1).max(1);
-            let max_query_span = Self::dotplot_overlay_max_query_span(view);
+            let resolved_anchor_series = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                self.dotplot_ui
+                    .overlay_anchor_exon
+                    .as_ref()
+                    .map(|exon| view.resolve_overlay_anchor_series(exon))
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
+            let rendered_series_source = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                resolved_anchor_series
+                    .iter()
+                    .filter_map(|resolved| {
+                        view.query_series
+                            .get(resolved.series_index)
+                            .map(|series| (series, resolved.shift_bp))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                view.query_series.iter().map(|series| (series, 0usize)).collect()
+            };
+            let max_query_span = rendered_series_source
+                .iter()
+                .map(|(series, _)| {
+                    series
+                        .span_end_0based
+                        .saturating_sub(series.span_start_0based)
+                        .max(1)
+                })
+                .max()
+                .unwrap_or(1);
+            let average_query_span = rendered_series_source
+                .iter()
+                .map(|(series, _)| {
+                    series
+                        .span_end_0based
+                        .saturating_sub(series.span_start_0based)
+                        .max(1)
+                })
+                .sum::<usize>()
+                .checked_div(rendered_series_source.len().max(1))
+                .unwrap_or(1)
+                .max(1);
+            let plotted_query_span = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                resolved_anchor_series
+                    .iter()
+                    .map(|resolved| resolved.plotted_span_end_0based)
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            } else {
+                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+            };
+            let plotted_query_span_max = plotted_query_span.saturating_sub(1).max(1);
             let (x_axis_start_label, x_axis_end_label) =
-                overlay_x_axis_mode.axis_edge_labels(max_query_span);
+                overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
+            let anchor_status_message = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                if self.dotplot_ui.overlay_anchor_exon.is_none() {
+                    Some("No shared exon anchor selected.".to_string())
+                } else if rendered_series_source.len() < 2 {
+                    Some(
+                        "Selected shared exon is not present in at least two plotted transcripts."
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let reference_seq_label = view
                 .reference_seq_id
                 .as_deref()
@@ -2386,13 +2518,13 @@ impl MainAreaDna {
             let cols = dotplot_rect.width().max(2.0).round() as i32;
             let rows = dotplot_rect.height().max(2.0).round() as i32;
             let series_sample_cap =
-                (DOTPLOT_RENDER_MAX_POINTS / view.query_series.len().max(1)).max(1);
+                (DOTPLOT_RENDER_MAX_POINTS / rendered_series_source.len().max(1)).max(1);
             let density_threshold = density_threshold.clamp(0.0, 0.99);
             let intensity_gain = intensity_gain.clamp(0.1, 16.0);
             let mut rendered_series: Vec<OverlaySeriesRenderData> = vec![];
             let mut total_rendered_cells = 0usize;
 
-            for series in &view.query_series {
+            for (series, shift_bp) in &rendered_series_source {
                 let sample_stride = (series.points.len() / series_sample_cap).max(1);
                 let mut cells: HashMap<(i32, i32), usize> = HashMap::new();
                 for point in series.points.iter().step_by(sample_stride) {
@@ -2400,12 +2532,29 @@ impl MainAreaDna {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = overlay_x_axis_mode.point_fraction(
-                        point.x_0based,
-                        series.span_start_0based,
-                        series.span_end_0based,
-                        max_query_span,
-                    );
+                    let x_frac = if overlay_x_axis_mode
+                        == DotplotOverlayXAxisMode::SharedExonAnchor
+                    {
+                        let x_local = point
+                            .x_0based
+                            .saturating_sub(series.span_start_0based)
+                            .min(
+                                series
+                                    .span_end_0based
+                                    .saturating_sub(series.span_start_0based)
+                                    .saturating_sub(1)
+                                    .max(1),
+                            );
+                        (shift_bp.saturating_add(x_local) as f32 / plotted_query_span_max as f32)
+                            .clamp(0.0, 1.0)
+                    } else {
+                        overlay_x_axis_mode.point_fraction(
+                            point.x_0based,
+                            series.span_start_0based,
+                            series.span_end_0based,
+                            max_query_span,
+                        )
+                    };
                     let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
                     let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
                     let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
@@ -2485,6 +2634,7 @@ impl MainAreaDna {
                     ),
                     span_start_0based: series.span_start_0based,
                     span_end_0based: series.span_end_0based,
+                    shift_bp: *shift_bp,
                     cells,
                     visible_cells,
                 });
@@ -2494,12 +2644,17 @@ impl MainAreaDna {
                 painter.text(
                     dotplot_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    format!(
-                        "No visible cells (threshold={:.2}, points={}, series={})",
-                        density_threshold,
-                        Self::dotplot_view_total_point_count(view),
-                        view.query_series.len()
-                    ),
+                    anchor_status_message.unwrap_or_else(|| {
+                        format!(
+                            "No visible cells (threshold={:.2}, points={}, series={})",
+                            density_threshold,
+                            rendered_series_source
+                                .iter()
+                                .map(|(series, _)| series.point_count)
+                                .sum::<usize>(),
+                            rendered_series_source.len()
+                        )
+                    }),
                     egui::FontId::monospace(11.0),
                     egui::Color32::from_rgb(100, 116, 139),
                 );
@@ -2584,6 +2739,17 @@ impl MainAreaDna {
                 egui::FontId::monospace(10.0),
                 egui::Color32::from_rgb(51, 65, 85),
             );
+            if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
+                && let Some(anchor) = self.dotplot_ui.overlay_anchor_exon.as_ref()
+            {
+                painter.text(
+                    egui::pos2(dotplot_rect.left() + 220.0, canvas_rect.top() + 20.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("anchor exon {}", anchor.token()),
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::from_rgb(71, 85, 105),
+                );
+            }
             painter.text(
                 egui::pos2(dotplot_rect.right(), canvas_rect.top() + 20.0),
                 egui::Align2::RIGHT_TOP,
@@ -2691,19 +2857,39 @@ impl MainAreaDna {
                     for series in &rendered_series {
                         let cell_density = series.cells.get(&(x_cell, y_cell)).copied().unwrap_or(0);
                         let rendered = series.visible_cells.contains_key(&(x_cell, y_cell));
-                        let query_label = if let Some(query_bp) =
-                            overlay_x_axis_mode.query_coordinate_at_fraction(
-                                fx,
-                                series.span_start_0based,
-                                series.span_end_0based,
-                                max_query_span,
-                            )
+                        let query_label = if overlay_x_axis_mode
+                            == DotplotOverlayXAxisMode::SharedExonAnchor
                         {
-                            format!("x={}", query_bp.saturating_add(1))
-                        } else if matches!(
-                            overlay_x_axis_mode,
-                            DotplotOverlayXAxisMode::PercentLength
+                            let global_bp =
+                                (fx * plotted_query_span_max as f32).round() as usize;
+                            let series_span_max = series
+                                .span_end_0based
+                                .saturating_sub(series.span_start_0based)
+                                .saturating_sub(1)
+                                .max(1);
+                            if global_bp < series.shift_bp
+                                || global_bp
+                                    > series.shift_bp.saturating_add(series_span_max)
+                            {
+                                "x=outside".to_string()
+                            } else {
+                                format!(
+                                    "x={}",
+                                    series
+                                        .span_start_0based
+                                        .saturating_add(global_bp - series.shift_bp)
+                                        .saturating_add(1)
+                                )
+                            }
+                        } else if let Some(query_bp) = overlay_x_axis_mode.query_coordinate_at_fraction(
+                            fx,
+                            series.span_start_0based,
+                            series.span_end_0based,
+                            max_query_span,
                         ) {
+                            format!("x={}", query_bp.saturating_add(1))
+                        } else if matches!(overlay_x_axis_mode, DotplotOverlayXAxisMode::PercentLength)
+                        {
                             "x=n/a".to_string()
                         } else {
                             "x=outside".to_string()
@@ -3824,6 +4010,9 @@ impl MainAreaDna {
         if self.sync_dotplot_overlay_selection() {
             save_state = true;
         }
+        if self.sync_dotplot_overlay_anchor_selection() {
+            save_state = true;
+        }
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
@@ -4147,9 +4336,10 @@ impl MainAreaDna {
                             }
                         });
                         if self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty() {
+                            let overlay_anchor_choices = self.dotplot_overlay_anchor_choices();
                             ui.horizontal_wrapped(|ui| {
                                 ui.label("overlay x-axis").on_hover_text(
-                                    "Choose how overlaid transcript queries share the x-axis: normalize each transcript to percent length, or use base-pair coordinates aligned at the left or right end.",
+                                    "Choose how overlaid transcript queries share the x-axis: normalize each transcript to percent length, align by one end in bp, or anchor one exon shared across transcripts.",
                                 );
                                 let before = self.dotplot_ui.overlay_x_axis_mode;
                                 egui::ComboBox::from_id_salt(format!(
@@ -4182,6 +4372,14 @@ impl MainAreaDna {
                                     .on_hover_text(
                                         "Use base-pair coordinates and align transcript ends. This makes different 5' splice starts stand out on the left.",
                                     );
+                                    ui.selectable_value(
+                                        &mut self.dotplot_ui.overlay_x_axis_mode,
+                                        DotplotOverlayXAxisMode::SharedExonAnchor,
+                                        DotplotOverlayXAxisMode::SharedExonAnchor.ui_label(),
+                                    )
+                                    .on_hover_text(
+                                        "Choose one exon shared by multiple selected transcripts and align that exon start to one common x position.",
+                                    );
                                 });
                                 if self.dotplot_ui.overlay_x_axis_mode != before {
                                     save_state = true;
@@ -4190,6 +4388,69 @@ impl MainAreaDna {
                                     "This is a display/export choice only; it does not recompute the dotplot seed matches.",
                                 );
                             });
+                            if self.dotplot_ui.overlay_x_axis_mode
+                                == DotplotOverlayXAxisMode::SharedExonAnchor
+                            {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label("anchor exon").on_hover_text(
+                                        "Select the genomic exon that should land at one shared x position across all plotted transcripts that contain it.",
+                                    );
+                                    let selected_text = self
+                                        .dotplot_ui
+                                        .overlay_anchor_exon
+                                        .as_ref()
+                                        .map(|exon| exon.token())
+                                        .unwrap_or_else(|| "<select exon>".to_string());
+                                    egui::ComboBox::from_id_salt(format!(
+                                        "dotplot_overlay_anchor_exon_{}",
+                                        self.seq_id.as_deref().unwrap_or("<none>")
+                                    ))
+                                    .selected_text(selected_text)
+                                    .show_ui(ui, |ui| {
+                                        for (exon, support_count) in &overlay_anchor_choices {
+                                            let label = format!(
+                                                "{} ({} transcripts)",
+                                                exon.token(),
+                                                support_count
+                                            );
+                                            if ui
+                                                .selectable_label(
+                                                    self.dotplot_ui
+                                                        .overlay_anchor_exon
+                                                        .as_ref()
+                                                        == Some(exon),
+                                                    label,
+                                                )
+                                                .on_hover_text(
+                                                    "Only selected transcripts containing this exon remain visible in the anchored overlay.",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.dotplot_ui.overlay_anchor_exon =
+                                                    Some(exon.clone());
+                                                save_state = true;
+                                            }
+                                        }
+                                    });
+                                    if ui
+                                        .small_button("Clear")
+                                        .on_hover_text("Clear the shared-exon anchor selection")
+                                        .clicked()
+                                    {
+                                        self.dotplot_ui.overlay_anchor_exon = None;
+                                        save_state = true;
+                                    }
+                                    if overlay_anchor_choices.is_empty() {
+                                        ui.small(
+                                            "No exon is shared by at least two of the currently selected overlay transcripts.",
+                                        );
+                                    } else if self.dotplot_ui.overlay_anchor_exon.is_none() {
+                                        ui.small(
+                                            "Choose one shared exon to activate exon-anchored overlay rendering.",
+                                        );
+                                    }
+                                });
+                            }
                             ui.horizontal_wrapped(|ui| {
                                 for choice in &overlay_choices {
                                     let mut selected = self

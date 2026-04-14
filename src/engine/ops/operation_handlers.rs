@@ -412,6 +412,7 @@ impl GentleEngine {
         density_threshold: f32,
         intensity_gain: f32,
         overlay_x_axis_mode: DotplotOverlayXAxisMode,
+        overlay_anchor_exon: Option<&DotplotOverlayAnchorExonRef>,
     ) -> String {
         #[derive(Clone)]
         struct OverlaySeriesSvgRenderData {
@@ -442,15 +443,36 @@ impl GentleEngine {
             .unwrap_or(view.seq_id.as_str());
 
         if overlay_mode {
-            let total_points: usize = view
-                .query_series
+            let resolved_anchor_series = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                overlay_anchor_exon
+                    .map(|exon| view.resolve_overlay_anchor_series(exon))
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
+            let rendered_series_source = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                resolved_anchor_series
+                    .iter()
+                    .filter_map(|resolved| {
+                        view.query_series
+                            .get(resolved.series_index)
+                            .map(|series| (series, resolved.shift_bp))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                view.query_series.iter().map(|series| (series, 0usize)).collect()
+            };
+            let total_points: usize = rendered_series_source
                 .iter()
-                .map(|series| series.point_count)
+                .map(|(series, _)| series.point_count)
                 .sum();
-            let max_query_span = view
-                .query_series
+            let max_query_span = rendered_series_source
                 .iter()
-                .map(|series| {
+                .map(|(series, _)| {
                     series
                         .span_end_0based
                         .saturating_sub(series.span_start_0based)
@@ -458,27 +480,56 @@ impl GentleEngine {
                 })
                 .max()
                 .unwrap_or(1);
-            let average_query_span = view
-                .query_series
+            let average_query_span = rendered_series_source
                 .iter()
-                .map(|series| {
+                .map(|(series, _)| {
                     series
                         .span_end_0based
                         .saturating_sub(series.span_start_0based)
                         .max(1)
                 })
                 .sum::<usize>()
-                .checked_div(view.query_series.len().max(1))
+                .checked_div(rendered_series_source.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            let plotted_query_span =
-                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span);
+            let plotted_query_span = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                resolved_anchor_series
+                    .iter()
+                    .map(|resolved| resolved.plotted_span_end_0based)
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            } else {
+                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+            };
             let (x_axis_start_label, x_axis_end_label) =
-                overlay_x_axis_mode.axis_edge_labels(max_query_span);
+                overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
+            let anchor_token = overlay_anchor_exon.map(|exon| exon.token());
+            let total_series_count = rendered_series_source.len();
+            let total_series_cap = total_series_count.max(1);
             let reference_annotation = view
                 .reference_annotation
                 .as_ref()
                 .filter(|track| !track.intervals.is_empty());
+
+            let anchor_status_message = if overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                if overlay_anchor_exon.is_none() {
+                    Some("No shared exon anchor selected.".to_string())
+                } else if rendered_series_source.len() < 2 {
+                    Some(
+                        "Selected shared exon is not present in at least two plotted transcripts."
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             let outer_margin = 18.0_f32;
             let left_margin = if reference_annotation.is_some() {
@@ -504,11 +555,12 @@ impl GentleEngine {
             let cols = dotplot_width.max(2.0).round() as i32;
             let rows = dotplot_height.max(2.0).round() as i32;
             let reference_span_max = reference_span.saturating_sub(1).max(1);
-            let series_sample_cap = (RENDER_MAX_POINTS / view.query_series.len().max(1)).max(1);
+            let plotted_query_span_max = plotted_query_span.saturating_sub(1).max(1);
+            let series_sample_cap = (RENDER_MAX_POINTS / total_series_cap).max(1);
             let mut rendered_series: Vec<OverlaySeriesSvgRenderData> = vec![];
             let mut total_visible_cells = 0usize;
 
-            for series in &view.query_series {
+            for (series, shift_bp) in &rendered_series_source {
                 let sample_stride = (series.points.len() / series_sample_cap).max(1);
                 let mut cells: HashMap<(i32, i32), usize> = HashMap::new();
                 for point in series.points.iter().step_by(sample_stride) {
@@ -516,12 +568,29 @@ impl GentleEngine {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = overlay_x_axis_mode.point_fraction(
-                        point.x_0based,
-                        series.span_start_0based,
-                        series.span_end_0based,
-                        max_query_span,
-                    );
+                    let x_frac = if overlay_x_axis_mode
+                        == DotplotOverlayXAxisMode::SharedExonAnchor
+                    {
+                        let x_local = point
+                            .x_0based
+                            .saturating_sub(series.span_start_0based)
+                            .min(
+                                series
+                                    .span_end_0based
+                                    .saturating_sub(series.span_start_0based)
+                                    .saturating_sub(1)
+                                    .max(1),
+                            );
+                        (shift_bp.saturating_add(x_local) as f32 / plotted_query_span_max as f32)
+                            .clamp(0.0, 1.0)
+                    } else {
+                        overlay_x_axis_mode.point_fraction(
+                            point.x_0based,
+                            series.span_start_0based,
+                            series.span_end_0based,
+                            max_query_span,
+                        )
+                    };
                     let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
                     let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
                     let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
@@ -649,16 +718,19 @@ impl GentleEngine {
             }
 
             if total_visible_cells == 0 {
-                svg.push_str(&format!(
-                    "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"14\" fill=\"#64748b\">{}</text>",
-                    (dotplot_left + dotplot_right) * 0.5,
-                    (dotplot_top + dotplot_bottom) * 0.5,
-                    Self::dotplot_svg_xml_escape(&format!(
+                let empty_message = anchor_status_message.unwrap_or_else(|| {
+                    format!(
                         "No visible cells (threshold={:.2}, total_points={}, series={})",
                         density_threshold,
                         total_points,
                         rendered_series.len()
-                    ))
+                    )
+                });
+                svg.push_str(&format!(
+                    "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"14\" fill=\"#64748b\">{}</text>",
+                    (dotplot_left + dotplot_right) * 0.5,
+                    (dotplot_top + dotplot_bottom) * 0.5,
+                    Self::dotplot_svg_xml_escape(&empty_message)
                 ));
             }
 
@@ -702,7 +774,7 @@ impl GentleEngine {
             }
 
             let header = format!(
-                "Dotplot workspace export: {} | overlay owner={} reference={} [{}..{}] | series={} total_points={} | word={} step={} mismatches={} | x_axis={} | threshold={:.2} gain={:.2}",
+                "Dotplot workspace export: {} | overlay owner={} reference={} [{}..{}] | series={} total_points={} | word={} step={} mismatches={} | x_axis={}{} | threshold={:.2} gain={:.2}",
                 view.dotplot_id,
                 view.owner_seq_id,
                 reference_seq_label,
@@ -714,6 +786,10 @@ impl GentleEngine {
                 view.step_bp,
                 view.max_mismatches,
                 overlay_x_axis_mode.as_str(),
+                anchor_token
+                    .as_ref()
+                    .map(|token| format!(" anchor={token}"))
+                    .unwrap_or_default(),
                 density_threshold,
                 intensity_gain
             );
@@ -1098,6 +1174,7 @@ impl GentleEngine {
         display_density_threshold: Option<f32>,
         display_intensity_gain: Option<f32>,
         overlay_x_axis_mode: DotplotOverlayXAxisMode,
+        overlay_anchor_exon: Option<&DotplotOverlayAnchorExonRef>,
     ) -> Result<(), EngineError> {
         let normalized_dotplot_id = dotplot_id.trim();
         if normalized_dotplot_id.is_empty() {
@@ -1142,6 +1219,7 @@ impl GentleEngine {
             density_threshold,
             intensity_gain,
             overlay_x_axis_mode,
+            overlay_anchor_exon,
         );
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -5039,6 +5117,7 @@ impl GentleEngine {
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
+                overlay_anchor_exon,
             } => {
                 self.render_dotplot_svg_to_path(
                     &seq_id,
@@ -5048,6 +5127,7 @@ impl GentleEngine {
                     display_density_threshold,
                     display_intensity_gain,
                     overlay_x_axis_mode,
+                    overlay_anchor_exon.as_ref(),
                 )?;
                 result.messages.push(format!(
                     "Wrote dotplot SVG for '{}' dotplot='{}' to '{}'",
@@ -9680,6 +9760,7 @@ impl GentleEngine {
                     seq_id.clone(),
                     seq_id.clone(),
                     Self::default_dotplot_series_color(0),
+                    None,
                     mode,
                     span_start_0based,
                     span_end_0based,
@@ -9715,6 +9796,7 @@ impl GentleEngine {
                             reference_span_end_0based,
                         )
                     }),
+                    overlay_anchor_exons: vec![],
                 };
                 let replaced = self
                     .read_dotplot_analysis_store()
@@ -9883,6 +9965,7 @@ impl GentleEngine {
                         query
                             .color_rgb
                             .unwrap_or_else(|| Self::default_dotplot_series_color(index)),
+                        query.transcript_feature_id,
                         query.mode,
                         query_span_start_0based,
                         query_span_end_0based,
@@ -9890,6 +9973,8 @@ impl GentleEngine {
                         boxplot_bins,
                     ));
                 }
+                let overlay_anchor_exons =
+                    self.build_dotplot_overlay_anchor_exons(&reference_seq_id, &queries, &query_series);
                 let primary_series = query_series.first().cloned().ok_or_else(|| EngineError {
                     code: ErrorCode::Internal,
                     message: "ComputeDotplotOverlay did not produce a primary query series"
@@ -9918,6 +10003,7 @@ impl GentleEngine {
                     series_count: query_series.len(),
                     query_series,
                     reference_annotation,
+                    overlay_anchor_exons,
                 };
                 let replaced = self
                     .read_dotplot_analysis_store()
