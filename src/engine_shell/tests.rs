@@ -12731,7 +12731,7 @@ fn parse_dotplot_and_flex_commands() {
     }
 
     let render_dotplot = parse_shell_line(
-        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.svg --flex-track flex_1 --display-threshold 0.2 --intensity-gain 1.7 --overlay-x-axis right_aligned_bp",
+        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.svg --flex-track flex_1 --display-threshold 0.2 --intensity-gain 1.7 --overlay-x-axis shared_exon_anchor --overlay-anchor-exon 27..34",
     )
     .expect("parse dotplot render-svg");
     match render_dotplot {
@@ -12743,6 +12743,7 @@ fn parse_dotplot_and_flex_commands() {
             display_density_threshold,
             display_intensity_gain,
             overlay_x_axis_mode,
+            overlay_anchor_exon,
         } => {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(dotplot_id, "pair_dp");
@@ -12750,7 +12751,14 @@ fn parse_dotplot_and_flex_commands() {
             assert_eq!(flex_track_id.as_deref(), Some("flex_1"));
             assert_eq!(display_density_threshold, Some(0.2));
             assert_eq!(display_intensity_gain, Some(1.7));
-            assert_eq!(overlay_x_axis_mode, DotplotOverlayXAxisMode::RightAlignedBp);
+            assert_eq!(overlay_x_axis_mode, DotplotOverlayXAxisMode::SharedExonAnchor);
+            assert_eq!(
+                overlay_anchor_exon,
+                Some(DotplotOverlayAnchorExonRef {
+                    start_1based: 27,
+                    end_1based: 34,
+                })
+            );
         }
         other => panic!("expected RenderDotplotSvg, got {other:?}"),
     }
@@ -13353,6 +13361,29 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                     .map(Vec::len),
                 Some(2)
             );
+
+            let overlay_svg_path = tempfile::NamedTempFile::new()
+                .expect("tmp")
+                .path()
+                .with_extension("overlay.anchor.svg");
+            let render_overlay = execute_shell_command(
+                &mut engine,
+                &ShellCommand::RenderDotplotSvg {
+                    seq_id: "ref".to_string(),
+                    dotplot_id: "overlay_1".to_string(),
+                    output: overlay_svg_path.display().to_string(),
+                    flex_track_id: None,
+                    display_density_threshold: Some(0.0),
+                    display_intensity_gain: Some(1.0),
+                    overlay_x_axis_mode: DotplotOverlayXAxisMode::SharedExonAnchor,
+                    overlay_anchor_exon: Some(DotplotOverlayAnchorExonRef {
+                        start_1based: 10,
+                        end_1based: 20,
+                    }),
+                },
+            )
+            .expect("render overlay dotplot shell command");
+            assert!(!render_overlay.state_changed);
 
             let flex = execute_shell_command(
                 &mut engine,

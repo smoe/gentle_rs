@@ -2387,6 +2387,7 @@ mod tests {
             0.35,
             1.75,
             DotplotOverlayXAxisMode::PercentLength,
+            None,
         );
         assert!(file_name.ends_with(".svg"));
         assert!(file_name.contains("pair_forward"));
@@ -2492,12 +2493,88 @@ mod tests {
             0.20,
             1.25,
             DotplotOverlayXAxisMode::RightAlignedBp,
+            None,
         );
         assert!(file_name.ends_with(".svg"));
         assert!(file_name.contains("owner-tp53_genomic"));
         assert!(file_name.contains("overlay2_series"));
         assert!(file_name.contains("pair_forward"));
         assert!(file_name.contains("x-right_aligned_bp"));
+    }
+
+    #[test]
+    fn dotplot_svg_default_filename_mentions_shared_exon_anchor() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("ref".to_string()), None);
+        let mut view = DotplotView::default();
+        view.dotplot_id = "toy.anchor.overlay".to_string();
+        view.owner_seq_id = "toy_anchor_locus".to_string();
+        view.seq_id = "toy_anchor_tx1".to_string();
+        view.reference_seq_id = Some("toy_anchor_locus".to_string());
+        view.reference_span_start_0based = 0;
+        view.reference_span_end_0based = 240;
+        view.mode = DotplotMode::PairForward;
+        view.word_size = 7;
+        view.step_bp = 1;
+        view.max_mismatches = 0;
+        view.series_count = 3;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "s1".to_string(),
+                seq_id: "toy_anchor_tx1".to_string(),
+                label: "toy-1".to_string(),
+                color_rgb: [29, 78, 216],
+                transcript_feature_id: Some(0),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 120,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "s2".to_string(),
+                seq_id: "toy_anchor_tx2".to_string(),
+                label: "toy-2".to_string(),
+                color_rgb: [220, 38, 38],
+                transcript_feature_id: Some(1),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 132,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "s3".to_string(),
+                seq_id: "toy_anchor_tx3".to_string(),
+                label: "toy-3".to_string(),
+                color_rgb: [5, 150, 105],
+                transcript_feature_id: Some(2),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 140,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+        ];
+        let file_name = area.default_dotplot_svg_file_name(
+            &view,
+            None,
+            0.08,
+            2.80,
+            DotplotOverlayXAxisMode::SharedExonAnchor,
+            Some(&DotplotOverlayAnchorExonRef {
+                start_1based: 181,
+                end_1based: 215,
+            }),
+        );
+        assert!(file_name.contains("x-shared_exon_anchor"));
+        assert!(file_name.contains("anchor-181_215"));
     }
 
     #[test]
@@ -26404,6 +26481,7 @@ impl MainAreaDna {
         density_threshold: f32,
         intensity_gain: f32,
         overlay_x_axis_mode: DotplotOverlayXAxisMode,
+        overlay_anchor_exon: Option<&DotplotOverlayAnchorExonRef>,
     ) -> String {
         let overlay_mode = Self::dotplot_view_is_overlay(view);
         let owner_id = Self::sanitize_export_name_component(
@@ -26470,6 +26548,14 @@ impl MainAreaDna {
                 "_fx-{track_id}_{model}_b{}_sm{}",
                 track.bin_bp, smoothing
             ));
+        }
+        if overlay_mode
+            && overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
+            && let Some(exon) = overlay_anchor_exon
+        {
+            let exon_token =
+                Self::sanitize_export_name_component(&exon.token(), "anchor");
+            stem.push_str(&format!("_anchor-{exon_token}"));
         }
         if stem.len() > 220 {
             stem.truncate(220);
@@ -26849,6 +26935,11 @@ impl MainAreaDna {
             density_threshold,
             intensity_gain,
             self.dotplot_ui.overlay_x_axis_mode,
+            if self.dotplot_ui.overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                self.dotplot_ui.overlay_anchor_exon.as_ref()
+            } else {
+                None
+            },
         );
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
@@ -26870,7 +26961,13 @@ impl MainAreaDna {
             display_density_threshold: Some(density_threshold),
             display_intensity_gain: Some(intensity_gain),
             overlay_x_axis_mode: self.dotplot_ui.overlay_x_axis_mode,
-            overlay_anchor_exon: None,
+            overlay_anchor_exon: if self.dotplot_ui.overlay_x_axis_mode
+                == DotplotOverlayXAxisMode::SharedExonAnchor
+            {
+                self.dotplot_ui.overlay_anchor_exon.clone()
+            } else {
+                None
+            },
         });
     }
 

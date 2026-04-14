@@ -31,9 +31,9 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayQuerySpec,
-        DotplotOverlayXAxisMode, Engine, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, Engine, FeatureBedCoordinateMode,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
@@ -569,6 +569,7 @@ pub enum ShellCommand {
         display_density_threshold: Option<f32>,
         display_intensity_gain: Option<f32>,
         overlay_x_axis_mode: DotplotOverlayXAxisMode,
+        overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef>,
     },
     InspectFeatureExpert {
         seq_id: String,
@@ -4661,8 +4662,9 @@ impl ShellCommand {
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
+                overlay_anchor_exon,
             } => format!(
-                "render dotplot SVG for '{}' dotplot='{}' to '{}' (flex_track={}, threshold={}, gain={}, overlay_x={})",
+                "render dotplot SVG for '{}' dotplot='{}' to '{}' (flex_track={}, threshold={}, gain={}, overlay_x={}{}{})",
                 seq_id,
                 dotplot_id,
                 output,
@@ -4677,7 +4679,16 @@ impl ShellCommand {
                 display_intensity_gain
                     .map(|v| format!("{v:.3}"))
                     .unwrap_or_else(|| "default(1.000)".to_string()),
-                overlay_x_axis_mode.as_str()
+                overlay_x_axis_mode.as_str(),
+                if *overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    ", anchor=".to_string()
+                } else {
+                    String::new()
+                },
+                overlay_anchor_exon
+                    .as_ref()
+                    .map(|exon| exon.token())
+                    .unwrap_or_else(|| "-".to_string())
             ),
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
@@ -11358,7 +11369,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "render-dotplot-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]".to_string(),
                 );
             }
             let seq_id = tokens[1].trim();
@@ -11374,6 +11385,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
             let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
+            let mut overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef> = None;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -11433,6 +11445,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         };
                         idx += 2;
                     }
+                    "--overlay-anchor-exon" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --overlay-anchor-exon".to_string());
+                        }
+                        overlay_anchor_exon =
+                            Some(DotplotOverlayAnchorExonRef::parse(&tokens[idx + 1])?);
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!("Unknown argument '{other}' for render-dotplot-svg"));
                     }
@@ -11446,6 +11466,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
+                overlay_anchor_exon,
             })
         }
         "inspect-feature-expert" => {
@@ -19773,6 +19794,7 @@ fn execute_shell_command_with_options_inner(
             display_density_threshold,
             display_intensity_gain,
             overlay_x_axis_mode,
+            overlay_anchor_exon,
         } => {
             let op_result = engine
                 .apply(Operation::RenderDotplotSvg {
@@ -19783,7 +19805,7 @@ fn execute_shell_command_with_options_inner(
                     display_density_threshold: *display_density_threshold,
                     display_intensity_gain: *display_intensity_gain,
                     overlay_x_axis_mode: *overlay_x_axis_mode,
-                    overlay_anchor_exon: None,
+                    overlay_anchor_exon: overlay_anchor_exon.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

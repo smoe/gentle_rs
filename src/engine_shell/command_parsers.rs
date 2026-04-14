@@ -2743,7 +2743,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
         "render-svg" => {
             if tokens.len() < 5 {
                 return Err(
-                    "dotplot render-svg requires SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]"
+                    "dotplot render-svg requires SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]"
                         .to_string(),
                 );
             }
@@ -2760,6 +2760,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
             let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
+            let mut overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef> = None;
             let mut idx = 5usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -2820,6 +2821,16 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                             }
                         };
                     }
+                    "--overlay-anchor-exon" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--overlay-anchor-exon",
+                            "dotplot render-svg",
+                        )?;
+                        overlay_anchor_exon =
+                            Some(DotplotOverlayAnchorExonRef::parse(&raw)?);
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for dotplot render-svg"));
                     }
@@ -2833,6 +2844,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
+                overlay_anchor_exon,
             })
         }
         other => Err(format!(

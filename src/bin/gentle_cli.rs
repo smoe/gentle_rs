@@ -3,11 +3,11 @@
 use gentle::{
     about,
     engine::{
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayXAxisMode, Engine,
-        EngineStateSummary, GelBufferModel, GelRunConditions, GelTopologyForm,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine,
-        Operation, OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress,
-        TfbsProgress,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayAnchorExonRef,
+        DotplotOverlayXAxisMode, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
+        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress, ProjectState,
+        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -511,7 +511,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]\n  \
+  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
@@ -2491,7 +2491,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 3 {
                 usage();
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]".to_string(),
                 );
             }
             let seq_id = args[cmd_idx + 1].trim();
@@ -2507,6 +2507,7 @@ fn run() -> Result<(), String> {
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
             let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
+            let mut overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef> = None;
             let mut idx = cmd_idx + 4;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -2556,9 +2557,17 @@ fn run() -> Result<(), String> {
                             parse_dotplot_overlay_x_axis_mode_arg(&args[idx + 1])?;
                         idx += 2;
                     }
+                    "--overlay-anchor-exon" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --overlay-anchor-exon".to_string());
+                        }
+                        overlay_anchor_exon =
+                            Some(DotplotOverlayAnchorExonRef::parse(&args[idx + 1])?);
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
-                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain/--overlay-x-axis)"
+                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain/--overlay-x-axis/--overlay-anchor-exon)"
                         ));
                     }
                 }
@@ -2573,7 +2582,7 @@ fn run() -> Result<(), String> {
                     display_density_threshold,
                     display_intensity_gain,
                     overlay_x_axis_mode,
-                    overlay_anchor_exon: None,
+                    overlay_anchor_exon,
                 })
                 .map_err(|e| e.to_string())?;
             engine

@@ -1668,6 +1668,43 @@ impl DotplotOverlayAnchorExonRef {
     pub fn token(&self) -> String {
         format!("{}..{}", self.start_1based, self.end_1based)
     }
+
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let trimmed = raw.trim();
+        let (left, right) = trimmed.split_once("..").ok_or_else(|| {
+            format!(
+                "Invalid shared-exon anchor '{raw}'; expected START..END with 1-based inclusive coordinates"
+            )
+        })?;
+        let start_1based = left.trim().parse::<usize>().map_err(|e| {
+            format!(
+                "Invalid shared-exon anchor start '{}' in '{}': {e}",
+                left.trim(),
+                raw
+            )
+        })?;
+        let end_1based = right.trim().parse::<usize>().map_err(|e| {
+            format!(
+                "Invalid shared-exon anchor end '{}' in '{}': {e}",
+                right.trim(),
+                raw
+            )
+        })?;
+        if start_1based == 0 || end_1based == 0 {
+            return Err(format!(
+                "Invalid shared-exon anchor '{raw}'; coordinates must be >= 1"
+            ));
+        }
+        if end_1based < start_1based {
+            return Err(format!(
+                "Invalid shared-exon anchor '{raw}'; end must be >= start"
+            ));
+        }
+        Ok(Self {
+            start_1based,
+            end_1based,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3699,7 +3736,7 @@ pub struct RnaReadInterpretationReportSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::DotplotOverlayXAxisMode;
+    use super::{DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode};
 
     #[test]
     fn dotplot_overlay_x_axis_bp_alignment_projects_left_and_right_variants() {
@@ -3723,5 +3760,13 @@ mod tests {
             DotplotOverlayXAxisMode::RightAlignedBp.query_coordinate_at_fraction(0.82, 0, 8, 12),
             Some(5)
         );
+    }
+
+    #[test]
+    fn dotplot_overlay_anchor_exon_ref_parses_range_token() {
+        let exon = DotplotOverlayAnchorExonRef::parse("27..34").expect("parse anchor exon");
+        assert_eq!(exon.start_1based, 27);
+        assert_eq!(exon.end_1based, 34);
+        assert_eq!(exon.token(), "27..34");
     }
 }

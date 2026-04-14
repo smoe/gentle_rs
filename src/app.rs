@@ -41486,9 +41486,9 @@ Error: `{err}`"
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
-                overlay_anchor_exon: _,
+                overlay_anchor_exon,
             } => format!(
-                "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}, overlay_x_axis={}",
+                "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}, overlay_x_axis={}, overlay_anchor_exon={}",
                 seq_id,
                 dotplot_id,
                 path,
@@ -41503,7 +41503,11 @@ Error: `{err}`"
                 display_intensity_gain
                     .map(|v| format!("{v:.3}"))
                     .unwrap_or_else(|| "default(1.000)".to_string()),
-                overlay_x_axis_mode.as_str()
+                overlay_x_axis_mode.as_str(),
+                overlay_anchor_exon
+                    .as_ref()
+                    .map(|exon| exon.token())
+                    .unwrap_or_else(|| "-".to_string())
             ),
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 format!("Render RNA structure SVG: seq_id={seq_id}, path={path}")

@@ -16653,6 +16653,187 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
 }
 
 #[test]
+fn test_compute_dotplot_overlay_stores_shared_exon_anchor_metadata() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_test_sequence());
+    state.sequences.insert(
+        "iso_misc".to_string(),
+        DNAsequence::from_sequence("AAAAAAAAGGGGGGGG").expect("misc sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let derived = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![0, 1],
+            scope: None,
+            output_prefix: Some("overlay_tx".to_string()),
+        })
+        .expect("derive transcripts");
+    assert_eq!(derived.created_seq_ids.len(), 2);
+    let tx_a = derived.created_seq_ids[0].clone();
+    let tx_b = derived.created_seq_ids[1].clone();
+
+    engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "s".to_string(),
+            reference_seq_id: "s".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(40),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: tx_a,
+                    label: "TX1".to_string(),
+                    transcript_feature_id: Some(0),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([29, 78, 216]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: tx_b,
+                    label: "TX2".to_string(),
+                    transcript_feature_id: Some(1),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([220, 38, 38]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_misc".to_string(),
+                    label: "misc".to_string(),
+                    transcript_feature_id: None,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([5, 150, 105]),
+                },
+            ],
+            word_size: 3,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("overlay_anchor_plot".to_string()),
+        })
+        .expect("compute anchor overlay");
+
+    let view = engine
+        .get_dotplot_view("overlay_anchor_plot")
+        .expect("overlay dotplot view");
+    assert_eq!(view.query_series.len(), 3);
+    assert_eq!(view.query_series[0].transcript_feature_id, Some(0));
+    assert_eq!(view.query_series[1].transcript_feature_id, Some(1));
+    assert_eq!(view.query_series[2].transcript_feature_id, None);
+    assert_eq!(view.overlay_anchor_exons.len(), 2);
+    assert!(view
+        .overlay_anchor_exons
+        .iter()
+        .any(|anchor| anchor.exon.start_1based == 3
+            && anchor.exon.end_1based == 8
+            && anchor.support_series_count == 2
+            && anchor.max_query_start_0based == 0));
+    assert!(view
+        .overlay_anchor_exons
+        .iter()
+        .any(|anchor| anchor.exon.start_1based == 27
+            && anchor.exon.end_1based == 34
+            && anchor.support_series_count == 2
+            && anchor.max_query_start_0based == 14));
+}
+
+#[test]
+fn test_render_dotplot_overlay_svg_supports_shared_exon_anchor_mode() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_test_sequence());
+    state.sequences.insert(
+        "iso_misc".to_string(),
+        DNAsequence::from_sequence("AAAAAAAAGGGGGGGG").expect("misc sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let derived = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![0, 1],
+            scope: None,
+            output_prefix: Some("overlay_tx".to_string()),
+        })
+        .expect("derive transcripts");
+
+    engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "s".to_string(),
+            reference_seq_id: "s".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(40),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: derived.created_seq_ids[0].clone(),
+                    label: "TX1".to_string(),
+                    transcript_feature_id: Some(0),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([29, 78, 216]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: derived.created_seq_ids[1].clone(),
+                    label: "TX2".to_string(),
+                    transcript_feature_id: Some(1),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([220, 38, 38]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_misc".to_string(),
+                    label: "misc".to_string(),
+                    transcript_feature_id: None,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([5, 150, 105]),
+                },
+            ],
+            word_size: 3,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("overlay_anchor_plot".to_string()),
+        })
+        .expect("compute anchor overlay");
+
+    let path = tempfile::NamedTempFile::new()
+        .expect("tmp")
+        .path()
+        .with_extension("overlay.anchor.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "s".to_string(),
+            dotplot_id: "overlay_anchor_plot".to_string(),
+            path: path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::SharedExonAnchor,
+            overlay_anchor_exon: Some(DotplotOverlayAnchorExonRef {
+                start_1based: 27,
+                end_1based: 34,
+            }),
+        })
+        .expect("render anchor overlay");
+    let text = std::fs::read_to_string(path).expect("read anchor svg");
+    assert!(text.contains("x_axis=shared_exon_anchor"));
+    assert!(text.contains("anchor=27..34"));
+    assert!(text.contains("x: isoform query bp (shared exon anchored)"));
+    assert!(text.contains("TX1"));
+    assert!(text.contains("TX2"));
+    assert!(!text.contains(">misc</text>"));
+}
+
+#[test]
 fn test_preview_pair_dotplot_view_builds_transient_view() {
     let view = GentleEngine::preview_pair_dotplot_view(
         "read_1",
