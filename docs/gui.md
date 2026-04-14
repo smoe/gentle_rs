@@ -184,7 +184,8 @@ The project main window (lineage page) supports two views:
 - `Table`: tabular lineage view with per-sequence actions
 - `Graph`: node/edge lineage visualization
 - analysis artifacts (dotplots, flexibility tracks, persisted primer/qPCR
-  design reports, persisted UniProt genome projections, and
+  design reports, persisted transcript-native protein-derivation reports,
+  persisted UniProt genome projections, and
   sequencing-confirmation reports) appear in lineage as dedicated analysis
   nodes linked to their source sequences
 - SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
@@ -576,6 +577,13 @@ Feature tree grouping:
   - completed RNA-read report summaries and workspace-triggered mapping actions
     now also stay in the dedicated `RNA-read Mapping` workspace status area
     instead of leaking into the underlying DNA sequence viewer status line
+  - persisted RNA-read reports now also appear in the project lineage
+    graph/table as analysis artifacts linked from the source sequence
+    - lineage actions reopen the `RNA-read Mapping` workspace directly on the
+      selected saved report instead of only opening the source sequence
+    - lineage details expose the stored interpretation profile,
+      report-mode/origin-mode summary, total read count, seed-passed count,
+      aligned-read count, and target-gene count
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
   - if `Report ID` is left empty, a default ID is derived from the input file
@@ -3504,6 +3512,9 @@ Protein-evidence behavior:
     - open the same Protein Expert without requiring a stored UniProt
       projection; the current transcript field acts as an optional transcript
       filter for transcript-only inspection
+    - persisted transcript-native protein-derivation reports now also reopen
+      through this same route from lineage, using the stored transcript filter
+      automatically when the report only derived one protein
   - `Render Derived Protein SVG...`
     - export that transcript-native Protein Expert directly through the shared
       `RenderFeatureExpertSvg` route, again without requiring a stored UniProt

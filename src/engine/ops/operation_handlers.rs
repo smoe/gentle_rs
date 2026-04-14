@@ -4409,6 +4409,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            protein_derivation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -8745,6 +8746,10 @@ impl GentleEngine {
                     .filter(|value| !value.is_empty())
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| format!("{seq_id}__protein"));
+                let report_id = result.op_id.clone();
+                let requested_feature_ids = feature_ids.clone();
+                let selected_feature_ids = transcript_feature_ids.clone();
+                let mut report_rows: Vec<ProteinDerivationReportRow> = vec![];
                 for transcript_feature_id in transcript_feature_ids {
                     let source_feature =
                         source_features
@@ -8834,6 +8839,12 @@ impl GentleEngine {
                         Some(&result.op_id),
                     );
                     result.created_seq_ids.push(protein_seq_id.clone());
+                    report_rows.push(ProteinDerivationReportRow {
+                        protein_seq_id: protein_seq_id.clone(),
+                        transcript_feature_id,
+                        protein_name: protein_name.clone(),
+                        derivation: derivation.clone(),
+                    });
                     result.messages.push(format!(
                         "Derived protein '{}' from transcript '{}' using translation table {} ('{}', mode={}, {} aa).",
                         protein_seq_id,
@@ -8843,7 +8854,7 @@ impl GentleEngine {
                         derivation.derivation_mode.as_str(),
                         derivation.protein_length_aa
                     ));
-                    for warning in derivation.warnings {
+                    for warning in &derivation.warnings {
                         result.warnings.push(format!(
                             "Protein '{}' (transcript '{}'): {}",
                             protein_seq_id, derivation.transcript_id, warning
@@ -8859,6 +8870,27 @@ impl GentleEngine {
                         ),
                     });
                 }
+                let report = ProteinDerivationReport {
+                    schema: PROTEIN_DERIVATION_REPORT_SCHEMA.to_string(),
+                    report_id: report_id.clone(),
+                    seq_id: seq_id.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    op_id: Some(result.op_id.clone()),
+                    run_id: Some(run_id.to_string()),
+                    requested_feature_ids,
+                    selected_feature_ids,
+                    scope,
+                    effective_output_prefix: normalized_prefix.clone(),
+                    derived_count: report_rows.len(),
+                    rows: report_rows,
+                    warnings: result.warnings.clone(),
+                };
+                self.upsert_protein_derivation_report(report.clone())?;
+                result.messages.push(format!(
+                    "Stored protein-derivation report '{}' for '{}' ({} proteins).",
+                    report.report_id, report.seq_id, report.derived_count
+                ));
+                result.protein_derivation_report = Some(report);
             }
             Operation::ReverseTranslateProteinSequence {
                 seq_id,
@@ -10037,28 +10069,31 @@ impl GentleEngine {
                 resume_from_checkpoint,
             } => {
                 let mut keep_running = || true;
-                let report = self.compute_rna_read_report_with_options_and_progress_and_cancel(
-                    &seq_id,
-                    seed_feature_id,
-                    profile,
-                    &input_path,
-                    input_format,
-                    scope,
-                    origin_mode,
-                    &target_gene_ids,
-                    roi_seed_capture_enabled,
-                    &seed_filter,
-                    &align_config,
-                    report_id.as_deref(),
-                    &RnaReadInterpretOptions {
-                        report_mode,
-                        checkpoint_path: checkpoint_path.clone(),
-                        checkpoint_every_reads,
-                        resume_from_checkpoint,
-                    },
-                    on_progress,
-                    &mut keep_running,
-                )?;
+                let mut report = self
+                    .compute_rna_read_report_with_options_and_progress_and_cancel(
+                        &seq_id,
+                        seed_feature_id,
+                        profile,
+                        &input_path,
+                        input_format,
+                        scope,
+                        origin_mode,
+                        &target_gene_ids,
+                        roi_seed_capture_enabled,
+                        &seed_filter,
+                        &align_config,
+                        report_id.as_deref(),
+                        &RnaReadInterpretOptions {
+                            report_mode,
+                            checkpoint_path: checkpoint_path.clone(),
+                            checkpoint_every_reads,
+                            resume_from_checkpoint,
+                        },
+                        on_progress,
+                        &mut keep_running,
+                    )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
                 self.push_rna_read_report_result_message(report, &mut result)?;
             }
             Operation::AlignRnaReadReport {
@@ -10068,7 +10103,7 @@ impl GentleEngine {
                 selected_record_indices,
             } => {
                 let mut keep_running = || true;
-                let report = self.align_rna_read_report_with_progress_and_cancel(
+                let mut report = self.align_rna_read_report_with_progress_and_cancel(
                     &report_id,
                     selection,
                     align_config_override.clone(),
@@ -10076,6 +10111,8 @@ impl GentleEngine {
                     on_progress,
                     &mut keep_running,
                 )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
                 self.push_rna_read_report_result_message(report.clone(), &mut result)?;
                 result.messages.push(format!(
                     "Alignment phase updated report '{}' (selection={}{} aligned={}, msa_eligible(retained)={})",

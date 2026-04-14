@@ -1025,6 +1025,9 @@ Sequencing-trace evidence notes:
   - this operation is self-sufficient and transcript-first: it does not depend
     on UniProt or any other external protein evidence source to decide what
     protein products exist
+  - also persists one `gentle.protein_derivation_report.v1` artifact keyed by
+    stable `report_id` with stored `seq_id`, derived protein sequence ids, and
+    `op_id` / `run_id` provenance for lineage/reopen paths
 - `ReverseTranslateProteinSequence { seq_id, output_id?, speed_profile?, speed_mark?, translation_table?, target_anneal_tm_c?, anneal_window_bp? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
   - persists one `gentle.uniprot_genome_projection.v1` artifact with stable
@@ -2509,6 +2512,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - optional `translation_speed_profile_hint`
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
+  - persists one transcript-native protein-derivation report with stable
+    `report_id`, created protein sequence ids, and stored `op_id` / `run_id`
+    provenance for lineage/reopen flows
   - deterministic warnings when CDS annotation is missing or heuristic
     inference had to be used
 
@@ -3474,6 +3480,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
   - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
   - `InspectRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, cohort_filter?, path? }`
+  - persisted RNA-read reports are regular computational artifacts:
+    - stored reports now carry `report_id`, `op_id`, and `run_id`
+    - `ListRnaReadReports` surfaces the same `op_id` / `run_id` linkage in
+      summary rows
+    - GUI lineage projects persisted reports as analysis nodes and can reopen
+      the `RNA-read Mapping` workspace directly on the selected report
   - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`,
     `misc_RNA`, `exon`, `gene`, or `CDS` feature; transcript-template
     admission then follows the selected splicing-scope rules around that seed.

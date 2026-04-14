@@ -46,11 +46,12 @@ pub use gentle_protocol::{
     SequencingPrimerOverlaySuggestion, SequencingPrimerProblemGuidanceRow,
     SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
     SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
-    SequencingTraceRecord, SequencingTraceSummary, TfbsProgress, TranscriptProteinDerivation,
-    TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
-    TranslationSpeedProfile, UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan,
-    UniprotFeatureCodingDnaMatch, UniprotFeatureCodingDnaQueryMode,
-    UniprotFeatureCodingDnaQueryReport, UniprotFeatureCodingDnaSegment,
+    SequencingTraceRecord, SequencingTraceSummary, SplicingScopePreset, TfbsProgress,
+    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
+    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
+    UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
+    UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
+    UniprotFeatureCodingDnaSegment,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -1080,6 +1081,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_alignment: Option<SequenceAlignmentReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protein_derivation_report: Option<ProteinDerivationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_trace_import_report: Option<SequencingTraceImportReport>,
@@ -1788,6 +1791,97 @@ pub struct QpcrDesignReportSummary {
     pub assay_count: usize,
     #[serde(default)]
     pub backend_used: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One persisted transcript-native protein derivation row.
+///
+/// The report keeps both the created protein sequence id and the shared
+/// transcript/CDS derivation summary so lineage, GUI reopen paths, and future
+/// shell/agent surfaces can inspect the same deterministic translation
+/// decision without re-deriving biology locally.
+pub struct ProteinDerivationReportRow {
+    pub protein_seq_id: String,
+    pub transcript_feature_id: usize,
+    pub protein_name: String,
+    pub derivation: TranscriptProteinDerivation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted transcript-native protein derivation artifact.
+///
+/// This is the computational provenance companion to the derived protein
+/// sequence nodes created by `DeriveProteinSequences`: the sequence entries
+/// remain the first-class biological products, while this report captures the
+/// transcript selection, coding-span resolution mode, and report-level
+/// operation/run linkage needed for lineage-visible audit/reopen flows.
+pub struct ProteinDerivationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub requested_feature_ids: Vec<usize>,
+    #[serde(default)]
+    pub selected_feature_ids: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<SplicingScopePreset>,
+    pub effective_output_prefix: String,
+    pub derived_count: usize,
+    #[serde(default)]
+    pub rows: Vec<ProteinDerivationReportRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact lineage/listing summary for one persisted protein-derivation report.
+pub struct ProteinDerivationReportSummary {
+    pub report_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub effective_output_prefix: String,
+    pub derived_count: usize,
+    pub derivation_mode_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact lineage/listing summary for one persisted construct-reasoning graph.
+///
+/// This keeps the graph itself as the canonical portable reasoning artifact,
+/// while giving GUI/CLI lineage surfaces a stable, cheap-to-list record with
+/// the counts and objective labels needed to present it as a first-class
+/// computational contribution.
+pub struct ConstructReasoningGraphSummary {
+    pub graph_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub objective_id: String,
+    pub objective_title: String,
+    pub objective_goal: String,
+    pub evidence_count: usize,
+    pub decision_count: usize,
+    pub candidate_count: usize,
+    #[serde(default)]
+    pub summary_lines: Vec<String>,
+    #[serde(default)]
+    pub warning_lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

@@ -1523,6 +1523,7 @@ mod tests {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            protein_derivation_report: None,
             sequencing_confirmation_report: None,
             sequencing_trace_import_report: Some(SequencingTraceImportReport {
                 schema: "gentle.sequencing_trace_import_report.v2".to_string(),
@@ -3396,6 +3397,7 @@ mod tests {
                 protocol_cartoon_preview: Some(preview.clone()),
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                protein_derivation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -5677,6 +5679,8 @@ mod tests {
                     generated_at_unix_ms: 0,
                     report_mode: RnaReadReportMode::Full,
                     seq_id: "seq1".to_string(),
+                    op_id: None,
+                    run_id: None,
                     profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
                     input_path: String::new(),
                     input_format: RnaReadInputFormat::Fasta,
@@ -5699,6 +5703,8 @@ mod tests {
                     generated_at_unix_ms: 0,
                     report_mode: RnaReadReportMode::Full,
                     seq_id: "seq1".to_string(),
+                    op_id: None,
+                    run_id: None,
                     profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
                     input_path: String::new(),
                     input_format: RnaReadInputFormat::Fasta,
@@ -7704,6 +7710,68 @@ mod tests {
     }
 
     #[test]
+    fn focus_construct_reasoning_graph_prefers_requested_graph() {
+        let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_focus".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let objective_one = engine
+            .upsert_construct_objective(crate::engine::ConstructObjective {
+                objective_id: "obj_reasoning_one".to_string(),
+                title: "Reasoning One".to_string(),
+                goal: "Inspect first graph".to_string(),
+                ..crate::engine::ConstructObjective::default()
+            })
+            .expect("objective one");
+        let objective_two = engine
+            .upsert_construct_objective(crate::engine::ConstructObjective {
+                objective_id: "obj_reasoning_two".to_string(),
+                title: "Reasoning Two".to_string(),
+                goal: "Inspect second graph".to_string(),
+                ..crate::engine::ConstructObjective::default()
+            })
+            .expect("objective two");
+        engine
+            .build_construct_reasoning_graph(
+                "seq_reasoning_focus",
+                Some(&objective_one.objective_id),
+                Some("graph_reasoning_one"),
+            )
+            .expect("build graph one");
+        engine
+            .build_construct_reasoning_graph(
+                "seq_reasoning_focus",
+                Some(&objective_two.objective_id),
+                Some("graph_reasoning_two"),
+            )
+            .expect("build graph two");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("seq_reasoning_focus".to_string()), Some(engine));
+
+        area.focus_construct_reasoning_graph("graph_reasoning_one");
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert_eq!(reasoning.graph_id, "graph_reasoning_one");
+        assert_eq!(reasoning.objective_title, "Reasoning One");
+
+        area.focus_construct_reasoning_graph("graph_reasoning_two");
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert_eq!(reasoning.graph_id, "graph_reasoning_two");
+        assert_eq!(reasoning.objective_title, "Reasoning Two");
+    }
+
+    #[test]
     fn refresh_description_cache_includes_variant_reasoning_context() {
         let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
         dna.features_mut().push(Feature {
@@ -8566,6 +8634,7 @@ pub struct MainAreaDna {
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
     description_cache_selected_reasoning_evidence_id: Option<String>,
+    focused_construct_reasoning_graph_id: Option<String>,
     description_cache_selected_restriction_key: Option<String>,
     description_cache_seq_len: usize,
     description_cache_feature_count: usize,
@@ -8959,6 +9028,7 @@ impl MainAreaDna {
             description_cache_initialized: false,
             description_cache_selected_id: None,
             description_cache_selected_reasoning_evidence_id: None,
+            focused_construct_reasoning_graph_id: None,
             description_cache_selected_restriction_key: None,
             description_cache_seq_len: 0,
             description_cache_feature_count: 0,
@@ -9115,6 +9185,48 @@ impl MainAreaDna {
             self.sequencing_confirmation_ui.selected_report_id = normalized_id.to_string();
         }
         self.show_sequencing_confirmation_report(normalized_id);
+    }
+
+    pub fn focus_rna_read_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if normalized_id.is_empty() {
+            self.op_status = "Could not open RNA-read Mapping: report_id is empty".to_string();
+            return;
+        }
+        let Some(report) = self.get_saved_rna_read_report_by_id(normalized_id) else {
+            self.op_status =
+                format!("Could not open RNA-read Mapping: report '{normalized_id}' was not found");
+            return;
+        };
+        match self.splicing_expert_view_for_feature(report.seed_feature_id) {
+            Ok(view) => {
+                self.open_rna_read_mapping_workspace_for_view(&view);
+                self.rna_reads_ui.report_id = normalized_id.to_string();
+                self.rna_read_evidence_ui.selected_report_id = normalized_id.to_string();
+                self.op_status = format!("Opened RNA-read Mapping for report '{normalized_id}'");
+            }
+            Err(err) => {
+                self.op_status =
+                    format!("Could not open RNA-read Mapping for report '{normalized_id}': {err}");
+            }
+        }
+    }
+
+    pub fn focus_construct_reasoning_graph(&mut self, graph_id: &str) {
+        let normalized_id = graph_id.trim();
+        self.focused_construct_reasoning_graph_id =
+            (!normalized_id.is_empty()).then(|| normalized_id.to_string());
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_show_construct_reasoning_overlay(true);
+        }
+        self.refresh_construct_reasoning_overlay();
+        self.description_cache_initialized = false;
+        self.op_status =
+            if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref() {
+                format!("Opened construct reasoning '{graph_id}'")
+            } else {
+                "Opened construct reasoning".to_string()
+            };
     }
 
     pub fn focus_uniprot_projection_expert(
@@ -9314,10 +9426,19 @@ impl MainAreaDna {
             let Ok(mut guard) = engine.try_write() else {
                 return;
             };
-            match guard.refresh_construct_reasoning_graph_for_seq_id(seq_id) {
-                Ok(graph) => Some(ConstructReasoningOverlay::from_graph(&graph)),
-                Err(_) => None,
-            }
+            let graph = if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
+            {
+                guard
+                    .construct_reasoning_graph(graph_id)
+                    .ok()
+                    .filter(|graph| graph.seq_id.eq_ignore_ascii_case(seq_id))
+                    .or_else(|| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
+            } else {
+                guard
+                    .refresh_construct_reasoning_graph_for_seq_id(seq_id)
+                    .ok()
+            };
+            graph.map(|graph| ConstructReasoningOverlay::from_graph(&graph))
         } else {
             None
         };
@@ -38258,17 +38379,26 @@ impl MainAreaDna {
         if clear_invalid_reasoning_selection {
             self.map_dna.select_reasoning_evidence(None);
         }
-        self.description_cache_construct_reasoning =
-            self.seq_id
-                .as_deref()
-                .and_then(|seq_id| {
-                    self.engine.as_ref().and_then(|engine| {
-                        engine.read().ok().and_then(|guard| {
+        self.description_cache_construct_reasoning = self
+            .seq_id
+            .as_deref()
+            .and_then(|seq_id| {
+                self.engine.as_ref().and_then(|engine| {
+                    engine.read().ok().and_then(|guard| {
+                        if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref()
+                        {
+                            guard
+                                .construct_reasoning_graph(graph_id)
+                                .ok()
+                                .filter(|graph| graph.seq_id.eq_ignore_ascii_case(seq_id))
+                                .or_else(|| guard.construct_reasoning_graph_for_seq_id(seq_id).ok())
+                        } else {
                             guard.construct_reasoning_graph_for_seq_id(seq_id).ok()
-                        })
+                        }
                     })
                 })
-                .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
+            })
+            .map(|graph| Self::build_construct_reasoning_inspector_cache(&graph));
         if let Some(target) = expert_target {
             match self.inspect_feature_expert_target(&target) {
                 Ok(view) => {

@@ -1755,8 +1755,11 @@ enum LineageNodeKind {
 enum LineageAnalysisKind {
     Dotplot,
     FlexibilityTrack,
+    RnaReadInterpretation,
     PrimerDesign,
     QpcrDesign,
+    ProteinDerivation,
+    ConstructReasoning,
     UniprotProjection,
     SequencingConfirmation,
 }
@@ -1766,8 +1769,11 @@ impl LineageAnalysisKind {
         match self {
             Self::Dotplot => "dotplot",
             Self::FlexibilityTrack => "flexibility_track",
+            Self::RnaReadInterpretation => "rna_read_interpretation",
             Self::PrimerDesign => "primer_design",
             Self::QpcrDesign => "qpcr_design",
+            Self::ProteinDerivation => "protein_derivation",
+            Self::ConstructReasoning => "construct_reasoning",
             Self::UniprotProjection => "uniprot_projection",
             Self::SequencingConfirmation => "sequencing_confirmation",
         }
@@ -5360,6 +5366,67 @@ Error: `{err}`"
         self.queue_focus_viewport(Self::sequencing_confirmation_viewport_id());
     }
 
+    fn open_sequence_window_for_protein_derivation_report(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        let transcript_filter = report_id
+            .trim()
+            .is_empty()
+            .then_some(None)
+            .unwrap_or_else(|| {
+                self.engine
+                    .read()
+                    .unwrap()
+                    .get_protein_derivation_report(report_id)
+                    .ok()
+                    .and_then(|report| {
+                        if report.seq_id.eq_ignore_ascii_case(seq_id) && report.rows.len() == 1 {
+                            report
+                                .rows
+                                .first()
+                                .map(|row| row.derivation.transcript_id.clone())
+                        } else {
+                            None
+                        }
+                    })
+            });
+        self.open_sequence_window_for_transcript_protein_expert(
+            seq_id,
+            transcript_filter.as_deref(),
+        );
+    }
+
+    fn open_sequence_window_for_construct_reasoning_graph(&mut self, seq_id: &str, graph_id: &str) {
+        if !graph_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_construct_reasoning_graph(graph_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_construct_reasoning_graph(graph_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_construct_reasoning_graph(graph_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+    }
+
     fn open_sequence_window_for_primer_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -5424,6 +5491,35 @@ Error: `{err}`"
         self.queue_focus_viewport(Self::pcr_design_viewport_id());
     }
 
+    fn open_sequence_window_for_rna_read_report(&mut self, seq_id: &str, report_id: &str) {
+        if !report_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_rna_read_report(report_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_rna_read_report(report_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_rna_read_report(report_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+    }
+
     fn open_lineage_analysis_artifact(
         &mut self,
         kind: LineageAnalysisKind,
@@ -5437,11 +5533,20 @@ Error: `{err}`"
             LineageAnalysisKind::FlexibilityTrack => {
                 self.open_sequence_window_for_flexibility_track_analysis(seq_id, artifact_id);
             }
+            LineageAnalysisKind::RnaReadInterpretation => {
+                self.open_sequence_window_for_rna_read_report(seq_id, artifact_id);
+            }
             LineageAnalysisKind::PrimerDesign => {
                 self.open_sequence_window_for_primer_design_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::QpcrDesign => {
                 self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::ProteinDerivation => {
+                self.open_sequence_window_for_protein_derivation_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::ConstructReasoning => {
+                self.open_sequence_window_for_construct_reasoning_graph(seq_id, artifact_id);
             }
             LineageAnalysisKind::UniprotProjection => {
                 self.open_sequence_window_for_uniprot_projection_expert(
@@ -14569,6 +14674,7 @@ Error: `{err}`"
                 protocol_cartoon_preview: None,
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                protein_derivation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -30860,6 +30966,214 @@ Error: `{err}`"
                 }
             }
 
+            let protein_derivation_summaries = engine.list_protein_derivation_reports(None);
+            for summary in protein_derivation_summaries {
+                let node_id = format!("analysis:protein_derive:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:protein_derive:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Derive protein sequences: seq={}, report_id={}",
+                        summary.seq_id, summary.report_id
+                    )
+                });
+                let seq_id = summary.seq_id.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.effective_output_prefix.clone(),
+                    origin: "ProteinDerivation".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::ProteinDerivation),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.derivation_mode_summary.clone()),
+                    analysis_status: None,
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.derived_count),
+                    analysis_variant_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
+            let construct_reasoning_summaries =
+                engine.list_construct_reasoning_graph_summaries(None);
+            for summary in construct_reasoning_summaries {
+                let node_id = format!("analysis:construct_reasoning:{}", summary.graph_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:construct_reasoning:{}", summary.graph_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Construct reasoning: seq={}, graph_id={}",
+                        summary.seq_id, summary.graph_id
+                    )
+                });
+                let seq_id = summary.seq_id.clone();
+                let display_name = if summary.objective_title.trim().is_empty() {
+                    summary.graph_id.clone()
+                } else {
+                    summary.objective_title.clone()
+                };
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name,
+                    origin: "ConstructReasoning".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::ConstructReasoning),
+                    analysis_artifact_id: Some(summary.graph_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.objective_id.clone()),
+                    analysis_status: Some(summary.objective_goal.clone()),
+                    analysis_point_count: Some(summary.evidence_count),
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.candidate_count),
+                    analysis_variant_count: Some(summary.decision_count),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
+            let rna_read_reports = engine.list_rna_read_reports(None);
+            for summary in rna_read_reports {
+                let node_id = format!("analysis:rna_reads:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:rna_reads:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Interpret RNA reads: seq={}, report_id={}",
+                        summary.seq_id, summary.report_id
+                    )
+                });
+                let seq_id = summary.seq_id.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "RnaReadInterpretation".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::RnaReadInterpretation),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: None,
+                    analysis_mode: Some(summary.profile.as_str().to_string()),
+                    analysis_status: Some(format!(
+                        "{} / {}",
+                        summary.report_mode.as_str(),
+                        summary.origin_mode.as_str()
+                    )),
+                    analysis_point_count: Some(summary.read_count_seed_passed),
+                    analysis_bin_count: None,
+                    analysis_read_count: Some(summary.read_count_total),
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(summary.target_gene_count),
+                    analysis_variant_count: Some(summary.read_count_aligned),
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
             let uniprot_projection_summaries = engine.list_uniprot_genome_projections(None);
             for summary in uniprot_projection_summaries {
                 let node_id = format!("analysis:uniprot:{}", summary.projection_id);
@@ -33046,6 +33360,12 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::FlexibilityTrack);
         }
+        if row.node_id.starts_with("analysis:rna_reads:")
+            || row.node_id.starts_with("analysis:rna_read:")
+            || row.origin.eq_ignore_ascii_case("rnareadinterpretation")
+        {
+            return Some(LineageAnalysisKind::RnaReadInterpretation);
+        }
         if row.node_id.starts_with("analysis:primer:")
             || row.origin.eq_ignore_ascii_case("primerdesign")
         {
@@ -33055,6 +33375,18 @@ Error: `{err}`"
             || row.origin.eq_ignore_ascii_case("qpcrdesign")
         {
             return Some(LineageAnalysisKind::QpcrDesign);
+        }
+        if row.node_id.starts_with("analysis:protein_derive:")
+            || row.node_id.starts_with("analysis:protein_derivation:")
+            || row.origin.eq_ignore_ascii_case("proteinderivation")
+        {
+            return Some(LineageAnalysisKind::ProteinDerivation);
+        }
+        if row.node_id.starts_with("analysis:construct_reasoning:")
+            || row.node_id.starts_with("analysis:reasoning:")
+            || row.origin.eq_ignore_ascii_case("constructreasoning")
+        {
+            return Some(LineageAnalysisKind::ConstructReasoning);
         }
         if row.node_id.starts_with("analysis:uniprot:")
             || row.node_id.starts_with("analysis:uniprot_projection:")
@@ -33098,6 +33430,18 @@ Error: `{err}`"
                 return Some(id.to_string());
             }
         }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:rna_reads:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:rna_read:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
         if let Some(rest) = row.node_id.strip_prefix("analysis:primer:") {
             let id = rest.trim();
             if !id.is_empty() {
@@ -33105,6 +33449,30 @@ Error: `{err}`"
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:qpcr:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:protein_derive:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:protein_derivation:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:construct_reasoning:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row.node_id.strip_prefix("analysis:reasoning:") {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -33967,6 +34335,19 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                                        format!(
+                                                            "{} | profile={} | status={} | reads={} | seed_passed={} | aligned={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::PrimerDesign) => {
                                                         format!(
                                                             "{} | backend={} | pairs={}",
@@ -33980,6 +34361,24 @@ Error: `{err}`"
                                                             "{} | backend={} | assays={}",
                                                             artifact_id,
                                                             mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::ProteinDerivation) => {
+                                                        format!(
+                                                            "{} | mode={} | proteins={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::ConstructReasoning) => {
+                                                        format!(
+                                                            "{} | objective={} | evidence={} | decisions={} | candidates={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0),
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
@@ -34552,6 +34951,19 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                                        format!(
+                                                            "rna_report={} | profile={} | status={} | reads={} | seed_passed={} | aligned={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0)
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::PrimerDesign) => {
                                                         format!(
                                                             "primer_report={} | backend={} | pairs={}",
@@ -34565,6 +34977,24 @@ Error: `{err}`"
                                                             "qpcr_report={} | backend={} | assays={}",
                                                             artifact_id,
                                                             mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::ProteinDerivation) => {
+                                                        format!(
+                                                            "protein_derivation={} | mode={} | proteins={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        )
+                                                    }
+                                                    Some(LineageAnalysisKind::ConstructReasoning) => {
+                                                        format!(
+                                                            "construct_reasoning={} | objective={} | evidence={} | decisions={} | candidates={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0),
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
@@ -34765,6 +35195,22 @@ Error: `{err}`"
                                                             row.analysis_bin_count.unwrap_or(0)
                                                         ));
                                                     }
+                                                    Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                                        ui.small(format!(
+                                                            "seq={} | profile={} | status={} | reads={} | seed_passed={} | aligned={} | target_genes={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_read_count.unwrap_or(0),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0),
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
                                                     Some(LineageAnalysisKind::PrimerDesign) => {
                                                         ui.small(format!(
                                                             "template={} | backend={} | pairs={}",
@@ -34782,6 +35228,31 @@ Error: `{err}`"
                                                             row.analysis_mode
                                                                 .as_deref()
                                                                 .unwrap_or("-"),
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::ProteinDerivation) => {
+                                                        ui.small(format!(
+                                                            "source={} | mode={} | proteins={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::ConstructReasoning) => {
+                                                        ui.small(format!(
+                                                            "seq={} | objective={} | goal={} | evidence={} | decisions={} | candidates={}",
+                                                            row.seq_id,
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_point_count.unwrap_or(0),
+                                                            row.analysis_variant_count.unwrap_or(0),
                                                             row.analysis_target_count.unwrap_or(0)
                                                         ));
                                                     }
@@ -35470,6 +35941,10 @@ Error: `{err}`"
                                                 "Open Track",
                                                 "Open the flexibility-track analysis view for this sequence",
                                             ),
+                                            Some(LineageAnalysisKind::RnaReadInterpretation) => (
+                                                "Open RNA-read Mapping",
+                                                "Open the RNA-read Mapping workspace on this persisted interpretation report",
+                                            ),
                                             Some(LineageAnalysisKind::PrimerDesign) => (
                                                 "Open Primer Report",
                                                 "Open the PCR Designer on this persisted primer-design report",
@@ -35477,6 +35952,14 @@ Error: `{err}`"
                                             Some(LineageAnalysisKind::QpcrDesign) => (
                                                 "Open qPCR Report",
                                                 "Open the PCR Designer on this persisted qPCR-design report",
+                                            ),
+                                            Some(LineageAnalysisKind::ProteinDerivation) => (
+                                                "Open Derived Protein Expert",
+                                                "Open the transcript-native Protein Expert on this persisted protein-derivation artifact",
+                                            ),
+                                            Some(LineageAnalysisKind::ConstructReasoning) => (
+                                                "Open Construct Reasoning",
+                                                "Open the sequence window on this persisted construct-reasoning graph",
                                             ),
                                             Some(LineageAnalysisKind::UniprotProjection) => (
                                                 "Open UniProt Projection",
@@ -35755,8 +36238,11 @@ Error: `{err}`"
                         let mode_label = match Self::infer_lineage_analysis_kind_from_row(
                             &selected_row,
                         ) {
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => "profile",
                             Some(LineageAnalysisKind::PrimerDesign)
                             | Some(LineageAnalysisKind::QpcrDesign) => "backend",
+                            Some(LineageAnalysisKind::ProteinDerivation) => "derivation_mode",
+                            Some(LineageAnalysisKind::ConstructReasoning) => "objective_id",
                             Some(LineageAnalysisKind::UniprotProjection) => "entry_id",
                             _ => "mode/model",
                         };
@@ -35766,13 +36252,26 @@ Error: `{err}`"
                         let status_label = match Self::infer_lineage_analysis_kind_from_row(
                             &selected_row,
                         ) {
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                "report_mode/origin_mode"
+                            }
+                            Some(LineageAnalysisKind::ConstructReasoning) => "goal",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_filter",
                             _ => "status",
                         };
                         ui.small(format!("{status_label}={status}"));
                     }
                     if let Some(points) = selected_row.analysis_point_count {
-                        ui.small(format!("point_count={points}"));
+                        let point_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                "seed_passed_count"
+                            }
+                            Some(LineageAnalysisKind::ConstructReasoning) => "evidence_count",
+                            _ => "point_count",
+                        };
+                        ui.small(format!("{point_label}={points}"));
                     }
                     if let Some(bin_count) = selected_row.analysis_bin_count {
                         ui.small(format!("bin_count={bin_count}"));
@@ -35787,15 +36286,29 @@ Error: `{err}`"
                         let count_label = match Self::infer_lineage_analysis_kind_from_row(
                             &selected_row,
                         ) {
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                "target_gene_count"
+                            }
                             Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
                             Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
+                            Some(LineageAnalysisKind::ProteinDerivation) => "protein_count",
+                            Some(LineageAnalysisKind::ConstructReasoning) => "candidate_count",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_count",
                             _ => "target_count",
                         };
                         ui.small(format!("{count_label}={target_count}"));
                     }
                     if let Some(variant_count) = selected_row.analysis_variant_count {
-                        ui.small(format!("variant_count={variant_count}"));
+                        let variant_label = match Self::infer_lineage_analysis_kind_from_row(
+                            &selected_row,
+                        ) {
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                "aligned_read_count"
+                            }
+                            Some(LineageAnalysisKind::ConstructReasoning) => "decision_count",
+                            _ => "variant_count",
+                        };
+                        ui.small(format!("{variant_label}={variant_count}"));
                     }
                     ui.horizontal(|ui| {
                         let analysis_payload =
@@ -35812,8 +36325,17 @@ Error: `{err}`"
                         {
                             Some(LineageAnalysisKind::Dotplot) => "Open Dotplot View",
                             Some(LineageAnalysisKind::FlexibilityTrack) => "Open Track View",
+                            Some(LineageAnalysisKind::RnaReadInterpretation) => {
+                                "Open RNA-read Mapping"
+                            }
                             Some(LineageAnalysisKind::PrimerDesign) => "Open Primer Report",
                             Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
+                            Some(LineageAnalysisKind::ProteinDerivation) => {
+                                "Open Derived Protein Expert"
+                            }
+                            Some(LineageAnalysisKind::ConstructReasoning) => {
+                                "Open Construct Reasoning"
+                            }
                             Some(LineageAnalysisKind::UniprotProjection) => {
                                 "Open UniProt Projection"
                             }
@@ -44865,6 +45387,86 @@ mod tests {
     }
 
     #[test]
+    fn open_lineage_analysis_artifact_opens_rna_read_mapping_workspace() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(0, 12),
+            qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+        });
+        state.sequences.insert("seq_rna".to_string(), dna);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.engine
+            .write()
+            .unwrap()
+            .commit_rna_read_report(crate::engine::RnaReadInterpretationReport {
+                schema: "gentle.rna_read_report.v1".to_string(),
+                report_id: "rna_report_1".to_string(),
+                seq_id: "seq_rna".to_string(),
+                seed_feature_id: 0,
+                generated_at_unix_ms: 1,
+                profile: crate::engine::RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: "reads.fa".to_string(),
+                input_format: crate::engine::RnaReadInputFormat::Fasta,
+                scope: crate::engine::SplicingScopePreset::TargetGroupTargetStrand,
+                origin_mode: crate::engine::RnaReadOriginMode::SingleGene,
+                read_count_total: 4,
+                read_count_seed_passed: 2,
+                read_count_aligned: 1,
+                ..crate::engine::RnaReadInterpretationReport::default()
+            })
+            .expect("upsert RNA-read report");
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::RnaReadInterpretation,
+            "seq_rna",
+            "rna_report_1",
+        );
+
+        assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
+    fn open_lineage_analysis_artifact_opens_protein_derivation_expert() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_protein".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::ProteinDerivation,
+            "seq_protein",
+            "protein_report_1",
+        );
+
+        assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
+    fn open_lineage_analysis_artifact_opens_construct_reasoning_graph() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_reasoning".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::ConstructReasoning,
+            "seq_reasoning",
+            "graph_reasoning_1",
+        );
+
+        assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
     fn open_lineage_analysis_artifact_opens_uniprot_projection_expert() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -47840,6 +48442,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 protocol_cartoon_preview: None,
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                protein_derivation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -47899,6 +48502,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 protocol_cartoon_preview: None,
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                protein_derivation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -47943,6 +48547,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 protocol_cartoon_preview: None,
                 genome_annotation_projection: None,
                 sequence_alignment: None,
+                protein_derivation_report: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -47992,6 +48597,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 ),
             }),
             sequence_alignment: None,
+            protein_derivation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -48304,6 +48910,20 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             ))
         );
 
+        let mut rna_row = make_lineage_row("analysis:rna_reads:tp73_rna", "seq_rna");
+        rna_row.kind = LineageNodeKind::Analysis;
+        rna_row.display_name.clear();
+        rna_row.analysis_kind = None;
+        rna_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&rna_row),
+            Some((
+                LineageAnalysisKind::RnaReadInterpretation,
+                "seq_rna".to_string(),
+                "tp73_rna".to_string(),
+            ))
+        );
+
         let mut primer_row = make_lineage_row("analysis:primer:tp73_primer", "seq_primer");
         primer_row.kind = LineageNodeKind::Analysis;
         primer_row.display_name.clear();
@@ -48329,6 +48949,38 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 LineageAnalysisKind::QpcrDesign,
                 "seq_qpcr".to_string(),
                 "tp73_qpcr".to_string(),
+            ))
+        );
+
+        let mut protein_row =
+            make_lineage_row("analysis:protein_derive:tp73_protein", "seq_protein");
+        protein_row.kind = LineageNodeKind::Analysis;
+        protein_row.display_name.clear();
+        protein_row.analysis_kind = None;
+        protein_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&protein_row),
+            Some((
+                LineageAnalysisKind::ProteinDerivation,
+                "seq_protein".to_string(),
+                "tp73_protein".to_string(),
+            ))
+        );
+
+        let mut reasoning_row = make_lineage_row(
+            "analysis:construct_reasoning:tp73_reasoning",
+            "seq_reasoning",
+        );
+        reasoning_row.kind = LineageNodeKind::Analysis;
+        reasoning_row.display_name.clear();
+        reasoning_row.analysis_kind = None;
+        reasoning_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&reasoning_row),
+            Some((
+                LineageAnalysisKind::ConstructReasoning,
+                "seq_reasoning".to_string(),
+                "tp73_reasoning".to_string(),
             ))
         );
 
@@ -48998,6 +49650,214 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                 .any(|(from, to, op_id)| from == "n_toy"
                     && to == "analysis:uniprot:toy_projection"
                     && op_id == &projection_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_rna_read_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: gb_io::seq::Location::simple_range(0, 18),
+                    qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+                });
+                state.sequences.insert("seq_rna".to_string(), dna);
+                insert_test_lineage_node(state, "n_rna", "seq_rna");
+            let op_id = engine
+                .commit_rna_read_report(crate::engine::RnaReadInterpretationReport {
+                    schema: "gentle.rna_read_report.v1".to_string(),
+                    report_id: "tp73_rna".to_string(),
+                    seq_id: "seq_rna".to_string(),
+                    seed_feature_id: 0,
+                    generated_at_unix_ms: 321,
+                    profile: crate::engine::RnaReadInterpretationProfile::NanoporeCdnaV1,
+                    input_path: "tp73_reads.fa".to_string(),
+                    input_format: crate::engine::RnaReadInputFormat::Fasta,
+                    report_mode: crate::engine::RnaReadReportMode::Full,
+                    scope: crate::engine::SplicingScopePreset::TargetGroupTargetStrand,
+                    origin_mode: crate::engine::RnaReadOriginMode::SingleGene,
+                    target_gene_ids: vec!["TP73".to_string()],
+                    read_count_total: 24,
+                    read_count_seed_passed: 7,
+                    read_count_aligned: 3,
+                    ..crate::engine::RnaReadInterpretationReport::default()
+                })
+                .expect("commit RNA-read report")
+                .op_id;
+            assert!(!op_id.is_empty());
+        }
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == "analysis:rna_reads:tp73_rna")
+            .expect("RNA-read lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::RnaReadInterpretation)
+        );
+        assert_eq!(row.analysis_artifact_id.as_deref(), Some("tp73_rna"));
+        assert_eq!(row.analysis_mode.as_deref(), Some("nanopore_cdna_v1"));
+        assert_eq!(row.analysis_status.as_deref(), Some("full / single_gene"));
+        assert_eq!(row.analysis_point_count, Some(7));
+        assert_eq!(row.analysis_read_count, Some(24));
+        assert_eq!(row.analysis_variant_count, Some(3));
+        assert_eq!(row.analysis_target_count, Some(1));
+        assert_ne!(row.created_by_op, "-");
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_rna"
+                    && to == "analysis:rna_reads:tp73_rna"
+                    && op_id == &row.created_by_op)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_protein_derivation_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            let mut dna = DNAsequence::from_sequence("ATGAAACCCTAA").expect("sequence");
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "source".into(),
+                location: gb_io::seq::Location::simple_range(0, 12),
+                qualifiers: vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            });
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: gb_io::seq::Location::simple_range(0, 12),
+                qualifiers: vec![
+                    ("gene".into(), Some("toyA".to_string())),
+                    ("transcript_id".into(), Some("TX_TOY".to_string())),
+                    ("label".into(), Some("TX_TOY".to_string())),
+                ],
+            });
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: gb_io::seq::Location::simple_range(0, 12),
+                qualifiers: vec![
+                    ("transcript_id".into(), Some("TX_TOY".to_string())),
+                    ("product".into(), Some("Toy enzyme".to_string())),
+                    ("protein_id".into(), Some("PROT_TOY".to_string())),
+                    ("transl_table".into(), Some("11".to_string())),
+                ],
+            });
+            state.sequences.insert("protein_source".to_string(), dna);
+            insert_test_lineage_node(state, "n_protein_source", "protein_source");
+        }
+
+        let protein_op_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::DeriveProteinSequences {
+                    seq_id: "protein_source".to_string(),
+                    feature_ids: vec![1],
+                    scope: None,
+                    output_prefix: Some("tp73_protein".to_string()),
+                })
+                .expect("derive proteins")
+                .op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == format!("analysis:protein_derive:{protein_op_id}"))
+            .expect("protein-derivation lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::ProteinDerivation)
+        );
+        assert_eq!(
+            row.analysis_artifact_id.as_deref(),
+            Some(protein_op_id.as_str())
+        );
+        assert_eq!(row.analysis_mode.as_deref(), Some("annotated_cds"));
+        assert_eq!(row.analysis_target_count, Some(1));
+        assert_eq!(row.created_by_op, protein_op_id);
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_protein_source"
+                    && to == &format!("analysis:protein_derive:{protein_op_id}")
+                    && op_id == &protein_op_id)
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_construct_reasoning_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "variation".into(),
+                location: gb_io::seq::Location::simple_range(3, 4),
+                qualifiers: vec![
+                    ("label".into(), Some("rsGui".to_string())),
+                    (
+                        "gentle_generated".into(),
+                        Some("genome_vcf_track".to_string()),
+                    ),
+                    ("vcf_ref".into(), Some("G".to_string())),
+                    ("vcf_alt".into(), Some("A".to_string())),
+                ],
+            });
+            state.sequences.insert("seq_reasoning".to_string(), dna);
+            insert_test_lineage_node(state, "n_reasoning", "seq_reasoning");
+        }
+
+        let graph_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .build_construct_reasoning_graph("seq_reasoning", None, Some("reasoning_demo"))
+                .expect("build reasoning graph")
+                .graph_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == format!("analysis:construct_reasoning:{graph_id}"))
+            .expect("construct-reasoning lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::ConstructReasoning)
+        );
+        assert_eq!(row.analysis_artifact_id.as_deref(), Some(graph_id.as_str()));
+        assert_eq!(
+            row.analysis_mode.as_deref(),
+            Some("construct_objective_seq_reasoning")
+        );
+        assert!(row.analysis_status.is_some());
+        assert!(row.analysis_point_count.unwrap_or(0) > 0);
+        assert!(row.analysis_variant_count.unwrap_or(0) > 0);
+        assert_eq!(row.created_by_op, "-");
+
+        assert!(
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_reasoning"
+                    && to == &format!("analysis:construct_reasoning:{graph_id}")
+                    && op_id == &format!("analysis:construct_reasoning:{graph_id}"))
         );
     }
 

@@ -1,6 +1,6 @@
 ## Computational Provenance Parity
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This note turns GENtle's general provenance principle into a concrete rollout
 plan for persisted computational contributions.
@@ -110,8 +110,24 @@ Expected next step:
 
 ### 3. Protein-side and self-translation outputs
 
-Upcoming protein-side work should enter the same provenance model early
-instead of becoming a special case later.
+Protein-side work is now starting to enter the same provenance model instead of
+becoming a special case later.
+
+Shipped baseline:
+
+- persisted transcript-native protein-derivation reports now carry stable
+  `report_id` plus stored `op_id` / `run_id`
+- GUI lineage projects those reports as analysis artifacts linked from the
+  source nucleotide sequence
+- lineage can reopen the transcript-first `Open Derived Protein Expert` path
+  directly from the persisted derivation report
+- lineage details expose the derivation-mode summary and derived-protein count
+
+Expected next step:
+
+- extend the same artifact contract to reverse/self-translation planning outputs
+  so protein-to-DNA handoff reasoning is visible with the same clarity as
+  transcript-to-protein derivation
 
 This includes future persisted outputs such as:
 
@@ -128,7 +144,18 @@ workflows.
 This track is already emerging through construct-reasoning graphs and
 run-bundle exports, but it should converge with the same artifact model.
 
-Expected direction:
+Shipped baseline:
+
+- persisted construct-reasoning graphs now carry stable `graph_id` plus stored
+  `op_id` / `run_id`
+- GUI lineage projects them as analysis artifacts linked from the source
+  sequence
+- lineage can reopen the sequence window on the selected construct-reasoning
+  graph
+- lineage details expose the objective id/goal plus evidence/decision/candidate
+  counts
+
+Expected next step:
 
 - reasoning graphs and planning/decision traces should be inspectable as
   sample-linked computational artifacts rather than only side-channel metadata
@@ -144,12 +171,16 @@ Why fifth:
 - they deserve first-class lineage presence once the lighter-weight report
   families establish the shared artifact vocabulary cleanly
 
-Expected next step:
+Shipped baseline:
 
-- project persisted RNA-read reports as lineage-visible analysis artifacts
-- reopen the RNA-read mapping/evidence workspace directly from lineage
-- surface report mode, origin mode, read counts, and aligned counts in lineage
-  tooltips/details
+- persisted RNA-read reports now carry `op_id` / `run_id`
+- GUI lineage projects them as analysis artifacts linked from the source
+  sequence
+- lineage can reopen the RNA-read Mapping workspace directly on the selected
+  persisted report
+- lineage details expose the stored interpretation profile,
+  report-mode/origin-mode summary, total read count, seed-passed count, aligned
+  read count, and target-gene count
 
 Follow-on:
 

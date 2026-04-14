@@ -66,6 +66,12 @@ impl Window {
         }
     }
 
+    pub fn focus_rna_read_report(&mut self, report_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_rna_read_report(report_id),
+        }
+    }
+
     pub fn focus_qpcr_design_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_qpcr_design_report(report_id),
@@ -75,6 +81,12 @@ impl Window {
     pub fn focus_sequencing_confirmation_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_sequencing_confirmation_report(report_id),
+        }
+    }
+
+    pub fn focus_construct_reasoning_graph(&mut self, graph_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_construct_reasoning_graph(graph_id),
         }
     }
 

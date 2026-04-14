@@ -7271,6 +7271,71 @@ fn test_derive_protein_sequences_falls_back_to_inferred_orf_without_cds() {
 }
 
 #[test]
+fn test_derive_protein_sequences_persists_protein_derivation_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("prot".to_string()),
+        })
+        .expect("derive protein");
+
+    let listed = engine.list_protein_derivation_reports(Some("s"));
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].report_id, result.op_id);
+    assert_eq!(listed[0].seq_id, "s");
+    assert_eq!(listed[0].effective_output_prefix, "prot");
+    assert_eq!(listed[0].derived_count, 1);
+    assert_eq!(listed[0].derivation_mode_summary, "annotated_cds");
+
+    let report = engine
+        .get_protein_derivation_report(&result.op_id)
+        .expect("protein derivation report");
+    assert_eq!(report.schema, PROTEIN_DERIVATION_REPORT_SCHEMA);
+    assert_eq!(report.seq_id, "s");
+    assert_eq!(report.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(report.run_id.as_deref(), Some("interactive"));
+    assert_eq!(report.requested_feature_ids, vec![1]);
+    assert_eq!(report.selected_feature_ids, vec![1]);
+    assert_eq!(report.effective_output_prefix, "prot");
+    assert_eq!(report.derived_count, 1);
+    assert_eq!(report.rows.len(), 1);
+    assert_eq!(report.rows[0].protein_seq_id, result.created_seq_ids[0]);
+    assert_eq!(report.rows[0].derivation.transcript_id, "TX_TOY");
+    assert_eq!(
+        report.rows[0].derivation.derivation_mode.as_str(),
+        "annotated_cds"
+    );
+    assert_eq!(
+        result
+            .protein_derivation_report
+            .as_ref()
+            .map(|report| report.report_id.as_str()),
+        Some(result.op_id.as_str())
+    );
+}
+
+#[test]
 fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_metadata() {
     let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
     protein.set_name("Toy protein");
@@ -19033,7 +19098,7 @@ fn test_interpret_rna_reads_multi_gene_sparse_persists_and_warns_for_missing_tar
     let input_path = td.path().join("reads_sparse_mode.fa");
     fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
 
-    engine
+    let result = engine
         .apply(Operation::InterpretRnaReads {
             seq_id: "seq_a".to_string(),
             seed_feature_id: feature_id,
@@ -19080,10 +19145,14 @@ fn test_interpret_rna_reads_multi_gene_sparse_persists_and_warns_for_missing_tar
             .iter()
             .any(|warning| { warning.contains("roi_seed_capture_enabled=true requested") })
     );
+    assert_eq!(report.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(report.run_id.as_deref(), Some("interactive"));
     let summaries = engine.list_rna_read_reports(Some("seq_a"));
     assert_eq!(summaries.len(), 1);
     let summary = &summaries[0];
     assert_eq!(summary.report_id, "rna_reads_sparse_mode");
+    assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(summary.run_id.as_deref(), Some("interactive"));
     assert_eq!(summary.origin_mode, RnaReadOriginMode::MultiGeneSparse);
     assert_eq!(summary.target_gene_count, 2);
     assert!(summary.roi_seed_capture_enabled);
@@ -23260,6 +23329,72 @@ fn upsert_construct_reasoning_graph_normalizes_host_context_evidence_fields() {
     assert_eq!(evidence.medium_condition_id.as_deref(), Some("lbamp"));
     assert_eq!(evidence.label, "host transfer");
     assert_eq!(evidence.rationale, "methylation context matters");
+}
+
+#[test]
+fn list_construct_reasoning_graph_summaries_reports_counts_and_goal() {
+    let mut engine = GentleEngine::new();
+    let graph = engine
+        .upsert_construct_reasoning_graph(ConstructReasoningGraph {
+            graph_id: "graph_summary_demo".to_string(),
+            seq_id: "demo".to_string(),
+            objective: ConstructObjective {
+                objective_id: "obj_summary_demo".to_string(),
+                title: "Summary demo".to_string(),
+                goal: "Explain construct reasoning lineage".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![DesignEvidence {
+                seq_id: "demo".to_string(),
+                label: "Host transfer".to_string(),
+                warnings: vec!["route review".to_string()],
+                ..DesignEvidence::default()
+            }],
+            facts: vec![DesignFact {
+                fact_type: "selection_context".to_string(),
+                label: "Selection context supported".to_string(),
+                ..DesignFact::default()
+            }],
+            decisions: vec![DesignDecisionNode {
+                decision_type: "routine_family".to_string(),
+                title: "Evaluate routine family".to_string(),
+                ..DesignDecisionNode::default()
+            }],
+            candidates: vec![ConstructCandidate {
+                candidate_id: "cand1".to_string(),
+                title: "Candidate one".to_string(),
+                ..ConstructCandidate::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        })
+        .expect("store graph");
+
+    let listed = engine.list_construct_reasoning_graph_summaries(Some("demo"));
+    assert_eq!(listed.len(), 1);
+    let summary = &listed[0];
+    assert_eq!(summary.graph_id, graph.graph_id);
+    assert_eq!(summary.seq_id, "demo");
+    assert_eq!(summary.objective_id, "obj_summary_demo");
+    assert_eq!(summary.objective_title, "Summary demo");
+    assert_eq!(
+        summary.objective_goal,
+        "Explain construct reasoning lineage"
+    );
+    assert_eq!(summary.evidence_count, 1);
+    assert_eq!(summary.decision_count, 1);
+    assert_eq!(summary.candidate_count, 1);
+    assert!(
+        summary
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("Explain construct reasoning lineage"))
+    );
+    assert!(
+        summary
+            .warning_lines
+            .iter()
+            .any(|line| line.contains("route review"))
+    );
 }
 
 #[test]

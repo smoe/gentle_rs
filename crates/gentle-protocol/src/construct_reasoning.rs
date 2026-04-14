@@ -559,6 +559,10 @@ pub struct ConstructReasoningGraph {
     pub schema: String,
     pub graph_id: String,
     pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub objective: ConstructObjective,
     pub generated_at_unix_ms: u128,
     pub evidence: Vec<DesignEvidence>,
@@ -574,6 +578,8 @@ impl Default for ConstructReasoningGraph {
             schema: default_construct_reasoning_graph_schema(),
             graph_id: String::new(),
             seq_id: String::new(),
+            op_id: None,
+            run_id: None,
             objective: ConstructObjective::default(),
             generated_at_unix_ms: 0,
             evidence: vec![],

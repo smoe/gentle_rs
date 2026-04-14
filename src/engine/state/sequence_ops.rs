@@ -12,7 +12,7 @@
 use super::*;
 
 impl GentleEngine {
-    fn summarize_process_run_bundle_construct_reasoning_graph(
+    pub(crate) fn summarize_process_run_bundle_construct_reasoning_graph(
         graph: &ConstructReasoningGraph,
     ) -> ProcessRunBundleConstructReasoningSummary {
         let fact_types = graph

@@ -3308,6 +3308,10 @@ pub struct RnaReadInterpretationReport {
     pub seq_id: String,
     pub seed_feature_id: usize,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub profile: RnaReadInterpretationProfile,
     pub input_path: String,
     pub input_format: RnaReadInputFormat,
@@ -3374,6 +3378,10 @@ pub struct RnaReadInterpretationReportSummary {
     pub report_mode: RnaReadReportMode,
     pub seq_id: String,
     pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub profile: RnaReadInterpretationProfile,
     pub input_path: String,
     pub input_format: RnaReadInputFormat,

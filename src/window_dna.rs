@@ -32,9 +32,11 @@ use std::thread;
 enum DeferredAnalysisFocus {
     Dotplot(String),
     FlexibilityTrack(String),
+    RnaReadReport(String),
     PrimerDesign(String),
     QpcrDesign(String),
     SequencingConfirmation(String),
+    ConstructReasoning(String),
     UniprotProjection {
         projection_id: String,
         protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
@@ -121,6 +123,9 @@ impl WindowDna {
             DeferredAnalysisFocus::FlexibilityTrack(track_id) => {
                 self.main_area.focus_flexibility_track_analysis(&track_id);
             }
+            DeferredAnalysisFocus::RnaReadReport(report_id) => {
+                self.main_area.focus_rna_read_report(&report_id);
+            }
             DeferredAnalysisFocus::PrimerDesign(report_id) => {
                 self.main_area.focus_primer_design_report(&report_id);
             }
@@ -130,6 +135,9 @@ impl WindowDna {
             DeferredAnalysisFocus::SequencingConfirmation(report_id) => {
                 self.main_area
                     .focus_sequencing_confirmation_report(&report_id);
+            }
+            DeferredAnalysisFocus::ConstructReasoning(graph_id) => {
+                self.main_area.focus_construct_reasoning_graph(&graph_id);
             }
             DeferredAnalysisFocus::UniprotProjection {
                 projection_id,
@@ -460,6 +468,15 @@ impl WindowDna {
         self.main_area.focus_primer_design_report(report_id);
     }
 
+    pub fn focus_rna_read_report(&mut self, report_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus =
+                Some(DeferredAnalysisFocus::RnaReadReport(report_id.to_string()));
+            return;
+        }
+        self.main_area.focus_rna_read_report(report_id);
+    }
+
     pub fn focus_qpcr_design_report(&mut self, report_id: &str) {
         if self.pending_dna_load.is_some() {
             self.deferred_analysis_focus =
@@ -478,6 +495,16 @@ impl WindowDna {
         }
         self.main_area
             .focus_sequencing_confirmation_report(report_id);
+    }
+
+    pub fn focus_construct_reasoning_graph(&mut self, graph_id: &str) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::ConstructReasoning(
+                graph_id.to_string(),
+            ));
+            return;
+        }
+        self.main_area.focus_construct_reasoning_graph(graph_id);
     }
 
     pub fn focus_uniprot_projection_expert(

@@ -277,6 +277,8 @@ impl GentleEngine {
                 report_mode: report.report_mode,
                 seq_id: report.seq_id.clone(),
                 generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
                 profile: report.profile,
                 input_path: report.input_path.clone(),
                 input_format: report.input_format,
@@ -7726,7 +7728,7 @@ impl GentleEngine {
 
     pub fn commit_rna_read_report(
         &mut self,
-        report: RnaReadInterpretationReport,
+        mut report: RnaReadInterpretationReport,
     ) -> Result<OpResult, EngineError> {
         let op = Operation::InterpretRnaReads {
             seq_id: report.seq_id.clone(),
@@ -7757,6 +7759,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            protein_derivation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -7766,6 +7769,8 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
         };
+        report.op_id = Some(result.op_id.clone());
+        report.run_id = Some(run_id.clone());
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -7780,7 +7785,7 @@ impl GentleEngine {
 
     pub fn commit_aligned_rna_read_report(
         &mut self,
-        report: RnaReadInterpretationReport,
+        mut report: RnaReadInterpretationReport,
         selection: RnaReadHitSelection,
         align_config_override: Option<RnaReadAlignConfig>,
         selected_record_indices: Vec<usize>,
@@ -7802,6 +7807,7 @@ impl GentleEngine {
             protocol_cartoon_preview: None,
             genome_annotation_projection: None,
             sequence_alignment: None,
+            protein_derivation_report: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -7811,6 +7817,8 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
         };
+        report.op_id = Some(result.op_id.clone());
+        report.run_id = Some(run_id.clone());
         self.push_rna_read_report_result_message(report, &mut result)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -9051,6 +9059,8 @@ impl GentleEngine {
             seq_id: seq_id.to_string(),
             seed_feature_id,
             generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
             profile,
             input_path: input_path.to_string(),
             input_format,
