@@ -167,6 +167,16 @@ pub struct RnaReadGeneSupportSummary {
     pub schema: String,
     pub report_id: String,
     pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub source_report_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_run_id: Option<String>,
     pub requested_gene_ids: Vec<String>,
     pub matched_gene_ids: Vec<String>,
     pub missing_gene_ids: Vec<String>,
@@ -241,6 +251,16 @@ pub struct RnaReadGeneSupportAudit {
     pub schema: String,
     pub report_id: String,
     pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub source_report_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_report_run_id: Option<String>,
     pub requested_gene_ids: Vec<String>,
     pub matched_gene_ids: Vec<String>,
     pub missing_gene_ids: Vec<String>,

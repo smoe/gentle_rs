@@ -10644,12 +10644,15 @@ impl GentleEngine {
                 complete_rule,
                 path,
             } => {
-                let summary = self.summarize_rna_read_gene_support(
+                let mut summary = self.summarize_rna_read_gene_support(
                     &report_id,
                     &gene_ids,
                     &selected_record_indices,
                     complete_rule,
                 )?;
+                summary.generated_at_unix_ms = Self::now_unix_ms();
+                summary.op_id = Some(result.op_id.clone());
+                summary.run_id = Some(run_id.to_string());
                 if let Some(path) = path.as_deref() {
                     self.write_rna_read_gene_support_summary_json(&summary, path)?;
                     result.messages.push(format!(
@@ -10675,13 +10678,16 @@ impl GentleEngine {
                 cohort_filter,
                 path,
             } => {
-                let audit = self.inspect_rna_read_gene_support(
+                let mut audit = self.inspect_rna_read_gene_support(
                     &report_id,
                     &gene_ids,
                     &selected_record_indices,
                     complete_rule,
                     cohort_filter,
                 )?;
+                audit.generated_at_unix_ms = Self::now_unix_ms();
+                audit.op_id = Some(result.op_id.clone());
+                audit.run_id = Some(run_id.to_string());
                 if let Some(path) = path.as_deref() {
                     self.write_rna_read_gene_support_audit_json(&audit, path)?;
                     result.messages.push(format!(

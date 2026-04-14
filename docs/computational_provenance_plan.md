@@ -192,6 +192,10 @@ Shipped baseline:
 
 Follow-on:
 
+- linked gene-support summary/audit exports now carry their own
+  `generated_at_unix_ms` plus `op_id` / `run_id`, and they also record the
+  source RNA-read report's `generated_at_unix_ms` / `op_id` / `run_id`
+  so exported review JSON can travel as a provenance-rich subordinate artifact
 - expose linked audit artifacts such as gene-support summaries/audits as either
   subordinate exports or explicit companion artifacts when they become
   important enough for routine review

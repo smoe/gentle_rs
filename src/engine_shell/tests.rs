@@ -13641,6 +13641,9 @@ fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file
         },
     )
     .expect("align TP53 RNA-read report");
+    let source_report = engine
+        .get_rna_read_report("tp53_gene_support")
+        .expect("read persisted source report");
 
     let output_path = td.path().join("tp53_gene_support.json");
     let output = execute_shell_command(
@@ -13662,6 +13665,21 @@ fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file
     assert_eq!(
         output.output["report_id"].as_str(),
         Some("tp53_gene_support")
+    );
+    assert!(output.output["generated_at_unix_ms"].as_u64().unwrap_or(0) > 0);
+    assert!(output.output["op_id"].as_str().is_some());
+    assert!(output.output["run_id"].as_str().is_some());
+    assert_eq!(
+        output.output["source_report_generated_at_unix_ms"].as_u64(),
+        Some(source_report.generated_at_unix_ms as u64)
+    );
+    assert_eq!(
+        output.output["source_report_op_id"].as_str(),
+        source_report.op_id.as_deref()
+    );
+    assert_eq!(
+        output.output["source_report_run_id"].as_str(),
+        source_report.run_id.as_deref()
     );
     assert_eq!(
         output.output["requested_gene_ids"]
@@ -13758,6 +13776,9 @@ fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
         },
     )
     .expect("align TP53 RNA-read report");
+    let source_report = engine
+        .get_rna_read_report("tp53_gene_support")
+        .expect("read persisted source report");
 
     let output_path = td.path().join("tp53_gene_support_audit.json");
     let output = execute_shell_command(
@@ -13780,6 +13801,21 @@ fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
     assert_eq!(
         output.output["report_id"].as_str(),
         Some("tp53_gene_support")
+    );
+    assert!(output.output["generated_at_unix_ms"].as_u64().unwrap_or(0) > 0);
+    assert!(output.output["op_id"].as_str().is_some());
+    assert!(output.output["run_id"].as_str().is_some());
+    assert_eq!(
+        output.output["source_report_generated_at_unix_ms"].as_u64(),
+        Some(source_report.generated_at_unix_ms as u64)
+    );
+    assert_eq!(
+        output.output["source_report_op_id"].as_str(),
+        source_report.op_id.as_deref()
+    );
+    assert_eq!(
+        output.output["source_report_run_id"].as_str(),
+        source_report.run_id.as_deref()
     );
     assert_eq!(
         output.output["requested_gene_ids"]

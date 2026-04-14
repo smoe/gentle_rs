@@ -4230,8 +4230,13 @@ Post-baseline follow-ups:
         `run_id`, appear in GUI lineage as analysis artifacts, and reopen the
         RNA-read Mapping workspace on the selected report with
         profile/report-mode/origin/read-count detail
-      - next: decide whether linked gene-support summaries/audits should stay
-        subordinate exports or become explicit companion artifacts
+      - shipped follow-on: linked gene-support summary/audit exports now also
+        carry their own `generated_at_unix_ms` plus `op_id` / `run_id` and
+        explicit source-report `generated_at_unix_ms` / `op_id` / `run_id`
+        provenance so subordinate JSON handoffs stay auditable even before
+        they become first-class lineage nodes
+      - next: decide whether those linked gene-support summaries/audits should
+        stay subordinate exports or become explicit companion artifacts
   - shared contract goal:
     persisted computational artifacts should converge on one portable
     provenance vocabulary (`artifact/report id`, `op_id`, `run_id`,

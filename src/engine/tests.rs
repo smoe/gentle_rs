@@ -7726,7 +7726,9 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
     assert_eq!(report.coding_seq_id, "prot_coding");
     assert_eq!(report.translation_table, 11);
     assert_eq!(
-        report.resolved_speed_profile.map(|profile| profile.as_str()),
+        report
+            .resolved_speed_profile
+            .map(|profile| profile.as_str()),
         Some("ecoli")
     );
     assert_eq!(
@@ -18268,6 +18270,12 @@ fn test_summarize_rna_read_gene_support_filters_requested_gene_in_multi_gene_spa
         summary.schema,
         "gentle.rna_read_gene_support_summary.v1".to_string()
     );
+    assert!(summary.generated_at_unix_ms > 0);
+    assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert!(summary.run_id.is_some());
+    assert_eq!(summary.source_report_generated_at_unix_ms, 1234);
+    assert!(summary.source_report_op_id.is_none());
+    assert!(summary.source_report_run_id.is_none());
     assert_eq!(summary.report_id, "rna_reads_gene_support");
     assert_eq!(summary.seq_id, "seq_a");
     assert_eq!(summary.requested_gene_ids, vec!["GENE1".to_string()]);
@@ -18414,6 +18422,12 @@ fn test_inspect_rna_read_gene_support_classifies_rows_and_groups_record_indices(
         .expect("gene-support audit payload");
 
     assert_eq!(audit.schema, "gentle.rna_read_gene_support_audit.v1");
+    assert!(audit.generated_at_unix_ms > 0);
+    assert_eq!(audit.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert!(audit.run_id.is_some());
+    assert_eq!(audit.source_report_generated_at_unix_ms, 1234);
+    assert!(audit.source_report_op_id.is_none());
+    assert!(audit.source_report_run_id.is_none());
     assert_eq!(audit.report_id, "rna_reads_gene_support");
     assert_eq!(audit.seq_id, "seq_a");
     assert_eq!(audit.requested_gene_ids, vec!["GENE1".to_string()]);

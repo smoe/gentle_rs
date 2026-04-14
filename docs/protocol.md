@@ -3709,6 +3709,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         genomic coordinates for auditability
     - when `path` / shell `--output` is provided, the exact same JSON payload
       returned to the caller is also written to disk
+    - subordinate-artifact provenance fields:
+      - `generated_at_unix_ms`
+      - summary op `op_id` / `run_id`
+      - source RNA-read report `generated_at_unix_ms` / `op_id` / `run_id`
   - target-gene cohort audit behavior:
     - `InspectRnaReadGeneSupport` is non-mutating and shares the same
       requested-gene matching, selected-record restriction, accepted-target
@@ -3748,6 +3752,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       arrays
     - when `path` / shell `--output` is provided, the exact same JSON payload
       returned to the caller is also written to disk
+    - subordinate-artifact provenance fields:
+      - `generated_at_unix_ms`
+      - audit op `op_id` / `run_id`
+      - source RNA-read report `generated_at_unix_ms` / `op_id` / `run_id`
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -3867,11 +3875,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads summarize-gene-support` returns the full
       `gentle.rna_read_gene_support_summary.v1` payload directly, including
       `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
-      selected-record echo fields, and per-cohort support tables
+      selected-record echo fields, per-cohort support tables, and both the
+      summary op plus source-report provenance ids/timestamps
     - `rna-reads inspect-gene-support` returns the full
       `gentle.rna_read_gene_support_audit.v1` payload directly, including
       grouped cohort record-index arrays plus row-level `status`,
-      `status_reason`, full-length fields, and mapped exon/junction audit data
+      `status_reason`, full-length fields, mapped exon/junction audit data,
+      and both the audit op plus source-report provenance ids/timestamps
     - `rna-reads inspect-alignments` returns aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics), plus a
       structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,

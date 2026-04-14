@@ -18233,19 +18233,18 @@ fn execute_rna_reads_command(
             complete_rule,
             output_path,
         } => {
-            let summary = engine
-                .summarize_rna_read_gene_support(
-                    report_id,
-                    gene_ids,
-                    selected_record_indices,
-                    *complete_rule,
-                )
+            let result = engine
+                .apply(Operation::SummarizeRnaReadGeneSupport {
+                    report_id: report_id.clone(),
+                    gene_ids: gene_ids.clone(),
+                    selected_record_indices: selected_record_indices.clone(),
+                    complete_rule: *complete_rule,
+                    path: output_path.clone(),
+                })
                 .map_err(|e| e.to_string())?;
-            if let Some(path) = output_path.as_deref() {
-                engine
-                    .write_rna_read_gene_support_summary_json(&summary, path)
-                    .map_err(|e| e.to_string())?;
-            }
+            let summary = result.rna_read_gene_support_summary.ok_or_else(|| {
+                "SummarizeRnaReadGeneSupport did not return a summary payload".to_string()
+            })?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: serde_json::to_value(&summary)
@@ -18260,20 +18259,19 @@ fn execute_rna_reads_command(
             cohort_filter,
             output_path,
         } => {
-            let audit = engine
-                .inspect_rna_read_gene_support(
-                    report_id,
-                    gene_ids,
-                    selected_record_indices,
-                    *complete_rule,
-                    *cohort_filter,
-                )
+            let result = engine
+                .apply(Operation::InspectRnaReadGeneSupport {
+                    report_id: report_id.clone(),
+                    gene_ids: gene_ids.clone(),
+                    selected_record_indices: selected_record_indices.clone(),
+                    complete_rule: *complete_rule,
+                    cohort_filter: *cohort_filter,
+                    path: output_path.clone(),
+                })
                 .map_err(|e| e.to_string())?;
-            if let Some(path) = output_path.as_deref() {
-                engine
-                    .write_rna_read_gene_support_audit_json(&audit, path)
-                    .map_err(|e| e.to_string())?;
-            }
+            let audit = result.rna_read_gene_support_audit.ok_or_else(|| {
+                "InspectRnaReadGeneSupport did not return an audit payload".to_string()
+            })?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: serde_json::to_value(&audit)

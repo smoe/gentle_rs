@@ -50141,7 +50141,10 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
             row.analysis_artifact_id.as_deref(),
             Some(reverse_op_id.as_str())
         );
-        assert_eq!(row.analysis_reference_seq_id.as_deref(), Some("seq_reverse_coding"));
+        assert_eq!(
+            row.analysis_reference_seq_id.as_deref(),
+            Some("seq_reverse_coding")
+        );
         assert_eq!(row.analysis_mode.as_deref(), Some("ecoli:slow"));
         assert_eq!(row.analysis_point_count, Some(11));
         assert_eq!(row.analysis_target_count, Some(9));
