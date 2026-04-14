@@ -2780,6 +2780,7 @@ pub enum TranscriptProteinTranslationTableSource {
     OrganismEcoliDefault,
     OrganellePlastidDefault,
     OrganelleVertebrateMitochondrialDefault,
+    OrganelleInvertebrateMitochondrialDefault,
     OrganelleYeastMitochondrialDefault,
     AmbiguousMitochondrialDefault,
 }
@@ -2795,6 +2796,9 @@ impl TranscriptProteinTranslationTableSource {
             Self::OrganellePlastidDefault => "organelle_plastid_default",
             Self::OrganelleVertebrateMitochondrialDefault => {
                 "organelle_vertebrate_mitochondrial_default"
+            }
+            Self::OrganelleInvertebrateMitochondrialDefault => {
+                "organelle_invertebrate_mitochondrial_default"
             }
             Self::OrganelleYeastMitochondrialDefault => "organelle_yeast_mitochondrial_default",
             Self::AmbiguousMitochondrialDefault => "ambiguous_mitochondrial_default",

@@ -5287,7 +5287,7 @@ fn test_transcript_protein_expert_preserves_explicit_translation_table() {
 }
 
 #[test]
-fn test_transcript_protein_expert_preserves_mitochondrial_default_context() {
+fn test_transcript_protein_expert_uses_vertebrate_mitochondrial_default_context() {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "s".to_string(),
@@ -5332,14 +5332,15 @@ fn test_transcript_protein_expert_preserves_mitochondrial_default_context() {
         comparison.status,
         TranscriptProteinComparisonStatus::DerivedOnly
     );
+    assert_eq!(derived.translation_table, 2);
     assert_eq!(
         derived.translation_table_source.as_str(),
-        "ambiguous_mitochondrial_default"
+        "organelle_vertebrate_mitochondrial_default"
     );
     assert_eq!(derived.organism.as_deref(), Some("Homo sapiens"));
     assert_eq!(derived.organelle.as_deref(), Some("mitochondrion"));
     assert!(
-        derived
+        !derived
             .warnings
             .iter()
             .any(|warning| warning.contains("Mitochondrial context was detected"))
@@ -7349,6 +7350,112 @@ fn test_derive_transcript_sequences_uses_yeast_mitochondrial_default() {
     assert_eq!(
         GentleEngine::feature_qualifier_text(cds, "translation_speed_reference_species").as_deref(),
         Some("Saccharomyces cerevisiae")
+    );
+}
+
+#[test]
+fn test_derive_transcript_sequences_uses_invertebrate_mitochondrial_default() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        reverse_transcript_translation_test_sequence(
+            vec![
+                (
+                    "organism".into(),
+                    Some("Drosophila melanogaster".to_string()),
+                ),
+                ("organelle".into(), Some("mitochondrion".to_string())),
+            ],
+            vec![
+                ("gene".into(), Some("mtToy".to_string())),
+                ("transcript_id".into(), Some("TX_DMITO".to_string())),
+                ("label".into(), Some("TX_DMITO".to_string())),
+            ],
+            vec![("transcript_id".into(), Some("TX_DMITO".to_string()))],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive invertebrate mitochondrial transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("5")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("organelle_invertebrate_mitochondrial_default")
+    );
+    assert!(
+        !result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Mitochondrial context was detected"))
+    );
+}
+
+#[test]
+fn test_derive_transcript_sequences_uses_bundled_mouse_speed_profile_reference() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Mus musculus".to_string()))],
+            vec![
+                ("gene".into(), Some("mouseToy".to_string())),
+                ("transcript_id".into(), Some("TX_MOUSE".to_string())),
+                ("label".into(), Some("TX_MOUSE".to_string())),
+            ],
+            vec![("transcript_id".into(), Some("TX_MOUSE".to_string()))],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive mouse transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_hint").as_deref(),
+        Some("mouse")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_reference_species").as_deref(),
+        Some("Mus musculus domesticus")
+    );
+    assert!(
+        !result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("rat codon-preference proxy"))
     );
 }
 

@@ -2452,6 +2452,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - plastid/chloroplast-like organelles default to NCBI table `11`
     - vertebrate mitochondrial context (currently human and mouse) defaults to
       NCBI table `2`
+    - common invertebrate mitochondrial context (currently fruit-fly and
+      nematode matching) defaults to NCBI table `5`
     - yeast mitochondrial context defaults to NCBI table `3`
     - *Escherichia coli* source context defaults to NCBI table `11`
     - unresolved mitochondrial context without explicit `/transl_table` still
@@ -2495,8 +2497,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - provenance is now explicit through:
     - `translation_speed_profile_source`
     - `translation_speed_reference_species`
-  - the bundled `mouse` speed profile currently uses a deterministic rat
-    codon-preference proxy and reports that proxy choice in warnings/provenance
+  - the bundled `mouse` speed profile now uses a dedicated mouse reference
+    column (`Mus musculus domesticus`) instead of the earlier rat proxy
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - deterministic messages/warnings about CDS absence, translation-table

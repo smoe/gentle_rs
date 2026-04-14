@@ -1312,16 +1312,17 @@ order. Durable architecture constraints and decisions remain in
            target organisms: human, mouse, yeast, and *E. coli*
          - deterministic organism/organelle defaults now cover:
            - vertebrate mitochondria (`2`)
+           - common invertebrate mitochondria (`5`)
            - yeast mitochondria (`3`)
            - plastids/chloroplasts (`11`)
            - *E. coli* source context (`11`)
          - unresolved mitochondrial context still falls back to table `1` with
            an explicit warning
+         - the bundled mouse speed profile now uses a dedicated mouse
+           reference column instead of the earlier rat proxy
        - remaining tightening:
-         - replace the current mouse-via-rat codon-speed proxy with a bundled
-           dedicated mouse table
          - extend mitochondrial lineage coverage beyond the current vertebrate /
-           yeast split while preserving deterministic behavior
+           invertebrate / yeast buckets while preserving deterministic behavior
          - surface the same provenance more broadly in GUI inspection/export
            flows beyond the current Protein Expert/details paths
     3. Reverse-translation ergonomics

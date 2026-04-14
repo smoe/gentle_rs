@@ -1184,12 +1184,7 @@ impl GentleEngine {
     ) -> (&'static str, Option<&'static str>) {
         match profile {
             TranslationSpeedProfile::Human => ("Homo sapiens", None),
-            TranslationSpeedProfile::Mouse => (
-                "Rattus norvegicus",
-                Some(
-                    "Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet.",
-                ),
-            ),
+            TranslationSpeedProfile::Mouse => ("Mus musculus domesticus", None),
             TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
             TranslationSpeedProfile::Ecoli => ("Escherichia coli", None),
         }
@@ -1579,14 +1574,50 @@ impl GentleEngine {
         if organelle_normalized.contains("mitochond")
             || organelle_normalized.contains("kinetoplast")
         {
-            if organism_normalized.contains("homo sapiens")
-                || organism_normalized.contains("human")
-                || organism_normalized.contains("mus musculus")
-                || organism_normalized.contains("mouse")
-            {
+            let matches_any = |needles: &[&str]| {
+                needles
+                    .iter()
+                    .any(|needle| organism_normalized.contains(needle))
+            };
+            if matches_any(&[
+                "homo sapiens",
+                "human",
+                "mus musculus",
+                "mouse",
+                "rattus norvegicus",
+                "rat",
+                "danio rerio",
+                "zebrafish",
+                "gallus gallus",
+                "chicken",
+                "canis lupus familiaris",
+                "dog",
+                "felis catus",
+                "cat",
+                "pan troglodytes",
+                "chimpanzee",
+                "gorilla gorilla",
+                "gorilla",
+                "macaca mulatta",
+                "macaque",
+            ]) {
                 return (
                     2,
                     TranscriptProteinTranslationTableSource::OrganelleVertebrateMitochondrialDefault,
+                    warnings,
+                );
+            }
+            if matches_any(&[
+                "drosophila melanogaster",
+                "drosophila",
+                "fruit fly",
+                "caenorhabditis elegans",
+                "caenorhabditis",
+                "nematode",
+            ]) {
+                return (
+                    5,
+                    TranscriptProteinTranslationTableSource::OrganelleInvertebrateMitochondrialDefault,
                     warnings,
                 );
             }
