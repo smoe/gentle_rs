@@ -1212,6 +1212,14 @@ order. Durable architecture constraints and decisions remain in
       - genomic coding DNA exactly as encoded in the genome
       - optional translation-speed optimized codon choice
       - exon/exon-pair attribution for the selected feature span
+    - the same specialist now also offers direct reverse translation of any
+      first-class project protein into synthetic coding DNA, with a compact
+      result panel showing:
+      - resolved translation table / source / organism-organelle context
+      - requested/resolved translation-speed profile / source / reference
+        species
+      - optional speed mark and annealing-heuristic settings
+      - the created coding DNA sequence itself
     - the viewer still reuses the shared isoform-architecture canvas for
       genome/transcript projection inspection, but imported/derived proteins
       can now also exist as regular sequence entries

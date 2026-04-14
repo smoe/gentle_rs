@@ -3622,8 +3622,27 @@ Protein-evidence behavior:
       splice junction
   - exon numbering follows transcript order, so reverse-strand transcript exon
     `1` is the transcript 5' exon rather than the lowest genomic coordinate
-- Protein sequence windows are intentionally not enabled yet. UniProt entries
-  currently act as metadata/projection inputs, not as primary sequence windows.
+- The same specialist now also includes a `Reverse translate protein` section:
+  - choose any first-class protein sequence already present in the project
+  - optional controls:
+    - output sequence id
+    - explicit translation table override
+    - requested speed profile
+    - fast/slow speed mark
+    - optional local annealing heuristic target/window
+  - result panel:
+    - created coding-sequence id
+    - protein length to coding-length summary
+    - resolved translation-table summary with source and
+      organism/organelle context
+    - requested/resolved translation-speed profile summary with source and
+      reference species
+    - selected speed mark and optional annealing heuristic summary
+    - inline coding DNA text for the created synthetic CDS
+- Stored UniProt projections still act as metadata/projection inputs rather
+  than opening their own dedicated protein-only window, but first-class
+  protein sequences imported from Ensembl or derived from transcripts can now
+  drive reverse-translation workflows from the same specialist.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 - Persisted UniProt projections now also appear in the project lineage
   graph/table as analysis artifacts linked from the source sequence.

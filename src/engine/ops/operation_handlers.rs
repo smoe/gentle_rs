@@ -9516,6 +9516,8 @@ impl GentleEngine {
                     translation_table: effective_translation_table,
                     translation_table_label: effective_translation_table_label.clone(),
                     translation_table_source: effective_translation_table_source,
+                    translation_context_organism: translation_context_organism.clone(),
+                    translation_context_organelle: translation_context_organelle.clone(),
                     requested_speed_profile: speed_profile,
                     resolved_speed_profile: speed_profile_resolution
                         .as_ref()

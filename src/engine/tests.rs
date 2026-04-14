@@ -7673,6 +7673,29 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
         })
         .expect("reverse translate protein");
     assert_eq!(result.created_seq_ids.len(), 1);
+    let report = result
+        .reverse_translation_report
+        .as_ref()
+        .expect("reverse translation report");
+    assert_eq!(report.report_id, result.op_id);
+    assert_eq!(report.protein_seq_id, "prot");
+    assert_eq!(report.coding_seq_id, result.created_seq_ids[0]);
+    assert_eq!(report.translation_table, 11);
+    assert_eq!(
+        report.resolved_speed_profile,
+        Some(TranslationSpeedProfile::Ecoli)
+    );
+    assert_eq!(
+        report.resolved_speed_profile_source,
+        Some(TranslationSpeedProfileSource::FeatureQualifierHint)
+    );
+    assert_eq!(
+        report.translation_speed_reference_species.as_deref(),
+        Some("Escherichia coli")
+    );
+    assert_eq!(report.speed_mark, Some(TranslationSpeedMark::Slow));
+    assert_eq!(report.target_anneal_tm_c, Some(58.0));
+    assert_eq!(report.anneal_window_bp, 9);
     let coding = engine
         .state()
         .sequences

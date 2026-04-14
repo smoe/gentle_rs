@@ -75,12 +75,12 @@ use crate::{
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, RoutineDecisionTrace,
-        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
         UniprotFeatureCodingDnaQueryReport,
     },
     engine_shell::{
@@ -847,6 +847,14 @@ pub struct GENtleApp {
     uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode,
     uniprot_feature_speed_profile: Option<TranslationSpeedProfile>,
     uniprot_feature_report: Option<UniprotFeatureCodingDnaQueryReport>,
+    reverse_translate_protein_seq_id: String,
+    reverse_translate_output_id: String,
+    reverse_translate_speed_profile: Option<TranslationSpeedProfile>,
+    reverse_translate_speed_mark: Option<TranslationSpeedMark>,
+    reverse_translate_translation_table: String,
+    reverse_translate_target_anneal_tm_c: String,
+    reverse_translate_anneal_window_bp: String,
+    reverse_translation_report: Option<ReverseTranslationReport>,
     uniprot_status: String,
     genbank_accession: String,
     genbank_as_id: String,
@@ -2424,6 +2432,14 @@ impl Default for GENtleApp {
             uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode::Both,
             uniprot_feature_speed_profile: None,
             uniprot_feature_report: None,
+            reverse_translate_protein_seq_id: String::new(),
+            reverse_translate_output_id: String::new(),
+            reverse_translate_speed_profile: None,
+            reverse_translate_speed_mark: None,
+            reverse_translate_translation_table: String::new(),
+            reverse_translate_target_anneal_tm_c: String::new(),
+            reverse_translate_anneal_window_bp: "20".to_string(),
+            reverse_translation_report: None,
             uniprot_status: String::new(),
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
@@ -17196,6 +17212,72 @@ Error: `{err}`"
         }
     }
 
+    fn reverse_translation_speed_mark_label(mark: Option<TranslationSpeedMark>) -> &'static str {
+        match mark {
+            None => "Auto",
+            Some(TranslationSpeedMark::Fast) => "Fast",
+            Some(TranslationSpeedMark::Slow) => "Slow",
+        }
+    }
+
+    fn format_reverse_translation_speed_resolution_summary(
+        report: &ReverseTranslationReport,
+    ) -> String {
+        let requested = report
+            .requested_speed_profile
+            .map(|profile| profile.as_str())
+            .unwrap_or("auto");
+        let resolved = report
+            .resolved_speed_profile
+            .map(|profile| profile.as_str())
+            .unwrap_or("auto-unresolved");
+        let source = report
+            .resolved_speed_profile_source
+            .map(|source| source.as_str())
+            .unwrap_or("unspecified");
+        let reference = report
+            .translation_speed_reference_species
+            .as_deref()
+            .unwrap_or("-");
+        format!(
+            "requested={} | resolved={} | source={} | ref={}",
+            requested, resolved, source, reference
+        )
+    }
+
+    fn format_reverse_translation_table_resolution_summary(
+        report: &ReverseTranslationReport,
+    ) -> String {
+        let organism = report
+            .translation_context_organism
+            .as_deref()
+            .unwrap_or("-");
+        let organelle = report
+            .translation_context_organelle
+            .as_deref()
+            .unwrap_or("-");
+        format!(
+            "{} ({}) | source={} | organism={} | organelle={}",
+            report.translation_table,
+            report.translation_table_label,
+            report.translation_table_source,
+            organism,
+            organelle
+        )
+    }
+
+    fn protein_sequence_ids_for_dialog(&self) -> Vec<String> {
+        let engine = self.engine.read().unwrap();
+        let mut ids = engine
+            .state()
+            .sequences
+            .iter()
+            .filter_map(|(seq_id, dna)| dna.is_protein_sequence().then_some(seq_id.clone()))
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
+    }
+
     fn format_uniprot_feature_speed_resolution_summary(
         report: &UniprotFeatureCodingDnaQueryReport,
     ) -> String {
@@ -17219,6 +17301,125 @@ Error: `{err}`"
             "requested={} | resolved={} | source={} | ref={}",
             requested, resolved, source, reference
         )
+    }
+
+    fn reverse_translate_protein_from_dialog(&mut self) {
+        let seq_id = self.reverse_translate_protein_seq_id.trim().to_string();
+        if seq_id.is_empty() {
+            self.uniprot_status =
+                "Choose a protein sequence before reverse translation".to_string();
+            return;
+        }
+        let translation_table =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_translation_table)
+                .map(|raw| {
+                    raw.parse::<usize>().map_err(|_| {
+                        format!(
+                            "translation table '{}' is not a valid positive integer",
+                            raw
+                        )
+                    })
+                })
+                .transpose();
+        let translation_table = match translation_table {
+            Ok(value) => value.filter(|value| *value > 0),
+            Err(message) => {
+                self.uniprot_status = message;
+                return;
+            }
+        };
+        let target_anneal_tm_c =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_target_anneal_tm_c)
+                .map(|raw| {
+                    raw.parse::<f64>()
+                        .map_err(|_| format!("target anneal Tm '{}' is not a valid number", raw))
+                })
+                .transpose();
+        let target_anneal_tm_c = match target_anneal_tm_c {
+            Ok(value) => value,
+            Err(message) => {
+                self.uniprot_status = message;
+                return;
+            }
+        };
+        let anneal_window_bp =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_anneal_window_bp)
+                .map(|raw| {
+                    raw.parse::<usize>().map_err(|_| {
+                        format!("anneal window '{}' is not a valid positive integer", raw)
+                    })
+                })
+                .transpose();
+        let anneal_window_bp = match anneal_window_bp {
+            Ok(value) => value.filter(|value| *value > 0),
+            Err(message) => {
+                self.uniprot_status = message;
+                return;
+            }
+        };
+        let result =
+            self.engine
+                .write()
+                .unwrap()
+                .apply(Operation::ReverseTranslateProteinSequence {
+                    seq_id,
+                    output_id: Self::uniprot_optional_trimmed(&self.reverse_translate_output_id),
+                    speed_profile: self.reverse_translate_speed_profile,
+                    speed_mark: self.reverse_translate_speed_mark,
+                    translation_table,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                });
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                let status = if let Some(report) = result.reverse_translation_report.as_ref() {
+                    self.reverse_translation_report = Some(report.clone());
+                    format!(
+                        "Reverse translation: ok\ncreated: {}\ntranslation table: {}\nspeed profile: {}\nspeed mark: {}\nanneal heuristic: {}\nwarnings: {}\nmessages: {}",
+                        report.coding_seq_id,
+                        Self::format_reverse_translation_table_resolution_summary(report),
+                        Self::format_reverse_translation_speed_resolution_summary(report),
+                        report
+                            .speed_mark
+                            .map(|mark| mark.as_str())
+                            .unwrap_or("auto"),
+                        report
+                            .target_anneal_tm_c
+                            .map(|tm| format!(
+                                "{tm:.1} °C / {} bp",
+                                report.anneal_window_bp
+                            ))
+                            .unwrap_or_else(|| "-".to_string()),
+                        if result.warnings.is_empty() {
+                            "-".to_string()
+                        } else {
+                            result.warnings.join(" | ")
+                        },
+                        if result.messages.is_empty() {
+                            "-".to_string()
+                        } else {
+                            result.messages.join(" | ")
+                        }
+                    )
+                } else {
+                    self.reverse_translation_report = None;
+                    Self::format_op_result_status(
+                        "Reverse translation: ok",
+                        &result.created_seq_ids,
+                        &result.warnings,
+                        &result.messages,
+                    )
+                };
+                self.uniprot_status = status;
+            }
+            Err(err) => {
+                self.reverse_translation_report = None;
+                self.uniprot_status = format!("Reverse translation failed: {}", err.message);
+            }
+        }
     }
 
     fn query_uniprot_feature_coding_dna_from_dialog(&mut self) {
@@ -17418,6 +17619,78 @@ Error: `{err}`"
             });
     }
 
+    fn render_reverse_translation_report(&self, ui: &mut Ui) {
+        let Some(report) = self.reverse_translation_report.as_ref() else {
+            return;
+        };
+        ui.separator();
+        ui.label("Reverse-translated coding DNA");
+        egui::Grid::new("reverse_translation_report_summary")
+            .num_columns(2)
+            .spacing([12.0, 4.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("protein");
+                ui.monospace(&report.protein_seq_id);
+                ui.end_row();
+                ui.strong("output");
+                ui.monospace(&report.coding_seq_id);
+                ui.end_row();
+                ui.strong("length");
+                ui.monospace(format!(
+                    "{} aa -> {} bp",
+                    report.protein_length_aa, report.coding_length_bp
+                ));
+                ui.end_row();
+                ui.strong("translation table");
+                ui.monospace(Self::format_reverse_translation_table_resolution_summary(
+                    report,
+                ));
+                ui.end_row();
+                ui.strong("speed profile");
+                ui.monospace(Self::format_reverse_translation_speed_resolution_summary(
+                    report,
+                ));
+                ui.end_row();
+                ui.strong("speed mark");
+                ui.monospace(
+                    report
+                        .speed_mark
+                        .map(|mark| mark.as_str())
+                        .unwrap_or("auto"),
+                );
+                ui.end_row();
+                ui.strong("anneal heuristic");
+                ui.monospace(
+                    report
+                        .target_anneal_tm_c
+                        .map(|tm| { format!("{tm:.1} °C / {} bp", report.anneal_window_bp) })
+                        .unwrap_or_else(|| "-".to_string()),
+                );
+                ui.end_row();
+            });
+        if let Some(sequence) = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .get(&report.coding_seq_id)
+        {
+            ui.label("Coding DNA");
+            let mut dna_text = sequence.get_forward_string();
+            ui.add(
+                egui::TextEdit::multiline(&mut dna_text)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace)
+                    .interactive(false),
+            );
+        }
+        if !report.warnings.is_empty() {
+            ui.small(format!("warnings: {}", report.warnings.join(" | ")));
+        }
+    }
+
     fn render_genbank_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_genbank_dialog {
             return;
@@ -17548,10 +17821,21 @@ Error: `{err}`"
     fn render_uniprot_dialog_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let seq_ids = self.project_sequence_ids_for_blast();
+        let protein_seq_ids = self.protein_sequence_ids_for_dialog();
         if !seq_ids.is_empty() {
             let selected = self.uniprot_map_seq_id.trim();
             if selected.is_empty() || !seq_ids.iter().any(|candidate| candidate == selected) {
                 self.uniprot_map_seq_id = seq_ids[0].clone();
+            }
+        }
+        if !protein_seq_ids.is_empty() {
+            let selected = self.reverse_translate_protein_seq_id.trim();
+            if selected.is_empty()
+                || !protein_seq_ids
+                    .iter()
+                    .any(|candidate| candidate == selected)
+            {
+                self.reverse_translate_protein_seq_id = protein_seq_ids[0].clone();
             }
         }
 
@@ -18255,6 +18539,107 @@ Error: `{err}`"
                     self.ensembl_protein_entry_id.trim()
                 ),
             );
+        }
+        ui.separator();
+        ui.label("Reverse translate protein");
+        ui.small(
+            "Generate one synthetic coding DNA sequence from any first-class protein in the project and inspect the resolved translation table, codon-speed profile, and optional annealing heuristic.",
+        );
+        if protein_seq_ids.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(180, 83, 9),
+                "No first-class protein sequences are available yet. Import one from Ensembl or derive one first.",
+            );
+        } else {
+            egui::ComboBox::from_label("protein seq_id")
+                .selected_text(self.reverse_translate_protein_seq_id.clone())
+                .show_ui(ui, |ui| {
+                    for seq_id in &protein_seq_ids {
+                        ui.selectable_value(
+                            &mut self.reverse_translate_protein_seq_id,
+                            seq_id.clone(),
+                            seq_id,
+                        );
+                    }
+                });
+            ui.horizontal(|ui| {
+                ui.label("output_id");
+                ui.text_edit_singleline(&mut self.reverse_translate_output_id)
+                    .on_hover_text(
+                        "Optional coding-sequence id override (defaults to PROTEIN_ID__coding)",
+                    );
+                ui.label("translation table");
+                ui.text_edit_singleline(&mut self.reverse_translate_translation_table)
+                    .on_hover_text(
+                        "Optional explicit NCBI translation table override (empty = resolve from protein/context)",
+                    );
+            });
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_label("speed profile")
+                    .selected_text(Self::uniprot_feature_speed_profile_label(
+                        self.reverse_translate_speed_profile,
+                    ))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.reverse_translate_speed_profile, None, "Auto");
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_profile,
+                            Some(TranslationSpeedProfile::Human),
+                            "Human",
+                        );
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_profile,
+                            Some(TranslationSpeedProfile::Mouse),
+                            "Mouse",
+                        );
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_profile,
+                            Some(TranslationSpeedProfile::Yeast),
+                            "Yeast",
+                        );
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_profile,
+                            Some(TranslationSpeedProfile::Ecoli),
+                            "E. coli",
+                        );
+                    });
+                egui::ComboBox::from_label("speed mark")
+                    .selected_text(Self::reverse_translation_speed_mark_label(
+                        self.reverse_translate_speed_mark,
+                    ))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.reverse_translate_speed_mark, None, "Auto");
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_mark,
+                            Some(TranslationSpeedMark::Fast),
+                            "Fast",
+                        );
+                        ui.selectable_value(
+                            &mut self.reverse_translate_speed_mark,
+                            Some(TranslationSpeedMark::Slow),
+                            "Slow",
+                        );
+                    });
+                ui.label("target anneal Tm");
+                ui.text_edit_singleline(&mut self.reverse_translate_target_anneal_tm_c)
+                    .on_hover_text(
+                        "Optional lightweight local Tm heuristic target in °C (empty = disabled)",
+                    );
+                ui.label("window bp");
+                ui.text_edit_singleline(&mut self.reverse_translate_anneal_window_bp)
+                    .on_hover_text(
+                        "Window size for the optional local annealing heuristic (default 20)",
+                    );
+                if ui
+                    .button("Reverse Translate")
+                    .on_hover_text(
+                        "Create one synthetic coding DNA sequence from the selected protein and store the resolved translation provenance",
+                    )
+                    .clicked()
+                {
+                    self.reverse_translate_protein_from_dialog();
+                }
+            });
+            self.render_reverse_translation_report(ui);
         }
         if !self.uniprot_status.trim().is_empty() {
             ui.separator();
@@ -41434,11 +41819,11 @@ mod tests {
             PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
             PrimerDesignSideConstraint, ProjectState, Rack, RackAuthoringTemplate,
             RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            RoutineDecisionTraceStore, SequenceOrigin, TranslationSpeedProfile,
-            TranslationSpeedProfileSource, UniprotFeatureCodingDnaQueryMode,
-            UniprotFeatureCodingDnaQueryReport,
+            RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+            RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore, SequenceOrigin,
+            TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
+            UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
         },
         ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
         genomes::{
@@ -47644,6 +48029,105 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             "{summary}"
         );
         assert!(summary.contains("ref=Mus musculus domesticus"), "{summary}");
+    }
+
+    #[test]
+    fn reverse_translation_speed_resolution_summary_mentions_source_and_reference() {
+        let report = ReverseTranslationReport {
+            schema: "gentle.reverse_translation_report.v1".to_string(),
+            report_id: "rt1".to_string(),
+            protein_seq_id: "prot".to_string(),
+            coding_seq_id: "prot__coding".to_string(),
+            generated_at_unix_ms: 1,
+            op_id: Some("op1".to_string()),
+            run_id: Some("run1".to_string()),
+            requested_output_id: None,
+            effective_output_id: "prot__coding".to_string(),
+            protein_length_aa: 3,
+            coding_length_bp: 9,
+            translation_table: 11,
+            translation_table_label: "Bacterial, Archaeal and Plant Plastid".to_string(),
+            translation_table_source: "feature_qualifier_hint".to_string(),
+            translation_context_organism: Some("Escherichia coli".to_string()),
+            translation_context_organelle: None,
+            requested_speed_profile: Some(TranslationSpeedProfile::Ecoli),
+            resolved_speed_profile: Some(TranslationSpeedProfile::Ecoli),
+            resolved_speed_profile_source: Some(
+                TranslationSpeedProfileSource::FeatureQualifierHint,
+            ),
+            translation_speed_reference_species: Some("Escherichia coli".to_string()),
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            target_anneal_tm_c: Some(58.0),
+            anneal_window_bp: 9,
+            warnings: vec![],
+        };
+        let summary = GENtleApp::format_reverse_translation_speed_resolution_summary(&report);
+        assert!(summary.contains("requested=ecoli"), "{summary}");
+        assert!(summary.contains("resolved=ecoli"), "{summary}");
+        assert!(
+            summary.contains("source=feature_qualifier_hint"),
+            "{summary}"
+        );
+        assert!(summary.contains("ref=Escherichia coli"), "{summary}");
+    }
+
+    #[test]
+    fn reverse_translate_protein_from_dialog_sets_report_and_status() {
+        let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+        protein.set_name("Toy protein");
+        protein.set_molecule_type("protein");
+        protein.features_mut().push(gb_io::seq::Feature {
+            kind: "Protein".into(),
+            location: gb_io::seq::Location::simple_range(0, 3),
+            qualifiers: vec![
+                (
+                    "translation_speed_profile_hint".into(),
+                    Some("ecoli".to_string()),
+                ),
+                ("translation_table".into(), Some("11".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("prot".to_string(), protein);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.reverse_translate_protein_seq_id = "prot".to_string();
+        app.reverse_translate_speed_mark = Some(TranslationSpeedMark::Slow);
+        app.reverse_translate_target_anneal_tm_c = "58.0".to_string();
+        app.reverse_translate_anneal_window_bp = "9".to_string();
+
+        app.reverse_translate_protein_from_dialog();
+
+        let report = app
+            .reverse_translation_report
+            .as_ref()
+            .expect("reverse translation report");
+        assert_eq!(report.protein_seq_id, "prot");
+        assert_eq!(report.translation_table, 11);
+        assert_eq!(
+            report.resolved_speed_profile,
+            Some(TranslationSpeedProfile::Ecoli)
+        );
+        assert_eq!(report.speed_mark, Some(TranslationSpeedMark::Slow));
+        assert!(
+            app.uniprot_status.contains("translation table: 11"),
+            "{}",
+            app.uniprot_status
+        );
+        assert!(
+            app.uniprot_status
+                .contains("speed profile: requested=auto | resolved=ecoli"),
+            "{}",
+            app.uniprot_status
+        );
+        assert!(
+            app.engine
+                .read()
+                .unwrap()
+                .state()
+                .sequences
+                .contains_key(&report.coding_seq_id)
+        );
     }
 
     #[test]

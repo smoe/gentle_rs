@@ -2574,6 +2574,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - source protein sequence id
     - created coding-sequence id
     - effective translation table / label / source
+    - optional organism/organelle context
     - resolved speed profile / source / reference species
     - optional speed mark and annealing-Tm steering inputs
     - codon-choice diagnostics:
@@ -2583,6 +2584,17 @@ Feature-distance geometry controls (candidate generation and distance scoring):
       - `gc_fraction`
       - `realized_anneal_tm_c`
     - warnings captured during codon selection / qualifier synthesis
+  - `OpResult.reverse_translation_report` now carries the same resolved
+    provenance in one portable record:
+    - created coding-sequence id
+    - protein length / coding length
+    - translation table / label / source
+    - optional organism/organelle context
+    - requested/resolved translation-speed profile
+    - speed-profile source / reference species
+    - optional speed mark
+    - optional annealing-target heuristic settings
+    - warnings
   - one full-span synthetic local `CDS` feature with:
     - protein provenance
     - translation table/label

@@ -1907,6 +1907,10 @@ pub struct ReverseTranslationReport {
     pub translation_table_label: String,
     pub translation_table_source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_context_organism: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_context_organelle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_speed_profile: Option<TranslationSpeedProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_speed_profile: Option<TranslationSpeedProfile>,
@@ -1948,15 +1952,14 @@ pub struct ReverseTranslationReportSummary {
     pub speed_profile_summary: String,
     pub diagnostics_summary: String,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
 /// Compact lineage/listing summary for one persisted construct-reasoning graph.
 ///
 /// This keeps the graph itself as the canonical portable reasoning artifact,
 /// while giving GUI/CLI lineage surfaces a stable, cheap-to-list record with
 /// the counts and objective labels needed to present it as a first-class
 /// computational contribution.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ConstructReasoningGraphSummary {
     pub graph_id: String,
     pub seq_id: String,
