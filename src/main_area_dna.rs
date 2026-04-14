@@ -7814,6 +7814,43 @@ mod tests {
     }
 
     #[test]
+    fn sync_from_engine_display_does_not_rebuild_construct_reasoning_overlay_each_frame() {
+        let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_sync".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(
+            dna,
+            Some("seq_reasoning_sync".to_string()),
+            Some(engine.clone()),
+        );
+
+        let initial_generated_at = engine
+            .read()
+            .expect("engine")
+            .construct_reasoning_graph_for_seq_id("seq_reasoning_sync")
+            .expect("graph generated during initial sync")
+            .generated_at_unix_ms;
+        std::thread::sleep(Duration::from_millis(2));
+
+        area.sync_from_engine_display();
+
+        let repeated_generated_at = engine
+            .read()
+            .expect("engine")
+            .construct_reasoning_graph_for_seq_id("seq_reasoning_sync")
+            .expect("graph still present")
+            .generated_at_unix_ms;
+
+        assert_eq!(
+            repeated_generated_at, initial_generated_at,
+            "ordinary repaint sync should reuse the current construct-reasoning overlay instead of rebuilding it"
+        );
+    }
+
+    #[test]
     fn refresh_description_cache_includes_variant_reasoning_context() {
         let mut dna = DNAsequence::from_sequence("ATGGAATTTACGTACGT").expect("sequence");
         dna.features_mut().push(Feature {
@@ -8695,6 +8732,7 @@ pub struct MainAreaDna {
     description_cache_construct_reasoning: Option<ConstructReasoningInspectorCache>,
     description_cache_expert_view: Option<FeatureExpertView>,
     description_cache_expert_error: Option<String>,
+    construct_reasoning_overlay_sync_key: Option<ConstructReasoningOverlaySyncKey>,
     show_dotplot_window: bool,
     show_splicing_expert_window: bool,
     splicing_expert_window_feature_id: Option<usize>,
@@ -8738,6 +8776,13 @@ struct ConstructReasoningInspectorCache {
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
     decision_entries: Vec<ConstructReasoningInspectorEntry>,
     note_lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ConstructReasoningOverlaySyncKey {
+    seq_id: String,
+    focused_graph_id: Option<String>,
+    engine_operation_count: usize,
 }
 
 impl MainAreaDna {
@@ -9131,6 +9176,7 @@ impl MainAreaDna {
             description_cache_construct_reasoning: None,
             description_cache_expert_view: None,
             description_cache_expert_error: None,
+            construct_reasoning_overlay_sync_key: None,
             show_dotplot_window: false,
             show_splicing_expert_window: false,
             splicing_expert_window_feature_id: None,
@@ -9312,7 +9358,8 @@ impl MainAreaDna {
         if let Ok(mut display) = self.dna_display.write() {
             display.set_show_construct_reasoning_overlay(true);
         }
-        self.refresh_construct_reasoning_overlay();
+        self.construct_reasoning_overlay_sync_key = None;
+        self.refresh_construct_reasoning_overlay_if_needed(true);
         self.description_cache_initialized = false;
         self.op_status =
             if let Some(graph_id) = self.focused_construct_reasoning_graph_id.as_deref() {
@@ -9458,7 +9505,8 @@ impl MainAreaDna {
         self.mark_dna_layout_dirty();
         self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
-        self.refresh_construct_reasoning_overlay();
+        self.construct_reasoning_overlay_sync_key = None;
+        self.refresh_construct_reasoning_overlay_if_needed(true);
     }
 
     fn invalidate_dotplot_cache(&mut self) {
@@ -9512,6 +9560,51 @@ impl MainAreaDna {
         self.sync_from_engine_display();
         self.update_dna_map();
         self.sync_linear_external_feature_labels();
+    }
+
+    fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) {
+        let overlay_visible = self
+            .dna_display
+            .read()
+            .map(|display| display.show_construct_reasoning_overlay())
+            .unwrap_or(false);
+        if !overlay_visible {
+            self.construct_reasoning_overlay_sync_key = None;
+            return;
+        }
+        let Some(seq_id) = self
+            .seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            if force {
+                self.refresh_construct_reasoning_overlay();
+            }
+            self.construct_reasoning_overlay_sync_key = None;
+            return;
+        };
+        let Some(engine) = &self.engine else {
+            if force {
+                self.refresh_construct_reasoning_overlay();
+            }
+            self.construct_reasoning_overlay_sync_key = None;
+            return;
+        };
+        let Ok(guard) = engine.try_read() else {
+            return;
+        };
+        let next_key = ConstructReasoningOverlaySyncKey {
+            seq_id: seq_id.to_string(),
+            focused_graph_id: self.focused_construct_reasoning_graph_id.clone(),
+            engine_operation_count: guard.operation_log().len(),
+        };
+        drop(guard);
+        if !force && self.construct_reasoning_overlay_sync_key.as_ref() == Some(&next_key) {
+            return;
+        }
+        self.refresh_construct_reasoning_overlay();
+        self.construct_reasoning_overlay_sync_key = Some(next_key);
     }
 
     fn refresh_construct_reasoning_overlay(&mut self) {
@@ -11265,7 +11358,10 @@ impl MainAreaDna {
                     .set_show_construct_reasoning_overlay(visible);
                 self.set_display_visibility(DisplayTarget::ConstructReasoningOverlay, visible);
                 if visible {
-                    self.refresh_construct_reasoning_overlay();
+                    self.construct_reasoning_overlay_sync_key = None;
+                    self.refresh_construct_reasoning_overlay_if_needed(true);
+                } else {
+                    self.construct_reasoning_overlay_sync_key = None;
                 }
             }
             if construct_reasoning_active {
@@ -13943,7 +14039,7 @@ impl MainAreaDna {
         );
         drop(display);
         self.sync_contextual_transcript_visibility_filter();
-        self.refresh_construct_reasoning_overlay();
+        self.refresh_construct_reasoning_overlay_if_needed(false);
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {
