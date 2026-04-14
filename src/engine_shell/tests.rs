@@ -574,6 +574,70 @@ fn parse_reverse_translate_command_family() {
 }
 
 #[test]
+fn parse_construct_reasoning_protein_handoff_command_family() {
+    let build = parse_shell_line(
+        "construct-reasoning build-protein-dna-handoff seq_a prot_a --transcript TX1 --projection-id proj_1 --ensembl-entry ENSPTOY1 --feature-query junction --ranking-goal balanced_provenance --speed-profile ecoli --speed-mark slow --translation-table 11 --target-anneal-tm-c 58.0 --anneal-window-bp 9 --objective-id obj_1 --graph-id graph_1",
+    )
+    .expect("parse construct-reasoning build-protein-dna-handoff");
+    assert!(matches!(
+        build,
+        ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
+            seq_id,
+            protein_seq_id,
+            transcript_filter,
+            projection_id,
+            ensembl_entry_id,
+            feature_query,
+            ranking_goal,
+            speed_profile,
+            speed_mark,
+            translation_table,
+            target_anneal_tm_c,
+            anneal_window_bp,
+            objective_id,
+            graph_id,
+        }
+            if seq_id == "seq_a"
+                && protein_seq_id == "prot_a"
+                && transcript_filter.as_deref() == Some("TX1")
+                && projection_id.as_deref() == Some("proj_1")
+                && ensembl_entry_id.as_deref() == Some("ENSPTOY1")
+                && feature_query.as_deref() == Some("junction")
+                && ranking_goal == ProteinToDnaHandoffRankingGoal::BalancedProvenance
+                && speed_profile == Some(TranslationSpeedProfile::Ecoli)
+                && speed_mark == Some(TranslationSpeedMark::Slow)
+                && translation_table == Some(11)
+                && target_anneal_tm_c == Some(58.0)
+                && anneal_window_bp == Some(9)
+                && objective_id.as_deref() == Some("obj_1")
+                && graph_id.as_deref() == Some("graph_1")
+    ));
+
+    let list = parse_shell_line("construct-reasoning list-graphs seq_a")
+        .expect("parse construct-reasoning list-graphs");
+    assert!(matches!(
+        list,
+        ShellCommand::ConstructReasoningListGraphs { seq_id }
+            if seq_id.as_deref() == Some("seq_a")
+    ));
+
+    let show = parse_shell_line("construct-reasoning show-graph graph_1")
+        .expect("parse construct-reasoning show-graph");
+    assert!(matches!(
+        show,
+        ShellCommand::ConstructReasoningShowGraph { graph_id } if graph_id == "graph_1"
+    ));
+
+    let export = parse_shell_line("construct-reasoning export-graph graph_1 out.json")
+        .expect("parse construct-reasoning export-graph");
+    assert!(matches!(
+        export,
+        ShellCommand::ConstructReasoningExportGraph { graph_id, path }
+            if graph_id == "graph_1" && path == "out.json"
+    ));
+}
+
+#[test]
 fn parse_seq_primer_suggest_command_allows_report_only_mode() {
     let cmd = parse_shell_line(
         "seq-primer suggest construct --confirmation-report construct_report --min-3prime-anneal-bp 20 --predicted-read-length-bp 650",
@@ -936,6 +1000,98 @@ fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
     assert_eq!(
         export.output["report_id"].as_str(),
         Some(report_id.as_str())
+    );
+    assert!(export_path.exists());
+}
+
+#[test]
+fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_export_graphs() {
+    let td = tempdir().expect("tempdir");
+    let export_path = td.path().join("protein_handoff_graph.json");
+
+    let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+    protein.set_name("Toy protein");
+    protein.set_molecule_type("protein");
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "target".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
+    );
+    state.sequences.insert("prot".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let build = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
+            seq_id: "target".to_string(),
+            protein_seq_id: "prot".to_string(),
+            transcript_filter: None,
+            projection_id: None,
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+            feature_query: None,
+            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            speed_profile: Some(TranslationSpeedProfile::Ecoli),
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            translation_table: Some(11),
+            target_anneal_tm_c: Some(58.0),
+            anneal_window_bp: Some(9),
+            objective_id: None,
+            graph_id: Some("protein_handoff_shell".to_string()),
+        },
+    )
+    .expect("execute construct-reasoning build-protein-dna-handoff");
+    assert!(build.state_changed);
+    assert_eq!(
+        build.output["graph"]["graph_id"].as_str(),
+        Some("protein_handoff_shell")
+    );
+    assert!(
+        build.output["graph"]["candidates"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    );
+
+    let list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningListGraphs {
+            seq_id: Some("target".to_string()),
+        },
+    )
+    .expect("list construct-reasoning graphs");
+    assert_eq!(list.output["graph_count"].as_u64(), Some(1));
+    assert_eq!(
+        list.output["graphs"][0]["contains_protein_to_dna_handoff"].as_bool(),
+        Some(true)
+    );
+
+    let show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningShowGraph {
+            graph_id: "protein_handoff_shell".to_string(),
+        },
+    )
+    .expect("show construct-reasoning graph");
+    assert_eq!(
+        show.output["graph"]["graph_id"].as_str(),
+        Some("protein_handoff_shell")
+    );
+    assert_eq!(
+        show.output["graph"]["candidates"][0]["protein_to_dna_handoff"]["strategy"].as_str(),
+        Some("reverse_translated_synthetic")
+    );
+
+    let export = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningExportGraph {
+            graph_id: "protein_handoff_shell".to_string(),
+            path: export_path.display().to_string(),
+        },
+    )
+    .expect("export construct-reasoning graph");
+    assert_eq!(
+        export.output["graph_id"].as_str(),
+        Some("protein_handoff_shell")
     );
     assert!(export_path.exists());
 }

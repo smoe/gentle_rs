@@ -199,6 +199,20 @@ impl GentleEngine {
                 suggested_variant_assay_ids.join(", ")
             ));
         }
+        let (protein_handoff_candidate_count, protein_handoff_source_protein_seq_ids) =
+            Self::construct_reasoning_graph_protein_to_dna_handoff_summary(graph);
+        if protein_handoff_candidate_count > 0 {
+            summary_lines.push(format!(
+                "Protein-to-DNA handoff candidates: {}",
+                protein_handoff_candidate_count
+            ));
+        }
+        if !protein_handoff_source_protein_seq_ids.is_empty() {
+            summary_lines.push(format!(
+                "Protein handoff sources: {}",
+                protein_handoff_source_protein_seq_ids.join(", ")
+            ));
+        }
         summary_lines.retain(|line| !line.trim().is_empty());
         summary_lines.dedup();
 

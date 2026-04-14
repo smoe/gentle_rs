@@ -18,16 +18,16 @@ pub use gentle_protocol::{
     CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
     CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities, ConstructCandidate, ConstructObjective,
     ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
-    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode,
-    DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode,
-    DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef, DotplotOverlayAnchorSeriesSupport,
-    DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode,
-    DotplotQuerySeries,
+    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
+    DesignFact, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon,
+    DotplotOverlayAnchorExonRef, DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec,
+    DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
     DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack, DotplotView,
     DotplotViewSummary, EditableStatus, EngineError, ErrorCode, EvidenceClass, EvidenceScope,
-    FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
-    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
+    FeatureBedCoordinateMode, FlexibilityModel, GenomeTrackImportProgress,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, ProteinToDnaHandoffCandidate,
+    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
     RnaReadAlignConfig, RnaReadAlignmentBackend, RnaReadAlignmentDisplay,
     RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
     RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
@@ -1109,6 +1109,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reverse_translation_report: Option<ReverseTranslationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construct_reasoning_graph: Option<ConstructReasoningGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_trace_import_report: Option<SequencingTraceImportReport>,
@@ -1977,6 +1979,12 @@ pub struct ConstructReasoningGraphSummary {
     pub evidence_count: usize,
     pub decision_count: usize,
     pub candidate_count: usize,
+    #[serde(default)]
+    pub contains_protein_to_dna_handoff: bool,
+    #[serde(default)]
+    pub protein_to_dna_handoff_candidate_count: usize,
+    #[serde(default)]
+    pub protein_to_dna_source_protein_seq_ids: Vec<String>,
     #[serde(default)]
     pub summary_lines: Vec<String>,
     #[serde(default)]

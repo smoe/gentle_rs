@@ -443,29 +443,30 @@ impl GentleEngine {
             .unwrap_or(view.seq_id.as_str());
 
         if overlay_mode {
-            let resolved_anchor_series = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                overlay_anchor_exon
-                    .map(|exon| view.resolve_overlay_anchor_series(exon))
-                    .unwrap_or_default()
-            } else {
-                vec![]
-            };
-            let rendered_series_source = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                resolved_anchor_series
-                    .iter()
-                    .filter_map(|resolved| {
-                        view.query_series
-                            .get(resolved.series_index)
-                            .map(|series| (series, resolved.shift_bp))
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                view.query_series.iter().map(|series| (series, 0usize)).collect()
-            };
+            let resolved_anchor_series =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    overlay_anchor_exon
+                        .map(|exon| view.resolve_overlay_anchor_series(exon))
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+            let rendered_series_source =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    resolved_anchor_series
+                        .iter()
+                        .filter_map(|resolved| {
+                            view.query_series
+                                .get(resolved.series_index)
+                                .map(|series| (series, resolved.shift_bp))
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    view.query_series
+                        .iter()
+                        .map(|series| (series, 0usize))
+                        .collect()
+                };
             let total_points: usize = rendered_series_source
                 .iter()
                 .map(|(series, _)| series.point_count)
@@ -492,18 +493,17 @@ impl GentleEngine {
                 .checked_div(rendered_series_source.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            let plotted_query_span = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                resolved_anchor_series
-                    .iter()
-                    .map(|resolved| resolved.plotted_span_end_0based)
-                    .max()
-                    .unwrap_or(1)
-                    .max(1)
-            } else {
-                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
-            };
+            let plotted_query_span =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    resolved_anchor_series
+                        .iter()
+                        .map(|resolved| resolved.plotted_span_end_0based)
+                        .max()
+                        .unwrap_or(1)
+                        .max(1)
+                } else {
+                    overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+                };
             let (x_axis_start_label, x_axis_end_label) =
                 overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
             let anchor_token = overlay_anchor_exon.map(|exon| exon.token());
@@ -514,22 +514,21 @@ impl GentleEngine {
                 .as_ref()
                 .filter(|track| !track.intervals.is_empty());
 
-            let anchor_status_message = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                if overlay_anchor_exon.is_none() {
-                    Some("No shared exon anchor selected.".to_string())
-                } else if rendered_series_source.len() < 2 {
-                    Some(
+            let anchor_status_message =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    if overlay_anchor_exon.is_none() {
+                        Some("No shared exon anchor selected.".to_string())
+                    } else if rendered_series_source.len() < 2 {
+                        Some(
                         "Selected shared exon is not present in at least two plotted transcripts."
                             .to_string(),
                     )
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
 
             let outer_margin = 18.0_f32;
             let left_margin = if reference_annotation.is_some() {
@@ -568,19 +567,15 @@ impl GentleEngine {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = if overlay_x_axis_mode
-                        == DotplotOverlayXAxisMode::SharedExonAnchor
+                    let x_frac = if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
                     {
-                        let x_local = point
-                            .x_0based
-                            .saturating_sub(series.span_start_0based)
-                            .min(
-                                series
-                                    .span_end_0based
-                                    .saturating_sub(series.span_start_0based)
-                                    .saturating_sub(1)
-                                    .max(1),
-                            );
+                        let x_local = point.x_0based.saturating_sub(series.span_start_0based).min(
+                            series
+                                .span_end_0based
+                                .saturating_sub(series.span_start_0based)
+                                .saturating_sub(1)
+                                .max(1),
+                        );
                         (shift_bp.saturating_add(x_local) as f32 / plotted_query_span_max as f32)
                             .clamp(0.0, 1.0)
                     } else {
@@ -1233,7 +1228,10 @@ impl GentleEngine {
         kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
     }
 
-    fn qualifier_text_for_derivation(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+    pub(crate) fn qualifier_text_for_derivation(
+        feature: &gb_io::seq::Feature,
+        key: &str,
+    ) -> Option<String> {
         feature
             .qualifier_values(key)
             .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -2221,7 +2219,9 @@ impl GentleEngine {
         }))
     }
 
-    fn infer_translation_speed_profile_enum(raw: Option<&str>) -> Option<TranslationSpeedProfile> {
+    pub(crate) fn infer_translation_speed_profile_enum(
+        raw: Option<&str>,
+    ) -> Option<TranslationSpeedProfile> {
         match raw?.trim().to_ascii_lowercase().as_str() {
             "human" => Some(TranslationSpeedProfile::Human),
             "mouse" => Some(TranslationSpeedProfile::Mouse),
@@ -2231,7 +2231,7 @@ impl GentleEngine {
         }
     }
 
-    fn sequence_feature_translation_speed_resolution(
+    pub(crate) fn sequence_feature_translation_speed_resolution(
         dna: &DNAsequence,
     ) -> Option<TranslationSpeedProfileResolution> {
         dna.features().iter().find_map(|feature| {
@@ -2266,7 +2266,7 @@ impl GentleEngine {
         (organism, organelle)
     }
 
-    fn resolve_translation_table_for_reverse_translation(
+    pub(crate) fn resolve_translation_table_for_reverse_translation(
         protein: &DNAsequence,
         requested_table: Option<usize>,
     ) -> (
@@ -2404,7 +2404,7 @@ impl GentleEngine {
         candidates.into_iter().next()
     }
 
-    fn build_reverse_translated_coding_sequence(
+    pub(crate) fn build_reverse_translated_coding_sequence(
         protein_sequence: &str,
         translation_table: usize,
         preferred_species_label: Option<&str>,
@@ -2439,7 +2439,7 @@ impl GentleEngine {
         (dna, warnings)
     }
 
-    fn reverse_translation_choice_diagnostics(
+    pub(crate) fn reverse_translation_choice_diagnostics(
         protein_sequence: &str,
         coding_sequence: &str,
         translation_table: usize,
@@ -4928,6 +4928,7 @@ impl GentleEngine {
             sequence_alignment: None,
             protein_derivation_report: None,
             reverse_translation_report: None,
+            construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -9646,6 +9647,63 @@ impl GentleEngine {
                 result.warnings.extend(warnings);
                 result.reverse_translation_report = Some(report);
             }
+            Operation::BuildProteinToDnaHandoffReasoning {
+                seq_id,
+                protein_seq_id,
+                transcript_filter,
+                projection_id,
+                ensembl_entry_id,
+                feature_query,
+                ranking_goal,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+                objective_id,
+                graph_id,
+            } => {
+                parent_seq_ids.push(seq_id.clone());
+                if !protein_seq_id.eq_ignore_ascii_case(&seq_id) {
+                    parent_seq_ids.push(protein_seq_id.clone());
+                }
+                let graph = self.build_protein_to_dna_handoff_reasoning_graph(
+                    &seq_id,
+                    &protein_seq_id,
+                    transcript_filter.as_deref(),
+                    projection_id.as_deref(),
+                    ensembl_entry_id.as_deref(),
+                    feature_query.as_deref(),
+                    ranking_goal,
+                    speed_profile,
+                    speed_mark,
+                    translation_table,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                    objective_id.as_deref(),
+                    graph_id.as_deref(),
+                    Some(&result.op_id),
+                    Some(run_id),
+                )?;
+                result.messages.push(format!(
+                    "Built protein-to-DNA handoff reasoning graph '{}' for '{}' using protein '{}'.",
+                    graph.graph_id, graph.seq_id, protein_seq_id
+                ));
+                if Self::construct_reasoning_graph_has_protein_to_dna_handoff(&graph) {
+                    let (candidate_count, source_ids) =
+                        Self::construct_reasoning_graph_protein_to_dna_handoff_summary(&graph);
+                    result.messages.push(format!(
+                        "Stored {} ranked protein-to-DNA handoff candidate(s) from source protein(s) {}.",
+                        candidate_count,
+                        if source_ids.is_empty() {
+                            "-".to_string()
+                        } else {
+                            source_ids.join(", ")
+                        }
+                    ));
+                }
+                result.construct_reasoning_graph = Some(graph);
+            }
             Operation::ComputeDotplot {
                 seq_id,
                 reference_seq_id,
@@ -9973,8 +10031,11 @@ impl GentleEngine {
                         boxplot_bins,
                     ));
                 }
-                let overlay_anchor_exons =
-                    self.build_dotplot_overlay_anchor_exons(&reference_seq_id, &queries, &query_series);
+                let overlay_anchor_exons = self.build_dotplot_overlay_anchor_exons(
+                    &reference_seq_id,
+                    &queries,
+                    &query_series,
+                );
                 let primary_series = query_series.first().cloned().ok_or_else(|| EngineError {
                     code: ErrorCode::Internal,
                     message: "ComputeDotplotOverlay did not produce a primary query series"

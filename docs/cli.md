@@ -647,6 +647,14 @@ UniProt mapping capability status:
   - `reverse-translate export-report REPORT_ID OUTPUT.json`
   backed by `ReverseTranslateProteinSequence` plus persisted
   reverse-translation report inspection/export routes.
+- construct-reasoning protein-to-DNA handoff is now also available through the
+  shared shell:
+  - `construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]`
+  - `construct-reasoning list-graphs [SEQ_ID]`
+  - `construct-reasoning show-graph GRAPH_ID`
+  - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
+  backed by `BuildProteinToDnaHandoffReasoning` plus the existing persisted
+  construct-reasoning graph store.
 - additional protein-sequence operations are still available through the shared
   engine contract (`apply_operation` / workflow JSON):
   - `ImportUniprotEntrySequence`

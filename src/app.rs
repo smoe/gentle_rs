@@ -64,19 +64,20 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
-        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress,
-        DbSnpFetchStage, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
-        FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
+        ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings, DisplayTarget, Engine, EngineError,
+        ErrorCode, FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
         GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
         GenomeTrackSyncReport, GentleEngine, HostProfileRecord, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult, Operation,
         OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
         PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, RenderSvgMode, RestrictionEnzymeDisplayMode, ReverseTranslationReport,
-        RoutineDecisionTrace, RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
+        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
+        RestrictionEnzymeDisplayMode, ReverseTranslationReport, RoutineDecisionTrace,
+        RoutineDecisionTraceCandidateScore, RoutineDecisionTraceComparison,
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
@@ -855,6 +856,10 @@ pub struct GENtleApp {
     reverse_translate_target_anneal_tm_c: String,
     reverse_translate_anneal_window_bp: String,
     reverse_translation_report: Option<ReverseTranslationReport>,
+    protein_handoff_ranking_goal: ProteinToDnaHandoffRankingGoal,
+    protein_handoff_graph: Option<ConstructReasoningGraph>,
+    protein_handoff_selected_candidate_id: String,
+    protein_handoff_status: String,
     uniprot_status: String,
     genbank_accession: String,
     genbank_as_id: String,
@@ -2440,6 +2445,10 @@ impl Default for GENtleApp {
             reverse_translate_target_anneal_tm_c: String::new(),
             reverse_translate_anneal_window_bp: "20".to_string(),
             reverse_translation_report: None,
+            protein_handoff_ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            protein_handoff_graph: None,
+            protein_handoff_selected_candidate_id: String::new(),
+            protein_handoff_status: String::new(),
             uniprot_status: String::new(),
             genbank_accession: String::new(),
             genbank_as_id: String::new(),
@@ -5475,6 +5484,65 @@ Error: `{err}`"
         }
     }
 
+    fn open_protein_to_dna_handoff_dialog_for_graph(&mut self, seq_id: &str, graph_id: &str) {
+        let graph = match self
+            .engine
+            .read()
+            .unwrap()
+            .construct_reasoning_graph(graph_id)
+        {
+            Ok(graph) => graph,
+            Err(err) => {
+                self.protein_handoff_status = format!(
+                    "Could not reopen protein-to-DNA handoff graph '{}': {}",
+                    graph_id, err.message
+                );
+                self.show_uniprot_dialog = true;
+                return;
+            }
+        };
+        if !GentleEngine::construct_reasoning_graph_has_protein_to_dna_handoff(&graph) {
+            self.open_sequence_window_for_construct_reasoning_graph(seq_id, graph_id);
+            return;
+        }
+        self.show_uniprot_dialog = true;
+        self.uniprot_map_seq_id = seq_id.to_string();
+        self.protein_handoff_graph = Some(graph.clone());
+        self.sync_protein_handoff_candidate_selection();
+        if let Some(candidate) = graph
+            .candidates
+            .iter()
+            .find(|candidate| candidate.candidate_id == self.protein_handoff_selected_candidate_id)
+            .or_else(|| {
+                graph
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.protein_to_dna_handoff.is_some())
+            })
+            && let Some(detail) = candidate.protein_to_dna_handoff.as_ref()
+        {
+            self.reverse_translate_protein_seq_id = detail.source_protein_seq_id.clone();
+            self.protein_handoff_ranking_goal = detail.ranking_goal;
+            if let Some(transcript_id) = detail.transcript_id.as_ref() {
+                self.uniprot_map_transcript_id = transcript_id.clone();
+                self.uniprot_feature_transcript_id = transcript_id.clone();
+            }
+            if let Some(projection_id) = detail.projection_id.as_ref() {
+                self.uniprot_map_projection_id = projection_id.clone();
+            }
+            if let Some(feature_query) = detail.feature_query.as_ref() {
+                self.uniprot_feature_query = feature_query.clone();
+            }
+            if let Some(entry_id) = detail.ensembl_entry_id.as_ref() {
+                self.ensembl_protein_entry_id = entry_id.clone();
+            }
+        }
+        self.protein_handoff_status = format!(
+            "Opened protein-to-DNA handoff reasoning graph '{}' in Protein Evidence",
+            graph_id
+        );
+    }
+
     fn open_sequence_window_for_primer_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -5597,7 +5665,7 @@ Error: `{err}`"
                 self.open_sequence_window_for_reverse_translation_report(seq_id, artifact_id);
             }
             LineageAnalysisKind::ConstructReasoning => {
-                self.open_sequence_window_for_construct_reasoning_graph(seq_id, artifact_id);
+                self.open_protein_to_dna_handoff_dialog_for_graph(seq_id, artifact_id);
             }
             LineageAnalysisKind::UniprotProjection => {
                 self.open_sequence_window_for_uniprot_projection_expert(
@@ -14729,6 +14797,7 @@ Error: `{err}`"
                 sequence_alignment: None,
                 protein_derivation_report: None,
                 reverse_translation_report: None,
+                construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -17421,6 +17490,316 @@ Error: `{err}`"
         }
     }
 
+    fn protein_handoff_transcript_filter_from_dialog(&self) -> Option<String> {
+        Self::uniprot_optional_trimmed(&self.uniprot_feature_transcript_id)
+            .or_else(|| Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id))
+    }
+
+    fn sync_protein_handoff_candidate_selection(&mut self) {
+        let Some(graph) = self.protein_handoff_graph.as_ref() else {
+            self.protein_handoff_selected_candidate_id.clear();
+            return;
+        };
+        let current = self.protein_handoff_selected_candidate_id.trim();
+        if current.is_empty()
+            || !graph
+                .candidates
+                .iter()
+                .any(|candidate| candidate.candidate_id == current)
+        {
+            self.protein_handoff_selected_candidate_id = graph
+                .candidates
+                .first()
+                .map(|candidate| candidate.candidate_id.clone())
+                .unwrap_or_default();
+        }
+    }
+
+    fn build_protein_to_dna_handoff_reasoning_from_dialog(&mut self) {
+        let seq_id = self.uniprot_map_seq_id.trim().to_string();
+        if seq_id.is_empty() {
+            self.protein_handoff_status =
+                "Choose a target sequence before building protein-to-DNA handoff reasoning"
+                    .to_string();
+            return;
+        }
+        let protein_seq_id = self.reverse_translate_protein_seq_id.trim().to_string();
+        if protein_seq_id.is_empty() {
+            self.protein_handoff_status =
+                "Choose a protein sequence before building protein-to-DNA handoff reasoning"
+                    .to_string();
+            return;
+        }
+        let translation_table =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_translation_table)
+                .map(|raw| {
+                    raw.parse::<usize>().map_err(|_| {
+                        format!(
+                            "translation table '{}' is not a valid positive integer",
+                            raw
+                        )
+                    })
+                })
+                .transpose();
+        let translation_table = match translation_table {
+            Ok(value) => value.filter(|value| *value > 0),
+            Err(message) => {
+                self.protein_handoff_status = message;
+                return;
+            }
+        };
+        let target_anneal_tm_c =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_target_anneal_tm_c)
+                .map(|raw| {
+                    raw.parse::<f64>()
+                        .map_err(|_| format!("target anneal Tm '{}' is not a valid number", raw))
+                })
+                .transpose();
+        let target_anneal_tm_c = match target_anneal_tm_c {
+            Ok(value) => value,
+            Err(message) => {
+                self.protein_handoff_status = message;
+                return;
+            }
+        };
+        let anneal_window_bp =
+            Self::uniprot_optional_trimmed(&self.reverse_translate_anneal_window_bp)
+                .map(|raw| {
+                    raw.parse::<usize>().map_err(|_| {
+                        format!("anneal window '{}' is not a valid positive integer", raw)
+                    })
+                })
+                .transpose();
+        let anneal_window_bp = match anneal_window_bp {
+            Ok(value) => value.filter(|value| *value > 0),
+            Err(message) => {
+                self.protein_handoff_status = message;
+                return;
+            }
+        };
+        let result =
+            self.engine
+                .write()
+                .unwrap()
+                .apply(Operation::BuildProteinToDnaHandoffReasoning {
+                    seq_id: seq_id.clone(),
+                    protein_seq_id: protein_seq_id.clone(),
+                    transcript_filter: self.protein_handoff_transcript_filter_from_dialog(),
+                    projection_id: self.resolve_uniprot_projection_id_from_dialog_fields(),
+                    ensembl_entry_id: Self::uniprot_optional_trimmed(
+                        &self.ensembl_protein_entry_id,
+                    ),
+                    feature_query: Self::uniprot_optional_trimmed(&self.uniprot_feature_query),
+                    ranking_goal: self.protein_handoff_ranking_goal,
+                    speed_profile: self.reverse_translate_speed_profile,
+                    speed_mark: self.reverse_translate_speed_mark,
+                    translation_table,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                    objective_id: None,
+                    graph_id: self
+                        .protein_handoff_graph
+                        .as_ref()
+                        .map(|graph| graph.graph_id.clone()),
+                });
+        match result {
+            Ok(result) => {
+                if let Some(graph) = result.construct_reasoning_graph.as_ref() {
+                    self.protein_handoff_graph = Some(graph.clone());
+                    self.sync_protein_handoff_candidate_selection();
+                    let handoff_candidate_count = graph
+                        .candidates
+                        .iter()
+                        .filter(|candidate| candidate.protein_to_dna_handoff.is_some())
+                        .count();
+                    self.protein_handoff_status = format!(
+                        "Protein-to-DNA handoff reasoning: ok (graph='{}', candidates={}, warnings={}, messages={})",
+                        graph.graph_id,
+                        handoff_candidate_count,
+                        result.warnings.len(),
+                        result.messages.len()
+                    );
+                } else {
+                    self.protein_handoff_graph = None;
+                    self.protein_handoff_selected_candidate_id.clear();
+                    self.protein_handoff_status = Self::format_op_result_status(
+                        "Protein-to-DNA handoff reasoning: ok",
+                        &result.created_seq_ids,
+                        &result.warnings,
+                        &result.messages,
+                    );
+                }
+            }
+            Err(err) => {
+                self.protein_handoff_graph = None;
+                self.protein_handoff_selected_candidate_id.clear();
+                self.protein_handoff_status =
+                    format!("Protein-to-DNA handoff reasoning failed: {}", err.message);
+            }
+        }
+    }
+
+    fn render_protein_handoff_graph(&mut self, ui: &mut Ui) {
+        self.sync_protein_handoff_candidate_selection();
+        let Some(graph) = self.protein_handoff_graph.clone() else {
+            return;
+        };
+        ui.separator();
+        ui.label("DNA handoff candidates");
+        ui.small(format!(
+            "graph={} | evidence={} | decisions={} | candidates={}",
+            graph.graph_id,
+            graph.evidence.len(),
+            graph.decisions.len(),
+            graph.candidates.len()
+        ));
+        egui::Grid::new("protein_handoff_candidate_grid")
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("rank");
+                ui.strong("candidate");
+                ui.strong("strategy");
+                ui.strong("coverage");
+                ui.strong("provenance");
+                ui.strong("warnings");
+                ui.strong("action");
+                ui.end_row();
+                for (idx, candidate) in graph
+                    .candidates
+                    .iter()
+                    .filter(|candidate| candidate.protein_to_dna_handoff.is_some())
+                    .enumerate()
+                {
+                    let detail = candidate
+                        .protein_to_dna_handoff
+                        .as_ref()
+                        .expect("handoff detail");
+                    let selected =
+                        self.protein_handoff_selected_candidate_id == candidate.candidate_id;
+                    ui.label((idx + 1).to_string());
+                    ui.label(&candidate.title);
+                    ui.monospace(detail.strategy.as_str());
+                    ui.monospace(format!(
+                        "{} / {} aa",
+                        detail.coverage.covered_amino_acids, detail.coverage.requested_amino_acids
+                    ));
+                    ui.monospace(
+                        detail
+                            .provenance_score
+                            .map(|value| format!("{value:.2}"))
+                            .unwrap_or_else(|| "-".to_string()),
+                    );
+                    ui.label(candidate.warnings.len().to_string());
+                    if ui
+                        .selectable_label(selected, if selected { "Selected" } else { "Select" })
+                        .clicked()
+                    {
+                        self.protein_handoff_selected_candidate_id = candidate.candidate_id.clone();
+                    }
+                    ui.end_row();
+                }
+            });
+        if let Some(candidate) = graph
+            .candidates
+            .iter()
+            .find(|candidate| candidate.candidate_id == self.protein_handoff_selected_candidate_id)
+        {
+            let detail = candidate
+                .protein_to_dna_handoff
+                .as_ref()
+                .expect("handoff detail");
+            ui.separator();
+            ui.label("Selected handoff candidate");
+            egui::Grid::new("protein_handoff_candidate_detail")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("title");
+                    ui.label(&candidate.title);
+                    ui.end_row();
+                    ui.strong("strategy");
+                    ui.monospace(detail.strategy.as_str());
+                    ui.end_row();
+                    ui.strong("protein");
+                    ui.monospace(&detail.source_protein_seq_id);
+                    ui.end_row();
+                    ui.strong("transcript");
+                    ui.monospace(detail.transcript_id.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("projection");
+                    ui.monospace(detail.projection_id.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("ensembl entry");
+                    ui.monospace(detail.ensembl_entry_id.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("feature query");
+                    ui.label(detail.feature_query.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("feature match");
+                    ui.label(detail.matched_feature_label.as_deref().unwrap_or("-"));
+                    ui.end_row();
+                    ui.strong("coverage");
+                    ui.monospace(format!(
+                        "{} / {} aa",
+                        detail.coverage.covered_amino_acids, detail.coverage.requested_amino_acids
+                    ));
+                    ui.end_row();
+                    ui.strong("translation table");
+                    ui.monospace(
+                        detail
+                            .translation_table
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                    );
+                    ui.end_row();
+                    ui.strong("speed profile");
+                    ui.monospace(
+                        detail
+                            .speed_profile
+                            .map(TranslationSpeedProfile::as_str)
+                            .unwrap_or("-"),
+                    );
+                    ui.end_row();
+                    ui.strong("speed mark");
+                    ui.monospace(
+                        detail
+                            .speed_mark
+                            .map(TranslationSpeedMark::as_str)
+                            .unwrap_or("-"),
+                    );
+                    ui.end_row();
+                    ui.strong("codon policy");
+                    ui.label(&detail.codon_policy_summary);
+                    ui.end_row();
+                });
+            if !detail.preserved_constraints.is_empty() {
+                ui.small(format!(
+                    "preserved: {}",
+                    detail.preserved_constraints.join(" | ")
+                ));
+            }
+            if !detail.relaxed_constraints.is_empty() {
+                ui.small(format!(
+                    "relaxed: {}",
+                    detail.relaxed_constraints.join(" | ")
+                ));
+            }
+            if !detail.next_step_recommendations.is_empty() {
+                ui.small(format!(
+                    "next: {}",
+                    detail.next_step_recommendations.join(" | ")
+                ));
+            }
+            if !candidate.warnings.is_empty() {
+                ui.small(format!("warnings: {}", candidate.warnings.join(" | ")));
+            }
+            if !candidate.notes.is_empty() {
+                ui.small(format!("notes: {}", candidate.notes.join(" | ")));
+            }
+        }
+    }
+
     fn query_uniprot_feature_coding_dna_from_dialog(&mut self) {
         let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields() else {
             self.uniprot_status = "Project an entry first or provide seq_id + entry_id to resolve a projection before querying coding DNA.".to_string();
@@ -18639,6 +19018,48 @@ Error: `{err}`"
                 }
             });
             self.render_reverse_translation_report(ui);
+        }
+        ui.separator();
+        ui.label("DNA handoff reasoning");
+        ui.small(
+            "Rank transcript-native CDS reuse, mapped feature-coding DNA, and synthetic reverse-translation fallback without materializing DNA sequences yet.",
+        );
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_label("ranking goal")
+                .selected_text(self.protein_handoff_ranking_goal.as_str())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.protein_handoff_ranking_goal,
+                        ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+                        "Balanced provenance",
+                    );
+                    ui.selectable_value(
+                        &mut self.protein_handoff_ranking_goal,
+                        ProteinToDnaHandoffRankingGoal::NativeFidelity,
+                        "Native fidelity",
+                    );
+                    ui.selectable_value(
+                        &mut self.protein_handoff_ranking_goal,
+                        ProteinToDnaHandoffRankingGoal::ExpressionOptimized,
+                        "Expression optimized",
+                    );
+                });
+            if ui
+                .button("Build DNA Handoff")
+                .on_hover_text(
+                    "Build a construct-reasoning graph that ranks transcript-native, mapped-feature, and synthetic protein-to-DNA handoff candidates",
+                )
+                .clicked()
+            {
+                self.build_protein_to_dna_handoff_reasoning_from_dialog();
+            }
+        });
+        ui.small(
+            "Reuses the active protein sequence, transcript/projection filters, feature query, and reverse-translation controls above.",
+        );
+        self.render_protein_handoff_graph(ui);
+        if !self.protein_handoff_status.trim().is_empty() {
+            ui.small(self.protein_handoff_status.clone());
         }
         if !self.uniprot_status.trim().is_empty() {
             ui.separator();
@@ -31579,7 +32000,11 @@ Error: `{err}`"
                 });
                 let seq_id = summary.seq_id.clone();
                 let display_name = if summary.objective_title.trim().is_empty() {
-                    summary.graph_id.clone()
+                    if summary.contains_protein_to_dna_handoff {
+                        format!("Protein→DNA handoff ({})", summary.graph_id)
+                    } else {
+                        summary.graph_id.clone()
+                    }
                 } else {
                     summary.objective_title.clone()
                 };
@@ -31588,7 +32013,11 @@ Error: `{err}`"
                     node_id: node_id.clone(),
                     seq_id: seq_id.clone(),
                     display_name,
-                    origin: "ConstructReasoning".to_string(),
+                    origin: if summary.contains_protein_to_dna_handoff {
+                        "ConstructReasoning / ProteinToDnaHandoff".to_string()
+                    } else {
+                        "ConstructReasoning".to_string()
+                    },
                     created_by_op,
                     created_at: summary.generated_at_unix_ms,
                     parents: vec![seq_id.clone()],
@@ -41819,12 +42248,13 @@ mod tests {
             GenomeGeneExtractMode, GentleEngine, LineageEdge, LineageNode,
             LinearSequenceLetterLayoutMode, OpResult, Operation, PLANNING_ESTIMATE_SCHEMA,
             PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
-            PrimerDesignSideConstraint, ProjectState, Rack, RackAuthoringTemplate,
-            RackFillDirection, RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-            RestrictionEnzymeDisplayMode, ReverseTranslationReport,
-            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
-            RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore, SequenceOrigin,
-            TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
+            PrimerDesignSideConstraint, ProjectState, ProteinToDnaHandoffRankingGoal,
+            ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate, RackFillDirection,
+            RackProfileKind, RackProfileSnapshot, RenderSvgMode, RestrictionEnzymeDisplayMode,
+            ReverseTranslationReport, RoutineDecisionTraceDisambiguationAnswer,
+            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
+            RoutineDecisionTraceStore, SequenceOrigin, TranslationSpeedMark,
+            TranslationSpeedProfile, TranslationSpeedProfileSource,
             UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
         },
         ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
@@ -46090,14 +46520,129 @@ mod tests {
         );
         let mut app = GENtleApp::default();
         app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let graph_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .build_construct_reasoning_graph("seq_reasoning", None, Some("graph_reasoning_1"))
+                .expect("build reasoning graph")
+                .graph_id
+        };
 
         app.open_lineage_analysis_artifact(
             LineageAnalysisKind::ConstructReasoning,
             "seq_reasoning",
-            "graph_reasoning_1",
+            &graph_id,
         );
 
         assert_eq!(app.new_windows.len(), 1);
+    }
+
+    #[test]
+    fn protein_handoff_dialog_builds_reasoning_from_selected_protein_context() {
+        let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+        protein.set_name("Toy protein");
+        protein.set_molecule_type("protein");
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "handoff_target".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
+        );
+        state
+            .sequences
+            .insert("handoff_protein".to_string(), protein);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.uniprot_map_seq_id = "handoff_target".to_string();
+        app.reverse_translate_protein_seq_id = "handoff_protein".to_string();
+        app.reverse_translate_speed_profile = Some(TranslationSpeedProfile::Ecoli);
+        app.reverse_translate_speed_mark = Some(TranslationSpeedMark::Slow);
+        app.reverse_translate_translation_table = "11".to_string();
+        app.reverse_translate_target_anneal_tm_c = "58.0".to_string();
+        app.reverse_translate_anneal_window_bp = "9".to_string();
+
+        app.build_protein_to_dna_handoff_reasoning_from_dialog();
+
+        let graph = app
+            .protein_handoff_graph
+            .as_ref()
+            .expect("protein handoff graph");
+        assert_eq!(graph.seq_id, "handoff_target");
+        assert!(!app.protein_handoff_selected_candidate_id.is_empty());
+        assert!(
+            app.protein_handoff_status
+                .contains("Protein-to-DNA handoff reasoning: ok")
+        );
+        assert!(graph.candidates.iter().any(|candidate| {
+            candidate
+                .protein_to_dna_handoff
+                .as_ref()
+                .is_some_and(|detail| {
+                    detail.strategy == ProteinToDnaHandoffStrategy::ReverseTranslatedSynthetic
+                })
+        }));
+    }
+
+    #[test]
+    fn open_lineage_analysis_artifact_opens_protein_handoff_in_protein_evidence() {
+        let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+        protein.set_name("Toy protein");
+        protein.set_molecule_type("protein");
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "handoff_target".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
+        );
+        state
+            .sequences
+            .insert("handoff_protein".to_string(), protein);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        let graph_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::BuildProteinToDnaHandoffReasoning {
+                    seq_id: "handoff_target".to_string(),
+                    protein_seq_id: "handoff_protein".to_string(),
+                    transcript_filter: None,
+                    projection_id: None,
+                    ensembl_entry_id: Some("ENSPTOY1".to_string()),
+                    feature_query: None,
+                    ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+                    speed_profile: Some(TranslationSpeedProfile::Ecoli),
+                    speed_mark: Some(TranslationSpeedMark::Slow),
+                    translation_table: Some(11),
+                    target_anneal_tm_c: Some(58.0),
+                    anneal_window_bp: Some(9),
+                    objective_id: None,
+                    graph_id: Some("handoff_graph".to_string()),
+                })
+                .expect("build protein handoff graph")
+                .construct_reasoning_graph
+                .expect("graph")
+                .graph_id
+        };
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::ConstructReasoning,
+            "handoff_target",
+            &graph_id,
+        );
+
+        assert!(app.show_uniprot_dialog);
+        assert!(app.new_windows.is_empty());
+        assert_eq!(
+            app.protein_handoff_graph
+                .as_ref()
+                .map(|graph| graph.graph_id.as_str()),
+            Some(graph_id.as_str())
+        );
+        assert_eq!(app.reverse_translate_protein_seq_id, "handoff_protein");
+        assert!(!app.protein_handoff_selected_candidate_id.is_empty());
+        assert!(
+            app.protein_handoff_status
+                .contains("Opened protein-to-DNA handoff reasoning graph")
+        );
     }
 
     #[test]
@@ -49214,6 +49759,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 sequence_alignment: None,
                 protein_derivation_report: None,
                 reverse_translation_report: None,
+                construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -49275,6 +49821,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 sequence_alignment: None,
                 protein_derivation_report: None,
                 reverse_translation_report: None,
+                construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -49321,6 +49868,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 sequence_alignment: None,
                 protein_derivation_report: None,
                 reverse_translation_report: None,
+                construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
                 sequencing_trace_import_report: None,
@@ -49372,6 +49920,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             sequence_alignment: None,
             protein_derivation_report: None,
             reverse_translation_report: None,
+            construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
             sequencing_trace_import_report: None,
@@ -50717,6 +51266,66 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                     && to == &format!("analysis:construct_reasoning:{graph_id}")
                     && op_id == &format!("analysis:construct_reasoning:{graph_id}"))
         );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_marks_protein_handoff_construct_reasoning_nodes_distinctly() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "handoff_target".to_string(),
+                DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
+            );
+            let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+            protein.set_name("Toy protein");
+            protein.set_molecule_type("protein");
+            state
+                .sequences
+                .insert("handoff_protein".to_string(), protein);
+            insert_test_lineage_node(state, "n_handoff", "handoff_target");
+        }
+
+        let graph_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine
+                .apply(Operation::BuildProteinToDnaHandoffReasoning {
+                    seq_id: "handoff_target".to_string(),
+                    protein_seq_id: "handoff_protein".to_string(),
+                    transcript_filter: None,
+                    projection_id: None,
+                    ensembl_entry_id: Some("ENSPTOY1".to_string()),
+                    feature_query: None,
+                    ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+                    speed_profile: Some(TranslationSpeedProfile::Ecoli),
+                    speed_mark: Some(TranslationSpeedMark::Slow),
+                    translation_table: Some(11),
+                    target_anneal_tm_c: Some(58.0),
+                    anneal_window_bp: Some(9),
+                    objective_id: None,
+                    graph_id: Some("handoff_lineage_demo".to_string()),
+                })
+                .expect("build protein handoff graph")
+                .construct_reasoning_graph
+                .expect("graph")
+                .graph_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.node_id == format!("analysis:construct_reasoning:{graph_id}"))
+            .expect("protein handoff lineage row");
+        assert_eq!(row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            row.analysis_kind,
+            Some(LineageAnalysisKind::ConstructReasoning)
+        );
+        assert_eq!(row.origin, "ConstructReasoning / ProteinToDnaHandoff");
+        assert_eq!(row.analysis_artifact_id.as_deref(), Some(graph_id.as_str()));
     }
 
     #[test]

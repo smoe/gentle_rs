@@ -22,7 +22,8 @@ pub use construct_reasoning::{
     DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
     DesignFact, EditableStatus, EvidenceClass, EvidenceScope, HOST_PROFILE_CATALOG_SCHEMA,
     HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
-    HostRouteStep,
+    HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
+    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
 };
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,

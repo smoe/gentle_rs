@@ -3,7 +3,7 @@
 //! These types describe inspectable, editable design reasoning that can be
 //! shared across GUI/CLI/MCP/JS/Lua adapters without coupling to one frontend.
 
-use crate::SeqId;
+use crate::{SeqId, TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -42,6 +42,84 @@ fn default_construct_reasoning_graph_schema() -> String {
 
 fn default_construct_reasoning_store_schema() -> String {
     CONSTRUCT_REASONING_STORE_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Ranking intent for protein-to-DNA handoff candidates.
+pub enum ProteinToDnaHandoffRankingGoal {
+    #[default]
+    BalancedProvenance,
+    NativeFidelity,
+    ExpressionOptimized,
+}
+
+impl ProteinToDnaHandoffRankingGoal {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BalancedProvenance => "balanced_provenance",
+            Self::NativeFidelity => "native_fidelity",
+            Self::ExpressionOptimized => "expression_optimized",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Candidate family for a protein-to-DNA handoff.
+pub enum ProteinToDnaHandoffStrategy {
+    #[default]
+    TranscriptNativeReuse,
+    FeatureCodingDna,
+    ReverseTranslatedSynthetic,
+}
+
+impl ProteinToDnaHandoffStrategy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TranscriptNativeReuse => "transcript_native_reuse",
+            Self::FeatureCodingDna => "feature_coding_dna",
+            Self::ReverseTranslatedSynthetic => "reverse_translated_synthetic",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Summary of how much of the requested protein evidence one handoff candidate preserves.
+pub struct ProteinToDnaHandoffCoverage {
+    pub amino_acid_start_1based: Option<usize>,
+    pub amino_acid_end_1based: Option<usize>,
+    pub covered_amino_acids: usize,
+    pub requested_amino_acids: usize,
+    pub preserved_feature_labels: Vec<String>,
+    pub relaxed_feature_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Typed candidate detail for construct-graph-backed protein-to-DNA handoff reasoning.
+pub struct ProteinToDnaHandoffCandidate {
+    pub strategy: ProteinToDnaHandoffStrategy,
+    pub ranking_goal: ProteinToDnaHandoffRankingGoal,
+    pub source_protein_seq_id: SeqId,
+    pub source_artifact_refs: Vec<String>,
+    pub transcript_id: Option<String>,
+    pub projection_id: Option<String>,
+    pub ensembl_entry_id: Option<String>,
+    pub feature_query: Option<String>,
+    pub matched_feature_label: Option<String>,
+    pub coverage: ProteinToDnaHandoffCoverage,
+    pub preserved_constraints: Vec<String>,
+    pub relaxed_constraints: Vec<String>,
+    pub translation_table: Option<usize>,
+    pub speed_profile: Option<TranslationSpeedProfile>,
+    pub speed_profile_source: Option<TranslationSpeedProfileSource>,
+    pub speed_mark: Option<TranslationSpeedMark>,
+    pub provenance_score: Option<f64>,
+    pub codon_policy_summary: String,
+    pub next_step_recommendations: Vec<String>,
+    pub future_materialization_seq_id: Option<SeqId>,
 }
 
 fn default_host_profile_catalog_schema() -> String {
@@ -527,6 +605,8 @@ pub struct ConstructCandidate {
     pub confidence_score: Option<f64>,
     pub cloning_complexity_score: Option<f64>,
     pub host_fit_score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protein_to_dna_handoff: Option<ProteinToDnaHandoffCandidate>,
     pub warnings: Vec<String>,
     pub notes: Vec<String>,
 }
@@ -545,6 +625,7 @@ impl Default for ConstructCandidate {
             confidence_score: None,
             cloning_complexity_score: None,
             host_fit_score: None,
+            protein_to_dna_handoff: None,
             warnings: vec![],
             notes: vec![],
         }

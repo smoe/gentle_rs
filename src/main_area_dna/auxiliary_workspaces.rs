@@ -2433,31 +2433,32 @@ impl MainAreaDna {
                 .saturating_sub(view.reference_span_start_0based)
                 .max(1);
             let reference_span_max = reference_span.saturating_sub(1).max(1);
-            let resolved_anchor_series = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                self.dotplot_ui
-                    .overlay_anchor_exon
-                    .as_ref()
-                    .map(|exon| view.resolve_overlay_anchor_series(exon))
-                    .unwrap_or_default()
-            } else {
-                vec![]
-            };
-            let rendered_series_source = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                resolved_anchor_series
-                    .iter()
-                    .filter_map(|resolved| {
-                        view.query_series
-                            .get(resolved.series_index)
-                            .map(|series| (series, resolved.shift_bp))
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                view.query_series.iter().map(|series| (series, 0usize)).collect()
-            };
+            let resolved_anchor_series =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    self.dotplot_ui
+                        .overlay_anchor_exon
+                        .as_ref()
+                        .map(|exon| view.resolve_overlay_anchor_series(exon))
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+            let rendered_series_source =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    resolved_anchor_series
+                        .iter()
+                        .filter_map(|resolved| {
+                            view.query_series
+                                .get(resolved.series_index)
+                                .map(|series| (series, resolved.shift_bp))
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    view.query_series
+                        .iter()
+                        .map(|series| (series, 0usize))
+                        .collect()
+                };
             let max_query_span = rendered_series_source
                 .iter()
                 .map(|(series, _)| {
@@ -2480,37 +2481,35 @@ impl MainAreaDna {
                 .checked_div(rendered_series_source.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            let plotted_query_span = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                resolved_anchor_series
-                    .iter()
-                    .map(|resolved| resolved.plotted_span_end_0based)
-                    .max()
-                    .unwrap_or(1)
-                    .max(1)
-            } else {
-                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
-            };
+            let plotted_query_span =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    resolved_anchor_series
+                        .iter()
+                        .map(|resolved| resolved.plotted_span_end_0based)
+                        .max()
+                        .unwrap_or(1)
+                        .max(1)
+                } else {
+                    overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+                };
             let plotted_query_span_max = plotted_query_span.saturating_sub(1).max(1);
             let (x_axis_start_label, x_axis_end_label) =
                 overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
-            let anchor_status_message = if overlay_x_axis_mode
-                == DotplotOverlayXAxisMode::SharedExonAnchor
-            {
-                if self.dotplot_ui.overlay_anchor_exon.is_none() {
-                    Some("No shared exon anchor selected.".to_string())
-                } else if rendered_series_source.len() < 2 {
-                    Some(
+            let anchor_status_message =
+                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+                    if self.dotplot_ui.overlay_anchor_exon.is_none() {
+                        Some("No shared exon anchor selected.".to_string())
+                    } else if rendered_series_source.len() < 2 {
+                        Some(
                         "Selected shared exon is not present in at least two plotted transcripts."
                             .to_string(),
                     )
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
             let reference_seq_label = view
                 .reference_seq_id
                 .as_deref()
@@ -2532,19 +2531,15 @@ impl MainAreaDna {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = if overlay_x_axis_mode
-                        == DotplotOverlayXAxisMode::SharedExonAnchor
+                    let x_frac = if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
                     {
-                        let x_local = point
-                            .x_0based
-                            .saturating_sub(series.span_start_0based)
-                            .min(
-                                series
-                                    .span_end_0based
-                                    .saturating_sub(series.span_start_0based)
-                                    .saturating_sub(1)
-                                    .max(1),
-                            );
+                        let x_local = point.x_0based.saturating_sub(series.span_start_0based).min(
+                            series
+                                .span_end_0based
+                                .saturating_sub(series.span_start_0based)
+                                .saturating_sub(1)
+                                .max(1),
+                        );
                         (shift_bp.saturating_add(x_local) as f32 / plotted_query_span_max as f32)
                             .clamp(0.0, 1.0)
                     } else {

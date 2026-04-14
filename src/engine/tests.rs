@@ -7786,6 +7786,313 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
 }
 
 #[test]
+fn build_protein_to_dna_handoff_reasoning_prefers_transcript_native_reuse_over_reverse_translation()
+{
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "handoff_seq".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let protein_seq_id = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "handoff_seq".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("handoff_protein".to_string()),
+        })
+        .expect("derive protein")
+        .created_seq_ids[0]
+        .clone();
+
+    let result = engine
+        .apply(Operation::BuildProteinToDnaHandoffReasoning {
+            seq_id: "handoff_seq".to_string(),
+            protein_seq_id: protein_seq_id.clone(),
+            transcript_filter: None,
+            projection_id: None,
+            ensembl_entry_id: None,
+            feature_query: None,
+            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            speed_profile: None,
+            speed_mark: None,
+            translation_table: None,
+            target_anneal_tm_c: None,
+            anneal_window_bp: None,
+            objective_id: None,
+            graph_id: Some("protein_handoff_graph".to_string()),
+        })
+        .expect("build handoff reasoning");
+
+    let graph = result
+        .construct_reasoning_graph
+        .as_ref()
+        .expect("construct reasoning graph");
+    assert!(GentleEngine::construct_reasoning_graph_has_protein_to_dna_handoff(graph));
+    let strategies = graph
+        .candidates
+        .iter()
+        .filter_map(|candidate| {
+            candidate
+                .protein_to_dna_handoff
+                .as_ref()
+                .map(|detail| detail.strategy)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        strategies.first().copied(),
+        Some(ProteinToDnaHandoffStrategy::TranscriptNativeReuse)
+    );
+    assert!(strategies.contains(&ProteinToDnaHandoffStrategy::ReverseTranslatedSynthetic));
+    assert!(!strategies.contains(&ProteinToDnaHandoffStrategy::FeatureCodingDna));
+
+    let top = graph.candidates[0]
+        .protein_to_dna_handoff
+        .as_ref()
+        .expect("handoff detail");
+    assert_eq!(top.transcript_id.as_deref(), Some("TX_TOY"));
+    assert_eq!(
+        top.coverage.covered_amino_acids,
+        top.coverage.requested_amino_acids
+    );
+
+    assert!(graph.decisions.iter().any(|decision| {
+        decision.decision_type == "protein_to_dna_handoff_family_decision"
+            && decision.title == "Feature-coding DNA handoff"
+            && decision.rationale.contains("could not be admitted")
+    }));
+
+    let listed = engine.list_construct_reasoning_graph_summaries(Some("handoff_seq"));
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].contains_protein_to_dna_handoff);
+    assert_eq!(listed[0].protein_to_dna_handoff_candidate_count, 2);
+    assert_eq!(
+        listed[0].protein_to_dna_source_protein_seq_ids,
+        vec![protein_seq_id.clone()]
+    );
+
+    let stored = engine
+        .construct_reasoning_graph(&graph.graph_id)
+        .expect("stored handoff graph");
+    assert_eq!(
+        stored.candidates[0]
+            .protein_to_dna_handoff
+            .as_ref()
+            .expect("stored handoff detail")
+            .strategy,
+        ProteinToDnaHandoffStrategy::TranscriptNativeReuse
+    );
+}
+
+#[test]
+fn build_protein_to_dna_handoff_reasoning_emits_feature_candidate_only_with_projection_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_handoff.txt");
+    let swiss_text = r#"ID   TOYQ_HUMAN              Reviewed;         48 AA.
+AC   PQUERY1;
+DE   RecName: Full=Toy queried protein;
+GN   Name=TOYQ;
+OS   Homo sapiens (Human).
+DR   Ensembl; TXQ1; ENSPTOYQ1; ENSGTOYQ1.
+FT   DOMAIN          2..8
+FT                   /note="single exon feature"
+FT   REGION          25..30
+FT                   /note="junction feature"
+SQ   SEQUENCE   48 AA;  5000 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLML
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(99, 360),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYQ".to_string())),
+            ("transcript_id".into(), Some("TXQ1".to_string())),
+            ("label".into(), Some("TXQ1".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("100-180,300-360".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_query".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import uniprot swiss");
+    let protein_seq_id = engine
+        .apply(Operation::ImportUniprotEntrySequence {
+            entry_id: "PQUERY1".to_string(),
+            output_id: Some("toy_query_protein".to_string()),
+        })
+        .expect("import uniprot protein sequence")
+        .created_seq_ids[0]
+        .clone();
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_query".to_string(),
+            entry_id: "PQUERY1".to_string(),
+            projection_id: Some("PQUERY1@toy_query".to_string()),
+            transcript_id: None,
+        })
+        .expect("project uniprot");
+
+    let without_feature = engine
+        .apply(Operation::BuildProteinToDnaHandoffReasoning {
+            seq_id: "toy_query".to_string(),
+            protein_seq_id: protein_seq_id.clone(),
+            transcript_filter: None,
+            projection_id: None,
+            ensembl_entry_id: None,
+            feature_query: None,
+            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            speed_profile: None,
+            speed_mark: None,
+            translation_table: None,
+            target_anneal_tm_c: None,
+            anneal_window_bp: None,
+            objective_id: None,
+            graph_id: Some("handoff_without_projection".to_string()),
+        })
+        .expect("build handoff without feature context");
+    assert!(
+        !without_feature
+            .construct_reasoning_graph
+            .as_ref()
+            .expect("graph")
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.protein_to_dna_handoff.as_ref())
+            .any(|detail| detail.strategy == ProteinToDnaHandoffStrategy::FeatureCodingDna)
+    );
+
+    let with_feature = engine
+        .apply(Operation::BuildProteinToDnaHandoffReasoning {
+            seq_id: "toy_query".to_string(),
+            protein_seq_id: protein_seq_id.clone(),
+            transcript_filter: Some("TXQ1".to_string()),
+            projection_id: Some("PQUERY1@toy_query".to_string()),
+            ensembl_entry_id: None,
+            feature_query: Some("junction".to_string()),
+            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            speed_profile: Some(TranslationSpeedProfile::Human),
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            translation_table: None,
+            target_anneal_tm_c: None,
+            anneal_window_bp: None,
+            objective_id: None,
+            graph_id: Some("handoff_with_projection".to_string()),
+        })
+        .expect("build handoff with feature context");
+    let graph = with_feature
+        .construct_reasoning_graph
+        .as_ref()
+        .expect("graph");
+    assert!(
+        graph
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.protein_to_dna_handoff.as_ref())
+            .any(|detail| detail.strategy == ProteinToDnaHandoffStrategy::FeatureCodingDna)
+    );
+    assert!(
+        graph
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.protein_to_dna_handoff.as_ref())
+            .any(
+                |detail| detail.strategy == ProteinToDnaHandoffStrategy::ReverseTranslatedSynthetic
+            )
+    );
+}
+
+#[test]
+fn build_protein_to_dna_handoff_reasoning_falls_back_to_reverse_translation_when_only_protein_is_available()
+ {
+    let mut protein = DNAsequence::from_sequence("MEEPQSDPSVEP").expect("protein");
+    protein.set_name("Standalone protein");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "handoff_target".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("dna"),
+    );
+    state.sequences.insert("prot_only".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .apply(Operation::BuildProteinToDnaHandoffReasoning {
+            seq_id: "handoff_target".to_string(),
+            protein_seq_id: "prot_only".to_string(),
+            transcript_filter: None,
+            projection_id: None,
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+            feature_query: None,
+            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+            speed_profile: Some(TranslationSpeedProfile::Ecoli),
+            speed_mark: Some(TranslationSpeedMark::Slow),
+            translation_table: Some(11),
+            target_anneal_tm_c: Some(58.0),
+            anneal_window_bp: Some(9),
+            objective_id: None,
+            graph_id: Some("protein_only_handoff".to_string()),
+        })
+        .expect("build fallback handoff")
+        .construct_reasoning_graph
+        .expect("construct reasoning graph");
+
+    let handoff_candidates = graph
+        .candidates
+        .iter()
+        .filter_map(|candidate| candidate.protein_to_dna_handoff.as_ref())
+        .collect::<Vec<_>>();
+    assert_eq!(handoff_candidates.len(), 1);
+    let detail = handoff_candidates[0];
+    assert_eq!(
+        detail.strategy,
+        ProteinToDnaHandoffStrategy::ReverseTranslatedSynthetic
+    );
+    assert_eq!(detail.source_protein_seq_id, "prot_only");
+    assert_eq!(detail.coverage.covered_amino_acids, 12);
+    assert_eq!(detail.coverage.requested_amino_acids, 12);
+    assert_eq!(detail.translation_table, Some(11));
+    assert_eq!(detail.speed_profile, Some(TranslationSpeedProfile::Ecoli));
+    assert_eq!(detail.speed_mark, Some(TranslationSpeedMark::Slow));
+    assert!(
+        detail
+            .codon_policy_summary
+            .contains("Synthetic reverse translation")
+    );
+    assert!(graph.decisions.iter().any(|decision| {
+        decision.decision_type == "protein_to_dna_handoff_family_decision"
+            && decision.title == "Transcript-native CDS reuse"
+    }));
+}
+
+#[test]
 fn test_render_feature_expert_svg_operation() {
     let mut state = ProjectState::default();
     state

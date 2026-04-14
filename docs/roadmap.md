@@ -4278,6 +4278,21 @@ Post-baseline follow-ups:
         stable `graph_id` plus `op_id` / `run_id`, appear in GUI lineage as
         analysis artifacts, and reopen the sequence window on the selected
         reasoning graph with objective/goal/evidence detail
+      - shipped follow-on: protein-to-DNA reasoning handoff v1 now lives
+        inside the same persisted construct-reasoning graph family
+        - new shared operation:
+          `BuildProteinToDnaHandoffReasoning`
+        - `Protein Evidence...` can now build ranked transcript-native /
+          feature-coding / reverse-translated DNA handoff candidates without
+          materializing DNA automatically
+        - lineage summaries flag graphs that contain protein-to-DNA handoff
+          candidates, and reopening those artifacts now returns to
+          `Protein Evidence...` on the stored handoff graph instead of opening
+          the source sequence generically
+        - shared shell parity now exists through:
+          `construct-reasoning build-protein-dna-handoff|list-graphs|show-graph|export-graph`
+      - next: extend the same pattern to self-translation planning outputs and
+        deeper protein-side reasoning traces
     - then RNA-read interpretation reports
       - shipped baseline: persisted RNA-read reports now carry `op_id` /
         `run_id`, appear in GUI lineage as analysis artifacts, and reopen the
