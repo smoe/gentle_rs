@@ -3555,6 +3555,26 @@ fn parse_translation_speed_mark_for_shell(
     }
 }
 
+fn parse_protein_to_dna_handoff_ranking_goal(
+    raw: &str,
+    context: &str,
+) -> Result<ProteinToDnaHandoffRankingGoal, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "balanced" | "balanced_provenance" | "balanced-provenance" => {
+            Ok(ProteinToDnaHandoffRankingGoal::BalancedProvenance)
+        }
+        "native" | "native_fidelity" | "native-fidelity" => {
+            Ok(ProteinToDnaHandoffRankingGoal::NativeFidelity)
+        }
+        "expression" | "expression_optimized" | "expression-optimized" | "optimized" => {
+            Ok(ProteinToDnaHandoffRankingGoal::ExpressionOptimized)
+        }
+        other => Err(format!(
+            "Unsupported ranking goal '{other}' for {context}; expected balanced_provenance, native_fidelity, or expression_optimized"
+        )),
+    }
+}
+
 pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -3738,6 +3758,263 @@ pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<Shell
         }
         other => Err(format!(
             "Unknown reverse-translate subcommand '{other}' (expected run, list-reports, show-report, export-report)"
+        )),
+    }
+}
+
+pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, export-graph"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "build-protein-dna-handoff" | "build-protein-handoff" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "construct-reasoning build-protein-dna-handoff requires SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal GOAL] [--speed-profile PROFILE] [--speed-mark MARK] [--translation-table N] [--target-anneal-tm-c N] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            let protein_seq_id = tokens[3].trim().to_string();
+            if seq_id.is_empty() || protein_seq_id.is_empty() {
+                return Err(
+                    "construct-reasoning build-protein-dna-handoff requires non-empty SEQ_ID and PROTEIN_SEQ_ID"
+                        .to_string(),
+                );
+            }
+            let mut transcript_filter: Option<String> = None;
+            let mut projection_id: Option<String> = None;
+            let mut ensembl_entry_id: Option<String> = None;
+            let mut feature_query: Option<String> = None;
+            let mut ranking_goal = ProteinToDnaHandoffRankingGoal::BalancedProvenance;
+            let mut speed_profile: Option<TranslationSpeedProfile> = None;
+            let mut speed_mark: Option<TranslationSpeedMark> = None;
+            let mut translation_table: Option<usize> = None;
+            let mut target_anneal_tm_c: Option<f64> = None;
+            let mut anneal_window_bp: Option<usize> = None;
+            let mut objective_id: Option<String> = None;
+            let mut graph_id: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" | "--transcript-filter" => {
+                        let flag = tokens[idx].clone();
+                        transcript_filter = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--projection-id" | "--projection" => {
+                        let flag = tokens[idx].clone();
+                        projection_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--ensembl-entry" | "--ensembl-entry-id" => {
+                        let flag = tokens[idx].clone();
+                        ensembl_entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--feature-query" | "--feature" => {
+                        let flag = tokens[idx].clone();
+                        feature_query = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--ranking-goal" | "--goal" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        ranking_goal = parse_protein_to_dna_handoff_ranking_goal(
+                            &raw,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                    }
+                    "--speed-profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--speed-profile",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        speed_profile = Some(parse_translation_speed_profile_for_shell(
+                            &raw,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--speed-mark" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--speed-mark",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        speed_mark = Some(parse_translation_speed_mark_for_shell(
+                            &raw,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--translation-table" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--translation-table",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --translation-table value '{raw}' for construct-reasoning build-protein-dna-handoff: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(
+                                "--translation-table for construct-reasoning build-protein-dna-handoff must be >= 1"
+                                    .to_string(),
+                            );
+                        }
+                        translation_table = Some(parsed);
+                    }
+                    "--target-anneal-tm-c" | "--target-anneal-tm" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        target_anneal_tm_c = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid {flag} value '{raw}' for construct-reasoning build-protein-dna-handoff: {e}"
+                            )
+                        })?);
+                    }
+                    "--anneal-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anneal-window-bp",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --anneal-window-bp value '{raw}' for construct-reasoning build-protein-dna-handoff: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(
+                                "--anneal-window-bp for construct-reasoning build-protein-dna-handoff must be >= 1"
+                                    .to_string(),
+                            );
+                        }
+                        anneal_window_bp = Some(parsed);
+                    }
+                    "--objective-id" => {
+                        objective_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--objective-id",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    "--graph-id" => {
+                        graph_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--graph-id",
+                            "construct-reasoning build-protein-dna-handoff",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for construct-reasoning build-protein-dna-handoff"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
+                seq_id,
+                protein_seq_id,
+                transcript_filter,
+                projection_id,
+                ensembl_entry_id,
+                feature_query,
+                ranking_goal,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+                objective_id,
+                graph_id,
+            })
+        }
+        "list-graphs" => {
+            let mut seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "construct-reasoning list-graphs",
+                        )?);
+                    }
+                    other => {
+                        if seq_id.is_none() && !other.starts_with('-') {
+                            seq_id = Some(other.to_string());
+                            idx += 1;
+                        } else {
+                            return Err(format!(
+                                "Unknown option '{other}' for construct-reasoning list-graphs"
+                            ));
+                        }
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningListGraphs { seq_id })
+        }
+        "show-graph" => {
+            if tokens.len() != 3 {
+                return Err("construct-reasoning show-graph requires GRAPH_ID".to_string());
+            }
+            Ok(ShellCommand::ConstructReasoningShowGraph {
+                graph_id: tokens[2].trim().to_string(),
+            })
+        }
+        "export-graph" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "construct-reasoning export-graph requires GRAPH_ID OUTPUT.json".to_string(),
+                );
+            }
+            Ok(ShellCommand::ConstructReasoningExportGraph {
+                graph_id: tokens[2].trim().to_string(),
+                path: tokens[3].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown construct-reasoning subcommand '{other}' (expected build-protein-dna-handoff, list-graphs, show-graph, export-graph)"
         )),
     }
 }

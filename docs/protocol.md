@@ -2767,6 +2767,17 @@ Construct reasoning graph foundation (implemented first slice):
 - Current engine-backed scope:
   - project metadata key: `construct_reasoning`
   - objective upsert/store round-trip
+  - construct-candidate schema now also reserves additive
+    `protein_to_dna_handoff` detail for ranked DNA handoff suggestions,
+    including:
+    - strategy (`transcript_native_reuse`, `feature_coding_dna`,
+      `reverse_translated_synthetic`)
+    - source protein sequence id plus source artifact references
+    - optional transcript/projection/Ensembl/feature-query context
+    - amino-acid coverage summary
+    - preserved / relaxed constraints
+    - translation-table / speed-profile / speed-mark summary
+    - provenance-oriented score, warnings, and next-step recommendations
   - construct-objective schema now reserves additive host/helper context
     fields:
     - `propagation_host_profile_id`
@@ -2824,6 +2835,19 @@ Construct reasoning graph foundation (implemented first slice):
   - active-sequence graph refresh helper that reuses the existing graph/objective
     identity when rebuilding deterministic evidence after sequence changes
   - JSON export helper for one stored graph
+  - protein-to-DNA handoff reasoning helper (`BuildProteinToDnaHandoffReasoning`)
+    that persists inside the same construct-reasoning graph/store instead of
+    creating a separate report family:
+    - transcript-native CDS reuse when the selected protein is backed by a
+      stored project-native derivation report
+    - mapped feature-coding DNA when a stored UniProt projection plus feature
+      query can recover coding DNA for the selected protein context
+    - reverse-translated synthetic fallback when no stronger DNA provenance is
+      available or intentionally selected
+    - ranking metadata now surfaces in graph summaries through:
+      - `contains_protein_to_dna_handoff`
+      - `protein_to_dna_handoff_candidate_count`
+      - `protein_to_dna_source_protein_seq_ids[]`
   - host-profile catalog loading/list projection from the shared starter JSON
     catalog (`assets/host_profiles.json`) with filter matching across ids,
     aliases, genotype/phenotype tags, notes, and source notes

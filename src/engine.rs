@@ -418,6 +418,8 @@ mod import_anchors;
 mod lineage_containers;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[path = "engine/analysis/protein_handoff.rs"]
+mod protein_handoff;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
@@ -2902,6 +2904,34 @@ pub enum Operation {
         #[serde(default)]
         anneal_window_bp: Option<usize>,
     },
+    BuildProteinToDnaHandoffReasoning {
+        seq_id: SeqId,
+        protein_seq_id: SeqId,
+        #[serde(default)]
+        transcript_filter: Option<String>,
+        #[serde(default)]
+        projection_id: Option<String>,
+        #[serde(default)]
+        ensembl_entry_id: Option<String>,
+        #[serde(default)]
+        feature_query: Option<String>,
+        #[serde(default)]
+        ranking_goal: ProteinToDnaHandoffRankingGoal,
+        #[serde(default)]
+        speed_profile: Option<TranslationSpeedProfile>,
+        #[serde(default)]
+        speed_mark: Option<TranslationSpeedMark>,
+        #[serde(default)]
+        translation_table: Option<usize>,
+        #[serde(default)]
+        target_anneal_tm_c: Option<f64>,
+        #[serde(default)]
+        anneal_window_bp: Option<usize>,
+        #[serde(default)]
+        objective_id: Option<String>,
+        #[serde(default)]
+        graph_id: Option<String>,
+    },
     ComputeDotplot {
         seq_id: SeqId,
         #[serde(default)]
@@ -4326,6 +4356,7 @@ impl GentleEngine {
                 "DeriveTranscriptSequences".to_string(),
                 "DeriveProteinSequences".to_string(),
                 "ReverseTranslateProteinSequence".to_string(),
+                "BuildProteinToDnaHandoffReasoning".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeDotplotOverlay".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
@@ -11550,34 +11581,42 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
-        let mut rows = self
-            .read_construct_reasoning_store()
-            .graphs
-            .values()
-            .filter(|graph| {
-                filter
-                    .as_ref()
-                    .is_none_or(|needle| graph.seq_id.to_ascii_lowercase() == *needle)
-            })
-            .map(|graph| {
-                let summary = Self::summarize_process_run_bundle_construct_reasoning_graph(graph);
-                ConstructReasoningGraphSummary {
-                    graph_id: graph.graph_id.clone(),
-                    seq_id: graph.seq_id.clone(),
-                    generated_at_unix_ms: graph.generated_at_unix_ms,
-                    op_id: graph.op_id.clone(),
-                    run_id: graph.run_id.clone(),
-                    objective_id: graph.objective.objective_id.clone(),
-                    objective_title: graph.objective.title.clone(),
-                    objective_goal: graph.objective.goal.clone(),
-                    evidence_count: graph.evidence.len(),
-                    decision_count: graph.decisions.len(),
-                    candidate_count: graph.candidates.len(),
-                    summary_lines: summary.summary_lines,
-                    warning_lines: summary.warning_lines,
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut rows =
+            self.read_construct_reasoning_store()
+                .graphs
+                .values()
+                .filter(|graph| {
+                    filter
+                        .as_ref()
+                        .is_none_or(|needle| graph.seq_id.to_ascii_lowercase() == *needle)
+                })
+                .map(|graph| {
+                    let summary =
+                        Self::summarize_process_run_bundle_construct_reasoning_graph(graph);
+                    let (
+                        protein_to_dna_handoff_candidate_count,
+                        protein_to_dna_source_protein_seq_ids,
+                    ) = Self::construct_reasoning_graph_protein_to_dna_handoff_summary(graph);
+                    ConstructReasoningGraphSummary {
+                        graph_id: graph.graph_id.clone(),
+                        seq_id: graph.seq_id.clone(),
+                        generated_at_unix_ms: graph.generated_at_unix_ms,
+                        op_id: graph.op_id.clone(),
+                        run_id: graph.run_id.clone(),
+                        objective_id: graph.objective.objective_id.clone(),
+                        objective_title: graph.objective.title.clone(),
+                        objective_goal: graph.objective.goal.clone(),
+                        evidence_count: graph.evidence.len(),
+                        decision_count: graph.decisions.len(),
+                        candidate_count: graph.candidates.len(),
+                        contains_protein_to_dna_handoff: protein_to_dna_handoff_candidate_count > 0,
+                        protein_to_dna_handoff_candidate_count,
+                        protein_to_dna_source_protein_seq_ids,
+                        summary_lines: summary.summary_lines,
+                        warning_lines: summary.warning_lines,
+                    }
+                })
+                .collect::<Vec<_>>();
         rows.sort_by(|left, right| {
             left.seq_id
                 .to_ascii_lowercase()
@@ -14422,7 +14461,7 @@ impl GentleEngine {
         (facts, decisions)
     }
 
-    pub fn build_construct_reasoning_graph(
+    fn assemble_construct_reasoning_graph(
         &mut self,
         seq_id: &str,
         objective_id: Option<&str>,
@@ -14504,6 +14543,16 @@ impl GentleEngine {
             ],
             ..ConstructReasoningGraph::default()
         };
+        Ok(graph)
+    }
+
+    pub fn build_construct_reasoning_graph(
+        &mut self,
+        seq_id: &str,
+        objective_id: Option<&str>,
+        graph_id: Option<&str>,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let graph = self.assemble_construct_reasoning_graph(seq_id, objective_id, graph_id)?;
         self.upsert_construct_reasoning_graph(graph)
     }
 

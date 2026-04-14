@@ -43,13 +43,14 @@ use crate::{
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
-        ProteinFeatureFilter, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-        RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
-        RenderSvgMode, ReverseTranslationReport, ReverseTranslationReportSummary,
-        RnaReadAlignConfig, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal, RackAuthoringTemplate,
+        RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, ReverseTranslationReport,
+        ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -1515,6 +1516,32 @@ pub enum ShellCommand {
     },
     ReverseTranslateExportReport {
         report_id: String,
+        path: String,
+    },
+    ConstructReasoningBuildProteinDnaHandoff {
+        seq_id: String,
+        protein_seq_id: String,
+        transcript_filter: Option<String>,
+        projection_id: Option<String>,
+        ensembl_entry_id: Option<String>,
+        feature_query: Option<String>,
+        ranking_goal: ProteinToDnaHandoffRankingGoal,
+        speed_profile: Option<TranslationSpeedProfile>,
+        speed_mark: Option<TranslationSpeedMark>,
+        translation_table: Option<usize>,
+        target_anneal_tm_c: Option<f64>,
+        anneal_window_bp: Option<usize>,
+        objective_id: Option<String>,
+        graph_id: Option<String>,
+    },
+    ConstructReasoningListGraphs {
+        seq_id: Option<String>,
+    },
+    ConstructReasoningShowGraph {
+        graph_id: String,
+    },
+    ConstructReasoningExportGraph {
+        graph_id: String,
         path: String,
     },
     RnaReadsInterpret {
@@ -7011,6 +7038,60 @@ impl ShellCommand {
                 "export reverse-translation report '{}' to '{}'",
                 report_id, path
             ),
+            Self::ConstructReasoningBuildProteinDnaHandoff {
+                seq_id,
+                protein_seq_id,
+                transcript_filter,
+                projection_id,
+                ensembl_entry_id,
+                feature_query,
+                ranking_goal,
+                speed_profile,
+                speed_mark,
+                translation_table,
+                target_anneal_tm_c,
+                anneal_window_bp,
+                objective_id,
+                graph_id,
+            } => format!(
+                "build protein-to-DNA handoff reasoning on '{}' from protein '{}' (transcript_filter='{}', projection_id='{}', ensembl_entry_id='{}', feature_query='{}', ranking_goal='{}', speed_profile='{}', speed_mark='{}', translation_table={}, target_anneal_tm_c={}, anneal_window_bp={}, objective_id='{}', graph_id='{}')",
+                seq_id,
+                protein_seq_id,
+                transcript_filter.as_deref().unwrap_or("-"),
+                projection_id.as_deref().unwrap_or("-"),
+                ensembl_entry_id.as_deref().unwrap_or("-"),
+                feature_query.as_deref().unwrap_or("-"),
+                ranking_goal.as_str(),
+                speed_profile
+                    .map(TranslationSpeedProfile::as_str)
+                    .unwrap_or("default"),
+                speed_mark.map(TranslationSpeedMark::as_str).unwrap_or("-"),
+                translation_table
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                target_anneal_tm_c
+                    .map(|value| format!("{value:.1}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                anneal_window_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                objective_id.as_deref().unwrap_or("-"),
+                graph_id.as_deref().unwrap_or("auto"),
+            ),
+            Self::ConstructReasoningListGraphs { seq_id } => format!(
+                "list construct-reasoning graphs{}",
+                seq_id
+                    .as_deref()
+                    .map(|value| format!(" for '{}'", value))
+                    .unwrap_or_default()
+            ),
+            Self::ConstructReasoningShowGraph { graph_id } => {
+                format!("show construct-reasoning graph '{}'", graph_id)
+            }
+            Self::ConstructReasoningExportGraph { graph_id, path } => format!(
+                "export construct-reasoning graph '{}' to '{}'",
+                graph_id, path
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -7428,6 +7509,7 @@ impl ShellCommand {
                 | Self::SeqTraceImport { .. }
                 | Self::SeqConfirmRun { .. }
                 | Self::ReverseTranslateRun { .. }
+                | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
@@ -12623,6 +12705,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "seq-primer" | "seq_primer" | "seqprimer" => parse_seq_primer_command(tokens),
         "reverse-translate" | "reverse_translate" | "reversetranslate" => {
             parse_reverse_translate_command(tokens)
+        }
+        "construct-reasoning" | "construct_reasoning" | "constructreasoning" => {
+            parse_construct_reasoning_command(tokens)
         }
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
@@ -18447,6 +18532,85 @@ fn execute_protein_sequence_command(
                 }),
             })
         }
+        ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
+            seq_id,
+            protein_seq_id,
+            transcript_filter,
+            projection_id,
+            ensembl_entry_id,
+            feature_query,
+            ranking_goal,
+            speed_profile,
+            speed_mark,
+            translation_table,
+            target_anneal_tm_c,
+            anneal_window_bp,
+            objective_id,
+            graph_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::BuildProteinToDnaHandoffReasoning {
+                    seq_id: seq_id.clone(),
+                    protein_seq_id: protein_seq_id.clone(),
+                    transcript_filter: transcript_filter.clone(),
+                    projection_id: projection_id.clone(),
+                    ensembl_entry_id: ensembl_entry_id.clone(),
+                    feature_query: feature_query.clone(),
+                    ranking_goal: *ranking_goal,
+                    speed_profile: *speed_profile,
+                    speed_mark: *speed_mark,
+                    translation_table: *translation_table,
+                    target_anneal_tm_c: *target_anneal_tm_c,
+                    anneal_window_bp: *anneal_window_bp,
+                    objective_id: objective_id.clone(),
+                    graph_id: graph_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let graph = op_result.construct_reasoning_graph.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "graph": graph,
+                }),
+            })
+        }
+        ShellCommand::ConstructReasoningListGraphs { seq_id } => {
+            let rows = engine.list_construct_reasoning_graph_summaries(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.construct_reasoning_graph_summary_list.v1",
+                    "graph_count": rows.len(),
+                    "graphs": rows,
+                }),
+            })
+        }
+        ShellCommand::ConstructReasoningShowGraph { graph_id } => {
+            let graph = engine
+                .construct_reasoning_graph(graph_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "graph": graph,
+                }),
+            })
+        }
+        ShellCommand::ConstructReasoningExportGraph { graph_id, path } => {
+            let graph = engine
+                .export_construct_reasoning_graph_json(graph_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.construct_reasoning_graph_export.v1",
+                    "graph_id": graph.graph_id,
+                    "path": path,
+                    "seq_id": graph.seq_id,
+                }),
+            })
+        }
         _ => unreachable!("non-protein-sequence command passed to protein helper"),
     }
 }
@@ -19440,6 +19604,10 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ReverseTranslateListReports { .. }
             | ShellCommand::ReverseTranslateShowReport { .. }
             | ShellCommand::ReverseTranslateExportReport { .. }
+            | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
+            | ShellCommand::ConstructReasoningListGraphs { .. }
+            | ShellCommand::ConstructReasoningShowGraph { .. }
+            | ShellCommand::ConstructReasoningExportGraph { .. }
     ) {
         return execute_protein_sequence_command(engine, command);
     }
@@ -21696,7 +21864,11 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::ReverseTranslateRun { .. }
         | ShellCommand::ReverseTranslateListReports { .. }
         | ShellCommand::ReverseTranslateShowReport { .. }
-        | ShellCommand::ReverseTranslateExportReport { .. } => {
+        | ShellCommand::ReverseTranslateExportReport { .. }
+        | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
+        | ShellCommand::ConstructReasoningListGraphs { .. }
+        | ShellCommand::ConstructReasoningShowGraph { .. }
+        | ShellCommand::ConstructReasoningExportGraph { .. } => {
             execute_protein_sequence_command(engine, command)?
         }
         ShellCommand::RnaReadsInterpret { .. }

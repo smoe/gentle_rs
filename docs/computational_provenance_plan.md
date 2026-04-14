@@ -158,10 +158,21 @@ Shipped baseline:
   `op_id` / `run_id`
 - GUI lineage projects them as analysis artifacts linked from the source
   sequence
-- lineage can reopen the sequence window on the selected construct-reasoning
-  graph
+- lineage can reopen the selected construct-reasoning graph
+  - ordinary reasoning graphs reopen the source sequence with that graph focus
+  - protein-to-DNA handoff reasoning graphs now reopen `Protein Evidence...`
+    on the stored ranked handoff candidate set
 - lineage details expose the objective id/goal plus evidence/decision/candidate
   counts
+- protein-to-DNA handoff v1 now lives inside the same persisted
+  construct-reasoning graph family instead of inventing a parallel report
+  type, so ranked DNA handoff candidates stay lineage-visible, exportable, and
+  reopenable with:
+  - strategy and source-artifact provenance
+  - amino-acid coverage summary
+  - preserved / relaxed constraints
+  - translation-table / speed-profile / speed-mark context
+  - provenance-oriented ranking summary and next-step recommendations
 
 Expected next step:
 
@@ -169,6 +180,8 @@ Expected next step:
   sample-linked computational artifacts rather than only side-channel metadata
 - users should be able to tell not only what ran, but why a route or
   interpretation was preferred
+- extend the same artifact pattern to self-translation planning outputs and
+  broader protein-side reasoning once those engine objects exist
 
 ### 5. RNA-read interpretation reports
 

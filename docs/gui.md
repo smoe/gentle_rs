@@ -3648,6 +3648,27 @@ Protein-evidence behavior:
       reference species
     - selected speed mark and optional annealing heuristic summary
     - inline coding DNA text for the created synthetic CDS
+- The same specialist now also includes a `DNA handoff reasoning` section:
+  - builds an engine-owned construct-reasoning graph for the selected target
+    DNA sequence plus active protein source
+  - reuses the existing reverse-translation controls instead of introducing a
+    second codon-policy surface
+  - lets the user choose a ranking goal:
+    - `Balanced provenance`
+    - `Native fidelity`
+    - `Expression optimized`
+  - ranks candidate-only handoff strategies rather than creating DNA
+    sequences automatically:
+    - transcript-native CDS reuse
+    - mapped feature-coding DNA from a stored UniProt projection
+    - reverse-translated synthetic fallback
+  - the candidate table/detail view shows:
+    - strategy
+    - amino-acid coverage
+    - provenance score
+    - preserved and relaxed constraints
+    - translation-table / speed-profile / speed-mark summary
+    - warnings and next-step recommendations
 - Stored UniProt projections still act as metadata/projection inputs rather
   than opening their own dedicated protein-only window, but first-class
   protein sequences imported from Ensembl or derived from transcripts can now
@@ -3662,6 +3683,9 @@ Protein-evidence behavior:
     projection instead of only opening the source sequence
   - lineage details expose the stored `entry_id`, transcript filter, and
     projected transcript count
+- Persisted construct-reasoning graphs that contain protein-to-DNA handoff
+  candidates now also reopen `Protein Evidence...` directly on that stored
+  handoff graph instead of only opening the source sequence generically.
 
 NCBI retrieval behavior:
 

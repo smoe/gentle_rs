@@ -4278,6 +4278,37 @@ Post-baseline follow-ups:
         stable `graph_id` plus `op_id` / `run_id`, appear in GUI lineage as
         analysis artifacts, and reopen the sequence window on the selected
         reasoning graph with objective/goal/evidence detail
+      - shipped follow-on: protein-to-DNA reasoning handoff v1 now lives
+        inside the same persisted construct-reasoning graph family
+        - new shared operation:
+          `BuildProteinToDnaHandoffReasoning`
+        - `Protein Evidence...` can now build ranked transcript-native /
+          feature-coding / reverse-translated DNA handoff candidates without
+          materializing DNA automatically
+        - lineage summaries flag graphs that contain protein-to-DNA handoff
+          candidates, and reopening those artifacts now returns to
+          `Protein Evidence...` on the stored handoff graph instead of opening
+          the source sequence generically
+        - shared shell parity now exists through:
+          `construct-reasoning build-protein-dna-handoff|list-graphs|show-graph|export-graph`
+      - remaining completion track for broader protein-to-DNA handoff:
+        - add self-translation planning outputs as sibling protein-side
+          evidence/candidate sources so the handoff is not limited to
+          transcript-native, projected-feature, and reverse-translated routes
+        - add an explicit "materialize/apply candidate" step that turns one
+          ranked handoff candidate into a DNA sequence plus lineage/provenance
+          records, instead of stopping at candidate-only advice
+        - feed selected handoff candidates into downstream planning/routine
+          consumers (PCR, routine-assistant, cloning/planning estimates)
+          without re-deriving the same protein-to-DNA logic in each adapter
+        - deepen the stored reasoning trace so candidate-family rejection,
+          preserved-versus-relaxed constraints, and ranking tradeoffs are
+          easier to inspect/export without opening the full GUI specialist
+        - widen fixture-driven acceptance coverage around mixed native +
+          projected contexts and future self-translation-backed scenarios so
+          the ranking remains deterministic as the handoff families grow
+      - next: extend the same pattern to self-translation planning outputs and
+        deeper protein-side reasoning traces
     - then RNA-read interpretation reports
       - shipped baseline: persisted RNA-read reports now carry `op_id` /
         `run_id`, appear in GUI lineage as analysis artifacts, and reopen the
