@@ -830,7 +830,7 @@ Current draft operations:
     direction arrowhead
   - circular exports also use a slightly larger ring and larger label fonts so
     figure-oriented construct maps stay readable when embedded in docs
-- `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
+- `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
   - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
@@ -2416,14 +2416,18 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `path` (output SVG)
   - optional `flex_track_id` (adds flexibility panel in same SVG)
   - optional `display_density_threshold` and `display_intensity_gain` (display tuning)
+  - optional `overlay_x_axis_mode` for overlay payloads:
+    `percent_length | left_aligned_bp | right_aligned_bp`
 - Ownership checks:
   - dotplot payload must belong to `seq_id`
   - optional flexibility track must also belong to `seq_id`
 - Output:
   - deterministic SVG dotplot artifact; operation is non-mutating
   - overlay payloads render all stored `query_series` with legend + merged
-    reference-exon side track; flexibility panel is suppressed there because
-    the x-axis is normalized per series.
+    reference-exon side track; `overlay_x_axis_mode` chooses whether transcript
+    queries are shown as normalized percent length or as left/right aligned
+    base-pair coordinates. Flexibility panel is suppressed there because the
+    overlay does not expose one shared query-axis coordinate system.
 
 `DeriveTranscriptSequences` semantics:
 
@@ -3502,10 +3506,15 @@ Dotplot + flexibility operation contract (implemented baseline):
   - both dotplots and flexibility tracks are persisted under this key
 - Shared-shell command family:
   - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+  - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+    - convenience wrapper over `ComputeDotplotOverlay`
+    - if `--reference-seq` is omitted, adapters default the shared reference to
+      `OWNER_SEQ_ID`
+    - each `--query-spec` must deserialize into one `DotplotOverlayQuerySpec`
   - `dotplot list [SEQ_ID]`
   - `dotplot show DOTPLOT_ID`
-  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
-  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]` (alias)
+  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`
+  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]` (alias)
   - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
   - `flex list [SEQ_ID]`
   - `flex show TRACK_ID`

@@ -954,6 +954,7 @@ impl LuaInterface {
                             flex_track_id,
                             display_density_threshold,
                             display_intensity_gain,
+                            overlay_x_axis_mode: Default::default(),
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]

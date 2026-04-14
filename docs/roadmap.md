@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -3688,7 +3688,7 @@ Status (2026-03-19):
     - `gentle.dotplot_view.v3`
     - `gentle.flexibility_track.v1`
   - shared-shell/CLI commands:
-    - `dotplot compute|list|show|render-svg`
+    - `dotplot compute|overlay-compute|list|show|render-svg`
     - `render-dotplot-svg`
     - `flex compute|list|show`
   - deterministic tests:
@@ -3733,14 +3733,35 @@ Status (2026-03-19):
     - cheap requests auto-compute after debounce; large requests stay explicit
     - GUI + SVG export now render multi-series overlays with legend and merged
       exon side track
+  - shell/CLI overlay parity (2026-04-14):
+    - shared-shell/direct CLI now exposes `dotplot overlay-compute`
+    - repeated `--query-spec JSON_OR_@FILE` values feed the same
+      `DotplotOverlayQuerySpec` records used by the engine contract
+    - when `--reference-seq` is omitted, the owner sequence id is reused as the
+      shared overlay reference for CLI convenience
+  - overlay x-axis variants (2026-04-14):
+    - overlay rendering/export now supports three shared x-axis layouts:
+      `percent_length`, `left_aligned_bp`, and `right_aligned_bp`
+    - the standalone Dotplot workspace exposes the same selector without
+      recomputing the underlying dotplot payload
+    - `RenderDotplotSvg`, `dotplot render-svg`, and `render-dotplot-svg` now
+      share one `overlay_x_axis_mode` contract so GUI and exported SVGs stay in
+      sync
+    - overlay hover readouts now report per-isoform query coordinates according
+      to the selected layout, while locked crosshair/query sync remain disabled
+      because overlays still do not collapse to one unambiguous query axis
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
       between merged exon blocks for cleaner cDNA-vs-exon-only dotplot workflows
 - Remaining:
-  - additional adapter convenience wrappers as new dotplot operations are added
+  - additional convenience wrappers beyond the shared shell/CLI overlay route
+    as new dotplot operations are added
   - additional overlay controls beyond the current shared-reference multi-series
     baseline
+  - anchor-based overlay alignment modes (for example align every isoform to a
+    shared exon anchor on the longest transcript) remain a plausible follow-up
+    after the current percent/left/right layout baseline
 
 Latest GUI baseline (2026-03-09):
 
@@ -3817,6 +3838,7 @@ Phase 3 (CLI/JS/Lua parity + export):
 
 - Add shared-shell commands:
   - `dotplot compute ...`
+  - `dotplot overlay-compute ...`
   - `dotplot show ...`
   - `dotplot render-svg ...`
   - `render-dotplot-svg ...`
@@ -3826,10 +3848,11 @@ Phase 3 (CLI/JS/Lua parity + export):
 - Add engine export operation:
   - `RenderDotplotSvg` (optional flexibility-track panels on same coordinate axis).
 - Status: partial.
-  - implemented: `dotplot compute|list|show`, `flex compute|list|show`, GUI
-    `Export Dotplot SVG...`, engine op `RenderDotplotSvg`, shared-shell/CLI
-    `render-dotplot-svg`, `dotplot render-svg`, JS/Lua/Python
-    `render_dotplot_svg(...)` convenience wrappers
+  - implemented: `dotplot compute|overlay-compute|list|show`,
+    `flex compute|list|show`, GUI `Export Dotplot SVG...`, engine op
+    `RenderDotplotSvg`, shared-shell/CLI `render-dotplot-svg`,
+    `dotplot render-svg`, JS/Lua/Python `render_dotplot_svg(...)`
+    convenience wrappers
 
 Phase 4 (latency hardening):
 

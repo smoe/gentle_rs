@@ -284,8 +284,13 @@ Primary map modes (linear topology):
         reference is the current splicing/RNA-mapping locus DNA:
         - multiple transcript lanes can be selected and overlaid against the
           same genomic/reference span in one canvas
-        - each isoform gets a deterministic color and its own normalized x-axis
-          span, while the y-axis stays in shared genomic coordinates
+        - `overlay x-axis` chooses how transcript queries share the x-axis:
+          `% transcript` normalizes each isoform to 0..100%, `bp left-aligned`
+          aligns transcript starts to emphasize different 3' splice endings,
+          and `bp right-aligned` aligns transcript ends to emphasize different
+          5' splice starts
+        - each isoform gets a deterministic color while the y-axis stays in
+          shared genomic coordinates
         - merged exon annotation for the reference span is drawn beside the
           genomic axis when exon features are present on the reference sequence
     - default parameters:
@@ -318,9 +323,10 @@ Primary map modes (linear topology):
         - pair modes: sync selection from x/query axis (y/reference stays informational)
       - right-click to clear the locked crosshair
       - overlay mode keeps hover-only crosshairs and reports one shared
-        reference coordinate plus one per-isoform query coordinate; query sync
-        and locked crosshair stay disabled there because the x-axis is
-        normalized independently for each isoform
+        reference coordinate plus one per-isoform query coordinate using the
+        selected overlay x-axis layout; query sync and locked crosshair stay
+        disabled there because the overlay does not have one unambiguous shared
+        query coordinate system
     - status panel:
       - deterministic request diagnostics (mode, spans, seed parameters, estimated
         window counts / pair evaluations)

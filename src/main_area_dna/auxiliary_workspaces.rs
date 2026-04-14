@@ -23,6 +23,7 @@ pub(super) struct DotplotOpsUiState {
     pub(super) mode: DotplotMode,
     pub(super) overlay_enabled: bool,
     pub(super) overlay_transcript_feature_ids: Vec<usize>,
+    pub(super) overlay_x_axis_mode: DotplotOverlayXAxisMode,
     pub(super) dotplot_id: String,
     pub(super) display_density_threshold: f32,
     pub(super) display_intensity_gain: f32,
@@ -47,6 +48,7 @@ impl Default for DotplotOpsUiState {
             mode: DotplotMode::SelfReverseComplement,
             overlay_enabled: false,
             overlay_transcript_feature_ids: vec![],
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
             dotplot_id: "dotplot_primary".to_string(),
             display_density_threshold: 0.0,
             display_intensity_gain: 1.0,
@@ -301,6 +303,19 @@ impl MainAreaDna {
         } else {
             view.point_count
         }
+    }
+
+    pub(super) fn dotplot_overlay_max_query_span(view: &DotplotView) -> usize {
+        view.query_series
+            .iter()
+            .map(|series| {
+                series
+                    .span_end_0based
+                    .saturating_sub(series.span_start_0based)
+                    .max(1)
+            })
+            .max()
+            .unwrap_or(1)
     }
 
     pub(super) fn clear_dotplot_query_override(&mut self) {
@@ -737,6 +752,7 @@ impl MainAreaDna {
 
     pub(super) fn recommend_dotplot_display_from_view(
         view: &DotplotView,
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     ) -> Option<(f32, f32, String)> {
         let overlay_mode = Self::dotplot_view_is_overlay(view);
         let total_points = Self::dotplot_view_total_point_count(view);
@@ -744,7 +760,9 @@ impl MainAreaDna {
             return None;
         }
         let query_span = if overlay_mode {
-            view.query_series
+            let max_query_span = Self::dotplot_overlay_max_query_span(view);
+            let average_query_span = view
+                .query_series
                 .iter()
                 .map(|series| {
                     series
@@ -755,7 +773,8 @@ impl MainAreaDna {
                 .sum::<usize>()
                 .checked_div(view.query_series.len().max(1))
                 .unwrap_or(1)
-                .max(1)
+                .max(1);
+            overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
         } else {
             view.span_end_0based
                 .saturating_sub(view.span_start_0based)
@@ -774,22 +793,19 @@ impl MainAreaDna {
         let reference_span_max = reference_span.saturating_sub(1).max(1);
         let mut cells: HashMap<(usize, usize), usize> = HashMap::new();
         if overlay_mode {
+            let max_query_span = Self::dotplot_overlay_max_query_span(view);
             for series in &view.query_series {
-                let series_span = series
-                    .span_end_0based
-                    .saturating_sub(series.span_start_0based)
-                    .max(1);
-                let series_span_max = series_span.saturating_sub(1).max(1);
                 for point in &series.points {
-                    let x_local = point
-                        .x_0based
-                        .saturating_sub(series.span_start_0based)
-                        .min(series_span_max);
                     let y_local = point
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = (x_local as f32 / series_span_max as f32).clamp(0.0, 1.0);
+                    let x_frac = overlay_x_axis_mode.point_fraction(
+                        point.x_0based,
+                        series.span_start_0based,
+                        series.span_end_0based,
+                        max_query_span,
+                    );
                     let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
                     let x_cell = ((x_frac * (cols.saturating_sub(1)) as f32).round() as usize)
                         .min(cols.saturating_sub(1));
@@ -862,7 +878,7 @@ impl MainAreaDna {
         }
 
         let summary = format!(
-            "Auto contrast: threshold={:.3}, gain={:.3}, occupancy={:.2}%, q90={:.3}, points={}{}{}, cells={}/{}",
+            "Auto contrast: threshold={:.3}, gain={:.3}, occupancy={:.2}%, q90={:.3}, points={}{}{}, cells={}/{}{}",
             threshold,
             gain,
             occupancy * 100.0,
@@ -875,7 +891,12 @@ impl MainAreaDna {
                 String::new()
             },
             cells.len(),
-            total_cells
+            total_cells,
+            if overlay_mode {
+                format!(", overlay_x={}", overlay_x_axis_mode.as_str())
+            } else {
+                String::new()
+            }
         );
         Some((threshold, gain, summary))
     }
@@ -887,7 +908,8 @@ impl MainAreaDna {
                 "Auto contrast skipped: no dotplot payload loaded".to_string();
             return;
         };
-        let Some((threshold, gain, summary)) = Self::recommend_dotplot_display_from_view(view)
+        let Some((threshold, gain, summary)) =
+            Self::recommend_dotplot_display_from_view(view, self.dotplot_ui.overlay_x_axis_mode)
         else {
             self.dotplot_last_compute_status = format!(
                 "Auto contrast skipped: payload '{}' has no usable point density",
@@ -2348,11 +2370,15 @@ impl MainAreaDna {
             );
         }
         if overlay_mode {
+            let overlay_x_axis_mode = self.dotplot_ui.overlay_x_axis_mode;
             let reference_span = view
                 .reference_span_end_0based
                 .saturating_sub(view.reference_span_start_0based)
                 .max(1);
             let reference_span_max = reference_span.saturating_sub(1).max(1);
+            let max_query_span = Self::dotplot_overlay_max_query_span(view);
+            let (x_axis_start_label, x_axis_end_label) =
+                overlay_x_axis_mode.axis_edge_labels(max_query_span);
             let reference_seq_label = view
                 .reference_seq_id
                 .as_deref()
@@ -2367,23 +2393,19 @@ impl MainAreaDna {
             let mut total_rendered_cells = 0usize;
 
             for series in &view.query_series {
-                let query_span = series
-                    .span_end_0based
-                    .saturating_sub(series.span_start_0based)
-                    .max(1);
-                let query_span_max = query_span.saturating_sub(1).max(1);
                 let sample_stride = (series.points.len() / series_sample_cap).max(1);
                 let mut cells: HashMap<(i32, i32), usize> = HashMap::new();
                 for point in series.points.iter().step_by(sample_stride) {
-                    let x_local = point
-                        .x_0based
-                        .saturating_sub(series.span_start_0based)
-                        .min(query_span_max);
                     let y_local = point
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = (x_local as f32 / query_span_max as f32).clamp(0.0, 1.0);
+                    let x_frac = overlay_x_axis_mode.point_fraction(
+                        point.x_0based,
+                        series.span_start_0based,
+                        series.span_end_0based,
+                        max_query_span,
+                    );
                     let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
                     let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
                     let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
@@ -2558,7 +2580,7 @@ impl MainAreaDna {
             painter.text(
                 egui::pos2(dotplot_rect.left(), canvas_rect.top() + 20.0),
                 egui::Align2::LEFT_TOP,
-                "x: normalized isoform queries",
+                overlay_x_axis_mode.axis_label(),
                 egui::FontId::monospace(10.0),
                 egui::Color32::from_rgb(51, 65, 85),
             );
@@ -2572,14 +2594,14 @@ impl MainAreaDna {
             painter.text(
                 egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + 2.0),
                 egui::Align2::LEFT_TOP,
-                "0%",
+                x_axis_start_label.as_str(),
                 egui::FontId::monospace(10.0),
                 egui::Color32::from_rgb(71, 85, 105),
             );
             painter.text(
                 egui::pos2(dotplot_rect.right(), dotplot_rect.bottom() + 2.0),
                 egui::Align2::RIGHT_TOP,
-                "100%",
+                x_axis_end_label.as_str(),
                 egui::FontId::monospace(10.0),
                 egui::Color32::from_rgb(71, 85, 105),
             );
@@ -2667,21 +2689,31 @@ impl MainAreaDna {
                         .size(self.feature_details_font_size()),
                     );
                     for series in &rendered_series {
-                        let query_span = series
-                            .span_end_0based
-                            .saturating_sub(series.span_start_0based)
-                            .max(1);
-                        let query_span_max = query_span.saturating_sub(1).max(1);
-                        let query_bp = series.span_start_0based
-                            + (fx * query_span_max as f32).round() as usize;
                         let cell_density = series.cells.get(&(x_cell, y_cell)).copied().unwrap_or(0);
                         let rendered = series.visible_cells.contains_key(&(x_cell, y_cell));
+                        let query_label = if let Some(query_bp) =
+                            overlay_x_axis_mode.query_coordinate_at_fraction(
+                                fx,
+                                series.span_start_0based,
+                                series.span_end_0based,
+                                max_query_span,
+                            )
+                        {
+                            format!("x={}", query_bp.saturating_add(1))
+                        } else if matches!(
+                            overlay_x_axis_mode,
+                            DotplotOverlayXAxisMode::PercentLength
+                        ) {
+                            "x=n/a".to_string()
+                        } else {
+                            "x=outside".to_string()
+                        };
                         ui.label(
                             egui::RichText::new(format!(
-                                "{} ({}) x={} cell={}{}",
+                                "{} ({}) {} cell={}{}",
                                 series.label,
                                 series.seq_id,
-                                query_bp.saturating_add(1),
+                                query_label,
                                 cell_density,
                                 if rendered { " visible" } else { "" }
                             ))
@@ -2691,7 +2723,7 @@ impl MainAreaDna {
                         );
                     }
                     ui.small(
-                        "Overlay mode normalizes the x-axis independently for each query series; selection sync and locked crosshair are disabled.",
+                        "Overlay mode uses one shared reference axis plus per-isoform x readouts according to the selected overlay x-axis layout. Selection sync and locked crosshair stay disabled.",
                     );
                 });
             }
@@ -4116,6 +4148,49 @@ impl MainAreaDna {
                         });
                         if self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty() {
                             ui.horizontal_wrapped(|ui| {
+                                ui.label("overlay x-axis").on_hover_text(
+                                    "Choose how overlaid transcript queries share the x-axis: normalize each transcript to percent length, or use base-pair coordinates aligned at the left or right end.",
+                                );
+                                let before = self.dotplot_ui.overlay_x_axis_mode;
+                                egui::ComboBox::from_id_salt(format!(
+                                    "dotplot_overlay_x_axis_{}",
+                                    self.seq_id.as_deref().unwrap_or("<none>")
+                                ))
+                                .selected_text(self.dotplot_ui.overlay_x_axis_mode.ui_label())
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.dotplot_ui.overlay_x_axis_mode,
+                                        DotplotOverlayXAxisMode::PercentLength,
+                                        DotplotOverlayXAxisMode::PercentLength.ui_label(),
+                                    )
+                                    .on_hover_text(
+                                        "Normalize each transcript independently from 0% to 100%. This is best for comparing shared relative exon structure.",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.dotplot_ui.overlay_x_axis_mode,
+                                        DotplotOverlayXAxisMode::LeftAlignedBp,
+                                        DotplotOverlayXAxisMode::LeftAlignedBp.ui_label(),
+                                    )
+                                    .on_hover_text(
+                                        "Use base-pair coordinates and align transcript starts. This makes different 3' splice endings stand out on the right.",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.dotplot_ui.overlay_x_axis_mode,
+                                        DotplotOverlayXAxisMode::RightAlignedBp,
+                                        DotplotOverlayXAxisMode::RightAlignedBp.ui_label(),
+                                    )
+                                    .on_hover_text(
+                                        "Use base-pair coordinates and align transcript ends. This makes different 5' splice starts stand out on the left.",
+                                    );
+                                });
+                                if self.dotplot_ui.overlay_x_axis_mode != before {
+                                    save_state = true;
+                                }
+                                ui.small(
+                                    "This is a display/export choice only; it does not recompute the dotplot seed matches.",
+                                );
+                            });
+                            ui.horizontal_wrapped(|ui| {
                                 for choice in &overlay_choices {
                                     let mut selected = self
                                         .dotplot_ui
@@ -4376,7 +4451,7 @@ impl MainAreaDna {
                             .unwrap_or(false);
                         if overlay_loaded {
                             ui.small(
-                                "Overlay hover reports one shared reference coordinate plus one x/query coordinate per isoform. Query-side selection sync and locked crosshair are disabled in overlay mode.",
+                                "Overlay hover reports one shared reference coordinate plus one x/query coordinate per isoform using the selected overlay x-axis layout. Query-side selection sync and locked crosshair are disabled in overlay mode.",
                             );
                         } else if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
                             let active_mode = self
@@ -4466,7 +4541,7 @@ impl MainAreaDna {
                             let total_point_count = Self::dotplot_view_total_point_count(view);
                             ui.label(
                                 egui::RichText::new(format!(
-                                    "dotplot '{}' owner={} primary_query={} [{}..{}] reference={} [{}..{}] | series={} | mode={} | word={} step={} mismatches={} | points={}",
+                                    "dotplot '{}' owner={} primary_query={} [{}..{}] reference={} [{}..{}] | series={}{} | mode={} | word={} step={} mismatches={} | points={}",
                                     view.dotplot_id,
                                     view.owner_seq_id,
                                     view.seq_id,
@@ -4476,6 +4551,14 @@ impl MainAreaDna {
                                     view.reference_span_start_0based.saturating_add(1),
                                     view.reference_span_end_0based,
                                     view.series_count.max(view.query_series.len()),
+                                    if Self::dotplot_view_is_overlay(view) {
+                                        format!(
+                                            " overlay_x={}",
+                                            self.dotplot_ui.overlay_x_axis_mode.as_str()
+                                        )
+                                    } else {
+                                        String::new()
+                                    },
                                     view.mode.as_str(),
                                     view.word_size,
                                     view.step_bp,
@@ -4493,7 +4576,7 @@ impl MainAreaDna {
                             };
                             if overlay_mode && self.dotplot_ui.show_flexibility_track {
                                 ui.small(
-                                    "Flexibility track is hidden in overlay mode because the x-axis is normalized separately for each query series.",
+                                    "Flexibility track is hidden in overlay mode because the x-axis can represent multiple transcript coordinate systems rather than one shared query span.",
                                 );
                             }
                             self.render_dotplot_density_ui(

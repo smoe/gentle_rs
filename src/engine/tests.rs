@@ -8179,6 +8179,7 @@ fn test_render_dotplot_svg_operation() {
             flex_track_id: None,
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
         })
         .expect("render dotplot svg");
     assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
@@ -8258,6 +8259,7 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
             flex_track_id: None,
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
         })
         .expect("render overlay dotplot svg");
     assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
@@ -8267,7 +8269,96 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
     assert!(text.contains("Isoform A"));
     assert!(text.contains("Isoform B"));
     assert!(text.contains("merged exons"));
-    assert!(text.contains("x: normalized isoform queries"));
+    assert!(text.contains("x: transcript length (%)"));
+}
+
+#[test]
+fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "ref".to_string(),
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTT").expect("reference"),
+    );
+    state.sequences.insert(
+        "iso_a".to_string(),
+        DNAsequence::from_sequence("CCCGGGTTTAAA").expect("iso_a"),
+    );
+    state.sequences.insert(
+        "iso_b".to_string(),
+        DNAsequence::from_sequence("GGGTTTAA").expect("iso_b"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "ref".to_string(),
+            reference_seq_id: "ref".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(36),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_a".to_string(),
+                    label: "Isoform A".to_string(),
+                    color_rgb: Some([29, 78, 216]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "iso_b".to_string(),
+                    label: "Isoform B".to_string(),
+                    color_rgb: Some([220, 38, 38]),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                },
+            ],
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("overlay_plot".to_string()),
+        })
+        .expect("compute overlay dotplot");
+
+    let left_path = tempfile::NamedTempFile::new()
+        .expect("tmp")
+        .path()
+        .with_extension("overlay.left.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "ref".to_string(),
+            dotplot_id: "overlay_plot".to_string(),
+            path: left_path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::LeftAlignedBp,
+        })
+        .expect("render overlay left-aligned dotplot svg");
+    let left_text = std::fs::read_to_string(&left_path).expect("read left svg");
+    assert!(left_text.contains("x_axis=left_aligned_bp"));
+    assert!(left_text.contains("x: isoform query bp (left-aligned)"));
+    assert!(left_text.contains(">12</text>"));
+
+    let right_path = tempfile::NamedTempFile::new()
+        .expect("tmp")
+        .path()
+        .with_extension("overlay.right.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "ref".to_string(),
+            dotplot_id: "overlay_plot".to_string(),
+            path: right_path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::RightAlignedBp,
+        })
+        .expect("render overlay right-aligned dotplot svg");
+    let right_text = std::fs::read_to_string(&right_path).expect("read right svg");
+    assert!(right_text.contains("x_axis=right_aligned_bp"));
+    assert!(right_text.contains("x: isoform query bp (right-aligned)"));
+    assert!(right_text.contains(">12</text>"));
 }
 
 #[test]

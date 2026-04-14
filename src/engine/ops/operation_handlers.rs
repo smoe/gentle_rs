@@ -411,6 +411,7 @@ impl GentleEngine {
         flex_track: Option<&FlexibilityTrack>,
         density_threshold: f32,
         intensity_gain: f32,
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     ) -> String {
         #[derive(Clone)]
         struct OverlaySeriesSvgRenderData {
@@ -446,6 +447,17 @@ impl GentleEngine {
                 .iter()
                 .map(|series| series.point_count)
                 .sum();
+            let max_query_span = view
+                .query_series
+                .iter()
+                .map(|series| {
+                    series
+                        .span_end_0based
+                        .saturating_sub(series.span_start_0based)
+                        .max(1)
+                })
+                .max()
+                .unwrap_or(1);
             let average_query_span = view
                 .query_series
                 .iter()
@@ -459,6 +471,10 @@ impl GentleEngine {
                 .checked_div(view.query_series.len().max(1))
                 .unwrap_or(1)
                 .max(1);
+            let plotted_query_span =
+                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span);
+            let (x_axis_start_label, x_axis_end_label) =
+                overlay_x_axis_mode.axis_edge_labels(max_query_span);
             let reference_annotation = view
                 .reference_annotation
                 .as_ref()
@@ -475,7 +491,7 @@ impl GentleEngine {
             let bottom_margin = 24.0_f32;
             let dotplot_width = 1600.0_f32;
             let dotplot_height = (dotplot_width
-                * (reference_span as f32 / average_query_span as f32))
+                * (reference_span as f32 / plotted_query_span as f32))
                 .clamp(420.0, 1280.0);
             let canvas_width =
                 outer_margin + left_margin + dotplot_width + right_margin + outer_margin;
@@ -493,23 +509,19 @@ impl GentleEngine {
             let mut total_visible_cells = 0usize;
 
             for series in &view.query_series {
-                let query_series_span = series
-                    .span_end_0based
-                    .saturating_sub(series.span_start_0based)
-                    .max(1);
-                let query_series_span_max = query_series_span.saturating_sub(1).max(1);
                 let sample_stride = (series.points.len() / series_sample_cap).max(1);
                 let mut cells: HashMap<(i32, i32), usize> = HashMap::new();
                 for point in series.points.iter().step_by(sample_stride) {
-                    let x_local = point
-                        .x_0based
-                        .saturating_sub(series.span_start_0based)
-                        .min(query_series_span_max);
                     let y_local = point
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = (x_local as f32 / query_series_span_max as f32).clamp(0.0, 1.0);
+                    let x_frac = overlay_x_axis_mode.point_fraction(
+                        point.x_0based,
+                        series.span_start_0based,
+                        series.span_end_0based,
+                        max_query_span,
+                    );
                     let y_frac = (y_local as f32 / reference_span_max as f32).clamp(0.0, 1.0);
                     let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
                     let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
@@ -690,7 +702,7 @@ impl GentleEngine {
             }
 
             let header = format!(
-                "Dotplot workspace export: {} | overlay owner={} reference={} [{}..{}] | series={} total_points={} | word={} step={} mismatches={} | threshold={:.2} gain={:.2}",
+                "Dotplot workspace export: {} | overlay owner={} reference={} [{}..{}] | series={} total_points={} | word={} step={} mismatches={} | x_axis={} | threshold={:.2} gain={:.2}",
                 view.dotplot_id,
                 view.owner_seq_id,
                 reference_seq_label,
@@ -701,6 +713,7 @@ impl GentleEngine {
                 view.word_size,
                 view.step_bp,
                 view.max_mismatches,
+                overlay_x_axis_mode.as_str(),
                 density_threshold,
                 intensity_gain
             );
@@ -746,9 +759,10 @@ impl GentleEngine {
             }
 
             svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">x: normalized isoform queries</text>",
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>",
                 dotplot_left,
-                outer_margin + 56.0
+                outer_margin + 56.0,
+                Self::dotplot_svg_xml_escape(overlay_x_axis_mode.axis_label())
             ));
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">y: {}</text>",
@@ -757,14 +771,16 @@ impl GentleEngine {
                 Self::dotplot_svg_xml_escape(reference_seq_label)
             ));
             svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">0%</text>",
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
                 dotplot_left,
-                dotplot_bottom + 14.0
+                dotplot_bottom + 14.0,
+                Self::dotplot_svg_xml_escape(x_axis_start_label.as_str())
             ));
             svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">100%</text>",
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
                 dotplot_right,
-                dotplot_bottom + 14.0
+                dotplot_bottom + 14.0,
+                Self::dotplot_svg_xml_escape(x_axis_end_label.as_str())
             ));
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
@@ -1081,6 +1097,7 @@ impl GentleEngine {
         flex_track_id: Option<&str>,
         display_density_threshold: Option<f32>,
         display_intensity_gain: Option<f32>,
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     ) -> Result<(), EngineError> {
         let normalized_dotplot_id = dotplot_id.trim();
         if normalized_dotplot_id.is_empty() {
@@ -1124,6 +1141,7 @@ impl GentleEngine {
             flex_track.as_ref(),
             density_threshold,
             intensity_gain,
+            overlay_x_axis_mode,
         );
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -5020,6 +5038,7 @@ impl GentleEngine {
                 flex_track_id,
                 display_density_threshold,
                 display_intensity_gain,
+                overlay_x_axis_mode,
             } => {
                 self.render_dotplot_svg_to_path(
                     &seq_id,
@@ -5028,6 +5047,7 @@ impl GentleEngine {
                     flex_track_id.as_deref(),
                     display_density_threshold,
                     display_intensity_gain,
+                    overlay_x_axis_mode,
                 )?;
                 result.messages.push(format!(
                     "Wrote dotplot SVG for '{}' dotplot='{}' to '{}'",

@@ -106,7 +106,7 @@
          ],
          "path": "render-dotplot-svg",
          "summary": "Render stored dotplot payload as SVG (optional flexibility panel and display tuning).",
-         "usage": "render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]"
+         "usage": "render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]"
       },
       {
          "aliases": [],
@@ -1939,6 +1939,20 @@
          "path": "dotplot compute",
          "summary": "Compute and persist one dotplot payload for a query sequence span, optionally against a reference sequence span.",
          "usage": "dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeDotplotOverlay"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot overlay-compute",
+         "summary": "Compute and persist one shared-reference multi-query dotplot overlay payload from repeated JSON query specs.",
+         "usage": "dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
       },
       {
          "aliases": [],

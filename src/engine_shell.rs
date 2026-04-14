@@ -31,17 +31,18 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
-        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
-        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayQuerySpec,
+        DotplotOverlayXAxisMode, Engine, FeatureBedCoordinateMode, FeatureExpertTarget,
+        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
         ProteinFeatureFilter, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
         RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackProfileKind,
         RenderSvgMode, ReverseTranslationReport, ReverseTranslationReportSummary,
@@ -566,6 +567,7 @@ pub enum ShellCommand {
         flex_track_id: Option<String>,
         display_density_threshold: Option<f32>,
         display_intensity_gain: Option<f32>,
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     },
     InspectFeatureExpert {
         seq_id: String,
@@ -1388,6 +1390,18 @@ pub enum ShellCommand {
         reference_span_start_0based: Option<usize>,
         reference_span_end_0based: Option<usize>,
         mode: DotplotMode,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
+        dotplot_id: Option<String>,
+    },
+    DotplotOverlayCompute {
+        owner_seq_id: String,
+        reference_seq_id: Option<String>,
+        reference_span_start_0based: Option<usize>,
+        reference_span_end_0based: Option<usize>,
+        queries: Vec<DotplotOverlayQuerySpec>,
         word_size: usize,
         step_bp: usize,
         max_mismatches: usize,
@@ -4619,8 +4633,9 @@ impl ShellCommand {
                 flex_track_id,
                 display_density_threshold,
                 display_intensity_gain,
+                overlay_x_axis_mode,
             } => format!(
-                "render dotplot SVG for '{}' dotplot='{}' to '{}' (flex_track={}, threshold={}, gain={})",
+                "render dotplot SVG for '{}' dotplot='{}' to '{}' (flex_track={}, threshold={}, gain={}, overlay_x={})",
                 seq_id,
                 dotplot_id,
                 output,
@@ -4634,7 +4649,8 @@ impl ShellCommand {
                     .unwrap_or_else(|| "default(0.000)".to_string()),
                 display_intensity_gain
                     .map(|v| format!("{v:.3}"))
-                    .unwrap_or_else(|| "default(1.000)".to_string())
+                    .unwrap_or_else(|| "default(1.000)".to_string()),
+                overlay_x_axis_mode.as_str()
             ),
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
@@ -6705,6 +6721,42 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::DotplotOverlayCompute {
+                owner_seq_id,
+                reference_seq_id,
+                reference_span_start_0based,
+                reference_span_end_0based,
+                queries,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            } => format!(
+                "compute overlay dotplot for owner '{}' vs '{}' (reference_span={}..{}, series={}, word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}')",
+                owner_seq_id,
+                reference_seq_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or(owner_seq_id.as_str()),
+                reference_span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                reference_span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "ref_end".to_string()),
+                queries.len(),
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                dotplot_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::DotplotList { seq_id } => format!(
                 "list stored dotplot views{}",
                 seq_id
@@ -7370,6 +7422,7 @@ impl ShellCommand {
                 | Self::PrimersDesignQpcr { .. }
                 | Self::TranscriptsDerive { .. }
                 | Self::DotplotCompute { .. }
+                | Self::DotplotOverlayCompute { .. }
                 | Self::FlexCompute { .. }
                 | Self::SplicingRefsDerive { .. }
                 | Self::SeqTraceImport { .. }
@@ -11223,7 +11276,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "render-dotplot-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]".to_string(),
                 );
             }
             let seq_id = tokens[1].trim();
@@ -11238,6 +11291,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut flex_track_id: Option<String> = None;
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
+            let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -11279,6 +11333,23 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         display_intensity_gain = Some(parsed);
                         idx += 2;
                     }
+                    "--overlay-x-axis" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --overlay-x-axis".to_string());
+                        }
+                        overlay_x_axis_mode = match tokens[idx + 1].trim() {
+                            "percent_length" => DotplotOverlayXAxisMode::PercentLength,
+                            "left_aligned_bp" => DotplotOverlayXAxisMode::LeftAlignedBp,
+                            "right_aligned_bp" => DotplotOverlayXAxisMode::RightAlignedBp,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, or right_aligned_bp",
+                                    other
+                                ));
+                            }
+                        };
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!("Unknown argument '{other}' for render-dotplot-svg"));
                     }
@@ -11291,6 +11362,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 flex_track_id,
                 display_density_threshold,
                 display_intensity_gain,
+                overlay_x_axis_mode,
             })
         }
         "inspect-feature-expert" => {
@@ -17800,6 +17872,67 @@ fn execute_sequence_analysis_command(
                 }),
             })
         }
+        ShellCommand::DotplotOverlayCompute {
+            owner_seq_id,
+            reference_seq_id,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            queries,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeDotplotOverlay {
+                    owner_seq_id: owner_seq_id.clone(),
+                    reference_seq_id: reference_seq_id
+                        .clone()
+                        .unwrap_or_else(|| owner_seq_id.clone()),
+                    reference_span_start_0based: *reference_span_start_0based,
+                    reference_span_end_0based: *reference_span_end_0based,
+                    queries: queries.clone(),
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                    store_as: dotplot_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let selected = if let Some(id) = dotplot_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine
+                    .list_dotplot_views(None)
+                    .into_iter()
+                    .find(|row| row.dotplot_id == id)
+            } else {
+                engine
+                    .list_dotplot_views(Some(owner_seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+            };
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "dotplot": selected,
+                }),
+            })
+        }
         ShellCommand::DotplotList { seq_id } => {
             let rows = engine.list_dotplot_views(seq_id.as_deref());
             Ok(ShellRunResult {
@@ -19275,6 +19408,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::DotplotCompute { .. }
+            | ShellCommand::DotplotOverlayCompute { .. }
             | ShellCommand::DotplotList { .. }
             | ShellCommand::DotplotShow { .. }
             | ShellCommand::FlexCompute { .. }
@@ -19469,6 +19603,7 @@ fn execute_shell_command_with_options_inner(
             flex_track_id,
             display_density_threshold,
             display_intensity_gain,
+            overlay_x_axis_mode,
         } => {
             let op_result = engine
                 .apply(Operation::RenderDotplotSvg {
@@ -19478,6 +19613,7 @@ fn execute_shell_command_with_options_inner(
                     flex_track_id: flex_track_id.clone(),
                     display_density_threshold: *display_density_threshold,
                     display_intensity_gain: *display_intensity_gain,
+                    overlay_x_axis_mode: *overlay_x_axis_mode,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -21538,6 +21674,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::DotplotCompute { .. }
+        | ShellCommand::DotplotOverlayCompute { .. }
         | ShellCommand::DotplotList { .. }
         | ShellCommand::DotplotShow { .. }
         | ShellCommand::FlexCompute { .. }

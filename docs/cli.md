@@ -365,18 +365,25 @@ Primer-design report capability status:
 Dotplot/flexibility capability status:
 
 - `gentle_cli`: supported via shared-shell/direct commands:
-  - `dotplot compute|list|show|render-svg`
+  - `dotplot compute|overlay-compute|list|show|render-svg`
   - `render-dotplot-svg`
   - `transcripts derive`
   - `flex compute|list|show`
   - `splicing-refs derive`
   - `align compute`
-  backed by `ComputeDotplot`, `DeriveTranscriptSequences`,
+  backed by `ComputeDotplot`, `ComputeDotplotOverlay`, `DeriveTranscriptSequences`,
   `ComputeFlexibilityTrack`, `DeriveSplicingReferences`,
   `AlignSequences`, and `RenderDotplotSvg`.
   - `dotplot compute` supports self and pairwise modes via
     `--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement`
     with optional `--reference-seq`, `--ref-start`, and `--ref-end`.
+  - `dotplot overlay-compute` accepts repeated `--query-spec JSON_OR_@FILE`
+    payloads for shared-reference multi-query overlays; if `--reference-seq` is
+    omitted, the owner sequence id is reused as the shared reference.
+  - `dotplot render-svg` / `render-dotplot-svg` accept
+    `--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp` so
+    overlay exports can switch between normalized transcript length, left-
+    aligned bp, and right-aligned bp layouts without recomputing the dotplot.
   - `transcripts derive` supports:
     - full-sequence derivation (all `mRNA`/`transcript` features)
     - selected feature derivation (`--feature-id`)
@@ -1213,6 +1220,7 @@ cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
 cargo run --bin gentle_cli -- render-dotplot-svg tp73_cdna dotplot_primary tp73.dotplot.svg
 cargo run --bin gentle_cli -- render-dotplot-svg tp73_cdna dotplot_primary tp73.dotplot.svg --flex-track flex_primary --display-threshold 0.2 --intensity-gain 1.8
+cargo run --bin gentle_cli -- render-dotplot-svg tp73_genomic_local tp73_multi_isoform_overlay_dotplot tp73.overlay.right.svg --overlay-x-axis right_aligned_bp --display-threshold 0.08 --intensity-gain 2.8
 cargo run --bin gentle_cli -- render-rna-svg rna_seq rna.secondary.svg
 cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
@@ -1372,8 +1380,9 @@ Shared shell command:
     - `load-project PATH`
     - `save-project PATH`
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
-    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
-    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`
+    - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
@@ -1498,9 +1507,10 @@ Shared shell command:
     - `primers show-qpcr-report REPORT_ID`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+    - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`
     - `dotplot show DOTPLOT_ID`
-    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`
     - `transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
@@ -1831,7 +1841,7 @@ Rendering export commands:
     transcription-start arrow shafts/arrowheads for strand-bearing
     `gene`/`mRNA`/`CDS`/`promoter` features. Circular figure exports also use
     a slightly larger ring and larger label fonts for readability.
-- `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`
+- `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`
   - Calls engine operation `RenderDotplotSvg`.
   - `DOTPLOT_ID` must exist in stored dotplot payloads (`dotplot compute ...` / GUI compute).
   - `SEQ_ID` is the owner sequence id of the stored payload; for reference-centered
@@ -1843,7 +1853,19 @@ Rendering export commands:
   - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
   - Overlay payload exports render all stored query series with a legend and a
     merged-exon side track when reference exon annotation is available.
-  - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]`.
+  - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]`.
+- `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+  - Calls engine operation `ComputeDotplotOverlay`.
+  - `OWNER_SEQ_ID` identifies the stored payload owner and is also reused as
+    the shared reference when `--reference-seq` is omitted.
+  - Each `--query-spec` must deserialize to one `DotplotOverlayQuerySpec`
+    record, for example:
+    `{"seq_id":"tp53_iso_1","label":"Isoform 1","mode":"pair_forward","color_rgb":[29,78,216]}`
+  - Query specs can optionally narrow one isoform/query span via
+    `span_start_0based` / `span_end_0based` and switch per-series orientation
+    with `mode=pair_forward|pair_reverse_complement`.
+  - `--ref-start` / `--ref-end` constrain the shared reference span on the
+    y-axis for every stored series.
 - `render-rna-svg SEQ_ID OUTPUT.svg`
   - Calls engine operation `RenderRnaStructureSvg`.
   - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).

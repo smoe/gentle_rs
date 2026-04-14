@@ -2412,6 +2412,8 @@ pub enum Operation {
         display_density_threshold: Option<f32>,
         #[serde(default)]
         display_intensity_gain: Option<f32>,
+        #[serde(default)]
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     },
     RenderFeatureExpertSvg {
         seq_id: SeqId,

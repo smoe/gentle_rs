@@ -495,6 +495,124 @@ impl DotplotMode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Overlay x-axis layout for multi-query reference-centered dotplots.
+pub enum DotplotOverlayXAxisMode {
+    #[default]
+    PercentLength,
+    LeftAlignedBp,
+    RightAlignedBp,
+}
+
+impl DotplotOverlayXAxisMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PercentLength => "percent_length",
+            Self::LeftAlignedBp => "left_aligned_bp",
+            Self::RightAlignedBp => "right_aligned_bp",
+        }
+    }
+
+    pub fn ui_label(self) -> &'static str {
+        match self {
+            Self::PercentLength => "% transcript",
+            Self::LeftAlignedBp => "bp left-aligned",
+            Self::RightAlignedBp => "bp right-aligned",
+        }
+    }
+
+    pub fn axis_label(self) -> &'static str {
+        match self {
+            Self::PercentLength => "x: transcript length (%)",
+            Self::LeftAlignedBp => "x: isoform query bp (left-aligned)",
+            Self::RightAlignedBp => "x: isoform query bp (right-aligned)",
+        }
+    }
+
+    pub fn plot_query_span_bp(
+        self,
+        max_query_span_bp: usize,
+        average_query_span_bp: usize,
+    ) -> usize {
+        match self {
+            Self::PercentLength => average_query_span_bp.max(1),
+            Self::LeftAlignedBp | Self::RightAlignedBp => max_query_span_bp.max(1),
+        }
+    }
+
+    pub fn axis_edge_labels(self, max_query_span_bp: usize) -> (String, String) {
+        match self {
+            Self::PercentLength => ("0%".to_string(), "100%".to_string()),
+            Self::LeftAlignedBp | Self::RightAlignedBp => {
+                ("1".to_string(), max_query_span_bp.max(1).to_string())
+            }
+        }
+    }
+
+    pub fn point_fraction(
+        self,
+        point_x_0based: usize,
+        span_start_0based: usize,
+        span_end_0based: usize,
+        max_query_span_bp: usize,
+    ) -> f32 {
+        let query_span_bp = span_end_0based.saturating_sub(span_start_0based).max(1);
+        let query_span_max = query_span_bp.saturating_sub(1).max(1);
+        let max_query_span_max = max_query_span_bp.max(1).saturating_sub(1).max(1);
+        let query_local_bp = point_x_0based
+            .saturating_sub(span_start_0based)
+            .min(query_span_max);
+        match self {
+            Self::PercentLength => (query_local_bp as f32 / query_span_max as f32).clamp(0.0, 1.0),
+            Self::LeftAlignedBp => {
+                (query_local_bp as f32 / max_query_span_max as f32).clamp(0.0, 1.0)
+            }
+            Self::RightAlignedBp => {
+                let offset_bp = max_query_span_bp.saturating_sub(query_span_bp);
+                ((offset_bp.saturating_add(query_local_bp)) as f32 / max_query_span_max as f32)
+                    .clamp(0.0, 1.0)
+            }
+        }
+    }
+
+    pub fn query_coordinate_at_fraction(
+        self,
+        axis_fraction: f32,
+        span_start_0based: usize,
+        span_end_0based: usize,
+        max_query_span_bp: usize,
+    ) -> Option<usize> {
+        let query_span_bp = span_end_0based.saturating_sub(span_start_0based).max(1);
+        let query_span_max = query_span_bp.saturating_sub(1).max(1);
+        let max_query_span_max = max_query_span_bp.max(1).saturating_sub(1).max(1);
+        let axis_fraction = axis_fraction.clamp(0.0, 1.0);
+        match self {
+            Self::PercentLength => Some(
+                span_start_0based
+                    .saturating_add((axis_fraction * query_span_max as f32).round() as usize),
+            ),
+            Self::LeftAlignedBp => {
+                let global_bp = (axis_fraction * max_query_span_max as f32).round() as usize;
+                if global_bp > query_span_max {
+                    None
+                } else {
+                    Some(span_start_0based.saturating_add(global_bp))
+                }
+            }
+            Self::RightAlignedBp => {
+                let offset_bp = max_query_span_bp.saturating_sub(query_span_bp);
+                let global_bp = (axis_fraction * max_query_span_max as f32).round() as usize;
+                if global_bp < offset_bp || global_bp > offset_bp.saturating_add(query_span_max) {
+                    None
+                } else {
+                    Some(span_start_0based.saturating_add(global_bp - offset_bp))
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Pairwise alignment mode for sequence and confirmation alignments.
 pub enum PairwiseAlignmentMode {
     #[default]
@@ -3475,4 +3593,33 @@ pub struct RnaReadInterpretationReportSummary {
     pub read_count_aligned: usize,
     #[serde(default)]
     pub retained_count_msa_eligible: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DotplotOverlayXAxisMode;
+
+    #[test]
+    fn dotplot_overlay_x_axis_bp_alignment_projects_left_and_right_variants() {
+        let left_fraction = DotplotOverlayXAxisMode::LeftAlignedBp.point_fraction(4, 0, 8, 12);
+        let right_fraction = DotplotOverlayXAxisMode::RightAlignedBp.point_fraction(4, 0, 8, 12);
+        assert!(left_fraction < right_fraction);
+
+        assert_eq!(
+            DotplotOverlayXAxisMode::LeftAlignedBp.query_coordinate_at_fraction(0.2, 0, 8, 12),
+            Some(2)
+        );
+        assert_eq!(
+            DotplotOverlayXAxisMode::LeftAlignedBp.query_coordinate_at_fraction(0.95, 0, 8, 12),
+            None
+        );
+        assert_eq!(
+            DotplotOverlayXAxisMode::RightAlignedBp.query_coordinate_at_fraction(0.05, 0, 8, 12),
+            None
+        );
+        assert_eq!(
+            DotplotOverlayXAxisMode::RightAlignedBp.query_coordinate_at_fraction(0.82, 0, 8, 12),
+            Some(5)
+        );
+    }
 }

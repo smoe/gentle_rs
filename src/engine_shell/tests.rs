@@ -12534,8 +12534,48 @@ fn parse_dotplot_and_flex_commands() {
         other => panic!("expected DotplotCompute, got {other:?}"),
     }
 
+    let overlay_dotplot = parse_shell_line(
+        "dotplot overlay-compute locus_a --reference-seq genome_ref --query-spec '{\"seq_id\":\"iso_1\",\"label\":\"Isoform A\",\"mode\":\"pair_forward\",\"color_rgb\":[29,78,216]}' --query-spec '{\"seq_id\":\"iso_2\",\"label\":\"Isoform B\",\"span_start_0based\":5,\"span_end_0based\":17,\"mode\":\"pair_reverse_complement\"}' --ref-start 200 --ref-end 500 --word-size 10 --step 5 --id overlay_dp",
+    )
+    .expect("parse overlay dotplot compute");
+    match overlay_dotplot {
+        ShellCommand::DotplotOverlayCompute {
+            owner_seq_id,
+            reference_seq_id,
+            reference_span_start_0based,
+            reference_span_end_0based,
+            queries,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+        } => {
+            assert_eq!(owner_seq_id, "locus_a");
+            assert_eq!(reference_seq_id.as_deref(), Some("genome_ref"));
+            assert_eq!(reference_span_start_0based, Some(200));
+            assert_eq!(reference_span_end_0based, Some(500));
+            assert_eq!(queries.len(), 2);
+            assert_eq!(queries[0].seq_id, "iso_1");
+            assert_eq!(queries[0].label, "Isoform A");
+            assert_eq!(queries[0].mode, DotplotMode::PairForward);
+            assert_eq!(queries[0].color_rgb, Some([29, 78, 216]));
+            assert_eq!(queries[1].seq_id, "iso_2");
+            assert_eq!(queries[1].label, "Isoform B");
+            assert_eq!(queries[1].span_start_0based, Some(5));
+            assert_eq!(queries[1].span_end_0based, Some(17));
+            assert_eq!(queries[1].mode, DotplotMode::PairReverseComplement);
+            assert_eq!(word_size, 10);
+            assert_eq!(step_bp, 5);
+            assert_eq!(max_mismatches, 0);
+            assert_eq!(tile_bp, None);
+            assert_eq!(dotplot_id.as_deref(), Some("overlay_dp"));
+        }
+        other => panic!("expected DotplotOverlayCompute, got {other:?}"),
+    }
+
     let render_dotplot = parse_shell_line(
-        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.svg --flex-track flex_1 --display-threshold 0.2 --intensity-gain 1.7",
+        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.svg --flex-track flex_1 --display-threshold 0.2 --intensity-gain 1.7 --overlay-x-axis right_aligned_bp",
     )
     .expect("parse dotplot render-svg");
     match render_dotplot {
@@ -12546,6 +12586,7 @@ fn parse_dotplot_and_flex_commands() {
             flex_track_id,
             display_density_threshold,
             display_intensity_gain,
+            overlay_x_axis_mode,
         } => {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(dotplot_id, "pair_dp");
@@ -12553,6 +12594,7 @@ fn parse_dotplot_and_flex_commands() {
             assert_eq!(flex_track_id.as_deref(), Some("flex_1"));
             assert_eq!(display_density_threshold, Some(0.2));
             assert_eq!(display_intensity_gain, Some(1.7));
+            assert_eq!(overlay_x_axis_mode, DotplotOverlayXAxisMode::RightAlignedBp);
         }
         other => panic!("expected RenderDotplotSvg, got {other:?}"),
     }
@@ -13041,6 +13083,18 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                 "seq_a".to_string(),
                 DNAsequence::from_sequence("ATGCATGCATGCATGCATGCATGC").expect("sequence"),
             );
+            state.sequences.insert(
+                "ref".to_string(),
+                DNAsequence::from_sequence("ATGCATGCATGCATGCATGCATGC").expect("reference"),
+            );
+            state.sequences.insert(
+                "iso_a".to_string(),
+                DNAsequence::from_sequence("ATGCATGCATGC").expect("isoform a"),
+            );
+            state.sequences.insert(
+                "iso_b".to_string(),
+                DNAsequence::from_sequence("GCATGCATGCAT").expect("isoform b"),
+            );
             let mut engine = GentleEngine::from_state(state);
 
             let dotplot = execute_shell_command(
@@ -13067,6 +13121,64 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                 Some("dp_1")
             );
 
+            let overlay = execute_shell_command(
+                &mut engine,
+                &ShellCommand::DotplotOverlayCompute {
+                    owner_seq_id: "ref".to_string(),
+                    reference_seq_id: None,
+                    reference_span_start_0based: Some(0),
+                    reference_span_end_0based: Some(24),
+                    queries: vec![
+                        DotplotOverlayQuerySpec {
+                            seq_id: "iso_a".to_string(),
+                            label: "Isoform A".to_string(),
+                            span_start_0based: None,
+                            span_end_0based: None,
+                            mode: DotplotMode::PairForward,
+                            color_rgb: Some([29, 78, 216]),
+                        },
+                        DotplotOverlayQuerySpec {
+                            seq_id: "iso_b".to_string(),
+                            label: "Isoform B".to_string(),
+                            span_start_0based: None,
+                            span_end_0based: None,
+                            mode: DotplotMode::PairForward,
+                            color_rgb: Some([220, 38, 38]),
+                        },
+                    ],
+                    word_size: 4,
+                    step_bp: 2,
+                    max_mismatches: 0,
+                    tile_bp: None,
+                    dotplot_id: Some("overlay_1".to_string()),
+                },
+            )
+            .expect("execute overlay dotplot compute");
+            assert!(overlay.state_changed);
+            assert_eq!(
+                overlay.output["dotplot"]["dotplot_id"].as_str(),
+                Some("overlay_1")
+            );
+            assert_eq!(overlay.output["dotplot"]["series_count"].as_u64(), Some(2));
+
+            let overlay_show = execute_shell_command(
+                &mut engine,
+                &ShellCommand::DotplotShow {
+                    dotplot_id: "overlay_1".to_string(),
+                },
+            )
+            .expect("show overlay dotplot");
+            assert_eq!(
+                overlay_show.output["dotplot"]["owner_seq_id"].as_str(),
+                Some("ref")
+            );
+            assert_eq!(
+                overlay_show.output["dotplot"]["query_series"]
+                    .as_array()
+                    .map(Vec::len),
+                Some(2)
+            );
+
             let flex = execute_shell_command(
                 &mut engine,
                 &ShellCommand::FlexCompute {
@@ -13091,6 +13203,14 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
             )
             .expect("list dotplots");
             assert_eq!(listed.output["dotplot_count"].as_u64(), Some(1));
+            let overlay_list = execute_shell_command(
+                &mut engine,
+                &ShellCommand::DotplotList {
+                    seq_id: Some("ref".to_string()),
+                },
+            )
+            .expect("list overlay dotplots");
+            assert_eq!(overlay_list.output["dotplot_count"].as_u64(), Some(1));
             let flex_list = execute_shell_command(
                 &mut engine,
                 &ShellCommand::FlexList {

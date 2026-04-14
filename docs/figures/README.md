@@ -255,6 +255,34 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+`tp73_multi_isoform_overlay_dotplot.workflow.json` renders an offline
+shared-reference TP73 multi-isoform dotplot overlay from the same local
+`test_files/tp73.ncbi.gb` fixture. The workflow loads the TP73 genomic locus,
+derives four curated transcript variants (`NM_005427.4`, `NM_001126240.3`,
+`NM_001126241.3`, `NM_001204189.2`), computes one
+`ComputeDotplotOverlay` payload against the shared genomic reference, and
+writes the combined SVG `tp73_multi_isoform_overlay_dotplot.svg`.
+
+`tp73_multi_isoform_overlay_dotplot.png` is the README-friendly raster
+derivative. It is rendered from the SVG with `resvg` through
+`gentle_examples_docs svg-png` while dropping the dotplot export metadata/title
+text and keeping the basepair axis labels.
+
+Regenerate the TP73 multi-isoform overlay dotplot assets from the repository
+root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_overlay_dotplot.state.json \
+  workflow @docs/figures/tp73_multi_isoform_overlay_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_multi_isoform_overlay_dotplot.svg \
+  docs/figures/tp73_multi_isoform_overlay_dotplot.png \
+  --drop-dotplot-metadata
+```
+
 `vkorc1_rs9923231_context_map.workflow.json` is the first concrete
 ClawBio-facing genomic-context asset. It resolves dbSNP `rs9923231` against
 prepared `Human GRCh38 Ensembl 116`, extracts `+/- 3000 bp`, keeps full locus

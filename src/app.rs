@@ -6621,6 +6621,7 @@ Error: `{err}`"
                 flex_track_id: None,
                 display_density_threshold: None,
                 display_intensity_gain: None,
+                overlay_x_axis_mode: Default::default(),
             });
         match result {
             Ok(op_result) => {
@@ -41057,8 +41058,9 @@ Error: `{err}`"
                 flex_track_id,
                 display_density_threshold,
                 display_intensity_gain,
+                overlay_x_axis_mode,
             } => format!(
-                "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}",
+                "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}, overlay_x_axis={}",
                 seq_id,
                 dotplot_id,
                 path,
@@ -41072,7 +41074,8 @@ Error: `{err}`"
                     .unwrap_or_else(|| "default(0.000)".to_string()),
                 display_intensity_gain
                     .map(|v| format!("{v:.3}"))
-                    .unwrap_or_else(|| "default(1.000)".to_string())
+                    .unwrap_or_else(|| "default(1.000)".to_string()),
+                overlay_x_axis_mode.as_str()
             ),
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 format!("Render RNA structure SVG: seq_id={seq_id}, path={path}")
@@ -50856,6 +50859,7 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                     flex_track_id: None,
                     display_density_threshold: None,
                     display_intensity_gain: None,
+                    overlay_x_axis_mode: Default::default(),
                 })
                 .expect("render dotplot svg");
             assert!(dotplot_result.messages.iter().any(|m| m.contains("svg_dp")));

@@ -1,0 +1,63 @@
+{
+  "run_id": "readme_tp73_multi_isoform_overlay_dotplot",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_genomic_local"
+      }
+    },
+    {
+      "DeriveTranscriptSequences": {
+        "seq_id": "tp73_genomic_local",
+        "feature_ids": [4, 98, 99, 103],
+        "output_prefix": "tp73_overlay"
+      }
+    },
+    {
+      "ComputeDotplotOverlay": {
+        "owner_seq_id": "tp73_genomic_local",
+        "reference_seq_id": "tp73_genomic_local",
+        "queries": [
+          {
+            "seq_id": "tp73_overlay__f5__nm_005427_4",
+            "label": "Variant 1",
+            "mode": "pair_forward",
+            "color_rgb": [29, 78, 216]
+          },
+          {
+            "seq_id": "tp73_overlay__f99__nm_001126240_3",
+            "label": "Variant 2",
+            "mode": "pair_forward",
+            "color_rgb": [220, 38, 38]
+          },
+          {
+            "seq_id": "tp73_overlay__f100__nm_001126241_3",
+            "label": "Variant 3",
+            "mode": "pair_forward",
+            "color_rgb": [5, 150, 105]
+          },
+          {
+            "seq_id": "tp73_overlay__f104__nm_001204189_2",
+            "label": "Variant 5",
+            "mode": "pair_forward",
+            "color_rgb": [217, 119, 6]
+          }
+        ],
+        "word_size": 7,
+        "step_bp": 2,
+        "max_mismatches": 0,
+        "store_as": "tp73_multi_isoform_overlay_dotplot"
+      }
+    },
+    {
+      "RenderDotplotSvg": {
+        "seq_id": "tp73_genomic_local",
+        "dotplot_id": "tp73_multi_isoform_overlay_dotplot",
+        "path": "docs/figures/tp73_multi_isoform_overlay_dotplot.svg",
+        "display_density_threshold": 0.08,
+        "display_intensity_gain": 2.8
+      }
+    }
+  ]
+}

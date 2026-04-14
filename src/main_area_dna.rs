@@ -57,16 +57,16 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, ConstructReasoningGraph, ConstructRole,
-        DecisionMethod, DesignDecisionNode, DesignFact, DisplayTarget, DotplotMode, DotplotView,
-        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
-        FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide,
-        GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
-        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
-        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionEnzymeDisplayMode,
-        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        DecisionMethod, DesignDecisionNode, DesignFact, DisplayTarget, DotplotMode,
+        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
+        EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
+        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
+        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
+        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry, RenderSvgMode,
+        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1046,14 +1046,14 @@ mod tests {
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            ConstructRole, DotplotMode, DotplotView, EditableStatus, Engine, EvidenceClass,
-            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
-            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
-            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-            RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            ConstructRole, DotplotMode, DotplotOverlayXAxisMode, DotplotView, EditableStatus,
+            Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
+            ProjectState, ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
+            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
+            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequenceAlignmentReport, SequencingConfirmationReadResult,
@@ -2380,7 +2380,13 @@ mod tests {
         track.model = FlexibilityModel::AtRichness;
         track.bin_bp = 50;
         track.smoothing_bp = Some(150);
-        let file_name = area.default_dotplot_svg_file_name(&view, Some(&track), 0.35, 1.75);
+        let file_name = area.default_dotplot_svg_file_name(
+            &view,
+            Some(&track),
+            0.35,
+            1.75,
+            DotplotOverlayXAxisMode::PercentLength,
+        );
         assert!(file_name.ends_with(".svg"));
         assert!(file_name.contains("pair_forward"));
         assert!(file_name.contains("_w9_s4_mm1_tile250_"));
@@ -2475,11 +2481,18 @@ mod tests {
                 boxplot_bins: vec![],
             },
         ];
-        let file_name = area.default_dotplot_svg_file_name(&view, None, 0.20, 1.25);
+        let file_name = area.default_dotplot_svg_file_name(
+            &view,
+            None,
+            0.20,
+            1.25,
+            DotplotOverlayXAxisMode::RightAlignedBp,
+        );
         assert!(file_name.ends_with(".svg"));
         assert!(file_name.contains("owner-tp53_genomic"));
         assert!(file_name.contains("overlay2_series"));
         assert!(file_name.contains("pair_forward"));
+        assert!(file_name.contains("x-right_aligned_bp"));
     }
 
     #[test]
@@ -20364,6 +20377,7 @@ impl MainAreaDna {
                 flex_track_id: None,
                 display_density_threshold: Some(self.dotplot_ui.display_density_threshold),
                 display_intensity_gain: Some(self.dotplot_ui.display_intensity_gain),
+                overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
             }) {
                 self.op_status = error.message.clone();
                 self.op_error_popup = Some(error.message);
@@ -26245,6 +26259,7 @@ impl MainAreaDna {
         flex_track: Option<&FlexibilityTrack>,
         density_threshold: f32,
         intensity_gain: f32,
+        overlay_x_axis_mode: DotplotOverlayXAxisMode,
     ) -> String {
         let overlay_mode = Self::dotplot_view_is_overlay(view);
         let owner_id = Self::sanitize_export_name_component(
@@ -26277,7 +26292,8 @@ impl MainAreaDna {
             .unwrap_or_else(|| "auto".to_string());
         let mut stem = if overlay_mode {
             format!(
-                "dotplot_{dotplot_id}_owner-{owner_id}_q-{query_id}_r-{reference_id}_{mode}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
+                "dotplot_{dotplot_id}_owner-{owner_id}_q-{query_id}_r-{reference_id}_{mode}_x-{}_r{}-{}_w{}_s{}_mm{}_tile{}_th{}_gain{}",
+                Self::sanitize_export_name_component(overlay_x_axis_mode.as_str(), "overlayx"),
                 view.reference_span_start_0based.saturating_add(1),
                 view.reference_span_end_0based,
                 view.word_size,
@@ -26688,6 +26704,7 @@ impl MainAreaDna {
             selected_flex_track.as_ref(),
             density_threshold,
             intensity_gain,
+            self.dotplot_ui.overlay_x_axis_mode,
         );
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
@@ -26708,6 +26725,7 @@ impl MainAreaDna {
             flex_track_id,
             display_density_threshold: Some(density_threshold),
             display_intensity_gain: Some(intensity_gain),
+            overlay_x_axis_mode: self.dotplot_ui.overlay_x_axis_mode,
         });
     }
 

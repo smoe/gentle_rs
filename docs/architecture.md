@@ -1640,11 +1640,11 @@ Status (2026-03-19):
   - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
   - persisted analysis payloads in project metadata (`dotplot_analysis`)
   - shared-shell/CLI read/write command surfaces:
-    - `dotplot compute|list|show|render-svg`
+    - `dotplot compute|overlay-compute|list|show|render-svg`
     - `render-dotplot-svg`
     - `flex compute|list|show`
   - engine SVG export parity:
-    - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain? }`
+    - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
     - shared-shell/CLI command route: `render-dotplot-svg ...`
     - GUI `Export Dotplot SVG...` now uses the same engine operation (no
       GUI-only renderer path for persisted exports)

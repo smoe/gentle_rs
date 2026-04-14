@@ -2437,7 +2437,10 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
 
 pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("dotplot requires a subcommand: compute, list, show, render-svg".to_string());
+        return Err(
+            "dotplot requires a subcommand: compute, overlay-compute, list, show, render-svg"
+                .to_string(),
+        );
     }
     match tokens[1].as_str() {
         "compute" => {
@@ -2563,6 +2566,156 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                 dotplot_id,
             })
         }
+        "overlay-compute" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "dotplot overlay-compute requires OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+                        .to_string(),
+                );
+            }
+            let owner_seq_id = tokens[2].trim().to_string();
+            if owner_seq_id.is_empty() {
+                return Err("dotplot overlay-compute OWNER_SEQ_ID must not be empty".to_string());
+            }
+            let mut reference_seq_id: Option<String> = None;
+            let mut reference_span_start_0based: Option<usize> = None;
+            let mut reference_span_end_0based: Option<usize> = None;
+            let mut queries: Vec<DotplotOverlayQuerySpec> = vec![];
+            let mut word_size = 12usize;
+            let mut step_bp = 2usize;
+            let mut max_mismatches = 0usize;
+            let mut tile_bp: Option<usize> = None;
+            let mut dotplot_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--reference-seq" | "--ref-seq" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "dotplot overlay-compute")?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{flag} requires a non-empty sequence id"));
+                        }
+                        reference_seq_id = Some(trimmed.to_string());
+                    }
+                    "--query-spec" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-spec",
+                            "dotplot overlay-compute",
+                        )?;
+                        let parsed = parse_required_json_payload::<DotplotOverlayQuerySpec>(
+                            &raw,
+                            "dotplot overlay query spec",
+                        )?;
+                        queries.push(parsed);
+                    }
+                    "--ref-start" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ref-start",
+                            "dotplot overlay-compute",
+                        )?;
+                        reference_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --ref-start value '{raw}' for dotplot overlay-compute: {e}"
+                            )
+                        })?);
+                    }
+                    "--ref-end" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ref-end",
+                            "dotplot overlay-compute",
+                        )?;
+                        reference_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --ref-end value '{raw}' for dotplot overlay-compute: {e}"
+                            )
+                        })?);
+                    }
+                    "--word-size" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--word-size",
+                            "dotplot overlay-compute",
+                        )?;
+                        word_size = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --word-size value '{raw}' for dotplot overlay-compute: {e}"
+                            )
+                        })?;
+                    }
+                    "--step" | "--step-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "dotplot overlay-compute")?;
+                        step_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for dotplot overlay-compute: {e}")
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "dotplot overlay-compute",
+                        )?;
+                        max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for dotplot overlay-compute: {e}"
+                            )
+                        })?;
+                    }
+                    "--tile-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tile-bp",
+                            "dotplot overlay-compute",
+                        )?;
+                        tile_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --tile-bp value '{raw}' for dotplot overlay-compute: {e}"
+                            )
+                        })?);
+                    }
+                    "--id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--id", "dotplot overlay-compute")?;
+                        dotplot_id = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for dotplot overlay-compute"
+                        ));
+                    }
+                }
+            }
+            if queries.is_empty() {
+                return Err(
+                    "dotplot overlay-compute requires at least one --query-spec JSON_OR_@FILE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::DotplotOverlayCompute {
+                owner_seq_id,
+                reference_seq_id,
+                reference_span_start_0based,
+                reference_span_end_0based,
+                queries,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            })
+        }
         "list" => {
             if tokens.len() > 3 {
                 return Err("dotplot list expects at most one optional SEQ_ID".to_string());
@@ -2590,7 +2743,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
         "render-svg" => {
             if tokens.len() < 5 {
                 return Err(
-                    "dotplot render-svg requires SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]"
+                    "dotplot render-svg requires SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]"
                         .to_string(),
                 );
             }
@@ -2606,6 +2759,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
             let mut flex_track_id: Option<String> = None;
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
+            let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
             let mut idx = 5usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -2647,6 +2801,24 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                             )
                         })?);
                     }
+                    "--overlay-x-axis" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--overlay-x-axis",
+                            "dotplot render-svg",
+                        )?;
+                        overlay_x_axis_mode = match raw.trim() {
+                            "percent_length" => DotplotOverlayXAxisMode::PercentLength,
+                            "left_aligned_bp" => DotplotOverlayXAxisMode::LeftAlignedBp,
+                            "right_aligned_bp" => DotplotOverlayXAxisMode::RightAlignedBp,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --overlay-x-axis value '{other}' for dotplot render-svg: expected percent_length, left_aligned_bp, or right_aligned_bp"
+                                ));
+                            }
+                        };
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for dotplot render-svg"));
                     }
@@ -2659,6 +2831,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                 flex_track_id,
                 display_density_threshold,
                 display_intensity_gain,
+                overlay_x_axis_mode,
             })
         }
         other => Err(format!(

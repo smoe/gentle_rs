@@ -3,10 +3,11 @@
 use gentle::{
     about,
     engine::{
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, Engine, EngineStateSummary,
-        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayXAxisMode, Engine,
+        EngineStateSummary, GelBufferModel, GelRunConditions, GelTopologyForm,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine,
+        Operation, OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress,
+        TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -510,7 +511,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]\n  \
+  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
@@ -656,6 +657,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
   gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
   gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
@@ -2476,7 +2478,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 3 {
                 usage();
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]".to_string(),
                 );
             }
             let seq_id = args[cmd_idx + 1].trim();
@@ -2491,6 +2493,7 @@ fn run() -> Result<(), String> {
             let mut flex_track_id: Option<String> = None;
             let mut display_density_threshold: Option<f32> = None;
             let mut display_intensity_gain: Option<f32> = None;
+            let mut overlay_x_axis_mode = DotplotOverlayXAxisMode::PercentLength;
             let mut idx = cmd_idx + 4;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -2532,9 +2535,26 @@ fn run() -> Result<(), String> {
                         display_intensity_gain = Some(parsed);
                         idx += 2;
                     }
+                    "--overlay-x-axis" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --overlay-x-axis".to_string());
+                        }
+                        overlay_x_axis_mode = match args[idx + 1].trim() {
+                            "percent_length" => DotplotOverlayXAxisMode::PercentLength,
+                            "left_aligned_bp" => DotplotOverlayXAxisMode::LeftAlignedBp,
+                            "right_aligned_bp" => DotplotOverlayXAxisMode::RightAlignedBp,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, or right_aligned_bp",
+                                    other
+                                ));
+                            }
+                        };
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
-                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain)"
+                            "Unknown argument '{other}' for render-dotplot-svg (expected --flex-track/--display-threshold/--intensity-gain/--overlay-x-axis)"
                         ));
                     }
                 }
@@ -2548,6 +2568,7 @@ fn run() -> Result<(), String> {
                     flex_track_id,
                     display_density_threshold,
                     display_intensity_gain,
+                    overlay_x_axis_mode,
                 })
                 .map_err(|e| e.to_string())?;
             engine
