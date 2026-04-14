@@ -711,9 +711,11 @@ impl Default for ProteinFeatureFilter {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
+    #[serde(alias = "TfbsFeature")]
     TfbsFeature {
         feature_id: usize,
     },
+    #[serde(alias = "RestrictionSite")]
     RestrictionSite {
         cut_pos_1based: usize,
         #[serde(default)]
@@ -723,14 +725,17 @@ pub enum FeatureExpertTarget {
         #[serde(default)]
         recognition_end_1based: Option<usize>,
     },
+    #[serde(alias = "SplicingFeature")]
     SplicingFeature {
         feature_id: usize,
         #[serde(default)]
         scope: SplicingScopePreset,
     },
+    #[serde(alias = "IsoformArchitecture")]
     IsoformArchitecture {
         panel_id: String,
     },
+    #[serde(alias = "ProteinComparison")]
     ProteinComparison {
         #[serde(default)]
         transcript_id_filter: Option<String>,
@@ -741,6 +746,7 @@ pub enum FeatureExpertTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         external_entry_id: Option<String>,
     },
+    #[serde(alias = "UniprotProjection")]
     UniprotProjection {
         projection_id: String,
         #[serde(default)]
@@ -840,6 +846,35 @@ impl FeatureExpertTarget {
                 out
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FeatureExpertTarget, SplicingScopePreset};
+
+    #[test]
+    fn feature_expert_target_accepts_legacy_pascal_case_tags() {
+        let target: FeatureExpertTarget = serde_json::from_str(
+            r#"{"SplicingFeature":{"feature_id":2,"scope":"all_overlapping_both_strands"}}"#,
+        )
+        .expect("deserialize legacy splicing feature target");
+        assert_eq!(
+            target,
+            FeatureExpertTarget::SplicingFeature {
+                feature_id: 2,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+            }
+        );
+
+        let target: FeatureExpertTarget = serde_json::from_str(
+            r#"{"UniprotProjection":{"projection_id":"tp53_uniprot_p04637"}}"#,
+        )
+        .expect("deserialize legacy UniProt projection target");
+        assert_eq!(
+            target,
+            FeatureExpertTarget::uniprot_projection("tp53_uniprot_p04637")
+        );
     }
 }
 

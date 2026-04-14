@@ -48059,6 +48059,11 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             speed_mark: Some(TranslationSpeedMark::Slow),
             target_anneal_tm_c: Some(58.0),
             anneal_window_bp: 9,
+            preferred_synonymous_choice_count: 3,
+            alternative_synonymous_choice_count: 0,
+            fallback_unknown_codon_count: 0,
+            gc_fraction: Some(0.5),
+            realized_anneal_tm_c: Some(58.0),
             warnings: vec![],
         };
         let summary = GENtleApp::format_reverse_translation_speed_resolution_summary(&report);

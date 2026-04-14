@@ -598,7 +598,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     }
     assert splicing_ops[1]["RenderFeatureExpertSvg"]["seq_id"] == "tp53_panel_source"
     assert splicing_ops[1]["RenderFeatureExpertSvg"]["target"] == {
-        "SplicingFeature": {
+        "splicing_feature": {
             "feature_id": 2,
             "scope": "all_overlapping_both_strands",
         }
