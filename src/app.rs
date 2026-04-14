@@ -6622,6 +6622,7 @@ Error: `{err}`"
                 display_density_threshold: None,
                 display_intensity_gain: None,
                 overlay_x_axis_mode: Default::default(),
+                overlay_anchor_exon: None,
             });
         match result {
             Ok(op_result) => {
@@ -41056,6 +41057,7 @@ Error: `{err}`"
                 display_density_threshold,
                 display_intensity_gain,
                 overlay_x_axis_mode,
+                overlay_anchor_exon: _,
             } => format!(
                 "Render dotplot SVG: seq_id={}, dotplot_id={}, path={}, flex_track_id={}, display_threshold={}, intensity_gain={}, overlay_x_axis={}",
                 seq_id,
@@ -50857,6 +50859,7 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                     display_density_threshold: None,
                     display_intensity_gain: None,
                     overlay_x_axis_mode: Default::default(),
+                    overlay_anchor_exon: None,
                 })
                 .expect("render dotplot svg");
             assert!(dotplot_result.messages.iter().any(|m| m.contains("svg_dp")));

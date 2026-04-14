@@ -8180,6 +8180,7 @@ fn test_render_dotplot_svg_operation() {
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
             overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
         })
         .expect("render dotplot svg");
     assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
@@ -8260,6 +8261,7 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
             overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
         })
         .expect("render overlay dotplot svg");
     assert!(res.messages.iter().any(|m| m.contains("dotplot SVG")));
@@ -8333,6 +8335,7 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
             overlay_x_axis_mode: DotplotOverlayXAxisMode::LeftAlignedBp,
+            overlay_anchor_exon: None,
         })
         .expect("render overlay left-aligned dotplot svg");
     let left_text = std::fs::read_to_string(&left_path).expect("read left svg");
@@ -8353,6 +8356,7 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
             display_density_threshold: Some(0.0),
             display_intensity_gain: Some(1.0),
             overlay_x_axis_mode: DotplotOverlayXAxisMode::RightAlignedBp,
+            overlay_anchor_exon: None,
         })
         .expect("render overlay right-aligned dotplot svg");
     let right_text = std::fs::read_to_string(&right_path).expect("read right svg");

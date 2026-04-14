@@ -19614,6 +19614,7 @@ fn execute_shell_command_with_options_inner(
                     display_density_threshold: *display_density_threshold,
                     display_intensity_gain: *display_intensity_gain,
                     overlay_x_axis_mode: *overlay_x_axis_mode,
+                    overlay_anchor_exon: None,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

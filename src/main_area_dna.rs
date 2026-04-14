@@ -20412,6 +20412,7 @@ impl MainAreaDna {
                 display_density_threshold: Some(self.dotplot_ui.display_density_threshold),
                 display_intensity_gain: Some(self.dotplot_ui.display_intensity_gain),
                 overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+                overlay_anchor_exon: None,
             }) {
                 self.op_status = error.message.clone();
                 self.op_error_popup = Some(error.message);
@@ -26760,6 +26761,7 @@ impl MainAreaDna {
             display_density_threshold: Some(density_threshold),
             display_intensity_gain: Some(intensity_gain),
             overlay_x_axis_mode: self.dotplot_ui.overlay_x_axis_mode,
+            overlay_anchor_exon: None,
         });
     }
 

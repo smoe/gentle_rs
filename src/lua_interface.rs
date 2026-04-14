@@ -955,6 +955,7 @@ impl LuaInterface {
                             display_density_threshold,
                             display_intensity_gain,
                             overlay_x_axis_mode: Default::default(),
+                            overlay_anchor_exon: None,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]

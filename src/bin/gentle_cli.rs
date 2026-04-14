@@ -2569,6 +2569,7 @@ fn run() -> Result<(), String> {
                     display_density_threshold,
                     display_intensity_gain,
                     overlay_x_axis_mode,
+                    overlay_anchor_exon: None,
                 })
                 .map_err(|e| e.to_string())?;
             engine
