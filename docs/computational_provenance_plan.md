@@ -122,12 +122,20 @@ Shipped baseline:
 - lineage can reopen the transcript-first `Open Derived Protein Expert` path
   directly from the persisted derivation report
 - lineage details expose the derivation-mode summary and derived-protein count
+- persisted reverse-translation reports now carry stable `report_id` plus
+  stored `op_id` / `run_id`
+- GUI lineage projects those reports as analysis artifacts linked from the
+  source protein sequence
+- lineage can reopen the created coding-sequence window directly from the
+  persisted reverse-translation report
+- lineage details expose the speed-profile summary, translation table, coding
+  length, and protein length captured by that report
 
 Expected next step:
 
-- extend the same artifact contract to reverse/self-translation planning outputs
-  so protein-to-DNA handoff reasoning is visible with the same clarity as
-  transcript-to-protein derivation
+- extend the same artifact contract to self-translation planning outputs and
+  broader protein-to-DNA handoff reasoning so those decisions are visible with
+  the same clarity as transcript-to-protein derivation
 
 This includes future persisted outputs such as:
 

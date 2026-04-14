@@ -7610,6 +7610,38 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
         GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
         Some("feature_qualifier_hint")
     );
+    let report = result
+        .reverse_translation_report
+        .as_ref()
+        .expect("reverse-translation report");
+    assert_eq!(report.report_id, result.op_id);
+    assert_eq!(report.protein_seq_id, "prot");
+    assert_eq!(report.coding_seq_id, "prot_coding");
+    assert_eq!(report.translation_table, 11);
+    assert_eq!(
+        report.resolved_speed_profile.map(|profile| profile.as_str()),
+        Some("ecoli")
+    );
+    assert_eq!(
+        report
+            .resolved_speed_profile_source
+            .map(|source| source.as_str()),
+        Some("feature_qualifier_hint")
+    );
+    assert_eq!(report.speed_mark.map(|mark| mark.as_str()), Some("slow"));
+    assert_eq!(report.coding_length_bp, 9);
+    let listed = engine.list_reverse_translation_reports(Some("prot"));
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].report_id, result.op_id);
+    assert_eq!(listed[0].coding_seq_id, "prot_coding");
+    assert_eq!(listed[0].speed_profile_summary, "ecoli:slow");
+    assert_eq!(
+        engine
+            .get_reverse_translation_report(&result.op_id)
+            .expect("persisted reverse-translation report")
+            .coding_seq_id,
+        "prot_coding"
+    );
 }
 
 #[test]

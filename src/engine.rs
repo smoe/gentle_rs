@@ -265,6 +265,9 @@ const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
+pub const REVERSE_TRANSLATION_REPORTS_METADATA_KEY: &str = "reverse_translation_reports";
+const REVERSE_TRANSLATION_REPORTS_SCHEMA: &str = "gentle.reverse_translation_reports.v1";
+pub const REVERSE_TRANSLATION_REPORT_SCHEMA: &str = "gentle.reverse_translation_report.v1";
 pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
 const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
 pub const SEQUENCING_TRACE_RECORD_SCHEMA: &str = "gentle.sequencing_trace_record.v2";
@@ -2033,6 +2036,14 @@ struct ProteinDerivationReportStore {
     schema: String,
     updated_at_unix_ms: u128,
     reports: BTreeMap<String, ProteinDerivationReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct ReverseTranslationReportStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: BTreeMap<String, ReverseTranslationReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -7797,6 +7808,70 @@ impl GentleEngine {
         }
     }
 
+    fn read_reverse_translation_report_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> ReverseTranslationReportStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<ReverseTranslationReportStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = REVERSE_TRANSLATION_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_reverse_translation_report_store(&self) -> ReverseTranslationReportStore {
+        Self::read_reverse_translation_report_store_from_metadata(
+            self.state
+                .metadata
+                .get(REVERSE_TRANSLATION_REPORTS_METADATA_KEY),
+        )
+    }
+
+    fn write_reverse_translation_report_store(
+        &mut self,
+        mut store: ReverseTranslationReportStore,
+    ) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state
+                .metadata
+                .remove(REVERSE_TRANSLATION_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = REVERSE_TRANSLATION_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize reverse-translation metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(REVERSE_TRANSLATION_REPORTS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn upsert_reverse_translation_report(
+        &mut self,
+        report: ReverseTranslationReport,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_reverse_translation_report_store();
+        store.reports.insert(report.report_id.clone(), report);
+        self.write_reverse_translation_report_store(store)
+    }
+
+    fn summarize_reverse_translation_speed_profile(report: &ReverseTranslationReport) -> String {
+        let mut summary = report
+            .resolved_speed_profile
+            .map(|profile| profile.as_str().to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        if let Some(mark) = report.speed_mark {
+            summary.push(':');
+            summary.push_str(mark.as_str());
+        }
+        summary
+    }
+
     fn normalize_primer_design_report_id(raw: &str) -> Result<String, EngineError> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
@@ -8005,6 +8080,85 @@ impl GentleEngine {
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write protein-derivation report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_reverse_translation_reports(
+        &self,
+        protein_seq_id_filter: Option<&str>,
+    ) -> Vec<ReverseTranslationReportSummary> {
+        let filter = protein_seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_reverse_translation_report_store()
+            .reports
+            .values()
+            .filter(|report| {
+                filter
+                    .as_ref()
+                    .is_none_or(|needle| report.protein_seq_id.to_ascii_lowercase() == *needle)
+            })
+            .map(|report| ReverseTranslationReportSummary {
+                report_id: report.report_id.clone(),
+                protein_seq_id: report.protein_seq_id.clone(),
+                coding_seq_id: report.coding_seq_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                protein_length_aa: report.protein_length_aa,
+                coding_length_bp: report.coding_length_bp,
+                translation_table: report.translation_table,
+                speed_profile_summary: Self::summarize_reverse_translation_speed_profile(report),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.protein_seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.protein_seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_reverse_translation_report(
+        &self,
+        report_id: &str,
+    ) -> Result<ReverseTranslationReport, EngineError> {
+        let report_id = Self::normalize_protein_derivation_report_id(report_id)?;
+        self.read_reverse_translation_report_store()
+            .reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Reverse-translation report '{}' not found", report_id),
+            })
+    }
+
+    pub fn export_reverse_translation_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<ReverseTranslationReport, EngineError> {
+        let report = self.get_reverse_translation_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize reverse-translation report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write reverse-translation report to '{path}': {e}"),
         })?;
         Ok(report)
     }

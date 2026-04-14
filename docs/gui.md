@@ -1389,9 +1389,16 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
-- Double-click on an analysis node (`Dotplot` / `FlexibilityTrack` /
-  `PrimerDesign` / `QpcrDesign` / `SequencingConfirmation`): opens the source
-  sequence window.
+- Double-click on an analysis node:
+  - `Dotplot` / `FlexibilityTrack` / `PrimerDesign` / `QpcrDesign` /
+    `SequencingConfirmation`: opens the source sequence window
+  - `RnaReadInterpretation`: opens the RNA-read Mapping workspace on the saved
+    report
+  - `ProteinDerivation`: opens the Derived Protein Expert on the saved report
+  - `ReverseTranslation`: opens the created coding-sequence window referenced
+    by the saved report
+  - `UniprotProjection`: opens the UniProt Protein Expert on the saved
+    projection
 - Single-click on the dedicated `Gibson cloning` operation node in graph view,
   or on the `Op` cell for Gibson-created outputs in the table: reopens the
   Gibson specialist with the saved plan loaded again for review.
