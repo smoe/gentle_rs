@@ -1304,12 +1304,26 @@ order. Durable architecture constraints and decisions remain in
          tissue-, lysate-, and extract-style workflows to opt into
          non-exclusive containers without forking the container model
     2. Translation-speed and translation-table trust tightening
-       - improve species-profile coverage and provenance for the initial target
-         organisms: human, mouse, yeast, and *E. coli*
-       - make profile/proxy choice explicit in outputs so users can tell when a
-         bundled proxy or fallback table was used
-       - deepen organelle handling beyond the current warning-backed
-         mitochondrial fallback, while preserving deterministic behavior
+       - now partially implemented:
+         - deterministic translation-speed provenance is carried through
+           transcript derivation, protein derivation, reverse translation, and
+           UniProt feature coding-DNA query reports
+         - species-profile coverage/provenance is now explicit for the initial
+           target organisms: human, mouse, yeast, and *E. coli*
+         - deterministic organism/organelle defaults now cover:
+           - vertebrate mitochondria (`2`)
+           - yeast mitochondria (`3`)
+           - plastids/chloroplasts (`11`)
+           - *E. coli* source context (`11`)
+         - unresolved mitochondrial context still falls back to table `1` with
+           an explicit warning
+       - remaining tightening:
+         - replace the current mouse-via-rat codon-speed proxy with a bundled
+           dedicated mouse table
+         - extend mitochondrial lineage coverage beyond the current vertebrate /
+           yeast split while preserving deterministic behavior
+         - surface the same provenance more broadly in GUI inspection/export
+           flows beyond the current Protein Expert/details paths
     3. Reverse-translation ergonomics
        - keep the current deterministic codon-bias + optional annealing-Tm hint
          path, but add stronger diagnostics explaining codon choice

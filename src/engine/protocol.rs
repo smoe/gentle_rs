@@ -49,7 +49,8 @@ pub use gentle_protocol::{
     SequencingTraceRecord, SequencingTraceSummary, SplicingScopePreset, TfbsProgress,
     TranscriptProteinDerivation, TranscriptProteinDerivationMode,
     TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
-    UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
+    TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
+    UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
 };

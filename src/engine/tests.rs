@@ -6113,6 +6113,24 @@ SQ   SEQUENCE   48 AA;  5000 MW;  0000000000000000 CRC64;
         )
         .expect("query single exon feature");
     assert_eq!(single.match_count, 1);
+    assert_eq!(
+        single
+            .resolved_translation_speed_profile
+            .map(|profile| profile.as_str()),
+        Some("ecoli")
+    );
+    assert_eq!(
+        single
+            .resolved_translation_speed_profile_source
+            .map(|source| source.as_str()),
+        Some("explicit_request")
+    );
+    assert_eq!(
+        single
+            .resolved_translation_speed_reference_species
+            .as_deref(),
+        Some("Escherichia coli")
+    );
     assert_eq!(single.matches[0].transcript_id, "TXQ1");
     assert_eq!(single.matches[0].primary_exon_ordinal, Some(1));
     assert!(single.matches[0].primary_exon_pair.is_none());
@@ -6137,6 +6155,24 @@ SQ   SEQUENCE   48 AA;  5000 MW;  0000000000000000 CRC64;
         )
         .expect("query junction feature");
     assert_eq!(junction.match_count, 1);
+    assert_eq!(
+        junction
+            .resolved_translation_speed_profile
+            .map(|profile| profile.as_str()),
+        Some("human")
+    );
+    assert_eq!(
+        junction
+            .resolved_translation_speed_profile_source
+            .map(|source| source.as_str()),
+        Some("explicit_request")
+    );
+    assert_eq!(
+        junction
+            .resolved_translation_speed_reference_species
+            .as_deref(),
+        Some("Homo sapiens")
+    );
     assert_eq!(junction.matches[0].feature_key, "REGION");
     assert_eq!(junction.matches[0].exon_spans.len(), 2);
     assert_eq!(junction.matches[0].exon_spans[0].exon_ordinal, 1);
@@ -6156,6 +6192,34 @@ SQ   SEQUENCE   48 AA;  5000 MW;  0000000000000000 CRC64;
             .as_deref()
             .map(str::len),
         Some(18)
+    );
+
+    let inferred = engine
+        .query_uniprot_feature_coding_dna(
+            "PQUERY1@toy_query",
+            "single exon",
+            None,
+            UniprotFeatureCodingDnaQueryMode::Both,
+            None,
+        )
+        .expect("query inferred translation-speed profile");
+    assert_eq!(
+        inferred
+            .resolved_translation_speed_profile
+            .map(|profile| profile.as_str()),
+        Some("human")
+    );
+    assert_eq!(
+        inferred
+            .resolved_translation_speed_profile_source
+            .map(|source| source.as_str()),
+        Some("source_organism_scientific_name")
+    );
+    assert_eq!(
+        inferred
+            .resolved_translation_speed_reference_species
+            .as_deref(),
+        Some("Homo sapiens")
     );
 }
 
@@ -7006,6 +7070,15 @@ fn test_derive_transcript_sequences_adds_cds_translation_and_speed_hint() {
         Some("ecoli")
     );
     assert_eq!(
+        GentleEngine::feature_qualifier_text(mrna, "translation_speed_profile_source").as_deref(),
+        Some("source_organism_scientific_name")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(mrna, "translation_speed_reference_species")
+            .as_deref(),
+        Some("Escherichia coli")
+    );
+    assert_eq!(
         GentleEngine::feature_qualifier_text(mrna, "derived_protein_translation").as_deref(),
         Some("MKP")
     );
@@ -7093,15 +7166,27 @@ fn test_derive_transcript_sequences_reverse_strand_adds_translation_context_warn
         Some("mitochondrion")
     );
     assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("2")
+    );
+    assert_eq!(
         GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_hint").as_deref(),
         Some("human")
     );
     assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_source").as_deref(),
+        Some("source_organism_scientific_name")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_reference_species").as_deref(),
+        Some("Homo sapiens")
+    );
+    assert_eq!(
         GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
-        Some("ambiguous_mitochondrial_default")
+        Some("organelle_vertebrate_mitochondrial_default")
     );
     assert!(
-        result
+        !result
             .warnings
             .iter()
             .any(|warning| warning.contains("Mitochondrial context was detected"))
@@ -7163,6 +7248,111 @@ fn test_derive_transcript_sequences_uses_plastid_translation_table_default() {
 }
 
 #[test]
+fn test_derive_transcript_sequences_uses_ecoli_translation_table_default_without_qualifier() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("codon_start".into(), Some("1".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive ecoli transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("11")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("organism_ecoli_default")
+    );
+}
+
+#[test]
+fn test_derive_transcript_sequences_uses_yeast_mitochondrial_default() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        reverse_transcript_translation_test_sequence(
+            vec![
+                (
+                    "organism".into(),
+                    Some("Saccharomyces cerevisiae".to_string()),
+                ),
+                ("organelle".into(), Some("mitochondrion".to_string())),
+            ],
+            vec![
+                ("gene".into(), Some("QCR7".to_string())),
+                ("transcript_id".into(), Some("TX_YMT".to_string())),
+                ("label".into(), Some("TX_YMT".to_string())),
+            ],
+            vec![("transcript_id".into(), Some("TX_YMT".to_string()))],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::DeriveTranscriptSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            scope: None,
+            output_prefix: Some("tx".to_string()),
+        })
+        .expect("derive yeast mitochondrial transcript");
+    let derived = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("derived transcript");
+    let cds = derived
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+        .expect("derived CDS feature");
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "transl_table").as_deref(),
+        Some("3")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("organelle_yeast_mitochondrial_default")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_hint").as_deref(),
+        Some("yeast")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_reference_species").as_deref(),
+        Some("Saccharomyces cerevisiae")
+    );
+}
+
+#[test]
 fn test_derive_protein_sequences_creates_first_class_protein_sequence() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -7215,6 +7405,16 @@ fn test_derive_protein_sequences_creates_first_class_protein_sequence() {
     assert_eq!(
         GentleEngine::feature_qualifier_text(feature, "translation_speed_profile_hint").as_deref(),
         Some("ecoli")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "translation_speed_profile_source")
+            .as_deref(),
+        Some("source_organism_scientific_name")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(feature, "translation_speed_reference_species")
+            .as_deref(),
+        Some("Escherichia coli")
     );
 }
 
@@ -7387,6 +7587,14 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
         Some("ecoli")
     );
     assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_profile_source").as_deref(),
+        Some("feature_qualifier_hint")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_speed_reference_species").as_deref(),
+        Some("Escherichia coli")
+    );
+    assert_eq!(
         GentleEngine::feature_qualifier_text(cds, "translation_speed_mark").as_deref(),
         Some("slow")
     );
@@ -7397,6 +7605,10 @@ fn test_reverse_translate_protein_sequence_creates_coding_dna_with_speed_and_tm_
     assert_eq!(
         GentleEngine::feature_qualifier_text(cds, "translation_table").as_deref(),
         Some("11")
+    );
+    assert_eq!(
+        GentleEngine::feature_qualifier_text(cds, "translation_table_source").as_deref(),
+        Some("feature_qualifier_hint")
     );
 }
 

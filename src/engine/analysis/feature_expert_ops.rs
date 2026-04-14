@@ -1661,45 +1661,10 @@ impl GentleEngine {
         rows
     }
 
-    fn infer_uniprot_feature_query_speed_profile(
-        organism: Option<&str>,
-    ) -> Option<TranslationSpeedProfile> {
-        let normalized = organism?.trim().to_ascii_lowercase();
-        if normalized.is_empty() {
-            return None;
-        }
-        if normalized.contains("homo sapiens") || normalized.contains("human") {
-            return Some(TranslationSpeedProfile::Human);
-        }
-        if normalized.contains("mus musculus") || normalized.contains("mouse") {
-            return Some(TranslationSpeedProfile::Mouse);
-        }
-        if normalized.contains("saccharomyces cerevisiae") || normalized.contains("yeast") {
-            return Some(TranslationSpeedProfile::Yeast);
-        }
-        if normalized.contains("escherichia coli")
-            || normalized.contains("e. coli")
-            || normalized.contains("e coli")
-        {
-            return Some(TranslationSpeedProfile::Ecoli);
-        }
-        None
-    }
-
     fn uniprot_feature_query_profile_species_label(
         profile: TranslationSpeedProfile,
     ) -> (&'static str, Option<&'static str>) {
-        match profile {
-            TranslationSpeedProfile::Human => ("Human", None),
-            TranslationSpeedProfile::Mouse => (
-                "Rattus norvegicus",
-                Some(
-                    "Mouse translation-speed optimization currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus preference table is not bundled yet.",
-                ),
-            ),
-            TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
-            TranslationSpeedProfile::Ecoli => ("E. coli", None),
-        }
+        Self::translation_speed_profile_reference_species(profile)
     }
 
     fn build_uniprot_feature_query_optimized_dna(
@@ -1956,12 +1921,23 @@ impl GentleEngine {
         let query_lower = feature_query.to_ascii_lowercase();
         let resolved_profile = match query_mode {
             UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded => None,
-            _ => translation_speed_profile.or_else(|| {
-                Self::infer_uniprot_feature_query_speed_profile(entry.organism.as_deref())
-            }),
+            _ => translation_speed_profile
+                .map(|profile| {
+                    Self::translation_speed_profile_resolution_from_profile(
+                        profile,
+                        TranslationSpeedProfileSource::ExplicitRequest,
+                        None,
+                    )
+                })
+                .or_else(|| {
+                    Self::infer_translation_speed_profile_from_organism(entry.organism.as_deref())
+                }),
         };
 
         let mut warnings = projection.warnings.clone();
+        if let Some(resolved_profile) = resolved_profile.as_ref() {
+            warnings.extend(resolved_profile.warnings.iter().cloned());
+        }
         if !matches!(
             query_mode,
             UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded
@@ -2078,11 +2054,11 @@ impl GentleEngine {
                     query_mode,
                     UniprotFeatureCodingDnaQueryMode::GenomicAsEncoded
                 ) {
-                    resolved_profile.map(|profile| {
+                    resolved_profile.as_ref().map(|resolution| {
                         let (optimized, local_warnings) =
                             Self::build_uniprot_feature_query_optimized_dna(
                                 &amino_acid_sequence,
-                                profile,
+                                resolution.profile,
                             );
                         optimized_warnings = local_warnings;
                         optimized
@@ -2148,7 +2124,11 @@ impl GentleEngine {
             transcript_filter,
             query_mode,
             requested_translation_speed_profile: translation_speed_profile,
-            resolved_translation_speed_profile: resolved_profile,
+            resolved_translation_speed_profile: resolved_profile.as_ref().map(|r| r.profile),
+            resolved_translation_speed_profile_source: resolved_profile.as_ref().map(|r| r.source),
+            resolved_translation_speed_reference_species: resolved_profile
+                .as_ref()
+                .map(|r| r.reference_species.clone()),
             match_count: matches.len(),
             matches,
             warnings,

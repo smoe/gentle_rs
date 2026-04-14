@@ -49663,10 +49663,10 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
             dna.features_mut().push(gb_io::seq::Feature {
                 kind: "mRNA".into(),
                 location: gb_io::seq::Location::simple_range(0, 18),
-                    qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
-                });
-                state.sequences.insert("seq_rna".to_string(), dna);
-                insert_test_lineage_node(state, "n_rna", "seq_rna");
+                qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+            });
+            state.sequences.insert("seq_rna".to_string(), dna);
+            insert_test_lineage_node(state, "n_rna", "seq_rna");
             let op_id = engine
                 .commit_rna_read_report(crate::engine::RnaReadInterpretationReport {
                     schema: "gentle.rna_read_report.v1".to_string(),

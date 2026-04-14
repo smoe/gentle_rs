@@ -5175,7 +5175,7 @@ impl MainAreaDna {
                 .size(font_size),
         );
         egui::Grid::new("isoform_protein_grid")
-            .num_columns(9)
+            .num_columns(10)
             .striped(true)
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("isoform").strong().size(font_size));
@@ -5187,6 +5187,11 @@ impl MainAreaDna {
                 );
                 ui.label(
                     egui::RichText::new("translation table/source")
+                        .strong()
+                        .size(font_size),
+                );
+                ui.label(
+                    egui::RichText::new("speed profile/source")
                         .strong()
                         .size(font_size),
                 );
@@ -5253,6 +5258,29 @@ impl MainAreaDna {
                                         derivation.translation_table_label,
                                         derivation.translation_table_source.as_str()
                                     )
+                                })
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            derived
+                                .map(|derivation| {
+                                    let profile = derivation
+                                        .translation_speed_profile_hint
+                                        .as_deref()
+                                        .unwrap_or("-");
+                                    let source = derivation
+                                        .translation_speed_profile_source
+                                        .map(|source| source.as_str())
+                                        .unwrap_or("unspecified");
+                                    let reference = derivation
+                                        .translation_speed_reference_species
+                                        .as_deref()
+                                        .unwrap_or("-");
+                                    format!("{profile} ({source}, ref={reference})")
                                 })
                                 .unwrap_or_else(|| "-".to_string()),
                         )

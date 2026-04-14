@@ -2777,7 +2777,10 @@ pub enum TranscriptProteinTranslationTableSource {
     ExplicitCdsQualifier,
     ExplicitTranscriptQualifier,
     ExplicitSourceQualifier,
+    OrganismEcoliDefault,
     OrganellePlastidDefault,
+    OrganelleVertebrateMitochondrialDefault,
+    OrganelleYeastMitochondrialDefault,
     AmbiguousMitochondrialDefault,
 }
 
@@ -2788,7 +2791,12 @@ impl TranscriptProteinTranslationTableSource {
             Self::ExplicitCdsQualifier => "explicit_cds_qualifier",
             Self::ExplicitTranscriptQualifier => "explicit_transcript_qualifier",
             Self::ExplicitSourceQualifier => "explicit_source_qualifier",
+            Self::OrganismEcoliDefault => "organism_ecoli_default",
             Self::OrganellePlastidDefault => "organelle_plastid_default",
+            Self::OrganelleVertebrateMitochondrialDefault => {
+                "organelle_vertebrate_mitochondrial_default"
+            }
+            Self::OrganelleYeastMitochondrialDefault => "organelle_yeast_mitochondrial_default",
             Self::AmbiguousMitochondrialDefault => "ambiguous_mitochondrial_default",
         }
     }
@@ -2831,6 +2839,28 @@ impl TranslationSpeedProfile {
             Self::Mouse => "mouse",
             Self::Yeast => "yeast",
             Self::Ecoli => "ecoli",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// How a translation-speed profile was resolved.
+pub enum TranslationSpeedProfileSource {
+    #[default]
+    SourceOrganismScientificName,
+    SourceOrganismCommonAlias,
+    FeatureQualifierHint,
+    ExplicitRequest,
+}
+
+impl TranslationSpeedProfileSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SourceOrganismScientificName => "source_organism_scientific_name",
+            Self::SourceOrganismCommonAlias => "source_organism_common_alias",
+            Self::FeatureQualifierHint => "feature_qualifier_hint",
+            Self::ExplicitRequest => "explicit_request",
         }
     }
 }
@@ -2954,6 +2984,10 @@ pub struct UniprotFeatureCodingDnaQueryReport {
     pub requested_translation_speed_profile: Option<TranslationSpeedProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_translation_speed_profile: Option<TranslationSpeedProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_translation_speed_profile_source: Option<TranslationSpeedProfileSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_translation_speed_reference_species: Option<String>,
     pub match_count: usize,
     #[serde(default)]
     pub matches: Vec<UniprotFeatureCodingDnaMatch>,
@@ -2993,6 +3027,10 @@ pub struct TranscriptProteinDerivation {
     pub organelle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub translation_speed_profile_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_speed_profile_source: Option<TranslationSpeedProfileSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_speed_reference_species: Option<String>,
     #[serde(default)]
     pub terminal_stop_trimmed: bool,
     #[serde(default)]

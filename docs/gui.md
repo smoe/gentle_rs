@@ -3538,6 +3538,7 @@ Protein-evidence behavior:
   - the Protein Expert details grid now shows per-row:
     - derived protein length
     - translation table / source
+    - translation-speed profile / source / reference species
     - derivation mode
     - external opinion presence/source
     - comparison status

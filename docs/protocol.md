@@ -2450,9 +2450,12 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - translation-table resolution is deterministic:
     - explicit `/transl_table` on CDS, transcript, or source wins
     - plastid/chloroplast-like organelles default to NCBI table `11`
-    - mitochondrial context without explicit `/transl_table` currently falls
-      back to table `1` and emits an explicit warning because lineage-specific
-      mitochondrial table inference is not implemented yet
+    - vertebrate mitochondrial context (currently human and mouse) defaults to
+      NCBI table `2`
+    - yeast mitochondrial context defaults to NCBI table `3`
+    - *Escherichia coli* source context defaults to NCBI table `11`
+    - unresolved mitochondrial context without explicit `/transl_table` still
+      falls back to table `1` and emits an explicit warning
   - the derived transcript still keeps translation qualifiers locally, and
     `DeriveProteinSequences` can then materialize the corresponding peptides as
     first-class protein sequence entries.
@@ -2466,6 +2469,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - `translation_context_organism`
     - `translation_context_organelle`
     - `translation_speed_profile_hint`
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
     - `derived_protein_translation`
   - derived synthetic `CDS` may now include:
     - `translation`
@@ -2475,6 +2480,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - `translation_table_source`
     - `protein_length_aa`
     - `terminal_stop_trimmed`
+    - `translation_speed_profile_hint`
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
     - zero or more `translation_warning` qualifiers
 - Translation-speed preparation:
   - transcript derivation now records a normalized
@@ -2484,6 +2492,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - `mouse`
     - `yeast`
     - `ecoli`
+  - provenance is now explicit through:
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
+  - the bundled `mouse` speed profile currently uses a deterministic rat
+    codon-preference proxy and reports that proxy choice in warnings/provenance
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - deterministic messages/warnings about CDS absence, translation-table
@@ -2510,6 +2523,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - translation-table context
     - organism/organelle context when available
     - optional `translation_speed_profile_hint`
+    - optional `translation_speed_profile_source`
+    - optional `translation_speed_reference_species`
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - persists one transcript-native protein-derivation report with stable
@@ -2537,6 +2552,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Behavior:
   - generates one synthetic coding DNA sequence for the selected protein
   - codon choice is deterministic and translation-table-aware
+  - translation-table resolution is deterministic in this order:
+    - explicit request
+    - existing protein feature translation qualifiers
+    - organism/organelle context inferred from attached features
   - `speed_mark=fast` biases toward preferred codons for the selected/bundled
     species profile
   - `speed_mark=slow` biases away from the preferred codon when synonymous
@@ -2549,7 +2568,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - one full-span synthetic local `CDS` feature with:
     - protein provenance
     - translation table/label
-    - optional speed profile/mark qualifiers
+    - translation table source
+    - optional translation context organism/organelle qualifiers
+    - optional speed profile/source/mark qualifiers
+    - optional speed reference-species qualifier
     - optional annealing-target qualifiers
     - zero or more `reverse_translation_warning` qualifiers
 

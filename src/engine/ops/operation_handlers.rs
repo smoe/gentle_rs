@@ -19,6 +19,14 @@ use crate::{
     uniprot::UniprotNucleotideXref,
 };
 
+#[derive(Debug, Clone)]
+pub(crate) struct TranslationSpeedProfileResolution {
+    pub profile: TranslationSpeedProfile,
+    pub source: TranslationSpeedProfileSource,
+    pub reference_species: String,
+    pub warnings: Vec<String>,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -1171,21 +1179,125 @@ impl GentleEngine {
         }
     }
 
-    fn infer_translation_speed_profile_hint(organism: Option<&str>) -> Option<String> {
+    pub(crate) fn translation_speed_profile_reference_species(
+        profile: TranslationSpeedProfile,
+    ) -> (&'static str, Option<&'static str>) {
+        match profile {
+            TranslationSpeedProfile::Human => ("Homo sapiens", None),
+            TranslationSpeedProfile::Mouse => (
+                "Rattus norvegicus",
+                Some(
+                    "Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet.",
+                ),
+            ),
+            TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
+            TranslationSpeedProfile::Ecoli => ("Escherichia coli", None),
+        }
+    }
+
+    pub(crate) fn translation_speed_profile_resolution_from_profile(
+        profile: TranslationSpeedProfile,
+        source: TranslationSpeedProfileSource,
+        reference_species_override: Option<&str>,
+    ) -> TranslationSpeedProfileResolution {
+        let (reference_species, profile_warning) =
+            Self::translation_speed_profile_reference_species(profile);
+        let mut warnings = vec![];
+        if let Some(warning) = profile_warning {
+            warnings.push(warning.to_string());
+        }
+        TranslationSpeedProfileResolution {
+            profile,
+            source,
+            reference_species: reference_species_override
+                .unwrap_or(reference_species)
+                .to_string(),
+            warnings,
+        }
+    }
+
+    pub(crate) fn infer_translation_speed_profile_from_organism(
+        organism: Option<&str>,
+    ) -> Option<TranslationSpeedProfileResolution> {
         let normalized = organism?.trim().to_ascii_lowercase();
-        if normalized.contains("homo sapiens") {
-            return Some("human".to_string());
+        if normalized.is_empty() {
+            return None;
         }
-        if normalized.contains("mus musculus") {
-            return Some("mouse".to_string());
+        let scientific_match = |needle: &str| normalized.contains(needle);
+        let common_match = |needle: &str| normalized.contains(needle);
+        if scientific_match("homo sapiens") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Human,
+                TranslationSpeedProfileSource::SourceOrganismScientificName,
+                None,
+            ));
         }
-        if normalized.contains("saccharomyces cerevisiae") {
-            return Some("yeast".to_string());
+        if scientific_match("mus musculus") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Mouse,
+                TranslationSpeedProfileSource::SourceOrganismScientificName,
+                None,
+            ));
         }
-        if normalized.contains("escherichia coli") || normalized.contains("e. coli") {
-            return Some("ecoli".to_string());
+        if scientific_match("saccharomyces cerevisiae") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Yeast,
+                TranslationSpeedProfileSource::SourceOrganismScientificName,
+                None,
+            ));
+        }
+        if scientific_match("escherichia coli") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Ecoli,
+                TranslationSpeedProfileSource::SourceOrganismScientificName,
+                None,
+            ));
+        }
+        if common_match("human") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Human,
+                TranslationSpeedProfileSource::SourceOrganismCommonAlias,
+                None,
+            ));
+        }
+        if common_match("mouse") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Mouse,
+                TranslationSpeedProfileSource::SourceOrganismCommonAlias,
+                None,
+            ));
+        }
+        if common_match("yeast") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Yeast,
+                TranslationSpeedProfileSource::SourceOrganismCommonAlias,
+                None,
+            ));
+        }
+        if common_match("e. coli") || common_match("e coli") || common_match("ecoli") {
+            return Some(Self::translation_speed_profile_resolution_from_profile(
+                TranslationSpeedProfile::Ecoli,
+                TranslationSpeedProfileSource::SourceOrganismCommonAlias,
+                None,
+            ));
         }
         None
+    }
+
+    fn infer_translation_speed_profile_source_enum(
+        raw: Option<&str>,
+    ) -> Option<TranslationSpeedProfileSource> {
+        match raw?.trim().to_ascii_lowercase().as_str() {
+            "source_organism_scientific_name" => {
+                Some(TranslationSpeedProfileSource::SourceOrganismScientificName)
+            }
+            "source_organism_common_alias" => {
+                Some(TranslationSpeedProfileSource::SourceOrganismCommonAlias)
+            }
+            "feature_qualifier_hint" => Some(TranslationSpeedProfileSource::FeatureQualifierHint),
+            "explicit_request" => Some(TranslationSpeedProfileSource::ExplicitRequest),
+            _ => None,
+        }
     }
 
     fn first_source_feature_for_derivation(
@@ -1441,13 +1553,87 @@ impl GentleEngine {
             .then_some("mitochondrion".to_string())
     }
 
+    fn infer_translation_table_from_context(
+        organism: Option<&str>,
+        organelle: Option<&str>,
+    ) -> (usize, TranscriptProteinTranslationTableSource, Vec<String>) {
+        let mut warnings: Vec<String> = vec![];
+        let organelle_normalized = organelle
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        let organism_normalized = organism
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        if organelle_normalized.contains("plastid")
+            || organelle_normalized.contains("chloroplast")
+            || organelle_normalized.contains("chromoplast")
+            || organelle_normalized.contains("leucoplast")
+            || organelle_normalized.contains("apicoplast")
+        {
+            return (
+                11,
+                TranscriptProteinTranslationTableSource::OrganellePlastidDefault,
+                warnings,
+            );
+        }
+        if organelle_normalized.contains("mitochond")
+            || organelle_normalized.contains("kinetoplast")
+        {
+            if organism_normalized.contains("homo sapiens")
+                || organism_normalized.contains("human")
+                || organism_normalized.contains("mus musculus")
+                || organism_normalized.contains("mouse")
+            {
+                return (
+                    2,
+                    TranscriptProteinTranslationTableSource::OrganelleVertebrateMitochondrialDefault,
+                    warnings,
+                );
+            }
+            if organism_normalized.contains("saccharomyces cerevisiae")
+                || organism_normalized.contains("yeast")
+            {
+                return (
+                    3,
+                    TranscriptProteinTranslationTableSource::OrganelleYeastMitochondrialDefault,
+                    warnings,
+                );
+            }
+            warnings.push(
+                "Mitochondrial context was detected but no explicit /transl_table qualifier was present; defaulted to translation table 1 because lineage-specific mitochondrial code inference is not implemented yet.".to_string(),
+            );
+            return (
+                1,
+                TranscriptProteinTranslationTableSource::AmbiguousMitochondrialDefault,
+                warnings,
+            );
+        }
+        if organism_normalized.contains("escherichia coli")
+            || organism_normalized.contains("e. coli")
+            || organism_normalized.contains("e coli")
+            || organism_normalized.contains("ecoli")
+        {
+            return (
+                11,
+                TranscriptProteinTranslationTableSource::OrganismEcoliDefault,
+                warnings,
+            );
+        }
+        (
+            1,
+            TranscriptProteinTranslationTableSource::StandardDefault,
+            warnings,
+        )
+    }
+
     fn resolve_translation_table_for_derivation(
         source_feature: &gb_io::seq::Feature,
         cds_feature: Option<&gb_io::seq::Feature>,
         source_context_feature: Option<&gb_io::seq::Feature>,
+        organism: Option<&str>,
         organelle: Option<&str>,
     ) -> (usize, TranscriptProteinTranslationTableSource, Vec<String>) {
-        let mut warnings: Vec<String> = vec![];
+        let warnings: Vec<String> = vec![];
         if let Some(value) = cds_feature
             .and_then(|feature| Self::qualifier_usize_for_derivation(feature, "transl_table"))
         {
@@ -1473,39 +1659,7 @@ impl GentleEngine {
                 warnings,
             );
         }
-
-        let organelle_normalized = organelle
-            .map(|value| value.trim().to_ascii_lowercase())
-            .unwrap_or_default();
-        if organelle_normalized.contains("plastid")
-            || organelle_normalized.contains("chloroplast")
-            || organelle_normalized.contains("chromoplast")
-            || organelle_normalized.contains("leucoplast")
-            || organelle_normalized.contains("apicoplast")
-        {
-            return (
-                11,
-                TranscriptProteinTranslationTableSource::OrganellePlastidDefault,
-                warnings,
-            );
-        }
-        if organelle_normalized.contains("mitochond")
-            || organelle_normalized.contains("kinetoplast")
-        {
-            warnings.push(
-                "Mitochondrial context was detected but no explicit /transl_table qualifier was present; defaulted to translation table 1 because lineage-specific mitochondrial code inference is not implemented yet.".to_string(),
-            );
-            return (
-                1,
-                TranscriptProteinTranslationTableSource::AmbiguousMitochondrialDefault,
-                warnings,
-            );
-        }
-        (
-            1,
-            TranscriptProteinTranslationTableSource::StandardDefault,
-            warnings,
-        )
+        Self::infer_translation_table_from_context(organism, organelle)
     }
 
     fn translate_transcript_cds_to_protein(
@@ -1601,15 +1755,20 @@ impl GentleEngine {
             representative_cds_feature,
             source_context_feature,
         );
-        let speed_profile_hint = Self::infer_translation_speed_profile_hint(organism.as_deref());
+        let speed_profile_resolution =
+            Self::infer_translation_speed_profile_from_organism(organism.as_deref());
 
         let (translation_table, translation_table_source, mut warnings) =
             Self::resolve_translation_table_for_derivation(
                 source_feature,
                 representative_cds_feature,
                 source_context_feature,
+                organism.as_deref(),
                 organelle.as_deref(),
             );
+        if let Some(speed_profile_resolution) = speed_profile_resolution.as_ref() {
+            warnings.extend(speed_profile_resolution.warnings.iter().cloned());
+        }
         let codon_start = Self::qualifier_usize_for_derivation(source_feature, "codon_start")
             .or_else(|| {
                 representative_cds_feature.and_then(|feature| {
@@ -1663,7 +1822,15 @@ impl GentleEngine {
                 codon_start,
                 organism,
                 organelle,
-                translation_speed_profile_hint: speed_profile_hint,
+                translation_speed_profile_hint: speed_profile_resolution
+                    .as_ref()
+                    .map(|resolution| resolution.profile.as_str().to_string()),
+                translation_speed_profile_source: speed_profile_resolution
+                    .as_ref()
+                    .map(|resolution| resolution.source),
+                translation_speed_reference_species: speed_profile_resolution
+                    .as_ref()
+                    .map(|resolution| resolution.reference_species.clone()),
                 terminal_stop_trimmed: false,
                 warnings,
             }));
@@ -1699,7 +1866,15 @@ impl GentleEngine {
             codon_start,
             organism,
             organelle,
-            translation_speed_profile_hint: speed_profile_hint,
+            translation_speed_profile_hint: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.profile.as_str().to_string()),
+            translation_speed_profile_source: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.source),
+            translation_speed_reference_species: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.reference_species.clone()),
             terminal_stop_trimmed,
             warnings,
         }))
@@ -1725,14 +1900,19 @@ impl GentleEngine {
             });
         let organelle =
             Self::infer_organelle_for_derivation(source_feature, None, source_context_feature);
-        let speed_profile_hint = Self::infer_translation_speed_profile_hint(organism.as_deref());
+        let speed_profile_resolution =
+            Self::infer_translation_speed_profile_from_organism(organism.as_deref());
         let (translation_table, translation_table_source, mut warnings) =
             Self::resolve_translation_table_for_derivation(
                 source_feature,
                 None,
                 source_context_feature,
+                organism.as_deref(),
                 organelle.as_deref(),
             );
+        if let Some(speed_profile_resolution) = speed_profile_resolution.as_ref() {
+            warnings.extend(speed_profile_resolution.warnings.iter().cloned());
+        }
 
         #[derive(Clone, Copy)]
         struct Candidate {
@@ -1900,7 +2080,15 @@ impl GentleEngine {
             codon_start: 1,
             organism,
             organelle,
-            translation_speed_profile_hint: speed_profile_hint,
+            translation_speed_profile_hint: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.profile.as_str().to_string()),
+            translation_speed_profile_source: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.source),
+            translation_speed_reference_species: speed_profile_resolution
+                .as_ref()
+                .map(|resolution| resolution.reference_species.clone()),
             terminal_stop_trimmed,
             warnings,
         }))
@@ -1916,32 +2104,98 @@ impl GentleEngine {
         }
     }
 
-    fn codon_profile_species_label(
-        profile: TranslationSpeedProfile,
-    ) -> (&'static str, Option<&'static str>) {
-        match profile {
-            TranslationSpeedProfile::Human => ("Human", None),
-            TranslationSpeedProfile::Mouse => (
-                "Rattus norvegicus",
-                Some(
-                    "Mouse codon-speed bias currently uses the bundled rat codon-preference proxy because a dedicated Mus musculus table is not bundled yet.",
-                ),
-            ),
-            TranslationSpeedProfile::Yeast => ("Saccharomyces cerevisiae", None),
-            TranslationSpeedProfile::Ecoli => ("E. coli", None),
-        }
+    fn sequence_feature_translation_speed_resolution(
+        dna: &DNAsequence,
+    ) -> Option<TranslationSpeedProfileResolution> {
+        dna.features().iter().find_map(|feature| {
+            let raw_profile =
+                Self::feature_qualifier_text(feature, "translation_speed_profile_hint")
+                    .or_else(|| Self::feature_qualifier_text(feature, "speed_profile"))?;
+            let profile = Self::infer_translation_speed_profile_enum(Some(raw_profile.as_str()))?;
+            let source = Self::infer_translation_speed_profile_source_enum(
+                Self::feature_qualifier_text(feature, "translation_speed_profile_source")
+                    .as_deref(),
+            )
+            .unwrap_or(TranslationSpeedProfileSource::FeatureQualifierHint);
+            let reference_species =
+                Self::feature_qualifier_text(feature, "translation_speed_reference_species");
+            Some(Self::translation_speed_profile_resolution_from_profile(
+                profile,
+                source,
+                reference_species.as_deref(),
+            ))
+        })
     }
 
-    fn sequence_feature_translation_speed_hint(
-        dna: &DNAsequence,
-    ) -> Option<TranslationSpeedProfile> {
-        dna.features()
-            .iter()
-            .find_map(|feature| {
-                Self::feature_qualifier_text(feature, "translation_speed_profile_hint")
-                    .or_else(|| Self::feature_qualifier_text(feature, "speed_profile"))
-            })
-            .and_then(|raw| Self::infer_translation_speed_profile_enum(Some(raw.as_str())))
+    fn sequence_feature_translation_context(dna: &DNAsequence) -> (Option<String>, Option<String>) {
+        let organism = dna.features().iter().find_map(|feature| {
+            Self::feature_qualifier_text(feature, "translation_context_organism")
+                .or_else(|| Self::feature_qualifier_text(feature, "organism"))
+        });
+        let organelle = dna.features().iter().find_map(|feature| {
+            Self::feature_qualifier_text(feature, "translation_context_organelle")
+                .or_else(|| Self::feature_qualifier_text(feature, "organelle"))
+        });
+        (organism, organelle)
+    }
+
+    fn resolve_translation_table_for_reverse_translation(
+        protein: &DNAsequence,
+        requested_table: Option<usize>,
+    ) -> (
+        usize,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Vec<String>,
+    ) {
+        if let Some(table) = requested_table.filter(|value| *value > 0) {
+            return (
+                table,
+                Self::translation_table_display_name(table),
+                "explicit_request".to_string(),
+                None,
+                None,
+                vec![],
+            );
+        }
+
+        if let Some(feature) = protein.features().iter().find(|feature| {
+            Self::feature_qualifier_text(feature, "translation_table")
+                .or_else(|| Self::feature_qualifier_text(feature, "transl_table"))
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .is_some()
+        }) {
+            let table = Self::feature_qualifier_text(feature, "translation_table")
+                .or_else(|| Self::feature_qualifier_text(feature, "transl_table"))
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(1);
+            let source = Self::feature_qualifier_text(feature, "translation_table_source")
+                .unwrap_or_else(|| "feature_qualifier_hint".to_string());
+            return (
+                table,
+                Self::translation_table_display_name(table),
+                source,
+                Self::feature_qualifier_text(feature, "translation_context_organism"),
+                Self::feature_qualifier_text(feature, "translation_context_organelle"),
+                vec![],
+            );
+        }
+
+        let (organism, organelle) = Self::sequence_feature_translation_context(protein);
+        let (table, source, warnings) =
+            Self::infer_translation_table_from_context(organism.as_deref(), organelle.as_deref());
+        (
+            table,
+            Self::translation_table_display_name(table),
+            source.as_str().to_string(),
+            organism,
+            organelle,
+            warnings,
+        )
     }
 
     fn choose_back_translation_codon(
@@ -2112,6 +2366,18 @@ impl GentleEngine {
                 Some(speed_hint.clone()),
             ));
         }
+        if let Some(speed_source) = derivation.translation_speed_profile_source {
+            qualifiers.push((
+                "translation_speed_profile_source".into(),
+                Some(speed_source.as_str().to_string()),
+            ));
+        }
+        if let Some(reference_species) = derivation.translation_speed_reference_species.as_ref() {
+            qualifiers.push((
+                "translation_speed_reference_species".into(),
+                Some(reference_species.clone()),
+            ));
+        }
         if let Some(organism) = derivation.organism.as_ref() {
             qualifiers.push((
                 "translation_context_organism".into(),
@@ -2158,11 +2424,15 @@ impl GentleEngine {
         protein: &DNAsequence,
         translation_table: usize,
         translation_table_label: &str,
+        translation_table_source: &str,
         speed_profile: Option<TranslationSpeedProfile>,
+        speed_profile_source: Option<TranslationSpeedProfileSource>,
         preferred_species_label: Option<&str>,
         speed_mark: Option<TranslationSpeedMark>,
         target_anneal_tm_c: Option<f64>,
         anneal_window_bp: usize,
+        organism: Option<&str>,
+        organelle: Option<&str>,
         warnings: &[String],
     ) -> Result<DNAsequence, EngineError> {
         let mut dna = DNAsequence::from_sequence(coding_sequence).map_err(|e| EngineError {
@@ -2184,6 +2454,10 @@ impl GentleEngine {
                 Some(translation_table_label.to_string()),
             ),
             (
+                "translation_table_source".into(),
+                Some(translation_table_source.to_string()),
+            ),
+            (
                 "synthetic_origin".into(),
                 Some("protein_reverse_translated".to_string()),
             ),
@@ -2194,10 +2468,28 @@ impl GentleEngine {
                 Some(profile.as_str().to_string()),
             ));
         }
+        if let Some(source) = speed_profile_source {
+            qualifiers.push((
+                "translation_speed_profile_source".into(),
+                Some(source.as_str().to_string()),
+            ));
+        }
         if let Some(species) = preferred_species_label {
             qualifiers.push((
                 "translation_speed_reference_species".into(),
                 Some(species.to_string()),
+            ));
+        }
+        if let Some(organism) = organism {
+            qualifiers.push((
+                "translation_context_organism".into(),
+                Some(organism.to_string()),
+            ));
+        }
+        if let Some(organelle) = organelle {
+            qualifiers.push((
+                "translation_context_organelle".into(),
+                Some(organelle.to_string()),
             ));
         }
         if let Some(mark) = speed_mark {
@@ -2562,6 +2854,19 @@ impl GentleEngine {
                     Some(speed_hint.clone()),
                 ));
             }
+            if let Some(speed_source) = derivation.translation_speed_profile_source {
+                transcript_qualifiers.push((
+                    "translation_speed_profile_source".into(),
+                    Some(speed_source.as_str().to_string()),
+                ));
+            }
+            if let Some(reference_species) = derivation.translation_speed_reference_species.as_ref()
+            {
+                transcript_qualifiers.push((
+                    "translation_speed_reference_species".into(),
+                    Some(reference_species.clone()),
+                ));
+            }
             if !derivation.protein_sequence.is_empty() {
                 transcript_qualifiers.push((
                     "derived_protein_translation".into(),
@@ -2693,6 +2998,19 @@ impl GentleEngine {
                 cds_qualifiers.push((
                     "translation_speed_profile_hint".into(),
                     Some(speed_hint.clone()),
+                ));
+            }
+            if let Some(speed_source) = derivation.translation_speed_profile_source {
+                cds_qualifiers.push((
+                    "translation_speed_profile_source".into(),
+                    Some(speed_source.as_str().to_string()),
+                ));
+            }
+            if let Some(reference_species) = derivation.translation_speed_reference_species.as_ref()
+            {
+                cds_qualifiers.push((
+                    "translation_speed_reference_species".into(),
+                    Some(reference_species.clone()),
                 ));
             }
             for key in [
@@ -8674,12 +8992,30 @@ impl GentleEngine {
                     if let Some(derivation) = protein_derivation {
                         if derivation.protein_length_aa > 0 {
                             result.messages.push(format!(
-                                "Derived protein for transcript '{}' using translation table {} ('{}', source={}, {} aa).",
+                                "Derived protein for transcript '{}' using translation table {} ('{}', source={}, {} aa){}.",
                                 derived_seq_id,
                                 derivation.translation_table,
                                 derivation.translation_table_label,
                                 derivation.translation_table_source.as_str(),
-                                derivation.protein_length_aa
+                                derivation.protein_length_aa,
+                                derivation
+                                    .translation_speed_profile_hint
+                                    .as_ref()
+                                    .map(|profile| {
+                                        format!(
+                                            ", speed_profile={} ({}, ref={})",
+                                            profile,
+                                            derivation
+                                                .translation_speed_profile_source
+                                                .map(|source| source.as_str())
+                                                .unwrap_or("unspecified"),
+                                            derivation
+                                                .translation_speed_reference_species
+                                                .as_deref()
+                                                .unwrap_or("-")
+                                        )
+                                    })
+                                    .unwrap_or_default()
                             ));
                         } else {
                             result.warnings.push(format!(
@@ -8846,13 +9182,32 @@ impl GentleEngine {
                         derivation: derivation.clone(),
                     });
                     result.messages.push(format!(
-                        "Derived protein '{}' from transcript '{}' using translation table {} ('{}', mode={}, {} aa).",
+                        "Derived protein '{}' from transcript '{}' using translation table {} ('{}', source={}, mode={}, {} aa){}.",
                         protein_seq_id,
                         derivation.transcript_id,
                         derivation.translation_table,
                         derivation.translation_table_label,
+                        derivation.translation_table_source.as_str(),
                         derivation.derivation_mode.as_str(),
-                        derivation.protein_length_aa
+                        derivation.protein_length_aa,
+                        derivation
+                            .translation_speed_profile_hint
+                            .as_ref()
+                            .map(|profile| {
+                                format!(
+                                    ", speed_profile={} ({}, ref={})",
+                                    profile,
+                                    derivation
+                                        .translation_speed_profile_source
+                                        .map(|source| source.as_str())
+                                        .unwrap_or("unspecified"),
+                                    derivation
+                                        .translation_speed_reference_species
+                                        .as_deref()
+                                        .unwrap_or("-")
+                                )
+                            })
+                            .unwrap_or_default()
                     ));
                     for warning in &derivation.warnings {
                         result.warnings.push(format!(
@@ -8920,28 +9275,34 @@ impl GentleEngine {
                         ),
                     });
                 }
-                let effective_speed_profile = speed_profile
-                    .or_else(|| Self::sequence_feature_translation_speed_hint(&protein));
-                let (preferred_species_label, mut warnings) =
-                    if let Some(profile) = effective_speed_profile {
-                        let (species, warning) = Self::codon_profile_species_label(profile);
-                        let mut warnings = vec![];
-                        if let Some(warning) = warning {
-                            warnings.push(warning.to_string());
-                        }
-                        (Some(species), warnings)
-                    } else {
-                        (None, vec![])
-                    };
-                let effective_translation_table = translation_table
-                    .or_else(|| {
-                        protein.features().iter().find_map(|feature| {
-                            Self::feature_qualifier_text(feature, "translation_table")
-                                .or_else(|| Self::feature_qualifier_text(feature, "transl_table"))
-                                .and_then(|raw| raw.parse::<usize>().ok())
-                        })
+                let speed_profile_resolution = speed_profile
+                    .map(|profile| {
+                        Self::translation_speed_profile_resolution_from_profile(
+                            profile,
+                            TranslationSpeedProfileSource::ExplicitRequest,
+                            None,
+                        )
                     })
-                    .unwrap_or(1);
+                    .or_else(|| Self::sequence_feature_translation_speed_resolution(&protein));
+                let mut warnings = speed_profile_resolution
+                    .as_ref()
+                    .map(|resolution| resolution.warnings.clone())
+                    .unwrap_or_default();
+                let preferred_species_label = speed_profile_resolution
+                    .as_ref()
+                    .map(|resolution| resolution.reference_species.as_str());
+                let (
+                    effective_translation_table,
+                    effective_translation_table_label,
+                    effective_translation_table_source,
+                    translation_context_organism,
+                    translation_context_organelle,
+                    translation_table_warnings,
+                ) = Self::resolve_translation_table_for_reverse_translation(
+                    &protein,
+                    translation_table.filter(|value| *value > 0),
+                );
+                warnings.extend(translation_table_warnings);
                 let anneal_window_bp = anneal_window_bp.unwrap_or(20).max(6);
                 let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
                 let (coding_sequence, reverse_translation_warnings) =
@@ -8971,12 +9332,20 @@ impl GentleEngine {
                     &seq_id,
                     &protein,
                     effective_translation_table,
-                    &Self::translation_table_display_name(effective_translation_table),
-                    effective_speed_profile,
+                    &effective_translation_table_label,
+                    &effective_translation_table_source,
+                    speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.profile),
+                    speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.source),
                     preferred_species_label,
                     speed_mark,
                     target_anneal_tm_c,
                     anneal_window_bp,
+                    translation_context_organism.as_deref(),
+                    translation_context_organelle.as_deref(),
                     &warnings,
                 )?;
                 self.state.sequences.insert(coding_seq_id.clone(), coding);
@@ -8984,13 +9353,20 @@ impl GentleEngine {
                 parent_seq_ids.push(seq_id.clone());
                 result.created_seq_ids.push(coding_seq_id.clone());
                 result.messages.push(format!(
-                    "Reverse-translated protein '{}' into coding sequence '{}' using translation table {} ('{}'){}{}.",
+                    "Reverse-translated protein '{}' into coding sequence '{}' using translation table {} ('{}', source={}){}{}.",
                     seq_id,
                     coding_seq_id,
                     effective_translation_table,
-                    Self::translation_table_display_name(effective_translation_table),
-                    effective_speed_profile
-                        .map(|profile| format!(", speed_profile={}", profile.as_str()))
+                    effective_translation_table_label,
+                    effective_translation_table_source,
+                    speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| format!(
+                            ", speed_profile={} ({}, ref={})",
+                            resolution.profile.as_str(),
+                            resolution.source.as_str(),
+                            resolution.reference_species
+                        ))
                         .unwrap_or_default(),
                     speed_mark
                         .map(|mark| format!(", speed_mark={}", mark.as_str()))
