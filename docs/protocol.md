@@ -1013,6 +1013,12 @@ Sequencing-trace evidence notes:
 - `ImportUniprotEntrySequence { entry_id, output_id? }`
   - imports one first-class protein sequence plus projected UniProt feature
     annotations into regular project sequence state.
+- `FetchEnsemblProtein { query, entry_id? }`
+  - fetches one Ensembl transcript/protein-backed protein entry from Ensembl
+    REST and persists it in `gentle.ensembl_protein_entries.v1`.
+- `ImportEnsemblProteinSequence { entry_id, output_id? }`
+  - imports one stored Ensembl protein entry as a first-class protein sequence
+    with imported Ensembl protein-feature annotations.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
 - `DeriveProteinSequences { seq_id, feature_ids[], scope?, output_prefix? }`
@@ -1157,10 +1163,16 @@ external coding agent runtime, see:
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
   - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
-- shared feature-expert route now also accepts persisted UniProt projections as
-  a target:
-  - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID]`
-  - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] OUTPUT.svg`
+- shared-shell Ensembl protein routes:
+  - `ensembl-protein fetch QUERY [--entry-id ID]`
+  - `ensembl-protein list`
+  - `ensembl-protein show ENTRY_ID`
+  - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
+- shared feature-expert route now also accepts transcript-first protein
+  comparison with optional stored external evidence plus persisted UniProt
+  projections as direct targets:
+  - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]...`
+  - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
   - semantics:
     - derive transcript CDS/protein products directly from the current sequence
       state
@@ -1169,6 +1181,14 @@ external coding agent runtime, see:
     - optional `--transcript` narrows the compare window to one transcript id
       while preserving the same source-neutral payload shape used by
       external-opinion-backed protein experts
+    - optional `--ensembl-entry` resolves one persisted
+      `gentle.ensembl_protein_entries.v1` record and layers its protein
+      sequence/features onto the same transcript-first compare payload as an
+      external protein opinion
+    - optional `--feature-key` / `--feature-key-not` filters apply equally to
+      transcript-first derived views with external protein opinions, so noisy
+      imported Ensembl feature classes can be trimmed without changing the
+      product geometry
   - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
   - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
   - semantics:
@@ -1209,9 +1229,10 @@ external coding agent runtime, see:
       Expert through one source-neutral adapter boundary before view assembly,
       so future sources can reuse the same transcript-first comparison payload
       instead of forking the renderer/GUI contract
-    - this comparison model is intentionally not UniProt-specific; future
-      external sources such as Ensembl proteoform/protein annotations are meant
-      to populate the same fields rather than replacing transcript-native
+    - this comparison model is intentionally not UniProt-specific:
+      Ensembl protein entries now populate the same fields through the same
+      adapter boundary, and future providers should continue to reuse that
+      transcript-first contract rather than replacing transcript-native
       translation
     - the same persisted projection now also appears in GUI lineage as one
       analysis artifact node linked from the source sequence and reopenable

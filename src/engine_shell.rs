@@ -41,9 +41,10 @@ use crate::{
         PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
         PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinFeatureFilter,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState,
+        ProteinExternalOpinionSource, ProteinFeatureFilter, RackAuthoringTemplate,
+        RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -598,6 +599,10 @@ pub enum ShellCommand {
         query: String,
         entry_id: Option<String>,
     },
+    EnsemblProteinFetch {
+        query: String,
+        entry_id: Option<String>,
+    },
     GenbankFetch {
         accession: String,
         as_id: Option<String>,
@@ -617,7 +622,11 @@ pub enum ShellCommand {
         entry_id: Option<String>,
     },
     UniprotList,
+    EnsemblProteinList,
     UniprotShow {
+        entry_id: String,
+    },
+    EnsemblProteinShow {
         entry_id: String,
     },
     UniprotMap {
@@ -625,6 +634,10 @@ pub enum ShellCommand {
         seq_id: String,
         projection_id: Option<String>,
         transcript_id: Option<String>,
+    },
+    EnsemblProteinImportSequence {
+        entry_id: String,
+        output_id: Option<String>,
     },
     UniprotProjectionList {
         seq_id: Option<String>,
@@ -4660,6 +4673,14 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::EnsemblProteinFetch { query, entry_id } => format!(
+                "fetch Ensembl protein '{}' (entry_id={})",
+                query,
+                entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::GenbankFetch { accession, as_id } => format!(
                 "fetch GenBank accession '{}' (as_id={})",
                 accession,
@@ -4695,7 +4716,11 @@ impl ShellCommand {
                     .unwrap_or("auto")
             ),
             Self::UniprotList => "list imported UniProt entries".to_string(),
+            Self::EnsemblProteinList => "list imported Ensembl protein entries".to_string(),
             Self::UniprotShow { entry_id } => format!("show imported UniProt entry '{}'", entry_id),
+            Self::EnsemblProteinShow { entry_id } => {
+                format!("show imported Ensembl protein entry '{}'", entry_id)
+            }
             Self::UniprotMap {
                 entry_id,
                 seq_id,
@@ -4713,6 +4738,17 @@ impl ShellCommand {
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
+            ),
+            Self::EnsemblProteinImportSequence {
+                entry_id,
+                output_id,
+            } => format!(
+                "import Ensembl protein entry '{}' as a first-class protein sequence (output_id={})",
+                entry_id,
+                output_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
             ),
             Self::UniprotProjectionList { seq_id } => format!(
                 "list stored UniProt genome projections{}",
@@ -7236,9 +7272,11 @@ impl ShellCommand {
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
                 | Self::UniprotFetch { .. }
+                | Self::EnsemblProteinFetch { .. }
                 | Self::GenbankFetch { .. }
                 | Self::DbsnpFetch { .. }
                 | Self::UniprotImportSwissProt { .. }
+                | Self::EnsemblProteinImportSequence { .. }
                 | Self::UniprotMap { .. }
                 | Self::MacrosRun { .. }
                 | Self::MacrosTemplateUpsert { .. }
@@ -8125,7 +8163,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.is_empty() {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | protein-comparison [--transcript ID] | uniprot-projection PROJECTION_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID | protein-comparison [--transcript ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | uniprot-projection PROJECTION_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -8228,6 +8266,9 @@ fn parse_feature_expert_target_tokens(
         }
         "protein-comparison" => {
             let mut transcript_id_filter: Option<String> = None;
+            let mut protein_feature_filter = ProteinFeatureFilter::default();
+            let mut external_source: Option<ProteinExternalOpinionSource> = None;
+            let mut external_entry_id: Option<String> = None;
             let mut idx = 1usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -8239,6 +8280,49 @@ fn parse_feature_expert_target_tokens(
                         }
                         transcript_id_filter = Some(trimmed.to_string());
                     }
+                    "--ensembl-entry" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--ensembl-entry", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--ensembl-entry must not be empty".to_string());
+                        }
+                        external_source = Some(ProteinExternalOpinionSource::Ensembl);
+                        external_entry_id = Some(trimmed.to_string());
+                    }
+                    "--feature-key" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err(
+                                "--feature-key requires a protein feature key such as DOMAIN, PF02196, or PFAM"
+                                    .to_string(),
+                            );
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if value.is_empty() {
+                            return Err("--feature-key must not be empty".to_string());
+                        }
+                        protein_feature_filter
+                            .include_feature_keys
+                            .push(value.to_string());
+                        idx += 2;
+                        continue;
+                    }
+                    "--feature-key-not" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err(
+                                "--feature-key-not requires a protein feature key".to_string(),
+                            );
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if value.is_empty() {
+                            return Err("--feature-key-not must not be empty".to_string());
+                        }
+                        protein_feature_filter
+                            .exclude_feature_keys
+                            .push(value.to_string());
+                        idx += 2;
+                        continue;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {context} protein-comparison"
@@ -8248,9 +8332,9 @@ fn parse_feature_expert_target_tokens(
             }
             Ok(FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter,
-                protein_feature_filter: ProteinFeatureFilter::default(),
-                external_source: None,
-                external_entry_id: None,
+                protein_feature_filter,
+                external_source,
+                external_entry_id,
             })
         }
         "uniprot-projection" => {
@@ -10450,6 +10534,99 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna)"
+        )),
+    }
+}
+
+fn parse_ensembl_protein_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "ensembl-protein requires a subcommand: fetch, list, show, import-sequence"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 3 {
+                return Err("ensembl-protein fetch requires QUERY [--entry-id ID]".to_string());
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err("ensembl-protein fetch QUERY must not be empty".to_string());
+            }
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--entry-id" => {
+                        entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--entry-id",
+                            "ensembl-protein fetch",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for ensembl-protein fetch"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblProteinFetch { query, entry_id })
+        }
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("ensembl-protein list takes no options".to_string());
+            }
+            Ok(ShellCommand::EnsemblProteinList)
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("ensembl-protein show requires ENTRY_ID".to_string());
+            }
+            let entry_id = tokens[2].trim().to_string();
+            if entry_id.is_empty() {
+                return Err("ensembl-protein show ENTRY_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::EnsemblProteinShow { entry_id })
+        }
+        "import-sequence" | "import-entry-sequence" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "ensembl-protein import-sequence requires ENTRY_ID [--output-id ID]"
+                        .to_string(),
+                );
+            }
+            let entry_id = tokens[2].trim().to_string();
+            if entry_id.is_empty() {
+                return Err(
+                    "ensembl-protein import-sequence ENTRY_ID must not be empty".to_string(),
+                );
+            }
+            let mut output_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            "ensembl-protein import-sequence",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for ensembl-protein import-sequence"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblProteinImportSequence { entry_id, output_id })
+        }
+        other => Err(format!(
+            "Unknown ensembl-protein subcommand '{other}' (expected fetch|list|show|import-sequence)"
         )),
     }
 }
@@ -12793,6 +12970,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "genbank" => parse_genbank_command(tokens),
         "dbsnp" => parse_dbsnp_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
+        "ensembl-protein" | "ensembl_protein" => parse_ensembl_protein_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
         "planning" => parse_planning_command(tokens),
@@ -19232,6 +19410,18 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::EnsemblProteinFetch { query, entry_id } => {
+            let op_result = engine
+                .apply(Operation::FetchEnsemblProtein {
+                    query: query.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::UniprotImportSwissProt { path, entry_id } => {
             let op_result = engine
                 .apply(Operation::ImportUniprotSwissProt {
@@ -19252,6 +19442,15 @@ fn execute_shell_command_with_options_inner(
                     .map_err(|e| format!("Could not serialize UniProt entry list: {e}"))?,
             }
         }
+        ShellCommand::EnsemblProteinList => {
+            let rows = engine.list_ensembl_protein_entries();
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows).map_err(|e| {
+                    format!("Could not serialize Ensembl protein entry list: {e}")
+                })?,
+            }
+        }
         ShellCommand::UniprotShow { entry_id } => {
             let entry = engine
                 .get_uniprot_entry(entry_id)
@@ -19260,6 +19459,16 @@ fn execute_shell_command_with_options_inner(
                 state_changed: false,
                 output: serde_json::to_value(entry)
                     .map_err(|e| format!("Could not serialize UniProt entry: {e}"))?,
+            }
+        }
+        ShellCommand::EnsemblProteinShow { entry_id } => {
+            let entry = engine
+                .get_ensembl_protein_entry(entry_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize Ensembl protein entry: {e}"))?,
             }
         }
         ShellCommand::UniprotMap {
@@ -19274,6 +19483,18 @@ fn execute_shell_command_with_options_inner(
                     entry_id: entry_id.clone(),
                     projection_id: projection_id.clone(),
                     transcript_id: transcript_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::EnsemblProteinImportSequence { entry_id, output_id } => {
+            let op_result = engine
+                .apply(Operation::ImportEnsemblProteinSequence {
+                    entry_id: entry_id.clone(),
+                    output_id: output_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

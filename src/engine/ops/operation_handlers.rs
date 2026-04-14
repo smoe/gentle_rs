@@ -6943,6 +6943,27 @@ impl GentleEngine {
                     resolved_entry_id, accession, source_url
                 ));
             }
+            Operation::FetchEnsemblProtein { query, entry_id } => {
+                let query_trimmed = query.trim();
+                if query_trimmed.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "FetchEnsemblProtein requires a non-empty query".to_string(),
+                    });
+                }
+                let entry = Self::fetch_ensembl_protein_entry_from_rest(
+                    query_trimmed,
+                    entry_id.as_deref(),
+                )?;
+                let resolved_entry_id = entry.entry_id.clone();
+                let protein_id = entry.protein_id.clone();
+                let transcript_id = entry.transcript_id.clone();
+                self.upsert_ensembl_protein_entry(entry)?;
+                result.messages.push(format!(
+                    "Fetched Ensembl protein '{}' (protein '{}', transcript '{}')",
+                    resolved_entry_id, protein_id, transcript_id
+                ));
+            }
             Operation::FetchGenBankAccession { accession, as_id } => {
                 let accession_trimmed = accession.trim();
                 if accession_trimmed.is_empty() {
@@ -7006,6 +7027,24 @@ impl GentleEngine {
                     });
                 }
                 let _ = self.import_uniprot_entry_sequence(
+                    &mut result,
+                    entry_id,
+                    output_id.as_deref(),
+                )?;
+            }
+            Operation::ImportEnsemblProteinSequence {
+                entry_id,
+                output_id,
+            } => {
+                let entry_id = entry_id.trim();
+                if entry_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportEnsemblProteinSequence requires a non-empty entry_id"
+                            .to_string(),
+                    });
+                }
+                let _ = self.import_ensembl_protein_entry_sequence(
                     &mut result,
                     entry_id,
                     output_id.as_deref(),

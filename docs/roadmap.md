@@ -1263,9 +1263,20 @@ order. Durable architecture constraints and decisions remain in
       - deterministic synthetic non-UniProt regression coverage now also pins
         that provider boundary directly, so Ensembl-like external opinions can
         be exercised without going through the UniProt-specific persistence path
-    - future external protein evidence should reuse that same comparison
-      contract; Ensembl proteoform/protein annotations are the next planned
-      source, but are not implemented yet in this slice
+      - live Ensembl protein import is now implemented on that same boundary:
+        - new operations:
+          `FetchEnsemblProtein`, `ImportEnsemblProteinSequence`
+        - new shared-shell routes:
+          `ensembl-protein fetch|list|show|import-sequence`
+        - `inspect-feature-expert ... protein-comparison --ensembl-entry ID`
+          now overlays a stored Ensembl entry as optional external evidence on
+          the transcript-first Protein Expert payload
+        - live Ensembl REST smoke validation now succeeds against
+          `ENSP00000288602` / `ENST00000288602`
+      - GUI follow-up still pending:
+        add a dedicated Ensembl protein picker/import affordance so GUI users
+        can populate the same external-opinion path without dropping to the
+        shell first
   - container semantics follow-up:
     - persisted containers now default to `declared_contents_exclusive=true`
       so clean vials/tubes mean “only the listed members”

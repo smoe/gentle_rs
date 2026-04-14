@@ -27,6 +27,7 @@ use crate::{
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     app::GENtleApp,
     dna_sequence::DNAsequence,
+    ensembl_protein::EnsemblProteinEntry,
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
@@ -89,10 +90,10 @@ pub use gentle_protocol::{
     Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
     GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
     LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind,
-    RackPhysicalTemplateSpec, RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId,
-    SeqId, SequenceOrigin,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
 };
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
@@ -312,6 +313,8 @@ const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
 const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
 const UNIPROT_ENTRIES_METADATA_KEY: &str = "uniprot_entries";
 const UNIPROT_ENTRIES_SCHEMA: &str = "gentle.uniprot_entries.v1";
+const ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY: &str = "ensembl_protein_entries";
+const ENSEMBL_PROTEIN_ENTRIES_SCHEMA: &str = "gentle.ensembl_protein_entries.v1";
 const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projections";
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
@@ -2236,6 +2239,14 @@ struct UniprotEntryStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
+struct EnsemblProteinEntryStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    entries: HashMap<String, EnsemblProteinEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
 struct UniprotGenomeProjectionStore {
     schema: String,
     updated_at_unix_ms: u128,
@@ -2660,6 +2671,10 @@ pub enum Operation {
         query: String,
         entry_id: Option<String>,
     },
+    FetchEnsemblProtein {
+        query: String,
+        entry_id: Option<String>,
+    },
     FetchGenBankAccession {
         accession: String,
         as_id: Option<SeqId>,
@@ -2682,6 +2697,10 @@ pub enum Operation {
         as_id: Option<SeqId>,
     },
     ImportUniprotEntrySequence {
+        entry_id: String,
+        output_id: Option<SeqId>,
+    },
+    ImportEnsemblProteinSequence {
         entry_id: String,
         output_id: Option<SeqId>,
     },
@@ -4256,10 +4275,12 @@ impl GentleEngine {
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
+                "FetchEnsemblProtein".to_string(),
                 "FetchGenBankAccession".to_string(),
                 "FetchDbSnpRegion".to_string(),
                 "FetchUniprotLinkedGenBank".to_string(),
                 "ImportUniprotEntrySequence".to_string(),
+                "ImportEnsemblProteinSequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),

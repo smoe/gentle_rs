@@ -28,6 +28,8 @@ pub(crate) mod egui_compat;
 pub mod engine;
 /// Shared shell command parser/executor reused by GUI shell and CLI shell mode.
 pub mod engine_shell;
+/// Ensembl protein-entry parsing contracts and REST normalization helpers.
+pub mod ensembl_protein;
 /// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.

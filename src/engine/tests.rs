@@ -9,6 +9,7 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
+use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
@@ -26,6 +27,63 @@ const EXTERNAL_PRIMER_BINARY_TEST_ENV: &str = "GENTLE_TEST_EXTERNAL_BINARIES";
 
 fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
+}
+
+fn synthetic_ensembl_entry(
+    entry_id: &str,
+    protein_id: &str,
+    transcript_id: &str,
+    gene_symbol: &str,
+    feature_key: &str,
+    feature_note: &str,
+) -> EnsemblProteinEntry {
+    EnsemblProteinEntry {
+        schema: "gentle.ensembl_protein_entry.v1".to_string(),
+        entry_id: entry_id.to_string(),
+        protein_id: protein_id.to_string(),
+        protein_version: Some(1),
+        transcript_id: transcript_id.to_string(),
+        transcript_version: Some(1),
+        gene_id: Some("ENSGTOY1".to_string()),
+        gene_symbol: Some(gene_symbol.to_string()),
+        transcript_display_name: Some(format!("{gene_symbol}-201")),
+        species: Some("homo_sapiens".to_string()),
+        sequence: "M".repeat(60),
+        sequence_length: 60,
+        features: vec![EnsemblProteinFeature {
+            feature_key: feature_key.to_string(),
+            feature_type: "Pfam".to_string(),
+            description: Some(feature_note.to_string()),
+            start_aa: Some(10),
+            end_aa: Some(20),
+            interpro_id: Some("IPR000001".to_string()),
+            qualifiers: HashMap::from([
+                ("feature_id".to_string(), feature_key.to_string()),
+                ("hit_name".to_string(), feature_key.to_string()),
+            ])
+            .into_iter()
+            .collect(),
+        }],
+        aliases: vec![],
+        source: "ensembl_rest".to_string(),
+        source_query: Some(protein_id.to_string()),
+        imported_at_unix_ms: 0,
+        transcript_lookup_source_url: "https://rest.ensembl.org/lookup/id/ENSTTOY1?content-type=application/json;expand=1".to_string(),
+        protein_lookup_source_url: Some(
+            "https://rest.ensembl.org/lookup/id/ENSPTOY1?content-type=application/json"
+                .to_string(),
+        ),
+        sequence_source_url:
+            "https://rest.ensembl.org/sequence/id/ENSPTOY1?type=protein;content-type=application/json"
+                .to_string(),
+        feature_source_url:
+            "https://rest.ensembl.org/overlap/translation/ENSPTOY1?feature=protein_feature;content-type=application/json"
+                .to_string(),
+        raw_transcript_lookup_json: "{}".to_string(),
+        raw_protein_lookup_json: Some("{}".to_string()),
+        raw_sequence_json: "{}".to_string(),
+        raw_feature_json: "[]".to_string(),
+    }
 }
 
 fn formula_test_sequence() -> DNAsequence {
@@ -5023,6 +5081,145 @@ fn test_transcript_protein_expert_supports_non_uniprot_external_provider() {
             .expect("external opinion")
             .source,
         gentle_protocol::ProteinExternalOpinionSource::Ensembl
+    );
+    assert!(
+        view.protein_lanes[0]
+            .domains
+            .iter()
+            .any(|domain| domain.name.contains("synthetic Ensembl domain"))
+    );
+}
+
+#[test]
+fn test_ensembl_protein_entry_store_and_import_sequence() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_protein_entry(synthetic_ensembl_entry(
+            "ENSPTOY1",
+            "ENSPTOY1",
+            "TX_ENS1",
+            "TOYENS",
+            "PF02196",
+            "synthetic Ensembl domain",
+        ))
+        .expect("upsert Ensembl protein entry");
+
+    let listed = engine.list_ensembl_protein_entries();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].entry_id, "ENSPTOY1");
+    assert_eq!(listed[0].transcript_id, "TX_ENS1");
+    assert_eq!(listed[0].gene_symbol.as_deref(), Some("TOYENS"));
+
+    let by_alias = engine
+        .get_ensembl_protein_entry("tx_ens1")
+        .expect("resolve Ensembl protein entry by transcript alias");
+    assert_eq!(by_alias.protein_id, "ENSPTOY1");
+
+    let import = engine
+        .apply(Operation::ImportEnsemblProteinSequence {
+            entry_id: "ENSPTOY1".to_string(),
+            output_id: Some("toy_ens_protein".to_string()),
+        })
+        .expect("import Ensembl protein sequence");
+    assert!(
+        import
+            .messages
+            .iter()
+            .any(|message| message.contains("Imported Ensembl protein"))
+    );
+    let seq = engine
+        .state()
+        .sequences
+        .get("toy_ens_protein")
+        .expect("imported Ensembl protein sequence");
+    assert_eq!(seq.len(), 60);
+    assert!(
+        seq.features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("Pfam"))
+    );
+}
+
+#[test]
+fn test_transcript_protein_expert_supports_stored_ensembl_entry_overlay() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TOYENS".to_string())),
+            ("transcript_id".into(), Some("TX_ENS1".to_string())),
+            ("label".into(), Some("TX_ENS1".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_ensembl".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_ensembl_protein_entry(synthetic_ensembl_entry(
+            "ENSPTOY1",
+            "ENSPTOY1",
+            "TX_ENS1",
+            "TOYENS",
+            "PF02196",
+            "synthetic Ensembl domain",
+        ))
+        .expect("upsert Ensembl protein entry");
+
+    let expert = engine
+        .inspect_feature_expert(
+            "toy_ensembl",
+            &FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_ENS1".to_string()),
+                protein_feature_filter: Default::default(),
+                external_source: Some(gentle_protocol::ProteinExternalOpinionSource::Ensembl),
+                external_entry_id: Some("ENSPTOY1".to_string()),
+            },
+        )
+        .expect("inspect transcript-native protein expert with Ensembl overlay");
+    let FeatureExpertView::IsoformArchitecture(view) = expert else {
+        panic!("expected isoform-architecture payload for Ensembl-backed protein expert");
+    };
+    assert_eq!(view.panel_id, "ENSPTOY1");
+    assert_eq!(
+        view.panel_source.as_deref(),
+        Some("Transcript-native proteins with optional Ensembl opinion ENSPTOY1 (TX_ENS1)")
+    );
+    assert_eq!(view.gene_symbol, "TOYENS");
+    let comparison = view.protein_lanes[0]
+        .comparison
+        .as_ref()
+        .expect("comparison record");
+    assert_eq!(
+        comparison.status,
+        TranscriptProteinComparisonStatus::ConsistentWithExternalOpinion
+    );
+    assert_eq!(
+        comparison
+            .external_opinion
+            .as_ref()
+            .expect("external opinion")
+            .source,
+        gentle_protocol::ProteinExternalOpinionSource::Ensembl
+    );
+    assert_eq!(
+        comparison
+            .external_opinion
+            .as_ref()
+            .expect("external opinion")
+            .source_label,
+        "Ensembl ENSPTOY1 (TX_ENS1)"
     );
     assert!(
         view.protein_lanes[0]

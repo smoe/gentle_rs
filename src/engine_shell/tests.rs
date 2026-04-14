@@ -11,8 +11,10 @@
 
 use super::*;
 use crate::dna_sequence::DNAsequence;
+use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::engine::{
-    Arrangement, ArrangementMode, Container, ContainerKind, ProteinFeatureFilter, Rack,
+    Arrangement, ArrangementMode, Container, ContainerKind, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, Rack,
     RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
     RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
     RackProfileSnapshot,
@@ -11358,6 +11360,29 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let ensembl_protein_compare = parse_shell_line(
+        "inspect-feature-expert s protein-comparison --transcript TX_TPROT --ensembl-entry ENSPTOY1 --feature-key PF02196 --feature-key-not SEG",
+    )
+    .expect("parse Ensembl-backed transcript protein comparison target");
+    match ensembl_protein_compare {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::ProteinComparison {
+                    transcript_id_filter: Some("TX_TPROT".to_string()),
+                    protein_feature_filter: ProteinFeatureFilter {
+                        include_feature_keys: vec!["PF02196".to_string()],
+                        exclude_feature_keys: vec!["SEG".to_string()],
+                    },
+                    external_source: Some(ProteinExternalOpinionSource::Ensembl),
+                    external_entry_id: Some("ENSPTOY1".to_string()),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let uniprot = parse_shell_line("inspect-feature-expert s uniprot-projection PTEST1@seq_u")
         .expect("parse uniprot projection feature target");
     match uniprot {
@@ -11572,6 +11597,38 @@ fn parse_uniprot_commands() {
     }
 }
 
+#[test]
+fn parse_ensembl_protein_commands() {
+    let fetch = parse_shell_line("ensembl-protein fetch ENSP00000288602 --entry-id BRAF_ENS")
+        .expect("parse ensembl-protein fetch");
+    match fetch {
+        ShellCommand::EnsemblProteinFetch { query, entry_id } => {
+            assert_eq!(query, "ENSP00000288602");
+            assert_eq!(entry_id.as_deref(), Some("BRAF_ENS"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let show = parse_shell_line("ensembl-protein show ENSP00000288602")
+        .expect("parse ensembl-protein show");
+    assert!(matches!(show, ShellCommand::EnsemblProteinShow { .. }));
+
+    let list = parse_shell_line("ensembl-protein list").expect("parse ensembl-protein list");
+    assert!(matches!(list, ShellCommand::EnsemblProteinList));
+
+    let import = parse_shell_line(
+        "ensembl-protein import-sequence ENSP00000288602 --output-id braf_ens_protein",
+    )
+    .expect("parse ensembl-protein import-sequence");
+    match import {
+        ShellCommand::EnsemblProteinImportSequence { entry_id, output_id } => {
+            assert_eq!(entry_id, "ENSP00000288602");
+            assert_eq!(output_id.as_deref(), Some("braf_ens_protein"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
 fn tp53_isoform_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(800)).expect("valid dna");
     dna.features_mut().push(Feature {
@@ -11609,6 +11666,56 @@ fn uniprot_projection_test_sequence() -> DNAsequence {
         .collect(),
     });
     dna
+}
+
+fn synthetic_ensembl_entry() -> EnsemblProteinEntry {
+    EnsemblProteinEntry {
+        schema: "gentle.ensembl_protein_entry.v1".to_string(),
+        entry_id: "ENSPTOY1".to_string(),
+        protein_id: "ENSPTOY1".to_string(),
+        protein_version: Some(1),
+        transcript_id: "TX_TPROT".to_string(),
+        transcript_version: Some(1),
+        gene_id: Some("ENSGTOY1".to_string()),
+        gene_symbol: Some("TPROT".to_string()),
+        transcript_display_name: Some("TPROT-201".to_string()),
+        species: Some("homo_sapiens".to_string()),
+        sequence: "M".repeat(60),
+        sequence_length: 60,
+        features: vec![EnsemblProteinFeature {
+            feature_key: "PF02196".to_string(),
+            feature_type: "Pfam".to_string(),
+            description: Some("synthetic Ensembl domain".to_string()),
+            start_aa: Some(10),
+            end_aa: Some(20),
+            interpro_id: Some("IPR003116".to_string()),
+            qualifiers: HashMap::from([
+                ("feature_id".to_string(), "PF02196".to_string()),
+                ("hit_name".to_string(), "PF02196".to_string()),
+            ])
+            .into_iter()
+            .collect(),
+        }],
+        aliases: vec![],
+        source: "ensembl_rest".to_string(),
+        source_query: Some("ENSPTOY1".to_string()),
+        imported_at_unix_ms: 0,
+        transcript_lookup_source_url: "https://rest.ensembl.org/lookup/id/TX_TPROT?content-type=application/json;expand=1".to_string(),
+        protein_lookup_source_url: Some(
+            "https://rest.ensembl.org/lookup/id/ENSPTOY1?content-type=application/json"
+                .to_string(),
+        ),
+        sequence_source_url:
+            "https://rest.ensembl.org/sequence/id/ENSPTOY1?type=protein;content-type=application/json"
+                .to_string(),
+        feature_source_url:
+            "https://rest.ensembl.org/overlap/translation/ENSPTOY1?feature=protein_feature;content-type=application/json"
+                .to_string(),
+        raw_transcript_lookup_json: "{}".to_string(),
+        raw_protein_lookup_json: Some("{}".to_string()),
+        raw_sequence_json: "{}".to_string(),
+        raw_feature_json: "[]".to_string(),
+    }
 }
 
 #[test]
@@ -11906,6 +12013,105 @@ fn execute_transcript_protein_comparison_expert_without_uniprot() {
         Some("derived_only")
     );
     assert!(protein_lanes[0]["comparison"]["external_opinion"].is_null());
+}
+
+#[test]
+fn execute_ensembl_protein_list_show_import_and_compare() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let dna_len_i64 = i64::try_from(dna.len()).unwrap();
+    dna.features_mut().push(Feature {
+        kind: "source".into(),
+        location: Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::simple_range(0, 180),
+        qualifiers: vec![
+            ("gene".into(), Some("TPROT".to_string())),
+            ("transcript_id".into(), Some("TX_TPROT".to_string())),
+            ("label".into(), Some("TX_TPROT".to_string())),
+            ("cds_ranges_1based".into(), Some("1-180".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    state.sequences.insert("toy_tx_only".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .upsert_ensembl_protein_entry(synthetic_ensembl_entry())
+        .expect("upsert Ensembl protein entry");
+
+    let listed = execute_shell_command(&mut engine, &ShellCommand::EnsemblProteinList)
+        .expect("execute ensembl-protein list");
+    assert!(!listed.state_changed);
+    assert_eq!(listed.output[0]["entry_id"].as_str(), Some("ENSPTOY1"));
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::EnsemblProteinShow {
+            entry_id: "ENSPTOY1".to_string(),
+        },
+    )
+    .expect("execute ensembl-protein show");
+    assert!(!shown.state_changed);
+    assert_eq!(shown.output["transcript_id"].as_str(), Some("TX_TPROT"));
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::EnsemblProteinImportSequence {
+            entry_id: "ENSPTOY1".to_string(),
+            output_id: Some("toy_ens_import".to_string()),
+        },
+    )
+    .expect("execute ensembl-protein import-sequence");
+    assert!(imported.state_changed);
+    assert!(
+        engine
+            .state()
+            .sequences
+            .contains_key("toy_ens_import"),
+        "imported Ensembl protein sequence should exist in state"
+    );
+
+    let inspect = execute_shell_command(
+        &mut engine,
+        &ShellCommand::InspectFeatureExpert {
+            seq_id: "toy_tx_only".to_string(),
+            target: FeatureExpertTarget::ProteinComparison {
+                transcript_id_filter: Some("TX_TPROT".to_string()),
+                protein_feature_filter: ProteinFeatureFilter {
+                    include_feature_keys: vec!["PF02196".to_string()],
+                    exclude_feature_keys: vec![],
+                },
+                external_source: Some(ProteinExternalOpinionSource::Ensembl),
+                external_entry_id: Some("ENSPTOY1".to_string()),
+            },
+        },
+    )
+    .expect("inspect Ensembl-backed transcript protein comparison expert");
+    assert!(!inspect.state_changed);
+    assert_eq!(
+        inspect.output["data"]["panel_id"].as_str(),
+        Some("ENSPTOY1")
+    );
+    assert_eq!(
+        inspect.output["data"]["protein_lanes"][0]["comparison"]["external_opinion"]["source"]
+            .as_str(),
+        Some("ensembl")
+    );
+    assert!(
+        inspect.output["data"]["protein_lanes"][0]["domains"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| row["name"]
+                .as_str()
+                .map(|name| name.contains("synthetic Ensembl domain"))
+                .unwrap_or(false)))
+            .unwrap_or(false)
+    );
 }
 
 #[test]

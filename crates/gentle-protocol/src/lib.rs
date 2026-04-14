@@ -736,9 +736,9 @@ pub enum FeatureExpertTarget {
         transcript_id_filter: Option<String>,
         #[serde(default)]
         protein_feature_filter: ProteinFeatureFilter,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         external_source: Option<ProteinExternalOpinionSource>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         external_entry_id: Option<String>,
     },
     UniprotProjection {
@@ -786,7 +786,8 @@ impl FeatureExpertTarget {
             Self::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
-                ..
+                external_source,
+                external_entry_id,
             } => {
                 let mut out = "protein comparison".to_string();
                 if let Some(transcript_id_filter) = transcript_id_filter
@@ -806,6 +807,15 @@ impl FeatureExpertTarget {
                     out.push_str(&format!(
                         " exclude={}",
                         protein_feature_filter.exclude_feature_keys.join(",")
+                    ));
+                }
+                if let (Some(external_source), Some(external_entry_id)) =
+                    (external_source, external_entry_id.as_deref())
+                {
+                    out.push_str(&format!(
+                        " external={}:'{}'",
+                        external_source.as_str(),
+                        external_entry_id
                     ));
                 }
                 out

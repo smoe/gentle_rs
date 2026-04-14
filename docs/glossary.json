@@ -1,5 +1,5 @@
 {
-   "command_count": 301,
+   "command_count": 305,
    "commands": [
       {
          "aliases": [
@@ -118,7 +118,7 @@
          ],
          "path": "inspect-feature-expert",
          "summary": "Inspect TFBS, restriction-site, splicing, isoform, or transcript/protein expert details as JSON.",
-         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
       },
       {
          "aliases": [],
@@ -132,7 +132,7 @@
          ],
          "path": "render-feature-expert-svg",
          "summary": "Render TFBS, restriction-site, splicing, isoform, or transcript/protein expert visualization as SVG.",
-         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
       },
       {
          "aliases": [
@@ -918,6 +918,56 @@
          "path": "uniprot feature-coding-dna",
          "summary": "Query coding DNA and exon attribution for one mapped UniProt protein feature.",
          "usage": "uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchEnsemblProtein"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "ensembl-protein fetch",
+         "summary": "Fetch one Ensembl protein/transcript-backed protein entry from Ensembl REST.",
+         "usage": "ensembl-protein fetch QUERY [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "ensembl-protein list",
+         "summary": "List stored Ensembl protein entries in project metadata.",
+         "usage": "ensembl-protein list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "ensembl-protein show",
+         "summary": "Show one stored Ensembl protein entry as structured JSON.",
+         "usage": "ensembl-protein show ENTRY_ID"
+      },
+      {
+         "aliases": [
+            "ensembl-protein import-entry-sequence"
+         ],
+         "engine_operations": [
+            "ImportEnsemblProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "ensembl-protein import-sequence",
+         "summary": "Import one stored Ensembl protein entry as a first-class protein sequence.",
+         "usage": "ensembl-protein import-sequence ENTRY_ID [--output-id ID]"
       },
       {
          "aliases": [],

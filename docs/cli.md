@@ -1748,17 +1748,30 @@ Isoform architecture panel workflow:
   - same command family for splicing:
     - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
     - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
-  - same command family for transcript-first protein comparison without any
-    stored external protein evidence:
-    - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID]`
-    - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] OUTPUT.svg`
+  - same command family for transcript-first protein comparison, with or
+    without stored external protein evidence:
+    - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]...`
+    - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
     - this route opens the same transcript-first Protein Expert payload used by
       the GUI `Open Derived Protein Expert` action
+    - `--ensembl-entry` layers one stored Ensembl protein entry onto that same
+      transcript-first compare surface as optional external evidence without
+      redefining which transcript-derived products exist
+    - `--feature-key` / `--feature-key-not` can trim imported Ensembl or other
+      external-opinion feature classes when the comparison view gets crowded
   - same command family for persisted UniProt protein mappings:
     - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
     - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
     - `CONFLICT` is hidden by default; explicit include/exclude keys let you
       trim noisy UniProt classes such as `VARIANT`, `STRAND`, or `HELIX`
+  - direct Ensembl protein metadata routes:
+    - `ensembl-protein fetch QUERY [--entry-id ID]`
+    - `ensembl-protein list`
+    - `ensembl-protein show ENTRY_ID`
+    - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
+    - fetch/import keep Ensembl as optional external evidence plus an ordinary
+      first-class protein import path; they do not replace transcript-native
+      derivation as the authoritative product model
   - direct coding-DNA query for one projected UniProt feature:
     - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
     - returns one structured report per matching transcript feature span, including:

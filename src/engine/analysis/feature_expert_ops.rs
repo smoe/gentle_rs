@@ -10,12 +10,18 @@
 //! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
+use crate::ensembl_protein::{
+    EnsemblProteinEntry, EnsemblProteinEntrySummary, build_entry_from_rest_payloads,
+    normalize_entry_id as normalize_ensembl_protein_entry_id, resolve_query as resolve_ensembl_query,
+};
 use crate::uniprot::UniprotFeatureProjection;
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
 const DBSNP_REFSNP_ENV_VAR: &str = "GENTLE_NCBI_DBSNP_REFSNP_URL";
+const DEFAULT_ENSEMBL_REST_ENDPOINT: &str = "https://rest.ensembl.org";
+const ENSEMBL_REST_BASE_ENV_VAR: &str = "GENTLE_ENSEMBL_REST_BASE_URL";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DbsnpResolvedPlacement {
@@ -1294,6 +1300,141 @@ impl GentleEngine {
         Ok(normalized)
     }
 
+    pub(super) fn load_ensembl_protein_entry_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> EnsemblProteinEntryStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<EnsemblProteinEntryStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = ENSEMBL_PROTEIN_ENTRIES_SCHEMA.to_string();
+        }
+        store
+    }
+
+    pub(super) fn read_ensembl_protein_entry_store(&self) -> EnsemblProteinEntryStore {
+        Self::load_ensembl_protein_entry_store_from_metadata(
+            self.state
+                .metadata
+                .get(ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY),
+        )
+    }
+
+    pub(super) fn write_ensembl_protein_entry_store(
+        &mut self,
+        mut store: EnsemblProteinEntryStore,
+    ) -> Result<(), EngineError> {
+        if store.entries.is_empty() {
+            self.state.metadata.remove(ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = ENSEMBL_PROTEIN_ENTRIES_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize Ensembl protein entry metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub(crate) fn upsert_ensembl_protein_entry(
+        &mut self,
+        mut entry: EnsemblProteinEntry,
+    ) -> Result<(), EngineError> {
+        let normalized = normalize_ensembl_protein_entry_id(&entry.entry_id);
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ensembl protein entry_id cannot be empty".to_string(),
+            });
+        }
+        entry.entry_id = normalized.clone();
+        if entry.schema.trim().is_empty() {
+            entry.schema = "gentle.ensembl_protein_entry.v1".to_string();
+        }
+        entry.imported_at_unix_ms = Self::now_unix_ms();
+        let mut aliases = BTreeSet::new();
+        for value in std::iter::once(entry.entry_id.clone())
+            .chain(std::iter::once(entry.protein_id.clone()))
+            .chain(std::iter::once(entry.transcript_id.clone()))
+            .chain(entry.aliases.clone().into_iter())
+            .chain(entry.gene_id.clone().into_iter())
+            .chain(entry.gene_symbol.clone().into_iter())
+            .chain(entry.transcript_display_name.clone().into_iter())
+        {
+            let normalized_alias = normalize_ensembl_protein_entry_id(&value);
+            if !normalized_alias.is_empty() {
+                aliases.insert(normalized_alias);
+            }
+        }
+        entry.aliases = aliases.into_iter().collect::<Vec<_>>();
+
+        let mut store = self.read_ensembl_protein_entry_store();
+        store.entries.insert(entry.entry_id.clone(), entry);
+        self.write_ensembl_protein_entry_store(store)
+    }
+
+    pub(super) fn get_ensembl_protein_entry_from_store(
+        store: &EnsemblProteinEntryStore,
+        entry_id: &str,
+    ) -> Option<EnsemblProteinEntry> {
+        let probe = normalize_ensembl_protein_entry_id(entry_id);
+        if probe.is_empty() {
+            return None;
+        }
+        if let Some(entry) = store.entries.get(&probe) {
+            return Some(entry.clone());
+        }
+        store
+            .entries
+            .values()
+            .find(|entry| {
+                entry
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_ensembl_protein_entry_id(alias) == probe)
+            })
+            .cloned()
+    }
+
+    pub fn get_ensembl_protein_entry(
+        &self,
+        entry_id: &str,
+    ) -> Result<EnsemblProteinEntry, EngineError> {
+        let store = self.read_ensembl_protein_entry_store();
+        Self::get_ensembl_protein_entry_from_store(&store, entry_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Ensembl protein entry '{}' not found in project metadata",
+                entry_id.trim()
+            ),
+        })
+    }
+
+    pub fn list_ensembl_protein_entries(&self) -> Vec<EnsemblProteinEntrySummary> {
+        let store = self.read_ensembl_protein_entry_store();
+        let mut rows = store
+            .entries
+            .values()
+            .map(|entry| EnsemblProteinEntrySummary {
+                entry_id: entry.entry_id.clone(),
+                protein_id: entry.protein_id.clone(),
+                transcript_id: entry.transcript_id.clone(),
+                gene_symbol: entry.gene_symbol.clone(),
+                sequence_length: entry.sequence_length,
+                feature_count: entry.features.len(),
+                imported_at_unix_ms: entry.imported_at_unix_ms,
+                source_query: entry.source_query.clone(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| a.entry_id.cmp(&b.entry_id));
+        rows
+    }
+
     pub(super) fn load_uniprot_entry_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> UniprotEntryStore {
@@ -2009,6 +2150,262 @@ impl GentleEngine {
             matches,
             warnings,
         })
+    }
+
+    fn ensembl_rest_base_url() -> String {
+        std::env::var(ENSEMBL_REST_BASE_ENV_VAR)
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_ENSEMBL_REST_ENDPOINT.to_string())
+    }
+
+    fn fetch_ensembl_rest_text(
+        url: &str,
+        label: &str,
+        query: &str,
+    ) -> Result<String, EngineError> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(45))
+            .build()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not create Ensembl HTTP client: {e}"),
+            })?;
+        let response = client.get(url).send().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not fetch Ensembl {label} for '{query}': {e}"),
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = if status == reqwest::StatusCode::NOT_FOUND {
+                format!(
+                    "Ensembl {label} for '{}' was not found (HTTP {}) at '{}'",
+                    query, status, url
+                )
+            } else {
+                format!(
+                    "Ensembl {label} for '{}' returned HTTP status {} at '{}'",
+                    query, status, url
+                )
+            };
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: detail,
+            });
+        }
+        response.text().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read Ensembl {label} response for '{query}': {e}"),
+        })
+    }
+
+    pub(super) fn fetch_ensembl_protein_entry_from_rest(
+        query: &str,
+        entry_id_override: Option<&str>,
+    ) -> Result<EnsemblProteinEntry, EngineError> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ensembl protein query cannot be empty".to_string(),
+            });
+        }
+        let resolved_query = resolve_ensembl_query(query).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: e,
+        })?;
+        let base_url = Self::ensembl_rest_base_url();
+
+        let (protein_lookup_source_url, protein_lookup_json, transcript_id) = match resolved_query
+            .kind
+        {
+            crate::ensembl_protein::EnsemblProteinQueryKind::Protein => {
+                let lookup_url = format!(
+                    "{base_url}/lookup/id/{}?content-type=application/json",
+                    resolved_query.normalized_query
+                );
+                let lookup_json =
+                    Self::fetch_ensembl_rest_text(&lookup_url, "protein lookup", query)?;
+                let lookup = crate::ensembl_protein::parse_translation_lookup_json(&lookup_json)
+                    .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse Ensembl protein lookup for '{query}': {e}"),
+                })?;
+                (
+                    Some(lookup_url),
+                    Some(lookup_json),
+                    lookup.transcript_id.clone(),
+                )
+            }
+            crate::ensembl_protein::EnsemblProteinQueryKind::Transcript => {
+                (None, None, resolved_query.normalized_query.clone())
+            }
+        };
+
+        let transcript_lookup_source_url = format!(
+            "{base_url}/lookup/id/{transcript_id}?content-type=application/json;expand=1"
+        );
+        let transcript_lookup_json =
+            Self::fetch_ensembl_rest_text(&transcript_lookup_source_url, "transcript lookup", query)?;
+        let transcript_lookup = crate::ensembl_protein::parse_transcript_lookup_json(
+            &transcript_lookup_json,
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse Ensembl transcript lookup for '{query}': {e}"),
+        })?;
+        let protein_id = transcript_lookup.translation_id.clone().ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Transcript '{}' from Ensembl query '{}' has no translated protein stable ID",
+                transcript_lookup.transcript_id, query
+            ),
+        })?;
+
+        let sequence_source_url = format!(
+            "{base_url}/sequence/id/{protein_id}?type=protein;content-type=application/json"
+        );
+        let sequence_json =
+            Self::fetch_ensembl_rest_text(&sequence_source_url, "protein sequence", query)?;
+        let feature_source_url = format!(
+            "{base_url}/overlap/translation/{protein_id}?feature=protein_feature;content-type=application/json"
+        );
+        let feature_json =
+            Self::fetch_ensembl_rest_text(&feature_source_url, "protein features", query)?;
+
+        build_entry_from_rest_payloads(
+            query,
+            &transcript_lookup_source_url,
+            &transcript_lookup_json,
+            protein_lookup_source_url.as_deref(),
+            protein_lookup_json.as_deref(),
+            &sequence_source_url,
+            &sequence_json,
+            &feature_source_url,
+            &feature_json,
+            entry_id_override,
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not assemble Ensembl protein entry for '{query}': {e}"),
+        })
+    }
+
+    pub(super) fn import_ensembl_protein_entry_sequence(
+        &mut self,
+        result: &mut OpResult,
+        entry_id: &str,
+        output_id: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        let entry = self.get_ensembl_protein_entry(entry_id)?;
+        let base_seq_id = output_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| {
+                let normalized = normalize_ensembl_protein_entry_id(&entry.entry_id);
+                if normalized.is_empty() {
+                    format!("ensembl_{}", entry.protein_id)
+                } else {
+                    normalized
+                }
+            });
+        let seq_id = self.unique_seq_id(&base_seq_id);
+        let mut protein = DNAsequence::from_sequence(&entry.sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not construct protein sequence for Ensembl protein entry '{}': {e}",
+                entry.entry_id
+            ),
+        })?;
+        protein.set_name(
+            entry
+                .transcript_display_name
+                .clone()
+                .or_else(|| entry.gene_symbol.clone())
+                .unwrap_or_else(|| entry.entry_id.clone()),
+        );
+        protein.set_molecule_type("protein");
+        if protein.len() > 0 {
+            let mut protein_qualifiers = vec![
+                ("entry_id".into(), Some(entry.entry_id.clone())),
+                ("protein_id".into(), Some(entry.protein_id.clone())),
+                ("transcript_id".into(), Some(entry.transcript_id.clone())),
+                (
+                    "sequence_length_aa".into(),
+                    Some(entry.sequence_length.to_string()),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("ensembl_protein_import".to_string()),
+                ),
+            ];
+            if let Some(gene_id) = entry.gene_id.as_ref() {
+                protein_qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+            }
+            if let Some(gene_symbol) = entry.gene_symbol.as_ref() {
+                protein_qualifiers.push(("gene".into(), Some(gene_symbol.clone())));
+                protein_qualifiers.push(("label".into(), Some(gene_symbol.clone())));
+            }
+            if let Some(display_name) = entry.transcript_display_name.as_ref() {
+                protein_qualifiers.push(("product".into(), Some(display_name.clone())));
+            }
+            if let Some(species) = entry.species.as_ref() {
+                protein_qualifiers.push(("organism".into(), Some(species.clone())));
+            }
+            let protein_len = protein.len();
+            protein.features_mut().push(gb_io::seq::Feature {
+                kind: "Protein".into(),
+                location: gb_io::seq::Location::simple_range(0, protein_len as i64),
+                qualifiers: protein_qualifiers,
+            });
+        }
+        for feature in &entry.features {
+            let (Some(start_aa), Some(end_aa)) = (feature.start_aa, feature.end_aa) else {
+                continue;
+            };
+            if start_aa == 0 || end_aa < start_aa || end_aa > protein.len() {
+                continue;
+            }
+            let mut qualifiers = vec![
+                ("label".into(), Some(feature.feature_key.clone())),
+                ("feature_type".into(), Some(feature.feature_type.clone())),
+                ("entry_id".into(), Some(entry.entry_id.clone())),
+                ("protein_id".into(), Some(entry.protein_id.clone())),
+                ("transcript_id".into(), Some(entry.transcript_id.clone())),
+            ];
+            if let Some(description) = feature.description.as_ref() {
+                qualifiers.push(("note".into(), Some(description.clone())));
+            }
+            if let Some(interpro_id) = feature.interpro_id.as_ref() {
+                qualifiers.push(("interpro".into(), Some(interpro_id.clone())));
+            }
+            for (key, value) in &feature.qualifiers {
+                qualifiers.push((key.clone().into(), Some(value.clone())));
+            }
+            protein.features_mut().push(gb_io::seq::Feature {
+                kind: feature.feature_type.clone().into(),
+                location: gb_io::seq::Location::simple_range(
+                    start_aa.saturating_sub(1) as i64,
+                    end_aa as i64,
+                ),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut protein);
+        self.state.sequences.insert(seq_id.clone(), protein);
+        self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+        result.created_seq_ids.push(seq_id.clone());
+        result.messages.push(format!(
+            "Imported Ensembl protein '{}' (transcript '{}') as '{}' ({} aa, features={}).",
+            entry.protein_id,
+            entry.transcript_id,
+            seq_id,
+            entry.sequence_length,
+            entry.features.len()
+        ));
+        Ok(seq_id)
     }
 
     pub(super) fn fetch_uniprot_swiss_prot_text(
@@ -3036,6 +3433,181 @@ impl GentleEngine {
         }
     }
 
+    fn build_ensembl_external_protein_opinion_source(
+        &self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry: &EnsemblProteinEntry,
+    ) -> Result<ExternalProteinOpinionViewSource, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let features = dna.features();
+        let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
+        let normalized_entry_transcript = Self::normalize_transcript_probe(&entry.transcript_id);
+        let normalized_filter = transcript_id_filter
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty());
+        if let Some(filter) = normalized_filter.as_deref()
+            && filter != normalized_entry_transcript
+        {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Ensembl protein entry '{}' belongs to transcript '{}' rather than '{}'",
+                    entry.entry_id, entry.transcript_id, filter
+                ),
+            });
+        }
+
+        let feature_inventory_keys = entry
+            .features
+            .iter()
+            .filter_map(|feature| {
+                (feature.start_aa.is_some() && feature.end_aa.is_some())
+                    .then_some(Self::normalized_protein_feature_key(&feature.feature_key))
+            })
+            .collect::<Vec<_>>();
+        let mut warnings = vec![];
+        let mut transcripts = vec![];
+
+        for (feature_id, feature) in features.iter().enumerate() {
+            if !Self::is_transcript_feature_for_derivation(feature) {
+                continue;
+            }
+            let match_keys = Self::feature_transcript_match_keys(feature, feature_id);
+            if !match_keys.iter().any(|key| key == &normalized_entry_transcript) {
+                continue;
+            }
+            match Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                feature_id,
+                seq_id,
+            ) {
+                Ok(derived) => {
+                    let aa_segments = derived
+                        .cds_to_protein_segments
+                        .iter()
+                        .map(|segment| ExternalProteinOpinionAaSegment {
+                            aa_start: segment.aa_start,
+                            aa_end: segment.aa_end,
+                            genomic_start_1based: segment.genomic_start_1based,
+                            genomic_end_1based: segment.genomic_end_1based,
+                        })
+                        .collect::<Vec<_>>();
+                    let reference_segments = derived
+                        .cds_to_protein_segments
+                        .iter()
+                        .map(|segment| UniprotAaGenomicSegment {
+                            aa_start: segment.aa_start,
+                            aa_end: segment.aa_end,
+                            genomic_start_1based: segment.genomic_start_1based,
+                            genomic_end_1based: segment.genomic_end_1based,
+                            strand: if derived.is_reverse {
+                                "-".to_string()
+                            } else {
+                                "+".to_string()
+                            },
+                        })
+                        .collect::<Vec<_>>();
+                    let feature_projections = entry
+                        .features
+                        .iter()
+                        .filter_map(|ensembl_feature| {
+                            let (Some(aa_start), Some(aa_end)) =
+                                (ensembl_feature.start_aa, ensembl_feature.end_aa)
+                            else {
+                                return None;
+                            };
+                            if aa_start == 0 || aa_end < aa_start {
+                                return None;
+                            }
+                            let genomic_segments = Self::aa_interval_to_genomic_segments(
+                                aa_start,
+                                aa_end,
+                                &reference_segments,
+                                derived.is_reverse,
+                            )
+                            .into_iter()
+                            .map(|segment| ExternalProteinOpinionAaSegment {
+                                aa_start: segment.aa_start,
+                                aa_end: segment.aa_end,
+                                genomic_start_1based: segment.genomic_start_1based,
+                                genomic_end_1based: segment.genomic_end_1based,
+                            })
+                            .collect::<Vec<_>>();
+                            if genomic_segments.is_empty() {
+                                return None;
+                            }
+                            Some(ExternalProteinOpinionFeatureProjection {
+                                feature_key: ensembl_feature.feature_key.clone(),
+                                feature_note: ensembl_feature
+                                    .description
+                                    .clone()
+                                    .or_else(|| Some(ensembl_feature.feature_type.clone())),
+                                genomic_segments,
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    transcripts.push(ExternalProteinOpinionTranscript {
+                        transcript_id: derived.transcript_id.clone(),
+                        transcript_feature_id: Some(derived.transcript_feature_id),
+                        strand: if derived.is_reverse {
+                            "-".to_string()
+                        } else {
+                            "+".to_string()
+                        },
+                        aa_segments,
+                        feature_projections,
+                    });
+                }
+                Err(err) => warnings.push(format!(
+                    "Transcript '{}' could not be prepared for Ensembl protein comparison: {}",
+                    entry.transcript_id, err.message
+                )),
+            }
+        }
+
+        if transcripts.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Ensembl protein entry '{}' transcript '{}' was not found as a derivable transcript in sequence '{}'",
+                    entry.entry_id, entry.transcript_id, seq_id
+                ),
+            });
+        }
+
+        Ok(ExternalProteinOpinionViewSource {
+            source: gentle_protocol::ProteinExternalOpinionSource::Ensembl,
+            source_id: entry.entry_id.clone(),
+            source_label: format!("Ensembl {} ({})", entry.protein_id, entry.transcript_id),
+            panel_source_label: format!(
+                "Transcript-native proteins with optional Ensembl opinion {} ({})",
+                entry.protein_id, entry.transcript_id
+            ),
+            transcript_id_filter: transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            gene_symbol_hint: entry
+                .gene_symbol
+                .clone()
+                .or_else(|| entry.transcript_display_name.clone()),
+            expected_length_aa: (entry.sequence_length > 0).then_some(entry.sequence_length),
+            feature_inventory_keys,
+            warnings,
+            transcripts,
+        })
+    }
+
     fn materialize_external_protein_opinion_provider(
         provider: Option<&ExternalProteinOpinionProvider<'_>>,
     ) -> Option<ExternalProteinOpinionViewSource> {
@@ -3048,8 +3620,7 @@ impl GentleEngine {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn build_external_protein_expert_view_for_test(
+    fn build_external_protein_expert_view_from_source(
         &self,
         seq_id: &str,
         transcript_id_filter: Option<&str>,
@@ -3061,6 +3632,22 @@ impl GentleEngine {
             seq_id,
             transcript_id_filter,
             Some(&provider),
+            protein_feature_filter,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn build_external_protein_expert_view_for_test(
+        &self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        external_source: ExternalProteinOpinionViewSource,
+        protein_feature_filter: &ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        self.build_external_protein_expert_view_from_source(
+            seq_id,
+            transcript_id_filter,
+            external_source,
             protein_feature_filter,
         )
     }
@@ -3188,6 +3775,24 @@ impl GentleEngine {
             seq_id,
             transcript_id_filter,
             None,
+            protein_feature_filter,
+        )
+    }
+
+    pub(super) fn build_ensembl_entry_protein_expert_view(
+        &self,
+        seq_id: &str,
+        transcript_id_filter: Option<&str>,
+        entry_id: &str,
+        protein_feature_filter: &ProteinFeatureFilter,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let entry = self.get_ensembl_protein_entry(entry_id)?;
+        let external_source =
+            self.build_ensembl_external_protein_opinion_source(seq_id, transcript_id_filter, &entry)?;
+        self.build_external_protein_expert_view_from_source(
+            seq_id,
+            transcript_id_filter,
+            external_source,
             protein_feature_filter,
         )
     }
@@ -5115,14 +5720,43 @@ impl GentleEngine {
             FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
-                ..
-            } => self
-                .build_transcript_protein_expert_view(
-                    seq_id,
-                    transcript_id_filter.as_deref(),
-                    protein_feature_filter,
-                )
-                .map(FeatureExpertView::IsoformArchitecture),
+                external_source,
+                external_entry_id,
+            } => {
+                match (external_source, external_entry_id.as_deref()) {
+                    (None, None) => self
+                        .build_transcript_protein_expert_view(
+                            seq_id,
+                            transcript_id_filter.as_deref(),
+                            protein_feature_filter,
+                        )
+                        .map(FeatureExpertView::IsoformArchitecture),
+                    (
+                        Some(gentle_protocol::ProteinExternalOpinionSource::Ensembl),
+                        Some(entry_id),
+                    ) => self
+                        .build_ensembl_entry_protein_expert_view(
+                            seq_id,
+                            transcript_id_filter.as_deref(),
+                            entry_id,
+                            protein_feature_filter,
+                        )
+                        .map(FeatureExpertView::IsoformArchitecture),
+                    (Some(source), Some(_)) => Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Protein comparison external source '{}' is not implemented yet",
+                            source.as_str()
+                        ),
+                    }),
+                    _ => Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "Protein comparison external_source and external_entry_id must either both be set or both be omitted"
+                                .to_string(),
+                    }),
+                }
+            }
             FeatureExpertTarget::UniprotProjection {
                 projection_id,
                 protein_feature_filter,

@@ -3554,8 +3554,9 @@ UniProt mapping behavior:
     beneath the protein rail so sorting signals and topology segments stay
     readable instead of colliding with ordinary domain overlays
   - future external protein evidence sources should be able to plug into the
-    same compare window; Ensembl proteoform/protein annotations are the next
-    planned source, but are not wired up yet
+    same compare window; Ensembl protein-entry import/compare is now available
+    through the shared engine/shell path, while a dedicated GUI picker/import
+    flow is still the follow-up
 - The direct SVG-export affordance uses the same persisted projection state and
   target syntax as CLI/shell `render-feature-expert-svg ... uniprot-projection ...`,
   so GUI and non-GUI exports stay on one deterministic rendering path.
