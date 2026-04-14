@@ -1666,6 +1666,9 @@ order. Durable architecture constraints and decisions remain in
     refresh/frame
 - Window-backdrop load path now uses a stable texture-size hint so opening
   differently sized windows does not trigger per-window-size image reload paths.
+- DNA-sequence feature trees now cache their derived grouping/filter/viewport
+  model across frames and only rebuild when sequence or relevant view/filter
+  inputs change, reducing CPU load for feature-dense windows.
 - DNA-sequence window top controls are now split into stable rows instead of a
   single large wrapped toolbar:
   - map/navigation

@@ -4564,6 +4564,77 @@ mod tests {
     }
 
     #[test]
+    fn replace_active_dna_invalidates_feature_tree_cache() {
+        let mut initial_dna =
+            DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
+        initial_dna
+            .features_mut()
+            .push(make_feature("gene", vec![("label", "TP53")]));
+        let mut area = MainAreaDna::new(initial_dna, None, None);
+
+        area.ensure_feature_tree_cache_current(None);
+        assert!(area.feature_tree_cache.is_some());
+
+        let mut replacement_dna =
+            DNAsequence::from_sequence("A".repeat(120).as_str()).expect("sequence");
+        replacement_dna
+            .features_mut()
+            .push(make_feature("gene", vec![("label", "TP73")]));
+        area.replace_active_dna(replacement_dna, true);
+
+        assert!(area.feature_tree_cache.is_none());
+    }
+
+    #[test]
+    fn feature_tree_cache_rebuilds_when_filter_changes() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "TP53")]));
+        dna.features_mut().push(make_feature(
+            "mRNA",
+            vec![("gene", "TP53"), ("label", "TP53-201")],
+        ));
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.ensure_feature_tree_cache_current(None);
+        let initial_entry_count: usize = area
+            .feature_tree_cache
+            .as_ref()
+            .expect("feature tree cache")
+            .model
+            .groups
+            .iter()
+            .map(|group| group.entries.len())
+            .sum();
+        assert_eq!(initial_entry_count, 2);
+
+        area.feature_tree_filter = "label:missing".to_string();
+        area.ensure_feature_tree_cache_current(None);
+
+        let cache = area
+            .feature_tree_cache
+            .as_ref()
+            .expect("feature tree cache after filter change");
+        assert_eq!(cache.key.feature_filter_text, "label:missing");
+        assert_eq!(cache.model.filter_total_count, 2);
+        assert_eq!(cache.model.filter_matched_count, 0);
+        assert!(cache.model.groups.is_empty());
+    }
+
+    #[test]
+    fn ensure_full_restriction_site_catalog_current_invalidates_feature_tree_cache() {
+        let dna = restriction_ready_dna("GAATTCGAATTC");
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.ensure_feature_tree_cache_current(None);
+        assert!(area.feature_tree_cache.is_some());
+
+        area.ensure_full_restriction_site_catalog_current();
+
+        assert!(area.feature_tree_cache.is_none());
+    }
+
+    #[test]
     fn feature_multi_select_toggle_adds_and_removes_ids() {
         let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
         dna.features_mut()
@@ -7791,6 +7862,85 @@ struct RegulatoryFeatureGrouping {
     display_label: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FeatureTreeEntry {
+    id: usize,
+    feature_label_full: String,
+    feature_label: String,
+    range_label: String,
+    subgroup_key: Option<String>,
+    subgroup_label: Option<String>,
+    prefer_grouped_label: bool,
+    show_range_inline_when_ungrouped: bool,
+    visible_in_view: bool,
+    is_regulatory: bool,
+    disable_grouping: bool,
+    supports_splicing_expert: bool,
+    can_seed_promoter_anchor: bool,
+    regulatory_primary_group_key: Option<String>,
+    regulatory_primary_group_label: Option<String>,
+    regulatory_secondary_group_key: Option<String>,
+    regulatory_secondary_group_label: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FeatureTreeNamedGroup {
+    key: String,
+    label: String,
+    entry_indices: Vec<usize>,
+    visible_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FeatureTreeRegulatoryPrimaryGroup {
+    key: String,
+    label: String,
+    entry_indices: Vec<usize>,
+    visible_count: usize,
+    secondary_groups: Vec<FeatureTreeNamedGroup>,
+    ungrouped_entry_indices: Vec<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FeatureTreeKindGroup {
+    kind: String,
+    entries: Vec<FeatureTreeEntry>,
+    visible_count: usize,
+    grouped_entries: Vec<FeatureTreeNamedGroup>,
+    regulatory_primary_groups: Vec<FeatureTreeRegulatoryPrimaryGroup>,
+    ungrouped_entry_indices: Vec<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FeatureTreeCacheKey {
+    seq_len: usize,
+    feature_count: usize,
+    viewport: Option<(usize, usize)>,
+    grouping_mode: FeatureTreeGroupingMode,
+    feature_filter_text: String,
+    show_cds_features: bool,
+    show_gene_features: bool,
+    show_mrna_features: bool,
+    show_contextual_transcript_features: bool,
+    show_tfbs: bool,
+    tfbs_display_criteria: TfbsDisplayCriteria,
+    vcf_display_criteria: VcfDisplayCriteria,
+    hidden_feature_kinds: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct FeatureTreeComputedModel {
+    filter_total_count: usize,
+    filter_matched_count: usize,
+    groups: Vec<FeatureTreeKindGroup>,
+}
+
+#[derive(Clone, Debug)]
+struct FeatureTreeCache {
+    key: FeatureTreeCacheKey,
+    model: FeatureTreeComputedModel,
+}
+
 #[derive(Clone, Debug, Default)]
 struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
@@ -8160,6 +8310,7 @@ pub struct MainAreaDna {
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
+    feature_tree_cache: Option<FeatureTreeCache>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
     description_cache_selected_reasoning_evidence_id: Option<String>,
@@ -8551,6 +8702,7 @@ impl MainAreaDna {
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
+            feature_tree_cache: None,
             description_cache_initialized: false,
             description_cache_selected_id: None,
             description_cache_selected_reasoning_evidence_id: None,
@@ -8642,6 +8794,7 @@ impl MainAreaDna {
             dna.set_max_restriction_enzyme_sites(None);
             dna.update_computed_features();
         }
+        self.invalidate_feature_tree_cache();
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
@@ -8809,6 +8962,7 @@ impl MainAreaDna {
         }
         self.description_cache_initialized = false;
         self.invalidate_dotplot_cache();
+        self.invalidate_feature_tree_cache();
         self.mark_dna_layout_dirty();
         self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
@@ -8823,6 +8977,10 @@ impl MainAreaDna {
         self.dotplot_cache_track_id.clear();
         self.dotplot_hover_crosshair_bp = None;
         self.dotplot_locked_crosshair_bp = None;
+    }
+
+    fn invalidate_feature_tree_cache(&mut self) {
+        self.feature_tree_cache = None;
     }
 
     fn mark_dna_layout_dirty(&self) {
@@ -36491,25 +36649,418 @@ impl MainAreaDna {
         self.save_engine_ops_state();
     }
 
-    pub fn render_features(&mut self, ui: &mut egui::Ui) {
-        struct FeatureTreeEntry {
-            id: usize,
-            feature_label_full: String,
-            feature_label: String,
-            range_label: String,
-            subgroup_key: Option<String>,
-            subgroup_label: Option<String>,
-            prefer_grouped_label: bool,
-            show_range_inline_when_ungrouped: bool,
-            visible_in_view: bool,
-            is_regulatory: bool,
-            disable_grouping: bool,
-            regulatory_primary_group_key: Option<String>,
-            regulatory_primary_group_label: Option<String>,
-            regulatory_secondary_group_key: Option<String>,
-            regulatory_secondary_group_label: Option<String>,
+    fn current_feature_tree_cache_key(
+        &self,
+        viewport: Option<(usize, usize)>,
+    ) -> FeatureTreeCacheKey {
+        let (seq_len, feature_count) = self
+            .dna
+            .read()
+            .map(|dna| (dna.len(), dna.features().len()))
+            .unwrap_or((0, 0));
+        let (
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_contextual_transcript_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            vcf_display_criteria,
+            hidden_feature_kinds,
+        ) = {
+            let display = self.dna_display.read().expect("DNA display lock poisoned");
+            (
+                display.show_cds_features_effective(),
+                display.show_gene_features(),
+                display.show_mrna_features(),
+                display.show_contextual_transcript_features(),
+                display.show_tfbs(),
+                display.tfbs_display_criteria(),
+                display.vcf_display_criteria(),
+                display.hidden_feature_kinds().clone(),
+            )
+        };
+        FeatureTreeCacheKey {
+            seq_len,
+            feature_count,
+            viewport,
+            grouping_mode: self.feature_tree_grouping_mode,
+            feature_filter_text: self.feature_tree_filter.trim().to_string(),
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_contextual_transcript_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            vcf_display_criteria,
+            hidden_feature_kinds,
+        }
+    }
+
+    fn build_feature_tree_model(&self, key: &FeatureTreeCacheKey) -> FeatureTreeComputedModel {
+        let filter_active = !key.feature_filter_text.is_empty();
+        let mut filter_total_count = 0usize;
+        let mut filter_matched_count = 0usize;
+        let typed_features = {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            let sequence_length = dna.len();
+            dna.features()
+                .iter()
+                .enumerate()
+                .filter_map(|(id, feature)| {
+                    if RenderDna::is_source_feature(feature) {
+                        return None;
+                    }
+                    if !RenderDna::feature_passes_kind_filter(
+                        feature,
+                        key.show_cds_features,
+                        key.show_gene_features,
+                        key.show_mrna_features,
+                    ) {
+                        return None;
+                    }
+                    if !key.show_contextual_transcript_features
+                        && RenderDna::is_contextual_transcript_feature(feature)
+                    {
+                        return None;
+                    }
+                    if key
+                        .hidden_feature_kinds
+                        .contains(&feature.kind.to_string().to_ascii_uppercase())
+                    {
+                        return None;
+                    }
+                    if RenderDna::is_tfbs_feature(feature) {
+                        if !key.show_tfbs {
+                            return None;
+                        }
+                        if !RenderDna::tfbs_feature_passes_display_filter(
+                            feature,
+                            key.tfbs_display_criteria,
+                        ) {
+                            return None;
+                        }
+                    }
+                    if RenderDna::is_vcf_track_feature(feature)
+                        && !RenderDna::vcf_feature_passes_display_filter(
+                            feature,
+                            &key.vcf_display_criteria,
+                        )
+                    {
+                        return None;
+                    }
+                    let (from, to) = feature.location.find_bounds().ok()?;
+                    if from < 0 || to < 0 {
+                        return None;
+                    }
+                    let visible_in_view = match key.viewport {
+                        Some((start, end)) => Self::feature_overlaps_linear_viewport(
+                            feature,
+                            sequence_length,
+                            start,
+                            end,
+                        ),
+                        None => true,
+                    };
+                    let kind_upper = feature.kind.to_string().to_ascii_uppercase();
+                    let kind_label = if RenderDna::is_track_feature(feature) {
+                        "tracks".to_string()
+                    } else {
+                        feature.kind.to_string()
+                    };
+                    let base_label = {
+                        let name = RenderDna::feature_name(feature);
+                        if name.trim().is_empty() {
+                            format!("{} #{}", feature.kind.to_string(), id + 1)
+                        } else {
+                            name
+                        }
+                    };
+                    let range_label = RenderDna::feature_range_text(feature);
+                    let full_display_label =
+                        Self::feature_tree_display_label(feature, &base_label, &range_label);
+                    let regulatory_grouping =
+                        Self::derive_regulatory_feature_grouping(feature, &full_display_label);
+                    let display_label = regulatory_grouping
+                        .as_ref()
+                        .map(|grouping| grouping.display_label.clone())
+                        .unwrap_or_else(|| full_display_label.clone());
+                    if filter_active {
+                        filter_total_count += 1;
+                        if !Self::feature_tree_matches_filter(
+                            feature,
+                            &key.feature_filter_text,
+                            &kind_label,
+                            &full_display_label,
+                            &range_label,
+                        ) {
+                            return None;
+                        }
+                        filter_matched_count += 1;
+                    }
+                    let subgroup_label =
+                        Self::feature_tree_subgroup_label(feature, &base_label, key.grouping_mode);
+                    let subgroup_key = subgroup_label
+                        .as_ref()
+                        .map(|label| label.trim().to_ascii_uppercase());
+                    let can_seed_promoter_anchor = kind_label.eq_ignore_ascii_case("mrna")
+                        || kind_label.eq_ignore_ascii_case("transcript");
+                    let disable_grouping = feature.kind.to_string().eq_ignore_ascii_case("GENE");
+                    Some((
+                        kind_label,
+                        FeatureTreeEntry {
+                            id,
+                            feature_label_full: full_display_label,
+                            feature_label: display_label,
+                            range_label,
+                            subgroup_key,
+                            subgroup_label,
+                            prefer_grouped_label: kind_upper.contains("RNA"),
+                            show_range_inline_when_ungrouped: matches!(
+                                kind_upper.as_str(),
+                                "MRNA" | "GENE"
+                            ),
+                            visible_in_view,
+                            is_regulatory: RenderDna::is_regulatory_feature(feature),
+                            disable_grouping,
+                            supports_splicing_expert: Self::feature_kind_supports_splicing_expert(
+                                kind_upper.as_str(),
+                            ),
+                            can_seed_promoter_anchor,
+                            regulatory_primary_group_key: regulatory_grouping
+                                .as_ref()
+                                .map(|grouping| grouping.primary_key.clone()),
+                            regulatory_primary_group_label: regulatory_grouping
+                                .as_ref()
+                                .map(|grouping| grouping.primary_label.clone()),
+                            regulatory_secondary_group_key: regulatory_grouping
+                                .as_ref()
+                                .and_then(|grouping| grouping.secondary_key.clone()),
+                            regulatory_secondary_group_label: regulatory_grouping
+                                .as_ref()
+                                .and_then(|grouping| grouping.secondary_label.clone()),
+                        },
+                    ))
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let mut grouped_features: HashMap<String, Vec<FeatureTreeEntry>> = HashMap::new();
+        for (kind, entry) in typed_features {
+            grouped_features.entry(kind).or_default().push(entry);
         }
 
+        let mut group_keys = grouped_features.keys().cloned().collect::<Vec<_>>();
+        group_keys.sort();
+        let mut groups = Vec::with_capacity(group_keys.len());
+        for kind in group_keys {
+            let Some(entries) = grouped_features.remove(&kind) else {
+                continue;
+            };
+            let visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
+            let mut subgroup_cardinality: HashMap<String, usize> = HashMap::new();
+            for entry in &entries {
+                if let Some(subgroup_key) = &entry.subgroup_key {
+                    *subgroup_cardinality
+                        .entry(subgroup_key.clone())
+                        .or_insert(0) += 1;
+                }
+            }
+
+            let mut grouped_entry_map: HashMap<String, (String, Vec<usize>)> = HashMap::new();
+            let mut regulatory_primary_map: HashMap<String, (String, Vec<usize>)> = HashMap::new();
+            let mut ungrouped_entry_indices: Vec<usize> = Vec::new();
+            for (index, entry) in entries.iter().enumerate() {
+                if matches!(key.grouping_mode, FeatureTreeGroupingMode::Off)
+                    || entry.disable_grouping
+                {
+                    ungrouped_entry_indices.push(index);
+                    continue;
+                }
+                if let (Some(primary_key), Some(primary_label)) = (
+                    &entry.regulatory_primary_group_key,
+                    &entry.regulatory_primary_group_label,
+                ) {
+                    regulatory_primary_map
+                        .entry(primary_key.clone())
+                        .or_insert_with(|| (primary_label.clone(), Vec::new()))
+                        .1
+                        .push(index);
+                    continue;
+                }
+                let subgroup_count = entry
+                    .subgroup_key
+                    .as_ref()
+                    .and_then(|subgroup_key| subgroup_cardinality.get(subgroup_key))
+                    .copied()
+                    .unwrap_or(0);
+                let should_group =
+                    Self::feature_tree_should_group(key.grouping_mode, subgroup_count);
+                if let (Some(subgroup_key), Some(subgroup_label)) =
+                    (&entry.subgroup_key, &entry.subgroup_label)
+                {
+                    if should_group {
+                        grouped_entry_map
+                            .entry(subgroup_key.clone())
+                            .or_insert_with(|| (subgroup_label.clone(), Vec::new()))
+                            .1
+                            .push(index);
+                    } else {
+                        ungrouped_entry_indices.push(index);
+                    }
+                } else {
+                    ungrouped_entry_indices.push(index);
+                }
+            }
+
+            let mut grouped_entry_keys = grouped_entry_map.keys().cloned().collect::<Vec<_>>();
+            grouped_entry_keys.sort_by(|left, right| {
+                let left_label = grouped_entry_map
+                    .get(left)
+                    .map(|(label, _)| label.as_str())
+                    .unwrap_or("");
+                let right_label = grouped_entry_map
+                    .get(right)
+                    .map(|(label, _)| label.as_str())
+                    .unwrap_or("");
+                left_label.cmp(right_label).then_with(|| left.cmp(right))
+            });
+            let grouped_entries = grouped_entry_keys
+                .into_iter()
+                .filter_map(|group_key| {
+                    let (label, entry_indices) = grouped_entry_map.remove(&group_key)?;
+                    let visible_count = entry_indices
+                        .iter()
+                        .filter(|index| entries[**index].visible_in_view)
+                        .count();
+                    Some(FeatureTreeNamedGroup {
+                        key: group_key,
+                        label,
+                        entry_indices,
+                        visible_count,
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            let mut regulatory_primary_keys =
+                regulatory_primary_map.keys().cloned().collect::<Vec<_>>();
+            regulatory_primary_keys.sort_by(|left, right| {
+                let left_label = regulatory_primary_map
+                    .get(left)
+                    .map(|(label, _)| label.as_str())
+                    .unwrap_or("");
+                let right_label = regulatory_primary_map
+                    .get(right)
+                    .map(|(label, _)| label.as_str())
+                    .unwrap_or("");
+                left_label
+                    .to_ascii_lowercase()
+                    .cmp(&right_label.to_ascii_lowercase())
+                    .then_with(|| left.cmp(right))
+            });
+            let regulatory_primary_groups = regulatory_primary_keys
+                .into_iter()
+                .filter_map(|primary_key| {
+                    let (label, entry_indices) = regulatory_primary_map.remove(&primary_key)?;
+                    let visible_count = entry_indices
+                        .iter()
+                        .filter(|index| entries[**index].visible_in_view)
+                        .count();
+                    let mut secondary_map: HashMap<String, (String, Vec<usize>)> = HashMap::new();
+                    let mut secondary_ungrouped = Vec::new();
+                    for index in entry_indices.iter().copied() {
+                        let entry = &entries[index];
+                        if let (Some(secondary_key), Some(secondary_label)) = (
+                            &entry.regulatory_secondary_group_key,
+                            &entry.regulatory_secondary_group_label,
+                        ) {
+                            secondary_map
+                                .entry(secondary_key.clone())
+                                .or_insert_with(|| (secondary_label.clone(), Vec::new()))
+                                .1
+                                .push(index);
+                        } else {
+                            secondary_ungrouped.push(index);
+                        }
+                    }
+                    let mut secondary_keys = secondary_map.keys().cloned().collect::<Vec<_>>();
+                    secondary_keys.sort_by(|left, right| {
+                        let left_label = secondary_map
+                            .get(left)
+                            .map(|(label, _)| label.as_str())
+                            .unwrap_or("");
+                        let right_label = secondary_map
+                            .get(right)
+                            .map(|(label, _)| label.as_str())
+                            .unwrap_or("");
+                        left_label
+                            .to_ascii_lowercase()
+                            .cmp(&right_label.to_ascii_lowercase())
+                            .then_with(|| left.cmp(right))
+                    });
+                    let secondary_groups = secondary_keys
+                        .into_iter()
+                        .filter_map(|secondary_key| {
+                            let (secondary_label, secondary_entry_indices) =
+                                secondary_map.remove(&secondary_key)?;
+                            let visible_count = secondary_entry_indices
+                                .iter()
+                                .filter(|index| entries[**index].visible_in_view)
+                                .count();
+                            Some(FeatureTreeNamedGroup {
+                                key: secondary_key,
+                                label: secondary_label,
+                                entry_indices: secondary_entry_indices,
+                                visible_count,
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    Some(FeatureTreeRegulatoryPrimaryGroup {
+                        key: primary_key,
+                        label,
+                        entry_indices,
+                        visible_count,
+                        secondary_groups,
+                        ungrouped_entry_indices: secondary_ungrouped,
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            groups.push(FeatureTreeKindGroup {
+                kind,
+                entries,
+                visible_count,
+                grouped_entries,
+                regulatory_primary_groups,
+                ungrouped_entry_indices,
+            });
+        }
+
+        FeatureTreeComputedModel {
+            filter_total_count,
+            filter_matched_count,
+            groups,
+        }
+    }
+
+    fn ensure_feature_tree_cache_current(&mut self, viewport: Option<(usize, usize)>) {
+        let next_key = self.current_feature_tree_cache_key(viewport);
+        let is_current = self
+            .feature_tree_cache
+            .as_ref()
+            .map(|cache| cache.key == next_key)
+            .unwrap_or(false);
+        if is_current {
+            return;
+        }
+        let model = self.build_feature_tree_model(&next_key);
+        self.feature_tree_cache = Some(FeatureTreeCache {
+            key: next_key,
+            model,
+        });
+    }
+
+    pub fn render_features(&mut self, ui: &mut egui::Ui) {
         ui.heading(
             self.dna
                 .read()
@@ -36644,613 +37195,313 @@ impl MainAreaDna {
         }
 
         let selected_feature_ids = self.multi_selected_feature_ids.clone();
-        let (
-            show_cds_features,
-            show_gene_features,
-            show_mrna_features,
-            show_contextual_transcript_features,
-            show_tfbs,
-            tfbs_display_criteria,
-            vcf_display_criteria,
-            hidden_feature_kinds,
-            feature_details_font_size,
-        ) = {
-            let display = self.dna_display.read().expect("DNA display lock poisoned");
-            (
-                display.show_cds_features_effective(),
-                display.show_gene_features(),
-                display.show_mrna_features(),
-                display.show_contextual_transcript_features(),
-                display.show_tfbs(),
-                display.tfbs_display_criteria(),
-                display.vcf_display_criteria(),
-                display.hidden_feature_kinds().clone(),
-                display.feature_details_font_size(),
-            )
-        };
-        let grouping_mode = self.feature_tree_grouping_mode;
-        let feature_filter_text = self.feature_tree_filter.trim().to_string();
-        let filter_active = !feature_filter_text.is_empty();
-        let mut filter_total_count = 0usize;
-        let mut filter_matched_count = 0usize;
-        let typed_features = {
-            let dna = self.dna.read().expect("DNA lock poisoned");
-            let sequence_length = dna.len();
-            dna.features()
-                .iter()
-                .enumerate()
-                .filter_map(|(id, feature)| {
-                    if RenderDna::is_source_feature(feature) {
-                        return None;
-                    }
-                    if !RenderDna::feature_passes_kind_filter(
-                        feature,
-                        show_cds_features,
-                        show_gene_features,
-                        show_mrna_features,
-                    ) {
-                        return None;
-                    }
-                    if !show_contextual_transcript_features
-                        && RenderDna::is_contextual_transcript_feature(feature)
-                    {
-                        return None;
-                    }
-                    if hidden_feature_kinds.contains(&feature.kind.to_string().to_ascii_uppercase())
-                    {
-                        return None;
-                    }
-                    if RenderDna::is_tfbs_feature(feature) {
-                        if !show_tfbs {
-                            return None;
-                        }
-                        if !RenderDna::tfbs_feature_passes_display_filter(
-                            feature,
-                            tfbs_display_criteria,
-                        ) {
-                            return None;
-                        }
-                    }
-                    if RenderDna::is_vcf_track_feature(feature)
-                        && !RenderDna::vcf_feature_passes_display_filter(
-                            feature,
-                            &vcf_display_criteria,
-                        )
-                    {
-                        return None;
-                    }
-                    let (from, to) = feature.location.find_bounds().ok()?;
-                    if from < 0 || to < 0 {
-                        return None;
-                    }
-                    let visible_in_view = match viewport {
-                        Some((start, end)) => Self::feature_overlaps_linear_viewport(
-                            feature,
-                            sequence_length,
-                            start,
-                            end,
-                        ),
-                        None => true,
-                    };
-                    let kind_label = if RenderDna::is_track_feature(feature) {
-                        "tracks".to_string()
-                    } else {
-                        feature.kind.to_string()
-                    };
-                    let base_label = {
-                        let name = RenderDna::feature_name(feature);
-                        if name.trim().is_empty() {
-                            format!("{} #{}", feature.kind.to_string(), id + 1)
-                        } else {
-                            name
-                        }
-                    };
-                    let range_label = RenderDna::feature_range_text(feature);
-                    let full_display_label =
-                        Self::feature_tree_display_label(feature, &base_label, &range_label);
-                    let regulatory_grouping =
-                        Self::derive_regulatory_feature_grouping(feature, &full_display_label);
-                    let display_label = regulatory_grouping
-                        .as_ref()
-                        .map(|grouping| grouping.display_label.clone())
-                        .unwrap_or_else(|| full_display_label.clone());
-                    if filter_active {
-                        filter_total_count += 1;
-                        if !Self::feature_tree_matches_filter(
-                            feature,
-                            &feature_filter_text,
-                            &kind_label,
-                            &full_display_label,
-                            &range_label,
-                        ) {
-                            return None;
-                        }
-                        filter_matched_count += 1;
-                    }
-                    let subgroup_label =
-                        Self::feature_tree_subgroup_label(feature, &base_label, grouping_mode);
-                    let subgroup_key = subgroup_label
-                        .as_ref()
-                        .map(|label| label.trim().to_ascii_uppercase());
-                    let is_regulatory = RenderDna::is_regulatory_feature(feature);
-                    let prefer_grouped_label = feature
-                        .kind
-                        .to_string()
-                        .to_ascii_uppercase()
-                        .contains("RNA");
-                    let show_range_inline_when_ungrouped = matches!(
-                        feature.kind.to_string().to_ascii_uppercase().as_str(),
-                        "MRNA" | "GENE"
-                    );
-                    let disable_grouping = feature.kind.to_string().eq_ignore_ascii_case("GENE");
-                    Some((
-                        kind_label,
-                        FeatureTreeEntry {
-                            id,
-                            feature_label_full: full_display_label,
-                            feature_label: display_label,
-                            range_label,
-                            subgroup_key,
-                            subgroup_label,
-                            prefer_grouped_label,
-                            show_range_inline_when_ungrouped,
-                            visible_in_view,
-                            is_regulatory,
-                            disable_grouping,
-                            regulatory_primary_group_key: regulatory_grouping
-                                .as_ref()
-                                .map(|grouping| grouping.primary_key.clone()),
-                            regulatory_primary_group_label: regulatory_grouping
-                                .as_ref()
-                                .map(|grouping| grouping.primary_label.clone()),
-                            regulatory_secondary_group_key: regulatory_grouping
-                                .as_ref()
-                                .and_then(|grouping| grouping.secondary_key.clone()),
-                            regulatory_secondary_group_label: regulatory_grouping
-                                .as_ref()
-                                .and_then(|grouping| grouping.secondary_label.clone()),
-                        },
-                    ))
-                })
-                .collect::<Vec<_>>()
-        };
-        if filter_active {
-            ui.small(format!(
-                "Filter matches: {} / {} features",
-                filter_matched_count, filter_total_count
-            ));
-        }
-        let mut grouped_features: HashMap<String, Vec<FeatureTreeEntry>> = HashMap::new();
-        for (kind, entry) in typed_features {
-            grouped_features.entry(kind).or_default().push(entry);
-        }
-        let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
-        group_keys.sort();
+        let feature_details_font_size = self.feature_details_font_size();
+        self.ensure_feature_tree_cache_current(viewport);
+        let can_fit_linear = !self.is_circular();
         let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
         let mut promoter_anchor_seed_feature: Option<usize> = None;
         let mut open_splicing_feature: Option<usize> = None;
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
-        let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
-        for kind in group_keys {
-            let Some(entries) = grouped_features.get(kind) else {
-                continue;
+        {
+            let Some(model) = self.feature_tree_cache.as_ref().map(|cache| &cache.model) else {
+                return;
             };
-            let visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
-            let has_selected = entries
-                .iter()
-                .any(|entry| selected_feature_ids.contains(&entry.id));
-            egui::CollapsingHeader::new(
-                egui::RichText::new(Self::format_feature_tree_count_label(
-                    kind.as_str(),
-                    visible_count,
-                    entries.len(),
-                    viewport_limited,
-                ))
-                .size(kind_font_size)
-                .strong(),
-            )
-            .id_salt(format!("feature_kind_{seq_key}_{kind}"))
-            .open(if has_selected { Some(true) } else { None })
-            .show(ui, |ui| {
-                let mut subgroup_cardinality: HashMap<String, usize> = HashMap::new();
-                for entry in entries {
-                    if let Some(subgroup_key) = &entry.subgroup_key {
-                        *subgroup_cardinality
-                            .entry(subgroup_key.clone())
-                            .or_insert(0) += 1;
-                    }
-                }
-                let mut grouped_entries: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
-                    HashMap::new();
-                let mut regulatory_primary_groups: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
-                    HashMap::new();
-                let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
-                for entry in entries {
-                    if matches!(grouping_mode, FeatureTreeGroupingMode::Off) {
-                        ungrouped_entries.push(entry);
-                        continue;
-                    }
-                    if entry.disable_grouping {
-                        ungrouped_entries.push(entry);
-                        continue;
-                    }
-                    if let (Some(primary_key), Some(primary_label)) = (
-                        &entry.regulatory_primary_group_key,
-                        &entry.regulatory_primary_group_label,
-                    ) {
-                        regulatory_primary_groups
-                            .entry(primary_key.clone())
-                            .or_insert_with(|| (primary_label.clone(), Vec::new()))
-                            .1
-                            .push(entry);
-                        continue;
-                    }
-                    let subgroup_count = entry
-                        .subgroup_key
-                        .as_ref()
-                        .and_then(|subgroup_key| subgroup_cardinality.get(subgroup_key))
-                        .copied()
-                        .unwrap_or(0);
-                    let should_group =
-                        Self::feature_tree_should_group(grouping_mode, subgroup_count);
-                    if let (Some(subgroup_key), Some(subgroup_label)) =
-                        (&entry.subgroup_key, &entry.subgroup_label)
-                    {
-                        if should_group {
-                            grouped_entries
-                                .entry(subgroup_key.clone())
-                                .or_insert_with(|| (subgroup_label.clone(), Vec::new()))
-                                .1
-                                .push(entry);
-                        } else {
-                            ungrouped_entries.push(entry);
-                        }
-                    } else {
-                        ungrouped_entries.push(entry);
-                    }
-                }
-
-                let mut render_entry =
-                    |ui: &mut egui::Ui,
-                     entry: &FeatureTreeEntry,
-                     kind_label: &str,
-                     grouped_entry: bool,
-                     show_range_only_when_grouped: bool| {
-                        let selected = selected_feature_ids.contains(&entry.id);
-                        let button_label = if grouped_entry
-                            && show_range_only_when_grouped
-                            && !entry.prefer_grouped_label
-                            && !entry.range_label.is_empty()
-                        {
-                            entry.range_label.clone()
-                        } else if entry.show_range_inline_when_ungrouped
-                            && !grouped_entry
-                            && !entry.range_label.is_empty()
-                        {
-                            format!("{} [{}]", entry.feature_label, entry.range_label)
-                        } else {
-                            entry.feature_label.clone()
-                        };
-                        let mut button_text =
-                            egui::RichText::new(button_label).size(feature_font_size);
-                        if viewport_limited && !entry.visible_in_view {
-                            button_text = button_text.color(egui::Color32::from_gray(120));
-                        }
-                        ui.horizontal(|ui| {
-                            let button = egui::Button::new(button_text).selected(selected);
-                            let mut response = ui.add(button);
-                            let mut hover_lines: Vec<String> = Vec::new();
-                            let feature_label_with_range = if entry.range_label.is_empty() {
-                                entry.feature_label_full.clone()
+            if !self.feature_tree_filter.trim().is_empty() {
+                ui.small(format!(
+                    "Filter matches: {} / {} features",
+                    model.filter_matched_count, model.filter_total_count
+                ));
+            }
+            for group in &model.groups {
+                let has_selected = group
+                    .entries
+                    .iter()
+                    .any(|entry| selected_feature_ids.contains(&entry.id));
+                egui::CollapsingHeader::new(
+                    egui::RichText::new(Self::format_feature_tree_count_label(
+                        group.kind.as_str(),
+                        group.visible_count,
+                        group.entries.len(),
+                        viewport_limited,
+                    ))
+                    .size(kind_font_size)
+                    .strong(),
+                )
+                .id_salt(format!("feature_kind_{seq_key}_{}", group.kind))
+                .open(if has_selected { Some(true) } else { None })
+                .show(ui, |ui| {
+                    let mut render_entry =
+                        |ui: &mut egui::Ui,
+                         entry: &FeatureTreeEntry,
+                         grouped_entry: bool,
+                         show_range_only_when_grouped: bool| {
+                            let selected = selected_feature_ids.contains(&entry.id);
+                            let button_label = if grouped_entry
+                                && show_range_only_when_grouped
+                                && !entry.prefer_grouped_label
+                                && !entry.range_label.is_empty()
+                            {
+                                entry.range_label.clone()
+                            } else if entry.show_range_inline_when_ungrouped
+                                && !grouped_entry
+                                && !entry.range_label.is_empty()
+                            {
+                                format!("{} [{}]", entry.feature_label, entry.range_label)
                             } else {
-                                format!("{} ({})", entry.feature_label_full, entry.range_label)
+                                entry.feature_label.clone()
                             };
-                            if grouped_entry && show_range_only_when_grouped {
-                                hover_lines.push(feature_label_with_range);
-                            } else if entry.feature_label_full != entry.feature_label {
-                                hover_lines.push(feature_label_with_range);
-                            }
-                            if entry.is_regulatory && entry.feature_label != entry.feature_label_full {
-                                let hover_text = if entry.range_label.is_empty() {
-                                    entry.feature_label.clone()
-                                } else {
-                                    format!("{} ({})", entry.feature_label, entry.range_label)
-                                };
-                                hover_lines.push(format!("Display: {hover_text}"));
-                            }
+                            let mut button_text =
+                                egui::RichText::new(button_label).size(feature_font_size);
                             if viewport_limited && !entry.visible_in_view {
-                                hover_lines.push("Outside current linear view span".to_string());
+                                button_text = button_text.color(egui::Color32::from_gray(120));
                             }
-                            if !hover_lines.is_empty() {
-                                response = response.on_hover_text(hover_lines.join("\n"));
-                            }
-                            if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
-                                response.scroll_to_me(Some(egui::Align::Center));
-                                self.pending_feature_tree_scroll_to = None;
-                            }
-                            if response.clicked() {
-                                let additive = ui.input(|i| i.modifiers.command);
-                                clicked_feature = Some((entry.id, additive));
-                            }
-                            if response.double_clicked() {
-                                clicked_feature = Some((entry.id, false));
-                                open_splicing_feature = Some(entry.id);
-                            }
-                            response.context_menu(|ui| {
-                                if ui
-                                    .button("Focus feature (current zoom)")
-                                    .on_hover_text("Center selected feature without changing zoom")
-                                    .clicked()
+                            ui.horizontal(|ui| {
+                                let button = egui::Button::new(button_text).selected(selected);
+                                let mut response = ui.add(button);
+                                let mut hover_lines: Vec<String> = Vec::new();
+                                let feature_label_with_range = if entry.range_label.is_empty() {
+                                    entry.feature_label_full.clone()
+                                } else {
+                                    format!("{} ({})", entry.feature_label_full, entry.range_label)
+                                };
+                                if grouped_entry && show_range_only_when_grouped {
+                                    hover_lines.push(feature_label_with_range);
+                                } else if entry.feature_label_full != entry.feature_label {
+                                    hover_lines.push(feature_label_with_range);
+                                }
+                                if entry.is_regulatory
+                                    && entry.feature_label != entry.feature_label_full
                                 {
-                                    clicked_feature = Some((entry.id, false));
-                                    ui.close();
+                                    let hover_text = if entry.range_label.is_empty() {
+                                        entry.feature_label.clone()
+                                    } else {
+                                        format!("{} ({})", entry.feature_label, entry.range_label)
+                                    };
+                                    hover_lines.push(format!("Display: {hover_text}"));
                                 }
-                                let fit_response = ui.add_enabled(
-                                    can_fit_linear,
-                                    egui::Button::new("Fit feature in view"),
-                                );
-                                let fit_response = if can_fit_linear {
-                                    fit_response.on_hover_text(
-                                        "Adjust linear viewport so this feature is fully visible",
-                                    )
-                                } else {
-                                    fit_response.on_hover_text("Available in linear map mode only")
-                                };
-                                if fit_response.clicked() {
-                                    clicked_feature = Some((entry.id, false));
-                                    fit_feature = Some(entry.id);
-                                    ui.close();
+                                if viewport_limited && !entry.visible_in_view {
+                                    hover_lines.push("Outside current linear view span".to_string());
                                 }
-                                let can_seed_promoter_anchor = kind_label.eq_ignore_ascii_case("mrna")
-                                    || kind_label.eq_ignore_ascii_case("transcript");
-                                let promoter_response = ui.add_enabled(
-                                    can_seed_promoter_anchor,
-                                    egui::Button::new("Use as promoter anchor (Engine Ops)"),
-                                );
-                                let promoter_response = if can_seed_promoter_anchor {
-                                    promoter_response.on_hover_text(
-                                        "Seed anchored promoter extraction from this mRNA/transcript boundary (strand-aware)",
-                                    )
-                                } else {
-                                    promoter_response.on_hover_text(
-                                        "Available for mRNA/transcript features",
-                                    )
-                                };
-                                if promoter_response.clicked() {
-                                    clicked_feature = Some((entry.id, false));
-                                    promoter_anchor_seed_feature = Some(entry.id);
-                                    ui.close();
+                                if !hover_lines.is_empty() {
+                                    response = response.on_hover_text(hover_lines.join("\n"));
                                 }
-                                let splicing_response = ui.add_enabled(
-                                    self.feature_supports_splicing_expert(entry.id),
-                                    egui::Button::new("Open Splicing Window"),
-                                );
-                                let splicing_response = splicing_response.on_hover_text(
-                                    "Open the dedicated Splicing Expert window for this feature",
-                                );
-                                if splicing_response.clicked() {
+                                if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
+                                    response.scroll_to_me(Some(egui::Align::Center));
+                                    self.pending_feature_tree_scroll_to = None;
+                                }
+                                if response.clicked() {
+                                    let additive = ui.input(|i| i.modifiers.command);
+                                    clicked_feature = Some((entry.id, additive));
+                                }
+                                if response.double_clicked() {
                                     clicked_feature = Some((entry.id, false));
                                     open_splicing_feature = Some(entry.id);
-                                    ui.close();
                                 }
-                                let mapping_response = ui.add_enabled(
-                                    self.feature_supports_splicing_expert(entry.id),
-                                    egui::Button::new("Open RNA-read Mapping"),
-                                );
-                                let mapping_response = mapping_response.on_hover_text(
-                                    "Open the dedicated RNA-read Mapping workspace for this feature's splicing locus",
-                                );
-                                if mapping_response.clicked() {
-                                    clicked_feature = Some((entry.id, false));
-                                    open_rna_read_mapping_feature = Some(entry.id);
-                                    ui.close();
-                                }
-                                let dotplot_response = ui.add_enabled(
-                                    self.feature_supports_splicing_expert(entry.id),
-                                    egui::Button::new("Derive + Dotplot"),
-                                );
-                                let dotplot_response = dotplot_response.on_hover_text(
-                                    "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
-                                );
-                                if dotplot_response.clicked() {
-                                    clicked_feature = Some((entry.id, false));
-                                    open_dotplot_feature = Some(entry.id);
-                                    ui.close();
-                                }
+                                response.context_menu(|ui| {
+                                    if ui
+                                        .button("Focus feature (current zoom)")
+                                        .on_hover_text("Center selected feature without changing zoom")
+                                        .clicked()
+                                    {
+                                        clicked_feature = Some((entry.id, false));
+                                        ui.close();
+                                    }
+                                    let fit_response = ui.add_enabled(
+                                        can_fit_linear,
+                                        egui::Button::new("Fit feature in view"),
+                                    );
+                                    let fit_response = if can_fit_linear {
+                                        fit_response.on_hover_text(
+                                            "Adjust linear viewport so this feature is fully visible",
+                                        )
+                                    } else {
+                                        fit_response.on_hover_text(
+                                            "Available in linear map mode only",
+                                        )
+                                    };
+                                    if fit_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        fit_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    let promoter_response = ui.add_enabled(
+                                        entry.can_seed_promoter_anchor,
+                                        egui::Button::new("Use as promoter anchor (Engine Ops)"),
+                                    );
+                                    let promoter_response = if entry.can_seed_promoter_anchor {
+                                        promoter_response.on_hover_text(
+                                            "Seed anchored promoter extraction from this mRNA/transcript boundary (strand-aware)",
+                                        )
+                                    } else {
+                                        promoter_response.on_hover_text(
+                                            "Available for mRNA/transcript features",
+                                        )
+                                    };
+                                    if promoter_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        promoter_anchor_seed_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    let splicing_response = ui.add_enabled(
+                                        entry.supports_splicing_expert,
+                                        egui::Button::new("Open Splicing Window"),
+                                    );
+                                    let splicing_response = splicing_response.on_hover_text(
+                                        "Open the dedicated Splicing Expert window for this feature",
+                                    );
+                                    if splicing_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        open_splicing_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    let mapping_response = ui.add_enabled(
+                                        entry.supports_splicing_expert,
+                                        egui::Button::new("Open RNA-read Mapping"),
+                                    );
+                                    let mapping_response = mapping_response.on_hover_text(
+                                        "Open the dedicated RNA-read Mapping workspace for this feature's splicing locus",
+                                    );
+                                    if mapping_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        open_rna_read_mapping_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    let dotplot_response = ui.add_enabled(
+                                        entry.supports_splicing_expert,
+                                        egui::Button::new("Derive + Dotplot"),
+                                    );
+                                    let dotplot_response = dotplot_response.on_hover_text(
+                                        "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                                    );
+                                    if dotplot_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        open_dotplot_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                });
                             });
-                        });
-                    };
+                        };
 
-                let mut regulatory_primary_keys =
-                    regulatory_primary_groups.keys().cloned().collect::<Vec<_>>();
-                regulatory_primary_keys.sort_by(|left, right| {
-                    let left_label = regulatory_primary_groups
-                        .get(left)
-                        .map(|(label, _)| label.as_str())
-                        .unwrap_or("");
-                    let right_label = regulatory_primary_groups
-                        .get(right)
-                        .map(|(label, _)| label.as_str())
-                        .unwrap_or("");
-                    left_label
-                        .to_ascii_lowercase()
-                        .cmp(&right_label.to_ascii_lowercase())
-                        .then_with(|| left.cmp(right))
-                });
-
-                for primary_key in regulatory_primary_keys {
-                    let Some((primary_label, primary_entries)) =
-                        regulatory_primary_groups.get(&primary_key)
-                    else {
-                        continue;
-                    };
-                    let primary_has_selected = primary_entries
-                        .iter()
-                        .any(|entry| selected_feature_ids.contains(&entry.id));
-                    let primary_visible_count = primary_entries
-                        .iter()
-                        .filter(|entry| entry.visible_in_view)
-                        .count();
-                    let primary_heading = Self::format_feature_tree_count_label(
-                        primary_label,
-                        primary_visible_count,
-                        primary_entries.len(),
-                        viewport_limited,
-                    );
-                    egui::CollapsingHeader::new(
-                        egui::RichText::new(primary_heading)
-                            .size(feature_font_size)
-                            .strong(),
-                    )
-                    .id_salt(format!(
-                        "feature_kind_reg_primary_{seq_key}_{kind}_{primary_key}"
-                    ))
-                    .open(if primary_has_selected {
-                        Some(true)
-                    } else {
-                        None
-                    })
-                    .show(ui, |ui| {
-                        let mut secondary_groups: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
-                            HashMap::new();
-                        let mut secondary_ungrouped: Vec<&FeatureTreeEntry> = Vec::new();
-                        for entry in primary_entries.iter().copied() {
-                            if let (Some(secondary_key), Some(secondary_label)) = (
-                                &entry.regulatory_secondary_group_key,
-                                &entry.regulatory_secondary_group_label,
-                            ) {
-                                secondary_groups
-                                    .entry(secondary_key.clone())
-                                    .or_insert_with(|| (secondary_label.clone(), Vec::new()))
-                                    .1
-                                    .push(entry);
-                            } else {
-                                secondary_ungrouped.push(entry);
+                    for primary_group in &group.regulatory_primary_groups {
+                        let primary_has_selected = primary_group
+                            .entry_indices
+                            .iter()
+                            .any(|index| selected_feature_ids.contains(&group.entries[*index].id));
+                        let primary_heading = Self::format_feature_tree_count_label(
+                            &primary_group.label,
+                            primary_group.visible_count,
+                            primary_group.entry_indices.len(),
+                            viewport_limited,
+                        );
+                        egui::CollapsingHeader::new(
+                            egui::RichText::new(primary_heading)
+                                .size(feature_font_size)
+                                .strong(),
+                        )
+                        .id_salt(format!(
+                            "feature_kind_reg_primary_{seq_key}_{}_{}",
+                            group.kind, primary_group.key
+                        ))
+                        .open(if primary_has_selected { Some(true) } else { None })
+                        .show(ui, |ui| {
+                            for secondary_group in &primary_group.secondary_groups {
+                                let secondary_has_selected =
+                                    secondary_group.entry_indices.iter().any(|index| {
+                                        selected_feature_ids
+                                            .contains(&group.entries[*index].id)
+                                    });
+                                let secondary_heading = Self::format_feature_tree_count_label(
+                                    &secondary_group.label,
+                                    secondary_group.visible_count,
+                                    secondary_group.entry_indices.len(),
+                                    viewport_limited,
+                                );
+                                egui::CollapsingHeader::new(
+                                    egui::RichText::new(secondary_heading)
+                                        .size(feature_font_size)
+                                        .strong(),
+                                )
+                                .id_salt(format!(
+                                    "feature_kind_reg_secondary_{seq_key}_{}_{}_{}",
+                                    group.kind,
+                                    primary_group.key,
+                                    secondary_group.key
+                                ))
+                                .open(if secondary_has_selected {
+                                    Some(true)
+                                } else {
+                                    None
+                                })
+                                .show(ui, |ui| {
+                                    for index in &secondary_group.entry_indices {
+                                        render_entry(
+                                            ui,
+                                            &group.entries[*index],
+                                            true,
+                                            false,
+                                        );
+                                    }
+                                });
                             }
-                        }
 
-                        let mut secondary_keys = secondary_groups.keys().cloned().collect::<Vec<_>>();
-                        secondary_keys.sort_by(|left, right| {
-                            let left_label = secondary_groups
-                                .get(left)
-                                .map(|(label, _)| label.as_str())
-                                .unwrap_or("");
-                            let right_label = secondary_groups
-                                .get(right)
-                                .map(|(label, _)| label.as_str())
-                                .unwrap_or("");
-                            left_label
-                                .to_ascii_lowercase()
-                                .cmp(&right_label.to_ascii_lowercase())
-                                .then_with(|| left.cmp(right))
+                            for index in &primary_group.ungrouped_entry_indices {
+                                render_entry(
+                                    ui,
+                                    &group.entries[*index],
+                                    false,
+                                    false,
+                                );
+                            }
                         });
+                    }
 
-                        for secondary_key in secondary_keys {
-                            let Some((secondary_label, secondary_entries)) =
-                                secondary_groups.get(&secondary_key)
-                            else {
-                                continue;
-                            };
-                            let secondary_has_selected = secondary_entries
-                                .iter()
-                                .any(|entry| selected_feature_ids.contains(&entry.id));
-                            let secondary_visible_count = secondary_entries
-                                .iter()
-                                .filter(|entry| entry.visible_in_view)
-                                .count();
-                            let secondary_heading = Self::format_feature_tree_count_label(
-                                secondary_label,
-                                secondary_visible_count,
-                                secondary_entries.len(),
-                                viewport_limited,
-                            );
-                            egui::CollapsingHeader::new(
-                                egui::RichText::new(secondary_heading)
-                                    .size(feature_font_size)
-                                    .strong(),
-                            )
-                            .id_salt(format!(
-                                "feature_kind_reg_secondary_{seq_key}_{kind}_{primary_key}_{secondary_key}"
-                            ))
-                            .open(if secondary_has_selected {
-                                Some(true)
-                            } else {
-                                None
-                            })
-                            .show(ui, |ui| {
-                                for entry in secondary_entries {
-                                    render_entry(ui, entry, kind, true, false);
-                                }
-                            });
-                        }
+                    for subgroup in &group.grouped_entries {
+                        let subgroup_has_selected = subgroup
+                            .entry_indices
+                            .iter()
+                            .any(|index| selected_feature_ids.contains(&group.entries[*index].id));
+                        let subgroup_heading = Self::format_feature_tree_count_label(
+                            &subgroup.label,
+                            subgroup.visible_count,
+                            subgroup.entry_indices.len(),
+                            viewport_limited,
+                        );
+                        egui::CollapsingHeader::new(
+                            egui::RichText::new(subgroup_heading)
+                                .size(feature_font_size)
+                                .strong(),
+                        )
+                        .id_salt(format!(
+                            "feature_kind_group_{seq_key}_{}_{}",
+                            group.kind, subgroup.key
+                        ))
+                        .open(if subgroup_has_selected { Some(true) } else { None })
+                        .show(ui, |ui| {
+                            for index in &subgroup.entry_indices {
+                                render_entry(
+                                    ui,
+                                    &group.entries[*index],
+                                    true,
+                                    true,
+                                );
+                            }
+                        });
+                    }
 
-                        for entry in secondary_ungrouped {
-                            render_entry(ui, entry, kind, false, false);
-                        }
-                    });
-                }
-
-                let mut subgroup_keys = grouped_entries.keys().cloned().collect::<Vec<_>>();
-                subgroup_keys.sort_by(|left, right| {
-                    let left_label = grouped_entries
-                        .get(left)
-                        .map(|(label, _)| label.as_str())
-                        .unwrap_or("");
-                    let right_label = grouped_entries
-                        .get(right)
-                        .map(|(label, _)| label.as_str())
-                        .unwrap_or("");
-                    left_label.cmp(right_label).then_with(|| left.cmp(right))
+                    for index in &group.ungrouped_entry_indices {
+                        render_entry(
+                            ui,
+                            &group.entries[*index],
+                            false,
+                            false,
+                        );
+                    }
                 });
-
-                for subgroup_key in subgroup_keys {
-                    let Some((subgroup_label, subgroup_entries)) =
-                        grouped_entries.get(&subgroup_key)
-                    else {
-                        continue;
-                    };
-                    let subgroup_has_selected = subgroup_entries
-                        .iter()
-                        .any(|entry| selected_feature_ids.contains(&entry.id));
-                    let subgroup_visible_count = subgroup_entries
-                        .iter()
-                        .filter(|entry| entry.visible_in_view)
-                        .count();
-                    let subgroup_heading = Self::format_feature_tree_count_label(
-                        subgroup_label,
-                        subgroup_visible_count,
-                        subgroup_entries.len(),
-                        viewport_limited,
-                    );
-                    egui::CollapsingHeader::new(
-                        egui::RichText::new(subgroup_heading)
-                            .size(feature_font_size)
-                            .strong(),
-                    )
-                    .id_salt(format!(
-                        "feature_kind_group_{seq_key}_{kind}_{}",
-                        subgroup_key
-                    ))
-                    .open(if subgroup_has_selected {
-                        Some(true)
-                    } else {
-                        None
-                    })
-                    .show(ui, |ui| {
-                        for entry in subgroup_entries {
-                            render_entry(ui, entry, kind, true, true);
-                        }
-                    });
-                }
-
-                for entry in ungrouped_entries {
-                    render_entry(ui, entry, kind, false, false);
-                }
-            });
+            }
         }
         if let Some((id, additive)) = clicked_feature {
             if additive {

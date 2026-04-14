@@ -398,6 +398,10 @@ Feature tree grouping:
 - For large/feature-dense sequences, initial feature-tree/detail rendering can
   be deferred to improve window-open responsiveness and is then auto-loaded on
   the next frame (no manual button click required).
+- Once the feature tree is visible, its derived grouping/filter/visibility
+  model is cached across frames and only rebuilt when the sequence, feature
+  visibility settings, viewport span, or filter/grouping inputs change,
+  reducing idle CPU load for feature-dense windows.
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
 - The feature tree/details pane is top-aligned with the map and stretched to
