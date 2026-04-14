@@ -8227,6 +8227,7 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8235,6 +8236,7 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8300,6 +8302,7 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8308,6 +8311,7 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -16274,6 +16278,7 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -16282,6 +16287,7 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
                 DotplotOverlayQuerySpec {
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
+                    transcript_feature_id: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,

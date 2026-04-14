@@ -12599,6 +12599,23 @@ fn parse_dotplot_and_flex_commands() {
         other => panic!("expected RenderDotplotSvg, got {other:?}"),
     }
 
+    let render_dotplot_shared_anchor = parse_shell_line(
+        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.anchor.svg --overlay-x-axis shared_exon_anchor",
+    )
+    .expect("parse dotplot render-svg shared exon anchor");
+    match render_dotplot_shared_anchor {
+        ShellCommand::RenderDotplotSvg {
+            overlay_x_axis_mode,
+            ..
+        } => {
+            assert_eq!(
+                overlay_x_axis_mode,
+                DotplotOverlayXAxisMode::SharedExonAnchor
+            );
+        }
+        other => panic!("expected RenderDotplotSvg, got {other:?}"),
+    }
+
     let flex = parse_shell_line(
             "flex compute seq_a --start 25 --end 325 --model at_skew --bin-bp 20 --smoothing-bp 60 --id promoter_flex",
         )
@@ -13132,6 +13149,7 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                         DotplotOverlayQuerySpec {
                             seq_id: "iso_a".to_string(),
                             label: "Isoform A".to_string(),
+                            transcript_feature_id: None,
                             span_start_0based: None,
                             span_end_0based: None,
                             mode: DotplotMode::PairForward,
@@ -13140,6 +13158,7 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                         DotplotOverlayQuerySpec {
                             seq_id: "iso_b".to_string(),
                             label: "Isoform B".to_string(),
+                            transcript_feature_id: None,
                             span_start_0based: None,
                             span_end_0based: None,
                             mode: DotplotMode::PairForward,

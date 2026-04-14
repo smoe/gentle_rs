@@ -511,7 +511,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]\n  \
+  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
@@ -750,6 +750,19 @@ fn parse_forwarded_shell_command(
     let tokens = args[cmd_idx..].to_vec();
     let shell_command = parse_shell_tokens(&tokens)?;
     Ok(Some(shell_command))
+}
+
+fn parse_dotplot_overlay_x_axis_mode_arg(raw: &str) -> Result<DotplotOverlayXAxisMode, String> {
+    match raw.trim() {
+        "percent_length" => Ok(DotplotOverlayXAxisMode::PercentLength),
+        "left_aligned_bp" => Ok(DotplotOverlayXAxisMode::LeftAlignedBp),
+        "right_aligned_bp" => Ok(DotplotOverlayXAxisMode::RightAlignedBp),
+        "shared_exon_anchor" => Ok(DotplotOverlayXAxisMode::SharedExonAnchor),
+        other => Err(format!(
+            "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, or shared_exon_anchor",
+            other
+        )),
+    }
 }
 
 fn load_json_arg(value: &str) -> Result<String, String> {
@@ -2478,7 +2491,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 3 {
                 usage();
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]".to_string(),
                 );
             }
             let seq_id = args[cmd_idx + 1].trim();
@@ -2539,17 +2552,8 @@ fn run() -> Result<(), String> {
                         if idx + 1 >= args.len() {
                             return Err("Missing value after --overlay-x-axis".to_string());
                         }
-                        overlay_x_axis_mode = match args[idx + 1].trim() {
-                            "percent_length" => DotplotOverlayXAxisMode::PercentLength,
-                            "left_aligned_bp" => DotplotOverlayXAxisMode::LeftAlignedBp,
-                            "right_aligned_bp" => DotplotOverlayXAxisMode::RightAlignedBp,
-                            other => {
-                                return Err(format!(
-                                    "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, or right_aligned_bp",
-                                    other
-                                ));
-                            }
-                        };
+                        overlay_x_axis_mode =
+                            parse_dotplot_overlay_x_axis_mode_arg(&args[idx + 1])?;
                         idx += 2;
                     }
                     other => {
@@ -4734,6 +4738,15 @@ mod tests {
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_parse_dotplot_overlay_x_axis_mode_arg_accepts_shared_exon_anchor() {
+        assert_eq!(
+            parse_dotplot_overlay_x_axis_mode_arg("shared_exon_anchor")
+                .expect("parse shared exon anchor"),
+            DotplotOverlayXAxisMode::SharedExonAnchor
+        );
     }
 
     #[test]

@@ -106,7 +106,7 @@
          ],
          "path": "render-dotplot-svg",
          "summary": "Render stored dotplot payload as SVG (optional flexibility panel and display tuning).",
-         "usage": "render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp]"
+         "usage": "render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor]"
       },
       {
          "aliases": [],

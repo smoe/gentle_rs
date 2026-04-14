@@ -3743,8 +3743,9 @@ Status (2026-03-19):
     - when `--reference-seq` is omitted, the owner sequence id is reused as the
       shared overlay reference for CLI convenience
   - overlay x-axis variants (2026-04-14):
-    - overlay rendering/export now supports three shared x-axis layouts:
-      `percent_length`, `left_aligned_bp`, and `right_aligned_bp`
+    - overlay rendering/export now supports four shared x-axis layouts:
+      `percent_length`, `left_aligned_bp`, `right_aligned_bp`, and
+      `shared_exon_anchor`
     - the standalone Dotplot workspace exposes the same selector without
       recomputing the underlying dotplot payload
     - `RenderDotplotSvg`, `dotplot render-svg`, and `render-dotplot-svg` now
@@ -3753,6 +3754,9 @@ Status (2026-03-19):
     - overlay hover readouts now report per-isoform query coordinates according
       to the selected layout, while locked crosshair/query sync remain disabled
       because overlays still do not collapse to one unambiguous query axis
+    - shared-shell/direct CLI parsing now accepts `shared_exon_anchor` too, so
+      adapter parity now matches the GUI/protocol enum instead of rejecting the
+      newest layout at parse time
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
