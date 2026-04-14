@@ -840,6 +840,7 @@ Current draft operations:
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
 - `SetArrangementLadders { arrangement_id, ladders? }`
+- `SetContainerDeclaredContentsExclusive { container_id, exclusive }`
 - `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
 - `PlaceArrangementOnRack { arrangement_id, rack_id }`
 - `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
@@ -2170,6 +2171,14 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   arrangement-based gel preview/export.
 - two ladder names mean explicit left/right ladder selection.
 
+`SetContainerDeclaredContentsExclusive` semantics:
+
+- Mutates one persisted container’s `declared_contents_exclusive` flag.
+- `exclusive = true` means the listed members are intended to be the full known
+  contents of the vial/tube.
+- `exclusive = false` means the listed members are known/measured constituents
+  of a more complex sample that may also contain unlisted molecules.
+
 `CreateRackFromArrangement` semantics:
 
 - Creates one new physical rack/plate draft from one stored arrangement.
@@ -3288,6 +3297,15 @@ Primer-design shell command family (implemented):
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
+- `primers design` and `primers show-report` additionally include
+  `simple_pcr_pairs`, a derived helper array that summarizes each accepted pair
+  in simple-PCR terms:
+  - amplicon coordinates/length
+  - left/right distance from the core ROI
+  - left/right overlap into the core ROI
+  - `left_to_core_label` / `right_to_core_label`
+  - `flanks_core_cleanly`
+  - `tm_delta_c` and score
 - Response schemas:
   - `gentle.primer_seed_request.v1`
   - `gentle.primer_design_report.v1`

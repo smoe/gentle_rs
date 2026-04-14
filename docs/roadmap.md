@@ -1109,6 +1109,12 @@ order. Durable architecture constraints and decisions remain in
         core ROI, max primer distance from core, max amplicon length
       - applying the starter writes deterministic forward/reverse flank
         windows and enables ROI flanking without hiding the underlying fields
+      - saved primer reports are now previewed in-panel with top-pair distance
+        from the core ROI (`left/right -> core`) so the simple-PCR story
+        remains inspectable during candidate review
+      - shared-shell `primers design` / `primers show-report` now expose the
+        same core-distance geometry as `simple_pcr_pairs`, so GUI and CLI can
+        inspect the saved report in the same beginner vocabulary
     - qPCR remains in the existing Engine Ops panel for this v1 scope
     - shared-shell UI intents now include:
       `ui open pcr-design` and `ui focus pcr-design`
@@ -1265,6 +1271,43 @@ order. Durable architecture constraints and decisions remain in
       so clean vials/tubes mean “only the listed members”
     - later noisy/tissue-derived sample work can mark containers
       non-exclusive without changing sequence semantics or rack placement
+  - near-term execution order from this point:
+    1. Container/vial semantics surface
+       - now surfaced in the lineage `Containers` panel, shared shell/CLI
+         mutation route (`containers set-exclusive ...`), and `state-summary`
+         output
+       - inspection now states whether listed members are exhaustive
+         (`Declared only`) or only known/measured constituents (`Known subset`)
+       - keep `true` as the default for clean vials/tubes, while allowing
+         tissue-, lysate-, and extract-style workflows to opt into
+         non-exclusive containers without forking the container model
+    2. Translation-speed and translation-table trust tightening
+       - improve species-profile coverage and provenance for the initial target
+         organisms: human, mouse, yeast, and *E. coli*
+       - make profile/proxy choice explicit in outputs so users can tell when a
+         bundled proxy or fallback table was used
+       - deepen organelle handling beyond the current warning-backed
+         mitochondrial fallback, while preserving deterministic behavior
+    3. Reverse-translation ergonomics
+       - keep the current deterministic codon-bias + optional annealing-Tm hint
+         path, but add stronger diagnostics explaining codon choice
+       - add named presets / control bundles for common goals
+         (`balanced`, `fast expression`, `slow translation`, `anneal-aware`)
+       - consider stronger local optimization for annealing/GC/repeat
+         constraints without turning the route into an opaque black box
+    4. Dedicated protein workspace ergonomics
+       - build a first-class protein-facing window/workspace on top of the now
+         existing protein sequences and source-neutral Protein Expert
+       - keep the Protein Expert transcript/projection comparison path, but add
+         a more direct protein-sequence inspection/edit/export surface
+       - ensure protein-side provenance stays aligned with transcript/CDS and
+         UniProt/source-neutral evidence rather than diverging into adapter-only
+         UI state
+    5. Workflow integration
+       - feed protein and reverse-translation results more directly into PCR,
+         cloning, and routine-assistant paths
+       - keep this engine-owned so the same protein-aware behavior is available
+         across GUI/CLI/JS/Lua/Python/MCP rather than growing GUI-only helpers
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`

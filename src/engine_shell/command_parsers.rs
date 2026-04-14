@@ -13,6 +13,41 @@
 
 use super::*;
 
+pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("containers requires a subcommand: set-exclusive".to_string());
+    }
+    match tokens[1].as_str() {
+        "set-exclusive" => {
+            if tokens.len() != 4 {
+                return Err("containers set-exclusive requires CONTAINER_ID true|false".to_string());
+            }
+            let container_id = tokens[2].trim().to_string();
+            if container_id.is_empty() {
+                return Err(
+                    "containers set-exclusive requires a non-empty CONTAINER_ID".to_string()
+                );
+            }
+            let exclusive = match tokens[3].trim().to_ascii_lowercase().as_str() {
+                "true" | "yes" | "on" | "exclusive" | "declared_only" | "declared-only" => true,
+                "false" | "no" | "off" | "subset" | "known_subset" | "known-subset" => false,
+                other => {
+                    return Err(format!(
+                        "Unsupported exclusivity value '{other}', expected true|false"
+                    ));
+                }
+            };
+            Ok(ShellCommand::ContainersSetExclusive {
+                container_id,
+                exclusive,
+            })
+        }
+        other => Err(format!(
+            "Unknown containers subcommand '{other}' (expected set-exclusive)"
+        )),
+    }
+}
+
 pub(super) fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(

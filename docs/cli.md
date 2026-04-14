@@ -1187,6 +1187,7 @@ State is persisted to `.gentle_state.json` by default (override with `--state PA
 cargo run --bin gentle_cli -- --version
 cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_cli -- state-summary
+cargo run --bin gentle_cli -- containers set-exclusive container-3 false
 cargo run --bin gentle_cli -- help
 cargo run --bin gentle_cli -- help candidates generate
 cargo run --bin gentle_cli -- help --format json
@@ -1344,6 +1345,7 @@ When `--progress-stdout` is used, progress lines are emitted before the final JS
 
 - sequences
 - containers
+  - each container row now includes `declared_contents_exclusive`
 - display visibility flags
 
 Project aliases:
@@ -1360,6 +1362,7 @@ Shared shell command:
     - `help`
     - `capabilities`
     - `state-summary`
+    - `containers set-exclusive CONTAINER_ID true|false`
     - `load-project PATH`
     - `save-project PATH`
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
@@ -1482,6 +1485,8 @@ Shared shell command:
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
+      - includes `simple_pcr_pairs` with per-pair left/right distance from the
+        core ROI, overlap flags, and flanking labels for quick CLI inspection
     - `primers export-report REPORT_ID OUTPUT.json`
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
@@ -1946,6 +1951,11 @@ Rendering export commands:
   - Calls engine operation `SetArrangementLadders`.
   - Persists one or two ladder names on an existing serial arrangement.
   - Omit `--ladders` to clear back to shared engine auto ladder selection.
+- `containers set-exclusive CONTAINER_ID true|false`
+  - Calls engine operation `SetContainerDeclaredContentsExclusive`.
+  - `true` restores a clean-vial / declared-only interpretation.
+  - `false` marks the listed members as a known/measured subset of a more
+    complex sample.
 - `racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]`
   - Calls engine operation `CreateRackFromArrangement`.
   - Creates one deterministic physical rack draft from one stored arrangement.

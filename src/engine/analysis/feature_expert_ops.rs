@@ -5115,6 +5115,7 @@ impl GentleEngine {
             FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
+                ..
             } => self
                 .build_transcript_protein_expert_view(
                     seq_id,

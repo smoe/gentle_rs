@@ -2443,6 +2443,10 @@ pub enum Operation {
         #[serde(default)]
         ladders: Option<Vec<String>>,
     },
+    SetContainerDeclaredContentsExclusive {
+        container_id: ContainerId,
+        exclusive: bool,
+    },
     CreateRackFromArrangement {
         arrangement_id: String,
         #[serde(default)]
@@ -4221,6 +4225,7 @@ impl GentleEngine {
                 "ApplyGibsonAssemblyPlan".to_string(),
                 "CreateArrangementSerial".to_string(),
                 "SetArrangementLadders".to_string(),
+                "SetContainerDeclaredContentsExclusive".to_string(),
                 "CreateRackFromArrangement".to_string(),
                 "PlaceArrangementOnRack".to_string(),
                 "MoveRackPlacement".to_string(),

@@ -2920,6 +2920,32 @@ impl GentleEngine {
         Ok(normalized)
     }
 
+    pub(super) fn set_container_declared_contents_exclusive(
+        &mut self,
+        container_id: &str,
+        exclusive: bool,
+    ) -> Result<bool, EngineError> {
+        let container_id = container_id.trim();
+        if container_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "container_id cannot be empty".to_string(),
+            });
+        }
+        let container = self
+            .state
+            .container_state
+            .containers
+            .get_mut(container_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Container '{container_id}' not found"),
+            })?;
+        let changed = container.declared_contents_exclusive != exclusive;
+        container.declared_contents_exclusive = exclusive;
+        Ok(changed)
+    }
+
     pub(super) fn add_container(
         &mut self,
         members: &[SeqId],

@@ -41,9 +41,9 @@ use crate::{
         PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
         PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignSideConstraint, ProjectState, ProteinFeatureFilter, RackAuthoringTemplate,
-        RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
+        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinFeatureFilter,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -702,6 +702,10 @@ pub enum ShellCommand {
         arrangement_id: Option<String>,
         name: Option<String>,
         ladders: Option<Vec<String>>,
+    },
+    ContainersSetExclusive {
+        container_id: String,
+        exclusive: bool,
     },
     SetArrangementLadders {
         arrangement_id: String,
@@ -4878,6 +4882,18 @@ impl ShellCommand {
                     container_ids.len()
                 )
             }
+            Self::ContainersSetExclusive {
+                container_id,
+                exclusive,
+            } => format!(
+                "set container '{}' contents mode to {}",
+                container_id.trim(),
+                if *exclusive {
+                    "declared_only"
+                } else {
+                    "known_subset"
+                }
+            ),
             Self::SetArrangementLadders {
                 arrangement_id,
                 ladders,
@@ -8233,6 +8249,8 @@ fn parse_feature_expert_target_tokens(
             Ok(FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter: ProteinFeatureFilter::default(),
+                external_source: None,
+                external_entry_id: None,
             })
         }
         "uniprot-projection" => {
@@ -12282,6 +12300,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "dotplot" => parse_dotplot_command(tokens),
         "flex" => parse_flex_command(tokens),
         "transcripts" => parse_transcripts_command(tokens),
+        "containers" => parse_containers_command(tokens),
         "splicing-refs" | "splicing_refs" | "splicingrefs" => parse_splicing_refs_command(tokens),
         "align" => parse_align_command(tokens),
         "seq-trace" | "seq_trace" | "seqtrace" => parse_seq_trace_command(tokens),
@@ -14841,6 +14860,20 @@ fn execute_arrangement_rack_and_ladder_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::ContainersSetExclusive {
+            container_id,
+            exclusive,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetContainerDeclaredContentsExclusive {
+                        container_id: container_id.clone(),
+                        exclusive: *exclusive,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
         _ => unreachable!("non-arrangement/rack/ladder command passed to helper"),
     }
 }
@@ -17011,6 +17044,32 @@ fn execute_guides_command(
 }
 
 #[inline(never)]
+fn primer_design_simple_pcr_pairs_json(report: &PrimerDesignReport) -> Vec<Value> {
+    report
+        .pairs
+        .iter()
+        .map(|pair| {
+            let geometry = report.pair_core_geometry(pair);
+            json!({
+                "rank": pair.rank,
+                "amplicon_start_0based": pair.amplicon_start_0based,
+                "amplicon_end_0based_exclusive": pair.amplicon_end_0based_exclusive,
+                "amplicon_length_bp": pair.amplicon_length_bp,
+                "left_distance_from_core_bp": geometry.left_distance_from_core_bp,
+                "right_distance_from_core_bp": geometry.right_distance_from_core_bp,
+                "left_overlap_into_core_bp": geometry.left_overlap_into_core_bp,
+                "right_overlap_into_core_bp": geometry.right_overlap_into_core_bp,
+                "left_to_core_label": geometry.left_label(),
+                "right_to_core_label": geometry.right_label(),
+                "flanks_core_cleanly": geometry.flanks_core_cleanly(),
+                "tm_delta_c": pair.tm_delta_c,
+                "score": pair.score,
+            })
+        })
+        .collect()
+}
+
+#[inline(never)]
 fn execute_primers_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -17170,12 +17229,17 @@ fn execute_primers_command(
             let effective_backend = selected_report
                 .as_ref()
                 .map(|report| report.backend.clone());
+            let simple_pcr_pairs = selected_report
+                .as_ref()
+                .map(primer_design_simple_pcr_pairs_json)
+                .unwrap_or_default();
             Ok(ShellRunResult {
                 state_changed: before != after,
                 output: json!({
                     "result": op_result,
                     "report": selected_report,
                     "effective_backend": effective_backend,
+                    "simple_pcr_pairs": simple_pcr_pairs,
                 }),
             })
         }
@@ -17280,10 +17344,12 @@ fn execute_primers_command(
             let report = engine
                 .get_primer_design_report(report_id)
                 .map_err(|e| e.to_string())?;
+            let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
+                    "simple_pcr_pairs": simple_pcr_pairs,
                 }),
             })
         }
@@ -18692,6 +18758,7 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::RenderPoolGelSvg { .. }
             | ShellCommand::CreateArrangementSerial { .. }
+            | ShellCommand::ContainersSetExclusive { .. }
             | ShellCommand::SetArrangementLadders { .. }
             | ShellCommand::RacksCreateFromArrangement { .. }
             | ShellCommand::RacksPlaceArrangement { .. }
@@ -19471,6 +19538,21 @@ fn execute_shell_command_with_options_inner(
                     arrangement_id: arrangement_id.clone(),
                     name: name.clone(),
                     ladders: ladders.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ContainersSetExclusive {
+            container_id,
+            exclusive,
+        } => {
+            let op_result = engine
+                .apply(Operation::SetContainerDeclaredContentsExclusive {
+                    container_id: container_id.clone(),
+                    exclusive: *exclusive,
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {

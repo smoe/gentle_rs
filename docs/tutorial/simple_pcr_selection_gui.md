@@ -127,9 +127,15 @@ Inspect the returned primer-pair report for:
 - forward primer
 - reverse primer
 - amplicon length
+- left/right distance from the core ROI
 - whether the ROI is flanked
 - Tm / GC values
 - any advisory notes
+
+GENtle now keeps that beginner wording visible in two places:
+
+- the in-panel `Primer report preview` inside `PCR Designer`
+- shared-shell `primers show-report REPORT_ID` as `simple_pcr_pairs`
 
 For this beginner flow, the most important question is simply:
 

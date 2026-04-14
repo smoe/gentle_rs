@@ -732,6 +732,7 @@ impl GentleEngine {
             .map(|(id, c)| EngineContainerSummary {
                 id: id.to_string(),
                 kind: format!("{:?}", c.kind),
+                declared_contents_exclusive: c.declared_contents_exclusive,
                 member_count: c.members.len(),
                 members: c.members.clone(),
             })
@@ -1060,6 +1061,9 @@ impl GentleEngine {
                 for container_id in container_ids {
                     Self::push_unique_token(&mut summary.container_ids, container_id);
                 }
+            }
+            Operation::SetContainerDeclaredContentsExclusive { container_id, .. } => {
+                Self::push_unique_token(&mut summary.container_ids, container_id);
             }
             Operation::SetArrangementLadders { arrangement_id, .. } => {
                 Self::push_unique_token(&mut summary.arrangement_ids, arrangement_id);

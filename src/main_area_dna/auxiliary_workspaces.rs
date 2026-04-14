@@ -5553,6 +5553,8 @@ impl MainAreaDna {
                 .filter(|value| !value.is_empty())
                 .map(|value| value.to_string()),
             protein_feature_filter: Default::default(),
+            external_source: None,
+            external_entry_id: None,
         }) {
             Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                 self.open_isoform_expert_window_for_view(&view.panel_id, &view);

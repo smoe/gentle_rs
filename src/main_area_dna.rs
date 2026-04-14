@@ -63,9 +63,10 @@ use crate::{
         GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionEnzymeDisplayMode,
+        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -3973,6 +3974,121 @@ mod tests {
         area.list_primer_design_reports();
         assert!(area.op_status.contains("Primer reports: 1 total"));
         assert!(area.op_status.contains("primer_ui_test"));
+    }
+
+    #[test]
+    fn primer_pair_core_geometry_reports_distances_and_overlap() {
+        let report = crate::engine::PrimerDesignReport {
+            roi_start_0based: 30,
+            roi_end_0based: 70,
+            ..Default::default()
+        };
+        let flanking_pair = crate::engine::PrimerDesignPairRecord {
+            forward: crate::engine::PrimerDesignPrimerRecord {
+                end_0based_exclusive: 24,
+                ..Default::default()
+            },
+            reverse: crate::engine::PrimerDesignPrimerRecord {
+                start_0based: 79,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let overlapping_pair = crate::engine::PrimerDesignPairRecord {
+            forward: crate::engine::PrimerDesignPrimerRecord {
+                end_0based_exclusive: 35,
+                ..Default::default()
+            },
+            reverse: crate::engine::PrimerDesignPrimerRecord {
+                start_0based: 63,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let flanking = report.pair_core_geometry(&flanking_pair);
+        assert_eq!(flanking.left_distance_from_core_bp, 6);
+        assert_eq!(flanking.right_distance_from_core_bp, 9);
+        assert_eq!(flanking.left_overlap_into_core_bp, 0);
+        assert_eq!(flanking.right_overlap_into_core_bp, 0);
+        assert!(flanking.flanks_core_cleanly());
+        assert_eq!(flanking.left_label(), "6 bp");
+        assert_eq!(flanking.right_label(), "9 bp");
+
+        let overlapping = report.pair_core_geometry(&overlapping_pair);
+        assert_eq!(overlapping.left_distance_from_core_bp, 0);
+        assert_eq!(overlapping.right_distance_from_core_bp, 0);
+        assert_eq!(overlapping.left_overlap_into_core_bp, 5);
+        assert_eq!(overlapping.right_overlap_into_core_bp, 7);
+        assert!(!overlapping.flanks_core_cleanly());
+        assert_eq!(overlapping.left_label(), "overlap 5 bp");
+        assert_eq!(overlapping.right_label(), "overlap 7 bp");
+    }
+
+    #[test]
+    fn show_primer_design_report_includes_core_distances() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_distances".to_string()),
+            })
+            .expect("design primer pairs");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+
+        area.show_primer_design_report("primer_ui_distances");
+
+        assert!(area.op_status.contains("left_to_core="));
+        assert!(area.op_status.contains("right_to_core="));
+        assert!(area.op_status.contains("flanks_core=true"));
     }
 
     #[test]
@@ -27832,21 +27948,10 @@ impl MainAreaDna {
             self.op_status = "Primer report_id is empty".to_string();
             return;
         }
-        let Some(engine) = self.engine.clone() else {
-            self.op_status = "No engine attached".to_string();
-            return;
-        };
-        let report = match engine
-            .read()
-            .expect("Engine lock poisoned")
-            .get_primer_design_report(report_id)
-        {
+        let report = match self.load_primer_design_report(report_id) {
             Ok(report) => report,
-            Err(err) => {
-                self.op_status = format!(
-                    "Could not load primer report '{report_id}': {}",
-                    err.message
-                );
+            Err(message) => {
+                self.op_status = message;
                 return;
             }
         };
@@ -27890,11 +27995,15 @@ impl MainAreaDna {
             return;
         }
         let top = report.pairs.first().map(|pair| {
+            let geometry = report.pair_core_geometry(pair);
             format!(
-                "top amplicon={}..{} len={} score={:.3} 3p_clamp(F/R)={}/{} dimer(3p,max)={}/{}",
+                "top amplicon={}..{} len={} left_to_core={} right_to_core={} flanks_core={} score={:.3} 3p_clamp(F/R)={}/{} dimer(3p,max)={}/{}",
                 pair.amplicon_start_0based,
                 pair.amplicon_end_0based_exclusive,
                 pair.amplicon_length_bp,
+                geometry.left_label(),
+                geometry.right_label(),
+                geometry.flanks_core_cleanly(),
                 pair.score,
                 pair.forward.three_prime_gc_clamp,
                 pair.reverse.three_prime_gc_clamp,
@@ -27914,6 +28023,120 @@ impl MainAreaDna {
             top.unwrap_or_else(|| "top pair unavailable".to_string()),
             rejection_summary
         );
+    }
+
+    fn load_primer_design_report(&self, report_id: &str) -> Result<PrimerDesignReport, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Primer report_id is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_primer_design_report(report_id)
+            .map_err(|err| {
+                format!(
+                    "Could not load primer report '{report_id}': {}",
+                    err.message
+                )
+            })
+    }
+
+    fn render_primer_design_report_preview(&mut self, ui: &mut egui::Ui) {
+        let report_id = self.primer_design_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            ui.small("Current report_id is empty.");
+            return;
+        }
+        let report = match self.load_primer_design_report(&report_id) {
+            Ok(report) => report,
+            Err(message) => {
+                ui.small(message);
+                return;
+            }
+        };
+        ui.group(|ui| {
+            ui.label("Primer report preview");
+            ui.small(format!(
+                "report={} template={} core={}..{} (len {} bp) pairs={} backend={}->{}",
+                report.report_id,
+                report.template,
+                report.roi_start_0based,
+                report.roi_end_0based,
+                report.roi_end_0based.saturating_sub(report.roi_start_0based),
+                report.pair_count,
+                report.backend.requested,
+                report.backend.used
+            ));
+            if report.pairs.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 83, 9),
+                    "No accepted primer pairs in this saved report.",
+                );
+                ui.small(format!(
+                    "Rejections: window={} gc/tm={} non-unique={} amplicon/ROI={} primer={} pair={} eval-skip={}",
+                    report.rejection_summary.out_of_window,
+                    report.rejection_summary.gc_or_tm_out_of_bounds,
+                    report.rejection_summary.non_unique_anneal,
+                    report.rejection_summary.amplicon_or_roi_failure,
+                    report.rejection_summary.primer_constraint_failure,
+                    report.rejection_summary.pair_constraint_failure,
+                    report.rejection_summary.pair_evaluation_limit_skipped
+                ));
+                return;
+            }
+            ui.small(
+                "Top saved pairs, shown in the simple-PCR vocabulary of distance from the core ROI.",
+            );
+            egui::Grid::new("primer_report_preview_grid")
+                .striped(true)
+                .num_columns(8)
+                .show(ui, |ui| {
+                    ui.strong("#");
+                    ui.strong("amplicon");
+                    ui.strong("len");
+                    ui.strong("left->core");
+                    ui.strong("right->core");
+                    ui.strong("flanks");
+                    ui.strong("ΔTm");
+                    ui.strong("score");
+                    ui.end_row();
+                    for pair in report.pairs.iter().take(5) {
+                        let geometry = report.pair_core_geometry(pair);
+                        ui.monospace(format!("{}", pair.rank));
+                        ui.monospace(format!(
+                            "{}..{}",
+                            pair.amplicon_start_0based, pair.amplicon_end_0based_exclusive
+                        ));
+                        ui.monospace(format!("{}", pair.amplicon_length_bp));
+                        ui.monospace(geometry.left_label());
+                        ui.monospace(geometry.right_label());
+                        if geometry.flanks_core_cleanly() {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(46, 125, 50),
+                                "yes",
+                            );
+                        } else {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(180, 83, 9),
+                                "overlap",
+                            );
+                        }
+                        ui.monospace(format!("{:.1}", pair.tm_delta_c));
+                        ui.monospace(format!("{:.1}", pair.score));
+                        ui.end_row();
+                    }
+                });
+            if report.pairs.len() > 5 {
+                ui.small(format!(
+                    "Showing 5 of {} accepted primer pairs. Use `Export report_id...` for the full saved report.",
+                    report.pairs.len()
+                ));
+            }
+        });
     }
 
     fn export_primer_design_report_dialog(&mut self, report_id: &str) {
@@ -30034,6 +30257,7 @@ impl MainAreaDna {
                         self.export_primer3_request_dialog(&report_id);
                     }
                 });
+                self.render_primer_design_report_preview(ui);
             });
 
         if include_qpcr_section {

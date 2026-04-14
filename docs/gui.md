@@ -190,7 +190,10 @@ The project main window (lineage page) supports two views:
 - SVG export operations (sequence, dotplot, feature-expert/splicing, gel) are
   also materialized as lineage analysis nodes, linked by operation edges for
   provenance/script parity
-- `Containers`: container list with kind/member-count, open actions, and per-container gel export
+- `Containers`: container list with kind/member-count, contents mode, open actions, and per-container gel export
+- container contents mode is editable directly from the lineage `Containers` panel:
+  - `Declared only`: the listed members are intended to be the full known contents of a clean vial/tube
+  - `Known subset`: the listed members are known/measured constituents of a more complex sample that may also contain unlisted material
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export and linked physical rack drafts
 - Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
   - arrangements keep the semantic sample order
@@ -2587,6 +2590,11 @@ Primer pairs form:
     - reverse: `[ROI end .. ROI end + D]`
   - enables `require ROI flanking`
   - keeps `min amplicon` at least the core length
+  - saved-report preview now shows top accepted pairs in beginner terms:
+    - amplicon coordinates/length
+    - left/right distance from the core ROI
+    - whether the pair cleanly flanks the core
+    - Tm delta and rank score
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
     - both accept numeric coordinates and `=` formulas
@@ -2654,6 +2662,7 @@ Beginner tutorial:
   - `List Primer Reports`
   - `Show report_id`
   - `Export report_id...`
+  - in-panel `Primer report preview`
 - qPCR-report helpers (uses current qPCR `report_id` field):
   - `List qPCR Reports`
   - `Show report_id`

@@ -4884,6 +4884,8 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
             &FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: None,
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
         )
         .expect("inspect transcript-native protein expert");
@@ -5059,6 +5061,8 @@ fn test_transcript_protein_expert_preserves_explicit_translation_table() {
             &FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: Some("TX_TOY".to_string()),
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
         )
         .expect("inspect transcript-native protein expert");
@@ -5111,6 +5115,8 @@ fn test_transcript_protein_expert_preserves_mitochondrial_default_context() {
             &FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: Some("TX_MT".to_string()),
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
         )
         .expect("inspect transcript-native protein expert");
@@ -10730,6 +10736,58 @@ fn test_digest_container_and_state_summary_include_containers() {
     let summary = engine.summarize_state();
     assert!(summary.container_count > 0);
     assert!(!summary.containers.is_empty());
+    assert!(
+        summary
+            .containers
+            .iter()
+            .all(|row| row.declared_contents_exclusive)
+    );
+}
+
+#[test]
+fn test_set_container_declared_contents_exclusive_updates_summary() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ATGC").unwrap(),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Measured sample".to_string()),
+            members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state
+        .container_state
+        .seq_to_latest_container
+        .insert("seq_a".to_string(), "container-1".to_string());
+
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::SetContainerDeclaredContentsExclusive {
+            container_id: "container-1".to_string(),
+            exclusive: false,
+        })
+        .expect("set container exclusivity");
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("known-subset"))
+    );
+    let summary = engine.summarize_state();
+    let row = summary
+        .containers
+        .iter()
+        .find(|row| row.id == "container-1")
+        .expect("container summary row");
+    assert!(!row.declared_contents_exclusive);
 }
 
 #[test]

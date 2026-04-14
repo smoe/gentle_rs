@@ -5452,9 +5452,9 @@ fn execute_routines_list_prefers_variant_derived_routine_family_for_sequence() {
         rows[0]["planning_estimate"]["explanation"]["routine_preference_context"]
             ["variant_suggested_assay_ids"]
             .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str() == Some("allele_paired_promoter_luciferase_reporter")
-            }))
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
             .unwrap_or(false)
     );
 }
@@ -7747,6 +7747,11 @@ fn execute_primers_design_list_show_export() {
         .unwrap_or_default()
         .to_string();
     assert_eq!(report_id, "tp73_roi");
+    assert!(design.output["simple_pcr_pairs"].is_array());
+    assert_eq!(
+        design.output["simple_pcr_pairs"][0]["flanks_core_cleanly"].as_bool(),
+        Some(true)
+    );
 
     let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListReports)
         .expect("primers list-reports");
@@ -7768,6 +7773,19 @@ fn execute_primers_design_list_show_export() {
     assert_eq!(
         shown.output["report"]["report_id"].as_str(),
         Some("tp73_roi")
+    );
+    assert!(shown.output["simple_pcr_pairs"].is_array());
+    assert_eq!(
+        shown.output["simple_pcr_pairs"][0]["left_to_core_label"]
+            .as_str()
+            .map(|value| value.ends_with("bp")),
+        Some(true)
+    );
+    assert_eq!(
+        shown.output["simple_pcr_pairs"][0]["right_to_core_label"]
+            .as_str()
+            .map(|value| value.ends_with("bp")),
+        Some(true)
     );
 
     let exported = execute_shell_command(
@@ -9369,11 +9387,81 @@ fn execute_agent_suggestions_allows_blast_shell_route() {
 
 #[test]
 fn execute_state_summary_returns_json() {
-    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let mut state = ProjectState::default();
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Measured sample".to_string()),
+            members: vec![],
+            declared_contents_exclusive: false,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
     let out = execute_shell_command(&mut engine, &ShellCommand::StateSummary)
         .expect("execute state summary");
     assert!(!out.state_changed);
     assert!(out.output.get("sequence_count").is_some());
+    assert_eq!(
+        out.output["containers"][0]["declared_contents_exclusive"],
+        serde_json::json!(false)
+    );
+}
+
+#[test]
+fn parse_containers_set_exclusive_command() {
+    let cmd = parse_shell_line("containers set-exclusive container-1 false")
+        .expect("parse containers set-exclusive");
+    match cmd {
+        ShellCommand::ContainersSetExclusive {
+            container_id,
+            exclusive,
+        } => {
+            assert_eq!(container_id, "container-1".to_string());
+            assert!(!exclusive);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_containers_set_exclusive_updates_state() {
+    let mut state = ProjectState::default();
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Measured sample".to_string()),
+            members: vec![],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ContainersSetExclusive {
+            container_id: "container-1".to_string(),
+            exclusive: false,
+        },
+    )
+    .expect("execute containers set-exclusive");
+    assert!(out.state_changed);
+    assert_eq!(
+        engine
+            .state()
+            .container_state
+            .containers
+            .get("container-1")
+            .expect("container")
+            .declared_contents_exclusive,
+        false
+    );
 }
 
 #[test]
@@ -11243,6 +11331,8 @@ fn parse_feature_expert_commands() {
                 FeatureExpertTarget::ProteinComparison {
                     transcript_id_filter: None,
                     protein_feature_filter: Default::default(),
+                    external_source: None,
+                    external_entry_id: None,
                 }
             );
         }
@@ -11260,6 +11350,8 @@ fn parse_feature_expert_commands() {
                 FeatureExpertTarget::ProteinComparison {
                     transcript_id_filter: Some("TX_TPROT".to_string()),
                     protein_feature_filter: Default::default(),
+                    external_source: None,
+                    external_entry_id: None,
                 }
             );
         }
@@ -11345,6 +11437,8 @@ fn parse_feature_expert_commands() {
                 FeatureExpertTarget::ProteinComparison {
                     transcript_id_filter: Some("TX_TPROT".to_string()),
                     protein_feature_filter: Default::default(),
+                    external_source: None,
+                    external_entry_id: None,
                 }
             );
         }
@@ -11784,6 +11878,8 @@ fn execute_transcript_protein_comparison_expert_without_uniprot() {
             target: FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: Some("TX_TPROT".to_string()),
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
         },
     )
@@ -11851,6 +11947,8 @@ fn execute_transcript_protein_comparison_expert_svg_shell_and_operation_routes_m
             target: FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: Some("TX_TPROT".to_string()),
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
             path: op_path.clone(),
         })
@@ -11863,6 +11961,8 @@ fn execute_transcript_protein_comparison_expert_svg_shell_and_operation_routes_m
             target: FeatureExpertTarget::ProteinComparison {
                 transcript_id_filter: Some("TX_TPROT".to_string()),
                 protein_feature_filter: Default::default(),
+                external_source: None,
+                external_entry_id: None,
             },
             output: shell_path.clone(),
         },

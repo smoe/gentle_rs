@@ -736,6 +736,10 @@ pub enum FeatureExpertTarget {
         transcript_id_filter: Option<String>,
         #[serde(default)]
         protein_feature_filter: ProteinFeatureFilter,
+        #[serde(default)]
+        external_source: Option<ProteinExternalOpinionSource>,
+        #[serde(default)]
+        external_entry_id: Option<String>,
     },
     UniprotProjection {
         projection_id: String,
@@ -782,6 +786,7 @@ impl FeatureExpertTarget {
             Self::ProteinComparison {
                 transcript_id_filter,
                 protein_feature_filter,
+                ..
             } => {
                 let mut out = "protein comparison".to_string();
                 if let Some(transcript_id_filter) = transcript_id_filter

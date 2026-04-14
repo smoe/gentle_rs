@@ -1195,6 +1195,7 @@ pub struct EngineSequenceSummary {
 pub struct EngineContainerSummary {
     pub id: String,
     pub kind: String,
+    pub declared_contents_exclusive: bool,
     pub member_count: usize,
     pub members: Vec<String>,
 }
@@ -1499,6 +1500,45 @@ pub struct PrimerDesignPairRecord {
     pub rule_flags: PrimerDesignPairRuleFlags,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Distance/overlap summary for one primer pair relative to the required core
+/// ROI of a simple-PCR design.
+pub struct PrimerPairCoreGeometry {
+    pub left_distance_from_core_bp: usize,
+    pub right_distance_from_core_bp: usize,
+    pub left_overlap_into_core_bp: usize,
+    pub right_overlap_into_core_bp: usize,
+}
+
+impl PrimerPairCoreGeometry {
+    pub fn flanks_core_cleanly(&self) -> bool {
+        self.left_overlap_into_core_bp == 0 && self.right_overlap_into_core_bp == 0
+    }
+
+    pub fn side_label(distance_bp: usize, overlap_bp: usize) -> String {
+        if overlap_bp > 0 {
+            format!("overlap {overlap_bp} bp")
+        } else {
+            format!("{distance_bp} bp")
+        }
+    }
+
+    pub fn left_label(&self) -> String {
+        Self::side_label(
+            self.left_distance_from_core_bp,
+            self.left_overlap_into_core_bp,
+        )
+    }
+
+    pub fn right_label(&self) -> String {
+        Self::side_label(
+            self.right_distance_from_core_bp,
+            self.right_overlap_into_core_bp,
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct PrimerInsertionIntent {
@@ -1599,6 +1639,27 @@ pub struct PrimerDesignReport {
     pub backend: PrimerDesignBackendInfo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insertion_context: Option<PrimerInsertionContextReport>,
+}
+
+impl PrimerDesignReport {
+    pub fn pair_core_geometry(&self, pair: &PrimerDesignPairRecord) -> PrimerPairCoreGeometry {
+        PrimerPairCoreGeometry {
+            left_distance_from_core_bp: self
+                .roi_start_0based
+                .saturating_sub(pair.forward.end_0based_exclusive),
+            right_distance_from_core_bp: pair
+                .reverse
+                .start_0based
+                .saturating_sub(self.roi_end_0based),
+            left_overlap_into_core_bp: pair
+                .forward
+                .end_0based_exclusive
+                .saturating_sub(self.roi_start_0based),
+            right_overlap_into_core_bp: self
+                .roi_end_0based
+                .saturating_sub(pair.reverse.start_0based),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

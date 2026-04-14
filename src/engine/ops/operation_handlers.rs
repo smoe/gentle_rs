@@ -4964,6 +4964,24 @@ impl GentleEngine {
                     ladder_text
                 ));
             }
+            Operation::SetContainerDeclaredContentsExclusive {
+                container_id,
+                exclusive,
+            } => {
+                let changed =
+                    self.set_container_declared_contents_exclusive(&container_id, exclusive)?;
+                let mode_label = if exclusive {
+                    "declared-only"
+                } else {
+                    "known-subset"
+                };
+                let action = if changed { "Updated" } else { "Kept" };
+                result.messages.push(format!(
+                    "{action} container '{}' contents mode to {}",
+                    container_id.trim(),
+                    mode_label
+                ));
+            }
             Operation::CreateRackFromArrangement {
                 arrangement_id,
                 rack_id,

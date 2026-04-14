@@ -1899,6 +1899,7 @@ struct GenomeLengthCacheKey {
 struct ContainerRow {
     container_id: String,
     kind: String,
+    declared_contents_exclusive: bool,
     member_count: usize,
     representative: String,
     members: Vec<String>,
@@ -5518,17 +5519,35 @@ Error: `{err}`"
         }
     }
 
+    fn container_contents_mode_label(exclusive: bool) -> &'static str {
+        if exclusive {
+            "Declared only"
+        } else {
+            "Known subset"
+        }
+    }
+
+    fn container_contents_mode_hover(exclusive: bool) -> &'static str {
+        if exclusive {
+            "This container is declared exhaustive: the listed members are intended to be the whole known contents."
+        } else {
+            "This container is non-exclusive: the listed members are known/measured constituents, but other compounds may also be present."
+        }
+    }
+
     fn arrangement_lane_menu_hover(row: &ContainerRow) -> String {
         if row.member_count > 1 {
             format!(
-                "Open this pooled lane as a compact DNA window with the sequence text panel hidden by default.\nRepresentative: {}\nMembers: {}",
+                "Open this pooled lane as a compact DNA window with the sequence text panel hidden by default.\nRepresentative: {}\nMembers: {}\nContents: {}",
                 row.representative,
-                row.members.join(", ")
+                row.members.join(", "),
+                Self::container_contents_mode_label(row.declared_contents_exclusive)
             )
         } else {
             format!(
-                "Open this lane as a compact DNA window with the sequence text panel hidden by default.\nSequence: {}",
-                row.representative
+                "Open this lane as a compact DNA window with the sequence text panel hidden by default.\nSequence: {}\nContents: {}",
+                row.representative,
+                Self::container_contents_mode_label(row.declared_contents_exclusive)
             )
         }
     }
@@ -16615,6 +16634,8 @@ Error: `{err}`"
                 target: FeatureExpertTarget::ProteinComparison {
                     transcript_id_filter: normalized_filter.clone(),
                     protein_feature_filter: Default::default(),
+                    external_source: None,
+                    external_entry_id: None,
                 },
                 path: path_text.clone(),
             });
@@ -30372,6 +30393,7 @@ Error: `{err}`"
                 .map(|(id, c)| ContainerRow {
                     container_id: id.clone(),
                     kind: format!("{:?}", c.kind),
+                    declared_contents_exclusive: c.declared_contents_exclusive,
                     member_count: c.members.len(),
                     representative: c.members.first().cloned().unwrap_or_default(),
                     members: c.members.clone(),
@@ -32459,6 +32481,7 @@ Error: `{err}`"
         let mut open_lineage_retrieval: Option<LineageRetrievalDescriptor> = None;
         let mut open_lane_containers: Option<Vec<String>> = None;
         let mut export_container_gel: Option<(String, Vec<String>)> = None;
+        let mut set_container_exclusivity: Option<(String, bool)> = None;
         let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut open_arrangement_gel_preview: Option<String> = None;
         let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
@@ -35274,6 +35297,7 @@ Error: `{err}`"
                             .show(ui, |ui| {
                                 ui.strong("Container");
                                 ui.strong("Kind");
+                                ui.strong("Contents");
                                 ui.strong("Members");
                                 ui.strong("Representative");
                                 ui.strong("Action");
@@ -35281,6 +35305,35 @@ Error: `{err}`"
                                 for c in &self.lineage_containers {
                                     ui.monospace(&c.container_id);
                                     ui.label(&c.kind);
+                                    ui.vertical(|ui| {
+                                        ui.label(Self::container_contents_mode_label(
+                                            c.declared_contents_exclusive,
+                                        ))
+                                        .on_hover_text(
+                                            Self::container_contents_mode_hover(
+                                                c.declared_contents_exclusive,
+                                            ),
+                                        );
+                                        let toggle_label = if c.declared_contents_exclusive {
+                                            "Mark subset"
+                                        } else {
+                                            "Mark exhaustive"
+                                        };
+                                        if ui
+                                            .small_button(toggle_label)
+                                            .on_hover_text(if c.declared_contents_exclusive {
+                                                "Switch this container to a non-exclusive measured-subset interpretation."
+                                            } else {
+                                                "Mark this container as declared exhaustive again."
+                                            })
+                                            .clicked()
+                                        {
+                                            set_container_exclusivity = Some((
+                                                c.container_id.clone(),
+                                                !c.declared_contents_exclusive,
+                                            ));
+                                        }
+                                    });
                                     ui.monospace(format!("{}", c.member_count));
                                     ui.monospace(&c.representative);
                                     ui.horizontal(|ui| {
@@ -35599,6 +35652,39 @@ Error: `{err}`"
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None, None);
+        }
+        if let Some((container_id, exclusive)) = set_container_exclusivity.take() {
+            let update_result = {
+                self.engine.write().unwrap().apply(
+                    Operation::SetContainerDeclaredContentsExclusive {
+                        container_id: container_id.clone(),
+                        exclusive,
+                    },
+                )
+            };
+            match update_result {
+                Ok(op_result) => {
+                    self.app_status = op_result.messages.first().cloned().unwrap_or_else(|| {
+                        format!(
+                            "Updated container '{}' contents mode to {}",
+                            container_id,
+                            if exclusive {
+                                "declared-only"
+                            } else {
+                                "known-subset"
+                            }
+                        )
+                    });
+                    self.lineage_cache_valid = false;
+                    self.refresh_lineage_cache_if_needed();
+                }
+                Err(err) => {
+                    self.app_status = format!(
+                        "Could not update container '{}' contents mode: {}",
+                        container_id, err.message
+                    );
+                }
+            }
         }
         if let Some((stem, arrangement_id)) = export_arrangement_gel.take() {
             self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None, None);
@@ -39238,6 +39324,13 @@ Error: `{err}`"
                     .map(|v| v.join(", "))
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "auto".to_string())
+            ),
+            Operation::SetContainerDeclaredContentsExclusive {
+                container_id,
+                exclusive,
+            } => format!(
+                "Set container contents mode: container_id={}, exclusive={}",
+                container_id, exclusive
             ),
             Operation::CreateRackFromArrangement {
                 arrangement_id,
@@ -44496,6 +44589,7 @@ mod tests {
             ContainerRow {
                 container_id: "container-1".to_string(),
                 kind: "Singleton".to_string(),
+                declared_contents_exclusive: true,
                 member_count: 1,
                 representative: "gibson_destination_pgex".to_string(),
                 members: vec!["gibson_destination_pgex".to_string()],
@@ -44503,6 +44597,7 @@ mod tests {
             ContainerRow {
                 container_id: "container-2".to_string(),
                 kind: "Pool".to_string(),
+                declared_contents_exclusive: false,
                 member_count: 3,
                 representative: "pooled_product".to_string(),
                 members: vec!["a".to_string(), "b".to_string(), "c".to_string()],
@@ -44523,6 +44618,18 @@ mod tests {
         assert_eq!(
             GENtleApp::arrangement_lane_menu_label(rows[1]),
             "container-1 (gibson_destination_pgex)"
+        );
+    }
+
+    #[test]
+    fn container_contents_mode_labels_are_stable() {
+        assert_eq!(
+            GENtleApp::container_contents_mode_label(true),
+            "Declared only"
+        );
+        assert_eq!(
+            GENtleApp::container_contents_mode_label(false),
+            "Known subset"
         );
     }
 
