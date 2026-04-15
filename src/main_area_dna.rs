@@ -3431,6 +3431,78 @@ mod tests {
     }
 
     #[test]
+    fn linear_drag_selection_updates_selection_formula_text() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        area.update_linear_drag_selection(40, 74);
+
+        assert_eq!(area.current_selection_range_0based(), Some((40, 75)));
+        assert_eq!(area.selection_formula_text, "=40 .. 75");
+    }
+
+    #[test]
+    fn linear_selection_resize_edge_detection_tracks_visible_edges() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_linear_viewport(0, 100);
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(20, 60, 400));
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1000.0, 60.0));
+
+        assert_eq!(
+            area.linear_selection_resize_edge_at_pos(rect, egui::pos2(202.0, 20.0)),
+            Some(super::LinearSelectionResizeEdge::Start)
+        );
+        assert_eq!(
+            area.linear_selection_resize_edge_at_pos(rect, egui::pos2(598.0, 20.0)),
+            Some(super::LinearSelectionResizeEdge::End)
+        );
+        assert_eq!(
+            area.linear_selection_resize_edge_at_pos(rect, egui::pos2(400.0, 20.0)),
+            None
+        );
+    }
+
+    #[test]
+    fn linear_selection_resize_drag_updates_selection_formula_text() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(40, 80, 400));
+
+        area.apply_linear_selection_resize_drag_bp(
+            super::LinearSelectionResizeDrag {
+                edge: super::LinearSelectionResizeEdge::Start,
+                fixed_start: 40,
+                fixed_end_exclusive: 80,
+            },
+            55,
+        );
+        assert_eq!(area.current_selection_range_0based(), Some((55, 80)));
+        assert_eq!(area.selection_formula_text, "=55 .. 80");
+
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(40, 80, 400));
+        area.apply_linear_selection_resize_drag_bp(
+            super::LinearSelectionResizeDrag {
+                edge: super::LinearSelectionResizeEdge::End,
+                fixed_start: 40,
+                fixed_end_exclusive: 80,
+            },
+            89,
+        );
+        assert_eq!(area.current_selection_range_0based(), Some((40, 90)));
+        assert_eq!(area.selection_formula_text, "=40 .. 90");
+    }
+
+    #[test]
     fn primer_design_async_worker_completes_and_applies_operation() {
         let mut area = make_primer_batch_area();
         let op = Operation::SetParameter {
@@ -8829,6 +8901,7 @@ pub struct MainAreaDna {
     isoform_expert_window_panel_id: Option<String>,
     isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
     linear_drag_selection_anchor_bp: Option<usize>,
+    linear_selection_resize_drag: Option<LinearSelectionResizeDrag>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
     linear_view_start_1based_input: String,
     linear_view_end_1based_input: String,
@@ -8867,6 +8940,19 @@ struct ConstructReasoningOverlaySyncKey {
     seq_id: String,
     focused_graph_id: Option<String>,
     engine_operation_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinearSelectionResizeEdge {
+    Start,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LinearSelectionResizeDrag {
+    edge: LinearSelectionResizeEdge,
+    fixed_start: usize,
+    fixed_end_exclusive: usize,
 }
 
 impl MainAreaDna {
@@ -9273,6 +9359,7 @@ impl MainAreaDna {
             isoform_expert_window_panel_id: None,
             isoform_expert_window_view: None,
             linear_drag_selection_anchor_bp: None,
+            linear_selection_resize_drag: None,
             linear_pan_drag_origin_bp: None,
             linear_view_start_1based_input: String::new(),
             linear_view_end_1based_input: String::new(),
@@ -14216,6 +14303,14 @@ impl MainAreaDna {
         Some(bp.min(start_bp.saturating_add(span_bp).saturating_sub(1)))
     }
 
+    fn selection_formula_text_for_range(start: usize, end_exclusive: usize) -> String {
+        format!("={start} .. {end_exclusive}")
+    }
+
+    fn sync_selection_formula_text_to_range(&mut self, start: usize, end_exclusive: usize) {
+        self.selection_formula_text = Self::selection_formula_text_for_range(start, end_exclusive);
+    }
+
     fn update_linear_drag_selection(&mut self, anchor_bp: usize, current_bp: usize) {
         let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
         if sequence_length == 0 {
@@ -14232,6 +14327,83 @@ impl MainAreaDna {
             .write()
             .expect("DNA display lock poisoned")
             .select(Selection::new(from, to, sequence_length));
+        self.sync_selection_formula_text_to_range(from, to);
+    }
+
+    fn linear_selection_resize_edge_at_pos(
+        &self,
+        rect: egui::Rect,
+        pointer_pos: egui::Pos2,
+    ) -> Option<LinearSelectionResizeEdge> {
+        if self.is_circular() || !rect.contains(pointer_pos) {
+            return None;
+        }
+        let (selection_start, selection_end_exclusive) = self.current_selection_range_0based()?;
+        let (viewport_start, span_bp, sequence_length) = self.current_linear_viewport();
+        if span_bp == 0 || sequence_length == 0 {
+            return None;
+        }
+        let viewport_end = viewport_start.saturating_add(span_bp).min(sequence_length);
+        if selection_end_exclusive <= viewport_start || selection_start >= viewport_end {
+            return None;
+        }
+        const EDGE_TOLERANCE_PX: f32 = 8.0;
+        let edge_x = |bp: usize| {
+            let clamped = bp.clamp(viewport_start, viewport_end);
+            let frac = (clamped.saturating_sub(viewport_start)) as f32 / span_bp as f32;
+            rect.left() + rect.width() * frac.clamp(0.0, 1.0)
+        };
+        let start_edge_x = (selection_start >= viewport_start).then(|| edge_x(selection_start));
+        let end_edge_x =
+            (selection_end_exclusive <= viewport_end).then(|| edge_x(selection_end_exclusive));
+        let start_distance = start_edge_x.map(|x| (pointer_pos.x - x).abs());
+        let end_distance = end_edge_x.map(|x| (pointer_pos.x - x).abs());
+        match (start_distance, end_distance) {
+            (Some(start), Some(end)) if start <= EDGE_TOLERANCE_PX || end <= EDGE_TOLERANCE_PX => {
+                if start <= end {
+                    Some(LinearSelectionResizeEdge::Start)
+                } else {
+                    Some(LinearSelectionResizeEdge::End)
+                }
+            }
+            (Some(start), None) if start <= EDGE_TOLERANCE_PX => {
+                Some(LinearSelectionResizeEdge::Start)
+            }
+            (None, Some(end)) if end <= EDGE_TOLERANCE_PX => Some(LinearSelectionResizeEdge::End),
+            _ => None,
+        }
+    }
+
+    fn apply_linear_selection_resize_drag_bp(
+        &mut self,
+        drag: LinearSelectionResizeDrag,
+        current_bp: usize,
+    ) {
+        let seq_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if seq_len == 0 {
+            return;
+        }
+        let (start, end_exclusive) = match drag.edge {
+            LinearSelectionResizeEdge::Start => (
+                current_bp.min(drag.fixed_end_exclusive.saturating_sub(1)),
+                drag.fixed_end_exclusive.min(seq_len),
+            ),
+            LinearSelectionResizeEdge::End => (
+                drag.fixed_start.min(seq_len.saturating_sub(1)),
+                current_bp
+                    .saturating_add(1)
+                    .max(drag.fixed_start.saturating_add(1))
+                    .min(seq_len),
+            ),
+        };
+        if end_exclusive <= start {
+            return;
+        }
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .select(Selection::new(start, end_exclusive, seq_len));
+        self.sync_selection_formula_text_to_range(start, end_exclusive);
     }
 
     fn current_selection_range_0based(&self) -> Option<(usize, usize)> {
@@ -14533,16 +14705,30 @@ impl MainAreaDna {
                     },
                 ));
                 self.linear_drag_selection_anchor_bp = None;
+                self.linear_selection_resize_drag = None;
                 self.pcr_paint_drag_interval = None;
-            } else if let Some(pos) = response.interact_pointer_pos()
-                && let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
-            {
-                self.linear_drag_selection_anchor_bp = Some(bp);
-                self.linear_pan_drag_origin_bp = None;
-                self.update_linear_drag_selection(bp, bp);
-                self.pcr_paint_drag_interval =
-                    Some((self.pcr_paint_role, bp, bp.saturating_add(1)));
-                self.clear_feature_focus_keep_map_selection();
+            } else if let Some(pos) = response.interact_pointer_pos() {
+                if let Some(edge) = self.linear_selection_resize_edge_at_pos(response.rect, pos) {
+                    if let Some((start, end_exclusive)) = self.current_selection_range_0based() {
+                        self.linear_selection_resize_drag = Some(LinearSelectionResizeDrag {
+                            edge,
+                            fixed_start: start,
+                            fixed_end_exclusive: end_exclusive,
+                        });
+                        self.linear_drag_selection_anchor_bp = None;
+                        self.linear_pan_drag_origin_bp = None;
+                        self.pcr_paint_drag_interval = None;
+                        self.clear_feature_focus_keep_map_selection();
+                    }
+                } else if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
+                    self.linear_drag_selection_anchor_bp = Some(bp);
+                    self.linear_selection_resize_drag = None;
+                    self.linear_pan_drag_origin_bp = None;
+                    self.update_linear_drag_selection(bp, bp);
+                    self.pcr_paint_drag_interval =
+                        Some((self.pcr_paint_role, bp, bp.saturating_add(1)));
+                    self.clear_feature_focus_keep_map_selection();
+                }
             }
         }
         if response.dragged() {
@@ -14562,6 +14748,14 @@ impl MainAreaDna {
                     );
                 }
                 self.pcr_paint_drag_interval = None;
+            } else if let Some(resize_drag) = self.linear_selection_resize_drag {
+                if let Some(pos) = response.interact_pointer_pos()
+                    && let Some(current_bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
+                {
+                    self.apply_linear_selection_resize_drag_bp(resize_drag, current_bp);
+                    self.pcr_paint_drag_interval = None;
+                    self.clear_feature_focus_keep_map_selection();
+                }
             } else if let (Some(anchor_bp), Some(pos)) = (
                 self.linear_drag_selection_anchor_bp,
                 response.interact_pointer_pos(),
@@ -14578,6 +14772,7 @@ impl MainAreaDna {
         }
         if response.drag_stopped() {
             if self.linear_pan_drag_origin_bp.is_none()
+                && self.linear_selection_resize_drag.is_none()
                 && let Some(anchor_bp) = self.linear_drag_selection_anchor_bp
             {
                 let queue_immediately =
@@ -14600,12 +14795,21 @@ impl MainAreaDna {
                     );
                 }
             }
+            if self.linear_selection_resize_drag.is_some() {
+                self.save_engine_ops_state();
+            } else if self.linear_drag_selection_anchor_bp.is_some() {
+                self.save_engine_ops_state();
+            }
             self.linear_drag_selection_anchor_bp = None;
+            self.linear_selection_resize_drag = None;
             self.linear_pan_drag_origin_bp = None;
             self.pcr_paint_drag_interval = None;
         }
         if self.linear_pan_drag_origin_bp.is_some() && !ctx.input(|i| i.pointer.primary_down()) {
             self.linear_pan_drag_origin_bp = None;
+        }
+        if self.linear_selection_resize_drag.is_some() && !ctx.input(|i| i.pointer.primary_down()) {
+            self.linear_selection_resize_drag = None;
         }
     }
 
@@ -39390,6 +39594,14 @@ impl MainAreaDna {
                     self.handle_linear_map_drag_for_pcr_paint(&response, ctx);
                     if self.linear_pan_drag_origin_bp.is_some() {
                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                    } else if self.linear_selection_resize_drag.is_some()
+                        || (self.linear_drag_selection_anchor_bp.is_none()
+                            && response.hover_pos().is_some_and(|pos| {
+                                self.linear_selection_resize_edge_at_pos(response.rect, pos)
+                                    .is_some()
+                            }))
+                    {
+                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                     }
                 }
                 self.draw_pcr_paint_overlays(ui, &response);
