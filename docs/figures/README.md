@@ -311,6 +311,37 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+`toy_shared_exon_anchor_source.gb` is a hand-crafted 150 bp synthetic teaching
+locus with four short exons and three transcripts. All three transcripts share
+exon `85..108`, but one starts later (`delta 5'`) and one ends earlier
+(`delta 3'`), so the anchored x-axis behavior can be read immediately without
+TP73-scale biological density. It is intended as the compact companion figure
+for README/ClawBio materials when the visual grammar matters more than the
+real-locus complexity.
+
+`toy_shared_exon_anchor_dotplot.workflow.json` loads that source, derives the
+three transcript sequences from mRNA features `n-7..n-9`, computes one
+reference-centered overlay against the same toy genomic source, and renders the
+shared-exon-anchor view around exon `85..108`.
+
+`toy_shared_exon_anchor_dotplot.svg` and
+`toy_shared_exon_anchor_dotplot.png` are the corresponding export artifacts.
+
+Regenerate the toy shared-exon-anchor teaching figure from the repository root
+with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/toy_anchor.state.json \
+  workflow @docs/figures/toy_shared_exon_anchor_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/toy_shared_exon_anchor_dotplot.svg \
+  docs/figures/toy_shared_exon_anchor_dotplot.png \
+  --drop-dotplot-metadata
+```
+
 `vkorc1_rs9923231_context_map.workflow.json` is the first concrete
 ClawBio-facing genomic-context asset. It resolves dbSNP `rs9923231` against
 prepared `Human GRCh38 Ensembl 116`, extracts `+/- 3000 bp`, keeps full locus
