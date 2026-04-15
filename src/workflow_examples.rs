@@ -528,11 +528,8 @@ pub fn online_example_tests_enabled() -> bool {
 }
 
 pub fn run_example_workflow(example: &WorkflowExample) -> Result<(), String> {
-    let mut engine = GentleEngine::from_state(ProjectState::default());
-    engine
-        .apply_workflow(example.workflow.clone())
-        .map(|_| ())
-        .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))
+    let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
+    run_example_workflow_in_dir(example, Path::new("."), temp.path())
 }
 
 /// Executes one workflow example with path rewriting and returns the resulting
@@ -1471,7 +1468,11 @@ fn run_example_workflow_in_dir(
     run_dir: &Path,
 ) -> Result<(), String> {
     let rewritten = rewrite_example_paths_for_execution(example, repo_root, run_dir)?;
-    run_example_workflow(&rewritten)
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    engine
+        .apply_workflow(rewritten.workflow)
+        .map(|_| ())
+        .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))
 }
 
 fn validate_relative_output_path(path: &str) -> Result<PathBuf, String> {

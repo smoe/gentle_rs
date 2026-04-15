@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "protein_transcript_native_expert_gui",
+  "title": "Transcript-Native Protein Expert Sanity Check",
+  "catalog": {
+    "order": 19,
+    "path": "docs/tutorial/protein_transcript_native_expert_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export."
+  }
+}

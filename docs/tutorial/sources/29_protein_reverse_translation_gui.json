@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "protein_reverse_translation_gui",
+  "title": "Reverse Translate an Imported Protein and Audit the Result",
+  "catalog": {
+    "order": 20,
+    "path": "docs/tutorial/protein_reverse_translation_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen."
+  }
+}
