@@ -916,6 +916,8 @@ impl RestrictionEnzymeDisplayMode {
 /// in engine state so behavior is adapter-equivalent.
 pub struct DisplaySettings {
     pub show_sequence_panel: bool,
+    #[serde(default)]
+    pub show_linear_sequence_panel: bool,
     #[serde(default = "DisplaySettings::default_sequence_panel_max_text_length_bp")]
     pub sequence_panel_max_text_length_bp: usize,
     pub auto_hide_sequence_panel_when_linear_bases_visible: bool,
@@ -1016,6 +1018,7 @@ impl Default for DisplaySettings {
     fn default() -> Self {
         Self {
             show_sequence_panel: true,
+            show_linear_sequence_panel: false,
             sequence_panel_max_text_length_bp: Self::default_sequence_panel_max_text_length_bp(),
             auto_hide_sequence_panel_when_linear_bases_visible: false,
             show_map_panel: true,

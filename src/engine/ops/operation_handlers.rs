@@ -12347,6 +12347,9 @@ impl GentleEngine {
                     ),
                 };
                 *slot = visible;
+                if matches!(target, DisplayTarget::SequencePanel) {
+                    self.state.display.show_linear_sequence_panel = visible;
+                }
                 result
                     .messages
                     .push(format!("Set display target '{name}' to {visible}"));

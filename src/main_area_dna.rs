@@ -57,7 +57,7 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, ConstructReasoningGraph, ConstructRole,
-        DecisionMethod, DesignDecisionNode, DesignFact, DisplayTarget, DotplotMode,
+        DecisionMethod, DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
         EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
@@ -4877,6 +4877,46 @@ mod tests {
     }
 
     #[test]
+    fn linear_sequence_window_hides_text_panel_by_default() {
+        let dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        let area = MainAreaDna::new(dna, None, None);
+
+        assert!(!area.show_sequence);
+    }
+
+    #[test]
+    fn circular_sequence_window_keeps_text_panel_by_default() {
+        let mut dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        dna.set_circular(true);
+        let area = MainAreaDna::new(dna, None, None);
+
+        assert!(area.show_sequence);
+    }
+
+    #[test]
+    fn engine_backed_linear_sequence_window_uses_linear_text_panel_default() {
+        let dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        assert!(!area.show_sequence);
+    }
+
+    #[test]
+    fn engine_backed_circular_sequence_window_uses_circular_text_panel_default() {
+        let mut dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        dna.set_circular(true);
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        assert!(area.show_sequence);
+    }
+
+    #[test]
     fn compact_lane_layout_hides_sequence_panel_without_changing_shared_display_default() {
         let dna = DNAsequence::from_sequence("AAAA").expect("sequence");
         let mut state = ProjectState::default();
@@ -9123,6 +9163,7 @@ impl MainAreaDna {
         seq_id: Option<String>,
         engine: Option<Arc<RwLock<GentleEngine>>>,
     ) -> Self {
+        let initial_is_circular = dna.is_circular();
         let seq_id_for_defaults = seq_id.clone();
         let dna = Arc::new(RwLock::new(dna));
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
@@ -9134,7 +9175,7 @@ impl MainAreaDna {
             window_scope_id: String::new(),
             map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
-            show_sequence: true,
+            show_sequence: initial_is_circular,
             show_map: true,
             compact_lane_layout: false,
             primary_map_mode: PrimaryMapMode::Standard,
@@ -9413,6 +9454,17 @@ impl MainAreaDna {
         ret.sync_contextual_transcript_visibility_filter();
         ret.sync_primer_backend_controls_from_engine();
         ret
+    }
+
+    fn sequence_panel_default_visible_for_topology(
+        settings: &DisplaySettings,
+        is_circular: bool,
+    ) -> bool {
+        if is_circular {
+            settings.show_sequence_panel
+        } else {
+            settings.show_linear_sequence_panel
+        }
     }
 
     pub fn set_window_scope_id(&mut self, scope_id: impl Into<String>) {
@@ -13954,10 +14006,19 @@ impl MainAreaDna {
 
     fn set_display_visibility(&self, target: DisplayTarget, visible: bool) {
         if let Some(engine) = &self.engine {
-            let _ = engine
-                .write()
-                .expect("Engine lock poisoned")
-                .apply(Operation::SetDisplayVisibility { target, visible });
+            if matches!(target, DisplayTarget::SequencePanel) {
+                let mut guard = engine.write().expect("Engine lock poisoned");
+                if self.is_circular() {
+                    guard.state_mut().display.show_sequence_panel = visible;
+                } else {
+                    guard.state_mut().display.show_linear_sequence_panel = visible;
+                }
+            } else {
+                let _ = engine
+                    .write()
+                    .expect("Engine lock poisoned")
+                    .apply(Operation::SetDisplayVisibility { target, visible });
+            }
         }
     }
 
@@ -14156,7 +14217,8 @@ impl MainAreaDna {
         let suppress_orf_for_anchor = self.active_sequence_is_genome_anchored(&guard);
         let suppress_cds_for_gene_annotations = self.active_sequence_has_gene_annotations();
         drop(guard);
-        self.show_sequence = settings.show_sequence_panel;
+        self.show_sequence =
+            Self::sequence_panel_default_visible_for_topology(&settings, self.is_circular());
         self.show_map = settings.show_map_panel;
         if self.compact_lane_layout {
             self.apply_compact_lane_layout();

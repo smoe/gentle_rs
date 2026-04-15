@@ -153,6 +153,9 @@ Tabs:
       with a small inset margin (`8 px`) while the backdrop image still spans
       the full window/panel area
   - Applies to sequence windows through the shared engine display state.
+  - Sequence-panel defaults are topology-aware:
+    - circular sequence windows keep the text panel visible by default
+    - linear sequence windows start with the text panel hidden by default
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
 

@@ -2970,6 +2970,7 @@ impl GENtleApp {
 
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
         target.show_sequence_panel = source.show_sequence_panel;
+        target.show_linear_sequence_panel = source.show_linear_sequence_panel;
         target.sequence_panel_max_text_length_bp =
             Self::clamp_sequence_panel_max_text_length_bp(source.sequence_panel_max_text_length_bp);
         target.auto_hide_sequence_panel_when_linear_bases_visible =
@@ -6048,6 +6049,7 @@ Error: `{err}`"
 
         let display = &state.display;
         display.show_sequence_panel.hash(&mut hasher);
+        display.show_linear_sequence_panel.hash(&mut hasher);
         display.sequence_panel_max_text_length_bp.hash(&mut hasher);
         display.show_map_panel.hash(&mut hasher);
         display.show_cds_features.hash(&mut hasher);
@@ -38207,6 +38209,7 @@ Error: `{err}`"
     fn reset_configuration_graphics_to_defaults(&mut self) {
         let defaults = DisplaySettings::default();
         self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
+        self.configuration_graphics.show_linear_sequence_panel = defaults.show_linear_sequence_panel;
         self.configuration_graphics
             .sequence_panel_max_text_length_bp = defaults.sequence_panel_max_text_length_bp;
         self.configuration_graphics
@@ -38767,7 +38770,13 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_sequence_panel,
-                "Show sequence panel",
+                "Show sequence panel in circular windows",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_linear_sequence_panel,
+                "Show sequence panel in linear windows",
             )
             .changed();
         ui.horizontal(|ui| {
@@ -46856,6 +46865,7 @@ mod tests {
         let mut source = DisplaySettings::default();
         let mut target = DisplaySettings::default();
 
+        source.show_linear_sequence_panel = true;
         source.feature_details_font_size = 250.0;
         source.sequence_panel_max_text_length_bp = 10_000_000;
         source.linear_external_feature_label_font_size = -50.0;
@@ -46871,6 +46881,7 @@ mod tests {
 
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
+        assert!(target.show_linear_sequence_panel);
         assert_eq!(target.feature_details_font_size, 24.0);
         assert_eq!(target.sequence_panel_max_text_length_bp, 5_000_000);
         assert_eq!(target.linear_external_feature_label_font_size, 8.0);
@@ -46908,6 +46919,7 @@ mod tests {
     #[test]
     fn default_configuration_graphics_prefers_adaptive_linear_letters() {
         let app = GENtleApp::default();
+        assert!(!app.configuration_graphics.show_linear_sequence_panel);
         assert_eq!(
             app.configuration_graphics
                 .linear_sequence_letter_layout_mode,
