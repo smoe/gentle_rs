@@ -1105,6 +1105,8 @@ order. Durable architecture constraints and decisions remain in
     - `Patterns -> PCR Designer...` and command palette `PCR Designer`
     - sequence-context aware dedicated viewport with paint controls + map +
       queue summary on left and pair-PCR constraints/run/report panel on right
+    - DNA-window ROI seeding now opens/focuses this specialist instead of
+      relying on the crowded lower `Engine Ops` pane for pair-PCR entry
     - specialist left pane now includes `Selection formula` + `Apply Sel`
       plus direct `Set ROI from selection` / `Queue selection` actions so
       formula-defined selections can be used without switching windows
@@ -1122,6 +1124,8 @@ order. Durable architecture constraints and decisions remain in
         same core-distance geometry as `simple_pcr_pairs`, so GUI and CLI can
         inspect the saved report in the same beginner vocabulary
     - qPCR remains in the existing Engine Ops panel for this v1 scope
+    - main project lineage now also reopens PCR Designer from PCR-related
+      operation glyphs / `Op` cells using the stored template-sequence context
     - shared-shell UI intents now include:
       `ui open pcr-design` and `ui focus pcr-design`
   - single-run GUI `Design Primer Pairs` execution now runs asynchronously in a

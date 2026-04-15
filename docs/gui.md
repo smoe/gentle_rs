@@ -1428,6 +1428,9 @@ Node click behavior in lineage `Graph` view:
 - Single-click on the dedicated `Gibson cloning` operation node in graph view,
   or on the `Op` cell for Gibson-created outputs in the table: reopens the
   Gibson specialist with the saved plan loaded again for review.
+- Single-click on a PCR-related operation glyph in graph view, or on the `Op`
+  cell for PCR-/primer-design-created outputs in the table: opens the
+  dedicated `PCR Designer` on the stored template sequence context.
 - Right-click context menu (graph and table node-id cells):
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
@@ -1613,7 +1616,7 @@ Controls:
      `PCR ROI`.
 18. Queue PCR selection
    - One-click shortcut beside `Extract Sel` that queues the current linear
-     selection as one PCR region and opens Engine Ops.
+     selection as one PCR region for later batch primer-pair design.
    - When a selection is present, the map area also shows an inline hint with
      the active span and the same PCR queue action.
 19. Selection formula
@@ -1640,14 +1643,15 @@ Controls:
      selection-first without switching back to the sequence toolbar.
 20. PCR ROI
    - The DNA-window toolbar now also exposes a direct `Set PCR ROI` button for
-     the current map/text selection, alongside `Queue PCR selection`.
+     either the current map/text selection or the current painted ROI interval,
+     alongside `Queue PCR selection`.
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
-     - seed Primer/qPCR ROI from current map/text selection
+     - seed Primer/qPCR ROI from current map/text selection or painted ROI
      - add current map/text selection to PCR region queue
      - seed Primer/qPCR ROI from selected feature bounds
      - add selected feature(s) to PCR region queue (one queued row per feature)
-   - map context menu now also offers `Set PCR ROI from selection` for the
-     active linear-map selection.
+   - map context menu now also offers `Set PCR ROI from selection / painted ROI`
+     for the active linear-map context.
    - map context menu now also offers `Simple PCR from selection` whenever a
      non-empty selection is active:
      - seeds the selected span as the core ROI
@@ -1655,8 +1659,11 @@ Controls:
      - applies simple left/right flank windows from the current beginner
        distance setting
      - opens or focuses the dedicated PCR Designer
-   - opens Engine Ops so the user can run `Design Primer Pairs`,
-     queue batch execution, or `Design qPCR Assays`.
+   - direct ROI seeding now opens or focuses the dedicated `PCR Designer`
+     specialist so pair-PCR setup stays out of the crowded lower `Engine Ops`
+     pane.
+   - qPCR still remains in `Engine Ops`; the seeded ROI fields are shared
+     between both surfaces.
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
@@ -2725,6 +2732,8 @@ as analysis artifacts linked from the template sequence.
 
 - lineage actions reopen the PCR Designer on the selected report instead of
   only opening the source sequence
+- clicking the underlying PCR-related operation glyph or `Op` cell reopens the
+  same PCR Designer on the originating template sequence
 - lineage details expose the stored backend plus pair/assay counts
 
 `Design Primer Pairs` materializes lineage-visible sequence artifacts for each

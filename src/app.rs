@@ -44,7 +44,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        Arc, RwLock,
+        Arc, Mutex, RwLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
@@ -182,6 +182,7 @@ static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED: Mutex<Option<String>> = Mutex::new(None);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
@@ -421,6 +422,21 @@ pub fn request_open_graphics_settings_from_native_menu() {
 }
 
 pub fn request_open_pcr_design_from_native_menu() {
+    if let Ok(mut requested_seq_id) = NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED.lock() {
+        requested_seq_id.take();
+    }
+    NATIVE_PCR_DESIGN_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_pcr_design_for_sequence_from_native_menu(seq_id: &str) {
+    if let Ok(mut requested_seq_id) = NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED.lock() {
+        let trimmed = seq_id.trim();
+        *requested_seq_id = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+    }
     NATIVE_PCR_DESIGN_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -742,6 +758,7 @@ pub struct GENtleApp {
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
     lineage_reopenable_gibson_op_ids: HashSet<String>,
+    lineage_reopenable_pcr_op_seq_ids: HashMap<String, String>,
     lineage_node_groups: Vec<PersistedLineageNodeGroup>,
     lineage_group_form_label: String,
     lineage_group_form_members: String,
@@ -2331,6 +2348,7 @@ impl Default for GENtleApp {
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
             lineage_reopenable_gibson_op_ids: HashSet::new(),
+            lineage_reopenable_pcr_op_seq_ids: HashMap::new(),
             lineage_node_groups: vec![],
             lineage_group_form_label: String::new(),
             lineage_group_form_members: String::new(),
@@ -3321,7 +3339,17 @@ Error: `{err}`"
 
     fn consume_native_pcr_design_request(&mut self) {
         if NATIVE_PCR_DESIGN_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
-            self.open_pcr_design_dialog();
+            let requested_seq_id = NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take());
+            if let Some(seq_id) = requested_seq_id.filter(|seq_id| !seq_id.trim().is_empty()) {
+                if let Err(err) = self.open_pcr_design_dialog_for_seq_id(&seq_id) {
+                    self.app_status = format!("Cannot open PCR Designer for '{seq_id}': {err}");
+                }
+            } else {
+                self.open_pcr_design_dialog();
+            }
         }
     }
 
@@ -5571,9 +5599,12 @@ Error: `{err}`"
         } else {
             self.open_sequence_window(seq_id);
         }
-        self.pcr_design_seq_id = seq_id.to_string();
-        self.show_pcr_design_dialog = true;
-        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+        if let Err(err) = self.open_pcr_design_dialog_for_seq_id(seq_id) {
+            self.app_status = format!(
+                "Cannot open PCR Designer for primer report '{}' on '{}': {}",
+                report_id, seq_id, err
+            );
+        }
     }
 
     fn open_sequence_window_for_qpcr_design_report(&mut self, seq_id: &str, report_id: &str) {
@@ -5603,9 +5634,12 @@ Error: `{err}`"
         } else {
             self.open_sequence_window(seq_id);
         }
-        self.pcr_design_seq_id = seq_id.to_string();
-        self.show_pcr_design_dialog = true;
-        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+        if let Err(err) = self.open_pcr_design_dialog_for_seq_id(seq_id) {
+            self.app_status = format!(
+                "Cannot open PCR Designer for qPCR report '{}' on '{}': {}",
+                report_id, seq_id, err
+            );
+        }
     }
 
     fn open_sequence_window_for_rna_read_report(&mut self, seq_id: &str, report_id: &str) {
@@ -10309,8 +10343,39 @@ Error: `{err}`"
         }
     }
 
+    fn open_pcr_design_dialog_for_seq_id(
+        &mut self,
+        seq_id: &str,
+    ) -> std::result::Result<(), String> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err("sequence id is empty".to_string());
+        }
+        let exists = self
+            .engine
+            .read()
+            .map_err(|_| "could not read engine state".to_string())?
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if !exists {
+            return Err(format!(
+                "sequence '{seq_id}' was not found in the current project"
+            ));
+        }
+        if self.find_open_sequence_viewport_id(seq_id).is_none()
+            && self.find_pending_sequence_window_mut(seq_id).is_none()
+        {
+            self.open_sequence_window(seq_id);
+        }
+        self.pcr_design_seq_id = seq_id.to_string();
+        self.show_pcr_design_dialog = true;
+        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+        Ok(())
+    }
+
     fn open_pcr_design_dialog(&mut self) {
-        if self.show_pcr_design_dialog {
+        if self.show_pcr_design_dialog && !self.pcr_design_seq_id.trim().is_empty() {
             self.queue_focus_viewport(Self::pcr_design_viewport_id());
             return;
         }
@@ -10324,11 +10389,9 @@ Error: `{err}`"
                     .to_string();
             return;
         };
-        if self.find_open_sequence_viewport_id(&seq_id).is_none() {
-            self.open_sequence_window(&seq_id);
+        if let Err(err) = self.open_pcr_design_dialog_for_seq_id(&seq_id) {
+            self.app_status = format!("Cannot open PCR Designer for '{seq_id}': {err}");
         }
-        self.pcr_design_seq_id = seq_id;
-        self.show_pcr_design_dialog = true;
     }
 
     fn open_sequencing_confirmation_dialog(&mut self) {
@@ -22499,6 +22562,21 @@ Error: `{err}`"
         Ok(true)
     }
 
+    fn reopen_pcr_designer_from_operation(
+        &mut self,
+        op_id: &str,
+    ) -> std::result::Result<bool, String> {
+        let Some(seq_id) = self.lineage_reopenable_pcr_op_seq_ids.get(op_id).cloned() else {
+            return Ok(false);
+        };
+        self.open_pcr_design_dialog_for_seq_id(&seq_id)?;
+        self.app_status = format!(
+            "Opened PCR Designer on template '{}' from PCR-related operation '{}'",
+            seq_id, op_id
+        );
+        Ok(true)
+    }
+
     fn run_gibson_apply(&mut self) {
         match self.gibson_preview_output.as_ref() {
             Some(preview) if !preview.can_execute => {
@@ -31041,6 +31119,7 @@ Error: `{err}`"
             lineage_edges,
             op_label_by_id,
             reopenable_gibson_op_ids,
+            reopenable_pcr_op_seq_ids,
             containers,
             arrangements,
             racks,
@@ -31071,6 +31150,7 @@ Error: `{err}`"
                 (String, String, Option<String>),
             > = HashMap::new();
             let mut reopenable_gibson_op_ids: HashSet<String> = HashSet::new();
+            let mut reopenable_pcr_op_seq_ids: HashMap<String, String> = HashMap::new();
             #[derive(Clone)]
             struct PendingSvgExportRow {
                 source_seq_ids: Vec<String>,
@@ -31099,6 +31179,17 @@ Error: `{err}`"
                 if matches!(rec.op, Operation::ApplyGibsonAssemblyPlan { .. }) {
                     reopenable_gibson_op_ids.insert(rec.result.op_id.clone());
                     individually_rendered_multi_output_ops.insert(rec.result.op_id.clone());
+                }
+                match &rec.op {
+                    Operation::Pcr { template, .. }
+                    | Operation::PcrAdvanced { template, .. }
+                    | Operation::PcrMutagenesis { template, .. }
+                    | Operation::DesignPrimerPairs { template, .. }
+                    | Operation::DesignQpcrAssays { template, .. } => {
+                        reopenable_pcr_op_seq_ids
+                            .insert(rec.result.op_id.clone(), template.clone());
+                    }
+                    _ => {}
                 }
                 if let Some(descriptor) = Self::lineage_retrieval_descriptor_from_operation(&rec.op)
                 {
@@ -32425,6 +32516,7 @@ Error: `{err}`"
                 lineage_edges,
                 op_label_by_id,
                 reopenable_gibson_op_ids,
+                reopenable_pcr_op_seq_ids,
                 containers,
                 arrangements,
                 racks,
@@ -32435,6 +32527,7 @@ Error: `{err}`"
         self.lineage_edges = lineage_edges;
         self.lineage_op_label_by_id = op_label_by_id;
         self.lineage_reopenable_gibson_op_ids = reopenable_gibson_op_ids;
+        self.lineage_reopenable_pcr_op_seq_ids = reopenable_pcr_op_seq_ids;
         self.lineage_containers = containers;
         self.lineage_arrangements = arrangements;
         self.lineage_racks = racks;
@@ -34536,6 +34629,7 @@ Error: `{err}`"
         let mut export_lineage_dotplot_svg: Option<(String, String, Option<String>)> = None;
         let mut request_export_lineage_svg = false;
         let mut reopen_gibson_from_operation: Option<String> = None;
+        let mut reopen_pcr_from_operation: Option<String> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
         let mut graph_area_height = self
@@ -35475,6 +35569,10 @@ Error: `{err}`"
                                     && self
                                         .lineage_reopenable_gibson_op_ids
                                         .contains(&op_ids[0]);
+                                let is_reopenable_pcr_op = op_ids.len() == 1
+                                    && self
+                                        .lineage_reopenable_pcr_op_seq_ids
+                                        .contains_key(&op_ids[0]);
                                 let mut op_response = ui.interact(
                                     op_rect,
                                     ui.id().with(("lineage_op", edge_idx)),
@@ -35487,11 +35585,18 @@ Error: `{err}`"
                                         "{}\nClick to reopen the Gibson specialist for this cloning operation.",
                                         op_accessible_name
                                     ))
+                                } else if is_reopenable_pcr_op {
+                                    op_response.on_hover_text(format!(
+                                        "{}\nClick to open the PCR Designer for this PCR-related operation.",
+                                        op_accessible_name
+                                    ))
                                 } else {
                                     op_response.on_hover_text(op_accessible_name)
                                 };
                                 if is_reopenable_gibson_op && op_response.clicked() {
                                     reopen_gibson_from_operation = Some(op_ids[0].clone());
+                                } else if is_reopenable_pcr_op && op_response.clicked() {
+                                    reopen_pcr_from_operation = Some(op_ids[0].clone());
                                 }
                                 let op_gap = op_node_size * 0.5 + 2.0 * graph_zoom;
                                 if edge_len > op_gap * 2.0 + 2.0 * graph_zoom {
@@ -35514,13 +35619,17 @@ Error: `{err}`"
                                 painter.rect_stroke(
                                     op_rect,
                                     2.0 * graph_zoom,
-                                    egui::Stroke::new(
-                                        if is_reopenable_gibson_op && op_response.hovered() {
+                                        egui::Stroke::new(
+                                        if (is_reopenable_gibson_op || is_reopenable_pcr_op)
+                                            && op_response.hovered()
+                                        {
                                             (1.8 * graph_zoom).clamp(1.2, 2.6)
                                         } else {
                                             (1.1 * graph_zoom).clamp(1.0, 2.0)
                                         },
-                                        if is_reopenable_gibson_op && op_response.hovered() {
+                                        if (is_reopenable_gibson_op || is_reopenable_pcr_op)
+                                            && op_response.hovered()
+                                        {
                                             egui::Color32::from_rgb(250, 220, 80)
                                         } else {
                                             egui::Color32::from_rgb(55, 55, 55)
@@ -36805,7 +36914,10 @@ Error: `{err}`"
                                 let op_display = Self::compact_lineage_node_label(&row.created_by_op, 11);
                                 let is_reopenable_gibson_op =
                                     self.lineage_reopenable_gibson_op_ids.contains(&row.created_by_op);
-                                if is_reopenable_gibson_op {
+                                let is_reopenable_pcr_op = self
+                                    .lineage_reopenable_pcr_op_seq_ids
+                                    .contains_key(&row.created_by_op);
+                                if is_reopenable_gibson_op || is_reopenable_pcr_op {
                                     let response = ui.add_sized(
                                         egui::vec2(92.0, ui.spacing().interact_size.y),
                                         egui::Button::new(
@@ -36813,13 +36925,25 @@ Error: `{err}`"
                                         )
                                         .small(),
                                     );
-                                    let response = response.on_hover_text(format!(
-                                        "{}\nClick to reopen the Gibson specialist for this cloning operation.",
-                                        row.created_by_op
-                                    ));
+                                    let response = if is_reopenable_gibson_op {
+                                        response.on_hover_text(format!(
+                                            "{}\nClick to reopen the Gibson specialist for this cloning operation.",
+                                            row.created_by_op
+                                        ))
+                                    } else {
+                                        response.on_hover_text(format!(
+                                            "{}\nClick to open the PCR Designer for this PCR-related operation.",
+                                            row.created_by_op
+                                        ))
+                                    };
                                     if response.clicked() {
-                                        reopen_gibson_from_operation =
-                                            Some(row.created_by_op.clone());
+                                        if is_reopenable_gibson_op {
+                                            reopen_gibson_from_operation =
+                                                Some(row.created_by_op.clone());
+                                        } else {
+                                            reopen_pcr_from_operation =
+                                                Some(row.created_by_op.clone());
+                                        }
                                     }
                                 } else {
                                     let op_response = ui
@@ -38058,6 +38182,23 @@ Error: `{err}`"
                 Err(err) => {
                     self.app_status = format!(
                         "Could not reopen Gibson specialist from operation '{}': {}",
+                        op_id, err
+                    );
+                }
+            }
+        }
+        if let Some(op_id) = reopen_pcr_from_operation {
+            match self.reopen_pcr_designer_from_operation(&op_id) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.app_status = format!(
+                        "Operation '{}' does not carry a reopenable PCR template context",
+                        op_id
+                    );
+                }
+                Err(err) => {
+                    self.app_status = format!(
+                        "Could not open PCR Designer from operation '{}': {}",
                         op_id, err
                     );
                 }
@@ -46339,6 +46480,34 @@ mod tests {
     }
 
     #[test]
+    fn open_pcr_design_dialog_for_seq_id_switches_existing_context() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_old".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "seq_new".to_string(),
+            DNAsequence::from_sequence("TTTTCCCC").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.show_pcr_design_dialog = true;
+        app.pcr_design_seq_id = "seq_old".to_string();
+
+        app.open_pcr_design_dialog_for_seq_id("seq_new")
+            .expect("switch PCR Designer target");
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_new");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
+    }
+
+    #[test]
     fn open_sequencing_confirmation_dialog_focuses_existing_window_without_resetting_context() {
         let mut app = GENtleApp::default();
         app.show_sequencing_confirmation_dialog = true;
@@ -46422,6 +46591,32 @@ mod tests {
 
         assert!(app.show_pcr_design_dialog);
         assert_eq!(app.pcr_design_seq_id, "seq_qpcr");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
+    }
+
+    #[test]
+    fn reopen_pcr_designer_from_operation_opens_specialist_for_template() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_tpl".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.lineage_reopenable_pcr_op_seq_ids
+            .insert("op_pcr".to_string(), "seq_tpl".to_string());
+
+        let reopened = app
+            .reopen_pcr_designer_from_operation("op_pcr")
+            .expect("reopen PCR Designer");
+
+        assert!(reopened);
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_tpl");
         assert_eq!(app.new_windows.len(), 1);
         assert!(
             app.pending_focus_viewports
@@ -50921,6 +51116,14 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 .any(|(from, to, op_id)| from == "n_tpl"
                     && to == "analysis:qpcr:tp73_qpcr"
                     && op_id == &qpcr_op_id)
+        );
+        assert_eq!(
+            app.lineage_reopenable_pcr_op_seq_ids.get(&primer_op_id),
+            Some(&"tpl".to_string())
+        );
+        assert_eq!(
+            app.lineage_reopenable_pcr_op_seq_ids.get(&qpcr_op_id),
+            Some(&"tpl".to_string())
         );
     }
 
