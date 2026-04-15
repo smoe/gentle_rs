@@ -1,0 +1,268 @@
+{
+  "schema": "gentle.protocol_cartoon_template.v1",
+  "id": "readme.pcr_blunt_vector_ligation",
+  "title": "GENtle Protocol Cartoon: PCR Product -> Blunt-Cut Vector -> Ligate",
+  "summary": "Minimal blunt-end cloning hero: make a blunt PCR product, open a vector with SmaI, and ligate the amplicon into the blunt backbone.",
+  "defaults": {
+    "event_caption": "Blunt-end cloning snapshot",
+    "feature_length_bp": 120,
+    "palette": [
+      "#29465b",
+      "#2a9d8f",
+      "#d68f2a",
+      "#c45b4d"
+    ]
+  },
+  "events": [
+    {
+      "id": "context",
+      "title": "Inputs",
+      "caption": "One blunt PCR product and one intact circular pGEX vector; the orange arc marks the MCS before opening.",
+      "molecules": [
+        {
+          "id": "pcr_product",
+          "label": "PCR product",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "pcr_insert_left",
+              "label": "Insert end",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "pcr_insert_core",
+              "label": "PCR insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "pcr_insert_right",
+              "label": "Insert end",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            }
+          ]
+        },
+        {
+          "id": "vector_before_cut",
+          "label": "Circular pGEX vector",
+          "topology": "Circular",
+          "features": [
+            {
+              "id": "vector_backbone_left",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "vector_mcs",
+              "label": "MCS",
+              "length_bp": 12,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "vector_backbone_right",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "opening",
+      "title": "Blunt Opening",
+      "action": "Cut",
+      "caption": "SmaI cuts inside the MCS so the linearized vector keeps tiny blunt yellow ends from that site; the PCR product is already blunt.",
+      "molecules": [
+        {
+          "id": "vector_open",
+          "label": "SmaI-opened vector",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "vector_mcs_end_left",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "vector_backbone_open",
+              "label": "Backbone",
+              "length_bp": 144,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "vector_mcs_end_right",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            }
+          ]
+        },
+        {
+          "id": "pcr_product_opening",
+          "label": "Blunt PCR product",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "pcr_insert_left_opening",
+              "label": "Insert end",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "pcr_insert_core_opening",
+              "label": "PCR insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "pcr_insert_right_opening",
+              "label": "Insert end",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ligation",
+      "title": "Ligate",
+      "action": "Ligate",
+      "caption": "The yellow MCS ends of the opened vector embrace the blunt insert. Because there is no directional overhang, two circular ligation orientations are possible.",
+      "molecules": [
+        {
+          "id": "product_forward",
+          "label": "Circular product, insert orientation 1",
+          "topology": "Circular",
+          "features": [
+            {
+              "id": "product_backbone_left",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "junction_left",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "product_insert_left",
+              "label": "Insert end",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "product_insert_core",
+              "label": "PCR insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "product_insert_right",
+              "label": "Insert end",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "junction_right",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "product_backbone_right",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        },
+        {
+          "id": "product_reverse",
+          "label": "Circular product, insert orientation 2",
+          "topology": "Circular",
+          "features": [
+            {
+              "id": "product_reverse_backbone_left",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "product_reverse_junction_left",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "product_reverse_insert_left",
+              "label": "Insert end",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "product_reverse_insert_core",
+              "label": "PCR insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "product_reverse_insert_right",
+              "label": "Insert end",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc"
+            },
+            {
+              "id": "product_reverse_junction_right",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "product_reverse_backbone_right",
+              "label": "Backbone",
+              "length_bp": 72,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

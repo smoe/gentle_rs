@@ -107,6 +107,41 @@ same deterministic project state and render those explanations graphically.
 All of the figures below were produced by GENtle itself through shared engine
 routes, without manual redrawing or post-hoc illustration.
 
+### Simplest Blunt-End Clone
+
+![GENtle blunt-end PCR ligation hero](docs/figures/pgex_blunt_pcr_ligation_hero.svg)
+
+This is the smallest fully offline cloning slice now documented in the
+repository: amplify one blunt 250 bp PCR product, start from one intact
+circular pGEX vector with its MCS highlighted, open that vector with the blunt
+cutter `SmaI`, and let GENtle show the two blunt-ligation orientations that
+follow from a non-directional insert while the yellow MCS-derived vector ends
+embrace the insert in the ligation panel.
+
+The concrete replayable workflow lives in
+[`docs/figures/pgex_blunt_pcr_ligation.workflow.json`](docs/figures/pgex_blunt_pcr_ligation.workflow.json).
+It uses the linear FASTA
+[`test_files/pGEX_3X.fa`](test_files/pGEX_3X.fa) as the PCR template, the
+circular GenBank record
+[`test_files/pGEX-3X.gb`](test_files/pGEX-3X.gb) as the vector to digest, and
+also writes the actual lineage companion figure
+[`docs/figures/pgex_blunt_pcr_ligation_lineage.svg`](docs/figures/pgex_blunt_pcr_ligation_lineage.svg).
+The hero above is the matching conceptual strip rendered from
+[`docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json`](docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json).
+
+Regenerate both from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/pgex_blunt_pcr_ligation.state.json \
+  workflow @docs/figures/pgex_blunt_pcr_ligation.workflow.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json \
+  docs/figures/pgex_blunt_pcr_ligation_hero.svg
+```
+
 ### Gibson Workflow, Mechanism, and Provenance
 
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)
@@ -274,6 +309,17 @@ anchored teaching figure in
 [`docs/figures/toy_shared_exon_anchor_dotplot.png`](docs/figures/toy_shared_exon_anchor_dotplot.png),
 documented in [`docs/figures/README.md`](docs/figures/README.md).
 
+For a cross-gene reading, the repository now also carries an anchored p53
+family comparison:
+
+![GENtle anchored TP53 family comparison](docs/figures/p53_family_query_anchor_dotplot.png)
+
+Here TP73 stays on the shared Y-axis as the reference sequence, while TP63 and
+TP53 are overlaid on the X-axis and aligned by the conserved motif
+`CATGTGTAACAG`. This uses the same engine-owned dotplot payload plus the new
+`query_anchor_bp` overlay x-axis mode, so the family comparison is a true
+shared contract rather than a special README-only drawing.
+
 The TP73 README dotplot figures were generated with:
 
 ```sh
@@ -295,6 +341,16 @@ cargo run --quiet --bin gentle_examples_docs -- \
   svg-png \
   docs/figures/tp73_multi_isoform_anchor_dotplot.svg \
   docs/figures/tp73_multi_isoform_anchor_dotplot.png \
+  --drop-dotplot-metadata
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/p53_family_anchor.state.json \
+  workflow @docs/figures/p53_family_query_anchor_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/p53_family_query_anchor_dotplot.svg \
+  docs/figures/p53_family_query_anchor_dotplot.png \
   --drop-dotplot-metadata
 ```
 

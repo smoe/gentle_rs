@@ -2462,6 +2462,8 @@ mod tests {
                 seq_id: "tp53_201".to_string(),
                 label: "TP53-201".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2476,6 +2478,8 @@ mod tests {
                 seq_id: "tp53_202".to_string(),
                 label: "TP53-202".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2524,6 +2528,8 @@ mod tests {
                 label: "toy-1".to_string(),
                 color_rgb: [29, 78, 216],
                 transcript_feature_id: Some(0),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 120,
@@ -2538,6 +2544,8 @@ mod tests {
                 label: "toy-2".to_string(),
                 color_rgb: [220, 38, 38],
                 transcript_feature_id: Some(1),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 132,
@@ -2552,6 +2560,8 @@ mod tests {
                 label: "toy-3".to_string(),
                 color_rgb: [5, 150, 105],
                 transcript_feature_id: Some(2),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 140,
@@ -2574,6 +2584,84 @@ mod tests {
         );
         assert!(file_name.contains("x-shared_exon_anchor"));
         assert!(file_name.contains("anchor-181_215"));
+    }
+
+    #[test]
+    fn dotplot_svg_default_filename_mentions_query_anchor_label() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("ref".to_string()), None);
+        let mut view = DotplotView::default();
+        view.dotplot_id = "p53.family.overlay".to_string();
+        view.owner_seq_id = "tp73_family_ref".to_string();
+        view.seq_id = "tp73_family_ref".to_string();
+        view.reference_seq_id = Some("tp73_family_ref".to_string());
+        view.reference_span_start_0based = 0;
+        view.reference_span_end_0based = 5192;
+        view.mode = DotplotMode::PairForward;
+        view.word_size = 9;
+        view.step_bp = 2;
+        view.max_mismatches = 0;
+        view.series_count = 3;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp73".to_string(),
+                seq_id: "tp73_family_ref".to_string(),
+                label: "TP73".to_string(),
+                color_rgb: [29, 78, 216],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(926),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 5192,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp63".to_string(),
+                seq_id: "tp63_family_query".to_string(),
+                label: "TP63".to_string(),
+                color_rgb: [220, 38, 38],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(1044),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 4944,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp53".to_string(),
+                seq_id: "tp53_family_query".to_string(),
+                label: "TP53".to_string(),
+                color_rgb: [5, 150, 105],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(707),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 1018,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+        ];
+        let file_name = area.default_dotplot_svg_file_name(
+            &view,
+            None,
+            0.08,
+            2.20,
+            DotplotOverlayXAxisMode::QueryAnchorBp,
+            None,
+        );
+        assert!(file_name.contains("x-query_anchor_bp"));
+        assert!(file_name.contains("anchor-shared_core_motif"));
     }
 
     #[test]
@@ -2617,6 +2705,8 @@ mod tests {
                 seq_id: "iso_a".to_string(),
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2631,6 +2721,8 @@ mod tests {
                 seq_id: "iso_b".to_string(),
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -7601,6 +7693,8 @@ mod tests {
                 seq_id: "iso_a".to_string(),
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -7619,6 +7713,8 @@ mod tests {
                 seq_id: "iso_b".to_string(),
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -26886,6 +26982,13 @@ impl MainAreaDna {
             let exon_token =
                 Self::sanitize_export_name_component(&exon.token(), "anchor");
             stem.push_str(&format!("_anchor-{exon_token}"));
+        } else if overlay_mode
+            && overlay_x_axis_mode == DotplotOverlayXAxisMode::QueryAnchorBp
+            && let Some(anchor_label) = view.query_anchor_label()
+        {
+            let anchor_token =
+                Self::sanitize_export_name_component(anchor_label, "anchor");
+            stem.push_str(&format!("_anchor-{anchor_token}"));
         }
         if stem.len() > 220 {
             stem.truncate(220);

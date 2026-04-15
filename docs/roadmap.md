@@ -3749,9 +3749,10 @@ Status (2026-03-19):
     - when `--reference-seq` is omitted, the owner sequence id is reused as the
       shared overlay reference for CLI convenience
   - overlay x-axis variants (2026-04-14):
-    - overlay rendering/export now supports four shared x-axis layouts:
+    - overlay rendering/export now supports five shared x-axis layouts:
       `percent_length`, `left_aligned_bp`, `right_aligned_bp`, and
-      `shared_exon_anchor`
+      `shared_exon_anchor`, plus `query_anchor_bp` for explicit cross-family or
+      domain-anchor overlays
     - the standalone Dotplot workspace exposes the same selector without
       recomputing the underlying dotplot payload
     - `RenderDotplotSvg`, `dotplot render-svg`, and `render-dotplot-svg` now
@@ -3760,14 +3761,22 @@ Status (2026-03-19):
     - overlay hover readouts now report per-isoform query coordinates according
       to the selected layout, while locked crosshair/query sync remain disabled
       because overlays still do not collapse to one unambiguous query axis
-    - shared-shell/direct CLI parsing now accepts `shared_exon_anchor` too, so
-      adapter parity now matches the GUI/protocol enum instead of rejecting the
-      newest layout at parse time
+    - shared-shell/direct CLI parsing now accepts both `shared_exon_anchor`
+      and `query_anchor_bp`, so adapter parity now matches the GUI/protocol
+      enum instead of rejecting the newest layouts at parse time
     - anchored overlays now persist transcript feature ids plus shared-exon
       anchor metadata in the dotplot payload, so `shared_exon_anchor` rendering
       no longer depends on a live GUI splicing view
+    - query overlays can now also persist explicit `query_anchor_0based` +
+      `query_anchor_label` values for curated cross-family/domain comparisons
+      rendered through `query_anchor_bp`
     - README/docs figure set now includes a TP73 shared-exon-anchor hero export
       to make the anchored overlay behavior inspectable outside the GUI
+    - README/docs figure set now also includes a focused TP53-family anchored
+      comparison (`TP73` on the reference axis, `TP63` + `TP53` aligned by the
+      conserved motif `CATGTGTAACAG`) plus the matching ClawBio workflow
+      request
+      `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json`
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
@@ -4480,19 +4489,13 @@ Current parking-lot ideas:
     - this is intentionally a parking-lot idea for now because it extends
       beyond the current arrangement/rack/label track and would need a larger
       operation vocabulary and protocol model.
-- Cross-gene family overlays anchored by homology/domain landmarks:
-  - current `shared_exon_anchor` overlays assume one genomic reference and one
-    exon identity shared by transcript isoforms from that same locus.
-  - a future TP53-family comparison mode could still be valuable, but it
-    should be modeled explicitly as a different anchor family:
-    - likely a protein/domain or alignment-derived anchor rather than a shared
-      genomic exon coordinate
-    - likely using TP73 as the evolutionary reference track for
-      TP73/TP63/TP53 comparisons when the biology supports that framing
-  - intended benefit:
-    - reuse the same intuitive x-axis-alignment idea beyond one locus without
-      pretending separate genes already share one exon coordinate system
-  - note:
-    - this remains a parking-lot idea until the current shared-reference
-      transcript overlay path is fully settled and a homology-anchor contract
-      exists in the shared engine/protocol layer.
+- Automatic cross-gene homology anchors on top of `query_anchor_bp`:
+  - current cross-family support is deliberately explicit/curated:
+    overlay payloads may store per-query anchors and labels, but GENtle does
+    not yet infer those anchors automatically from protein-domain models or
+    sequence alignments.
+  - follow-up opportunities:
+    - derive anchors from conserved protein/domain annotations when available
+    - derive anchors from deterministic local/global alignment landmarks
+    - expose one helper route for authoring those anchors instead of requiring
+      manual query-spec JSON or curated workflows

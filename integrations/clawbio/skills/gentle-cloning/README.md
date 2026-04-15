@@ -69,6 +69,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
@@ -206,6 +207,10 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_workflow_tp53_splicing_expert_svg.json`
   - replays a deterministic offline splicing-expert workflow from the bundled
     TP53 Ensembl 116 panel-source GenBank asset and collects the rendered SVG
+- `examples/request_workflow_p53_family_query_anchor_dotplot.json`
+  - replays the cross-family anchored dotplot with TP73 as the shared
+    reference axis and TP63 plus TP53 aligned by the conserved motif
+    `CATGTGTAACAG`
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
   wrapper output bundle under `generated/...`

@@ -511,7 +511,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]\n  \
+  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
@@ -758,8 +758,9 @@ fn parse_dotplot_overlay_x_axis_mode_arg(raw: &str) -> Result<DotplotOverlayXAxi
         "left_aligned_bp" => Ok(DotplotOverlayXAxisMode::LeftAlignedBp),
         "right_aligned_bp" => Ok(DotplotOverlayXAxisMode::RightAlignedBp),
         "shared_exon_anchor" => Ok(DotplotOverlayXAxisMode::SharedExonAnchor),
+        "query_anchor_bp" => Ok(DotplotOverlayXAxisMode::QueryAnchorBp),
         other => Err(format!(
-            "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, or shared_exon_anchor",
+            "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, shared_exon_anchor, or query_anchor_bp",
             other
         )),
     }
@@ -2491,7 +2492,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 3 {
                 usage();
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]".to_string(),
                 );
             }
             let seq_id = args[cmd_idx + 1].trim();
@@ -4755,6 +4756,15 @@ mod tests {
             parse_dotplot_overlay_x_axis_mode_arg("shared_exon_anchor")
                 .expect("parse shared exon anchor"),
             DotplotOverlayXAxisMode::SharedExonAnchor
+        );
+    }
+
+    #[test]
+    fn test_parse_dotplot_overlay_x_axis_mode_arg_accepts_query_anchor_bp() {
+        assert_eq!(
+            parse_dotplot_overlay_x_axis_mode_arg("query_anchor_bp")
+                .expect("parse query anchor mode"),
+            DotplotOverlayXAxisMode::QueryAnchorBp
         );
     }
 

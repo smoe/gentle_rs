@@ -450,6 +450,10 @@ Apply the following methodology:
     - replays a deterministic offline splicing-expert workflow from the
       bundled TP53 Ensembl 116 panel-source GenBank asset and collects the
       rendered SVG
+  - `examples/request_workflow_p53_family_query_anchor_dotplot.json`
+    - replays the anchored p53-family comparison with TP73 as the shared
+      reference axis and TP63 plus TP53 aligned by the conserved motif
+      `CATGTGTAACAG`
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`

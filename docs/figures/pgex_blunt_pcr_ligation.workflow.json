@@ -1,0 +1,52 @@
+{
+  "run_id": "readme_pgex_blunt_pcr_ligation",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/pGEX_3X.fa",
+        "as_id": "pgex_pcr_template"
+      }
+    },
+    {
+      "LoadFile": {
+        "path": "test_files/pGEX-3X.gb",
+        "as_id": "pgex_vector"
+      }
+    },
+    {
+      "Pcr": {
+        "template": "pgex_pcr_template",
+        "forward_primer": "ATCCGCTCATGAGACAATAA",
+        "reverse_primer": "AAACGTTCTTCGGGGCGAAA",
+        "output_id": "pgex_pcr_insert",
+        "unique": true
+      }
+    },
+    {
+      "Digest": {
+        "input": "pgex_vector",
+        "enzymes": [
+          "SmaI"
+        ],
+        "output_prefix": "pgex_smai"
+      }
+    },
+    {
+      "Ligation": {
+        "inputs": [
+          "pgex_smai_1",
+          "pgex_pcr_insert"
+        ],
+        "circularize_if_possible": true,
+        "protocol": "Blunt",
+        "output_prefix": "pgex_blunt_clone",
+        "unique": false
+      }
+    },
+    {
+      "RenderLineageSvg": {
+        "path": "docs/figures/pgex_blunt_pcr_ligation_lineage.svg"
+      }
+    }
+  ]
+}
