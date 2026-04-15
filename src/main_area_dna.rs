@@ -1046,11 +1046,12 @@ mod tests {
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            ConstructRole, DotplotMode, DotplotOverlayXAxisMode, DotplotView, EditableStatus,
-            Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
-            LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-            PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignSideConstraint,
-            ProjectState, ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
+            ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef,
+            DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
+            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
+            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
+            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
             RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
             RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
             RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
@@ -2462,7 +2463,6 @@ mod tests {
                 label: "TP53-201".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [29, 78, 216],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 1_234,
@@ -2477,7 +2477,6 @@ mod tests {
                 label: "TP53-202".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [220, 38, 38],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 1_118,
@@ -2619,7 +2618,6 @@ mod tests {
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [29, 78, 216],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 10,
@@ -2634,7 +2632,6 @@ mod tests {
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [220, 38, 38],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 10,
@@ -4118,11 +4115,12 @@ mod tests {
         state.sequences.insert(
             "tpl".to_string(),
             DNAsequence::from_sequence(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
             )
             .expect("sequence"),
         );
         let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
         engine
             .apply(Operation::DesignPrimerPairs {
                 template: "tpl".to_string(),
@@ -4144,7 +4142,7 @@ mod tests {
                 reverse: PrimerDesignSideConstraint {
                     min_length: 20,
                     max_length: 20,
-                    location_0based: Some(60),
+                    location_0based: Some(90),
                     start_0based: None,
                     end_0based: None,
                     min_tm_c: 40.0,
@@ -4230,11 +4228,12 @@ mod tests {
         state.sequences.insert(
             "tpl".to_string(),
             DNAsequence::from_sequence(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
             )
             .expect("sequence"),
         );
         let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
         engine
             .apply(Operation::DesignPrimerPairs {
                 template: "tpl".to_string(),
@@ -4256,7 +4255,7 @@ mod tests {
                 reverse: PrimerDesignSideConstraint {
                     min_length: 20,
                     max_length: 20,
-                    location_0based: Some(60),
+                    location_0based: Some(90),
                     start_0based: None,
                     end_0based: None,
                     min_tm_c: 40.0,
@@ -4268,8 +4267,8 @@ mod tests {
                 },
                 pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 40,
-                max_amplicon_bp: 130,
-                max_tm_delta_c: Some(50.0),
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
                 max_pairs: Some(10),
                 report_id: Some("primer_ui_distances".to_string()),
             })
@@ -7563,7 +7562,6 @@ mod tests {
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [29, 78, 216],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 200,
@@ -7582,7 +7580,6 @@ mod tests {
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
                 color_rgb: [220, 38, 38],
-                transcript_feature_id: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 200,

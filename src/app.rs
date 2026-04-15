@@ -48843,7 +48843,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     fn selected_ensembl_protein_entry_for_dialog_resolves_aliases() {
         let mut state = ProjectState::default();
         state.metadata.insert(
-            "gentle.ensembl_protein_entries.v1".to_string(),
+            "ensembl_protein_entries".to_string(),
             serde_json::json!({
                 "schema": "gentle.ensembl_protein_entries.v1",
                 "updated_at_unix_ms": 1u128,

@@ -15417,6 +15417,56 @@ fn execute_export_import_and_resource_command(
 }
 
 #[inline(never)]
+fn execute_gibson_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::GibsonPreview {
+            request_json,
+            output_path,
+        } => {
+            let parsed = parse_json_payload(request_json)?;
+            let plan: GibsonAssemblyPlan = serde_json::from_str(&parsed)
+                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
+            let preview = engine
+                .preview_gibson_assembly_plan(&plan)
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = output_path {
+                let mut text = serde_json::to_string_pretty(&preview)
+                    .map_err(|e| format!("Could not serialize Gibson preview JSON: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write Gibson preview JSON '{path}': {e}"))?;
+            }
+            let output = serde_json::to_value(&preview)
+                .map_err(|e| format!("Could not serialize Gibson preview result: {e}"))?;
+            debug_assert_eq!(
+                output.get("schema").and_then(|value| value.as_str()),
+                Some(GIBSON_ASSEMBLY_PREVIEW_SCHEMA)
+            );
+            Ok(ShellRunResult {
+                state_changed: false,
+                output,
+            })
+        }
+        ShellCommand::GibsonApply { request_json } => {
+            let parsed = parse_json_payload(request_json)?;
+            let _: GibsonAssemblyPlan = serde_json::from_str(&parsed)
+                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
+            let op_result = engine
+                .apply(Operation::ApplyGibsonAssemblyPlan { plan_json: parsed })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        _ => unreachable!("non-Gibson command passed to Gibson helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_reference_and_track_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -19499,6 +19549,12 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. }
+    ) {
+        return execute_gibson_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
@@ -20195,45 +20251,8 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::GibsonPreview {
-            request_json,
-            output_path,
-        } => {
-            let parsed = parse_json_payload(request_json)?;
-            let plan: GibsonAssemblyPlan = serde_json::from_str(&parsed)
-                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
-            let preview = engine
-                .preview_gibson_assembly_plan(&plan)
-                .map_err(|e| e.to_string())?;
-            if let Some(path) = output_path {
-                let mut text = serde_json::to_string_pretty(&preview)
-                    .map_err(|e| format!("Could not serialize Gibson preview JSON: {e}"))?;
-                text.push('\n');
-                fs::write(path, text)
-                    .map_err(|e| format!("Could not write Gibson preview JSON '{path}': {e}"))?;
-            }
-            let output = serde_json::to_value(&preview)
-                .map_err(|e| format!("Could not serialize Gibson preview result: {e}"))?;
-            debug_assert_eq!(
-                output.get("schema").and_then(|value| value.as_str()),
-                Some(GIBSON_ASSEMBLY_PREVIEW_SCHEMA)
-            );
-            ShellRunResult {
-                state_changed: false,
-                output,
-            }
-        }
-        ShellCommand::GibsonApply { request_json } => {
-            let parsed = parse_json_payload(request_json)?;
-            let _: GibsonAssemblyPlan = serde_json::from_str(&parsed)
-                .map_err(|e| format!("Could not parse Gibson plan JSON: {e}"))?;
-            let op_result = engine
-                .apply(Operation::ApplyGibsonAssemblyPlan { plan_json: parsed })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
+        ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. } => {
+            execute_gibson_command(engine, command)?
         }
         ShellCommand::CacheInspect { scope, cache_dirs } => {
             let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);

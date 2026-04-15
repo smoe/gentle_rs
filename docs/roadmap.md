@@ -231,6 +231,12 @@ order. Durable architecture constraints and decisions remain in
     (catalog/prepare/blast/extract/verify plus track import/subscription paths)
     now dispatches through one `#[inline(never)]` helper instead of the deep
     inline match block
+- Engine-shell Gibson commands now use the same split-helper pattern:
+  - `GibsonApply` still overflowed smaller-stack test threads while living
+    inline inside the monolithic matcher
+  - `GibsonPreview` and `GibsonApply` now dispatch through one dedicated
+    `#[inline(never)]` helper before the inner match, with the inner branch
+    delegating back to that helper for one implementation path
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).

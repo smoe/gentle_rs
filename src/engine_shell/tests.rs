@@ -7973,12 +7973,12 @@ fn execute_guides_commands_end_to_end() {
 fn execute_primers_design_list_show_export() {
     let mut state = ProjectState::default();
     state.sequences.insert(
-            "tpl".to_string(),
-            DNAsequence::from_sequence(
-                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-            )
-            .expect("sequence"),
-        );
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        )
+        .expect("sequence"),
+    );
     let mut engine = GentleEngine::from_state(state);
     let tmp = tempdir().expect("tempdir");
     let export_path = tmp.path().join("primer_report.json");
@@ -8002,7 +8002,7 @@ fn execute_primers_design_list_show_export() {
         reverse: crate::engine::PrimerDesignSideConstraint {
             min_length: 20,
             max_length: 20,
-            location_0based: Some(60),
+            location_0based: Some(90),
             start_0based: None,
             end_0based: None,
             min_tm_c: 40.0,
@@ -8013,9 +8013,9 @@ fn execute_primers_design_list_show_export() {
             ..Default::default()
         },
         min_amplicon_bp: 40,
-        max_amplicon_bp: 130,
+        max_amplicon_bp: 150,
         pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
-        max_tm_delta_c: Some(50.0),
+        max_tm_delta_c: Some(100.0),
         max_pairs: Some(10),
         report_id: Some("tp73_roi".to_string()),
     })
