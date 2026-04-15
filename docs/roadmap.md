@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -4480,3 +4480,19 @@ Current parking-lot ideas:
     - this is intentionally a parking-lot idea for now because it extends
       beyond the current arrangement/rack/label track and would need a larger
       operation vocabulary and protocol model.
+- Cross-gene family overlays anchored by homology/domain landmarks:
+  - current `shared_exon_anchor` overlays assume one genomic reference and one
+    exon identity shared by transcript isoforms from that same locus.
+  - a future TP53-family comparison mode could still be valuable, but it
+    should be modeled explicitly as a different anchor family:
+    - likely a protein/domain or alignment-derived anchor rather than a shared
+      genomic exon coordinate
+    - likely using TP73 as the evolutionary reference track for
+      TP73/TP63/TP53 comparisons when the biology supports that framing
+  - intended benefit:
+    - reuse the same intuitive x-axis-alignment idea beyond one locus without
+      pretending separate genes already share one exon coordinate system
+  - note:
+    - this remains a parking-lot idea until the current shared-reference
+      transcript overlay path is fully settled and a homology-anchor contract
+      exists in the shared engine/protocol layer.

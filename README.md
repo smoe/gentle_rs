@@ -269,6 +269,10 @@ to compare at a glance without leaving the shared dotplot engine route.
 Both figures remain available interactively in the GUI through a DNA window's
 `Dotplot map` mode and the standalone `Dotplot` workspace, where the same
 payloads can be re-rendered with alternative overlay x-axis layouts.
+For the visual grammar alone, the repository also carries a tiny synthetic
+anchored teaching figure in
+[`docs/figures/toy_shared_exon_anchor_dotplot.png`](docs/figures/toy_shared_exon_anchor_dotplot.png),
+documented in [`docs/figures/README.md`](docs/figures/README.md).
 
 The TP73 README dotplot figures were generated with:
 

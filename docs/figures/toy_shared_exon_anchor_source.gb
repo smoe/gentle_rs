@@ -1,0 +1,53 @@
+LOCUS       TOYEXONANCHOR            150 bp    DNA     linear   SYN 15-APR-2026
+DEFINITION  Tiny synthetic exon-anchor teaching locus for GENtle shared-exon
+            overlay dotplot exports.
+ACCESSION   TOYEXONANCHOR
+VERSION     TOYEXONANCHOR.1
+KEYWORDS    synthetic construct; toy exon anchor; dotplot overlay.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            artificial sequences; vectors.
+COMMENT     Hand-crafted documentation asset used to render a small
+            shared-exon-anchor overlay dotplot. The sequence and transcript
+            geometry are illustrative and intentionally tiny so the anchor
+            semantics remain legible at a glance.
+FEATURES             Location/Qualifiers
+     source          1..150
+                     /organism="synthetic DNA construct"
+                     /mol_type="genomic DNA"
+     gene            1..150
+                     /gene="ANCHOR_TOY"
+                     /label="ANCHOR_TOY"
+                     /note="Synthetic four-exon teaching locus for anchored
+                     overlay dotplots"
+     exon            1..24
+                     /label="E1"
+     exon            43..66
+                     /label="E2"
+     exon            85..108
+                     /label="E3 shared"
+                     /note="Shared exon used as the anchored x-axis reference"
+     exon            127..150
+                     /label="E4"
+     mRNA            join(1..24,43..66,85..108,127..150)
+                     /gene="ANCHOR_TOY"
+                     /transcript_id="TOYTX1"
+                     /label="Toy longest"
+                     /note="Four-exon baseline transcript"
+     mRNA            join(43..66,85..108,127..150)
+                     /gene="ANCHOR_TOY"
+                     /transcript_id="TOYTX2"
+                     /label="Toy delta 5p"
+                     /note="Starts at exon 2 so the shared exon shifts left
+                     before anchoring"
+     mRNA            join(1..24,43..66,85..108)
+                     /gene="ANCHOR_TOY"
+                     /transcript_id="TOYTX3"
+                     /label="Toy delta 3p"
+                     /note="Ends at exon 3 so the shared exon keeps less
+                     downstream sequence"
+ORIGIN
+        1 atggctaacg tcagttcgat gcaatttgac cgatattcga gccgtacctg atcggattca
+       61 gtacgaaacc ttggatcgtt aagctcgaag cttggcatac gttagccatt gcgataccaa
+      121 tggttagatc cgttacgagt cgatgctaac
+//
