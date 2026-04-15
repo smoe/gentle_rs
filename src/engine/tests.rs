@@ -29,6 +29,33 @@ fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
 
+fn restriction_cloning_vector(sequence: &str, mcs_expected_sites: Option<&str>) -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence(sequence).expect("vector sequence");
+    *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    if let Some(mcs_expected_sites) = mcs_expected_sites {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(
+                0,
+                sequence.len().try_into().expect("sequence len fits i64"),
+            ),
+            qualifiers: vec![
+                ("label".into(), Some("MCS".to_string())),
+                (
+                    "note".into(),
+                    Some("Multiple cloning site".to_string()),
+                ),
+                (
+                    "mcs_expected_sites".into(),
+                    Some(mcs_expected_sites.to_string()),
+                ),
+            ],
+        });
+    }
+    dna.update_computed_features();
+    dna
+}
+
 fn synthetic_ensembl_entry(
     entry_id: &str,
     protein_id: &str,
@@ -1597,6 +1624,372 @@ fn test_design_primer_pairs_persists_report() {
     assert_eq!(summary.op_id.as_deref(), Some(result.op_id.as_str()));
     assert_eq!(summary.run_id.as_deref(), Some("interactive"));
     assert_eq!(summary.backend_used, "internal");
+}
+
+#[test]
+fn test_prepare_restriction_cloning_pcr_handoff_creates_extended_artifacts_and_preserves_anneal_len()
+{
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert(
+        "vec".to_string(),
+        restriction_cloning_vector("AAAAGAATTCGGGGGAAGCTTTTTT", Some("EcoRI,HindIII")),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("restriction_tpl".to_string()),
+        })
+        .expect("design primer pairs");
+    let primer_report = engine
+        .get_primer_design_report("restriction_tpl")
+        .expect("primer report");
+    let source_pair = primer_report.pairs.first().expect("source pair").clone();
+
+    let result = engine
+        .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "restriction_tpl".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: None,
+            forward_leader_5prime: Some("GC".to_string()),
+            reverse_leader_5prime: Some("AT".to_string()),
+        })
+        .expect("prepare restriction cloning handoff");
+
+    assert_eq!(result.created_seq_ids.len(), 3);
+    let summary = engine
+        .list_restriction_cloning_pcr_handoffs()
+        .into_iter()
+        .find(|row| row.primer_report_id == "restriction_tpl")
+        .expect("handoff summary");
+    let report = engine
+        .get_restriction_cloning_pcr_handoff(&summary.report_id)
+        .expect("handoff report");
+    assert_eq!(report.schema, RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA);
+    assert_eq!(report.destination_vector_seq_id, "vec");
+    assert_eq!(report.forward_enzyme, "EcoRI");
+    assert_eq!(report.reverse_enzyme, "EcoRI");
+    assert_eq!(report.forward_leader_5prime, "GC");
+    assert_eq!(report.reverse_leader_5prime, "AT");
+    assert!(
+        report.extended_forward.sequence.starts_with("GCGAATTC"),
+        "unexpected extended forward sequence: {}",
+        report.extended_forward.sequence
+    );
+    assert!(
+        report.extended_reverse.sequence.starts_with("ATGAATTC"),
+        "unexpected extended reverse sequence: {}",
+        report.extended_reverse.sequence
+    );
+    assert!(
+        report
+            .extended_reverse
+            .sequence
+            .ends_with(&source_pair.reverse.sequence)
+    );
+    assert_eq!(
+        report.extended_forward.tm_c,
+        source_pair.forward.tm_c,
+        "binding Tm should stay anchored to the annealing segment"
+    );
+    let hinted_pcr = report
+        .workflow_hints
+        .pcr_advanced_operation
+        .as_ref()
+        .expect("pcr advanced hint");
+    match hinted_pcr {
+        Operation::PcrAdvanced {
+            forward_primer,
+            reverse_primer,
+            ..
+        } => {
+            assert_eq!(
+                forward_primer.anneal_len,
+                Some(source_pair.forward.anneal_length_bp)
+            );
+            assert_eq!(
+                reverse_primer.anneal_len,
+                Some(source_pair.reverse.anneal_length_bp)
+            );
+            assert_eq!(forward_primer.sequence, report.extended_forward.sequence);
+            assert_eq!(reverse_primer.sequence, report.extended_reverse.sequence);
+        }
+        other => panic!("unexpected PCR hint: {other:?}"),
+    }
+    let roundtrip = serde_json::from_str::<RestrictionCloningPcrHandoffReport>(
+        &serde_json::to_string(&report).expect("serialize handoff report"),
+    )
+    .expect("roundtrip handoff report");
+    assert_eq!(roundtrip.report_id, report.report_id);
+}
+
+#[test]
+fn test_prepare_restriction_cloning_pcr_handoff_directed_pair_respects_mcs_order() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert(
+        "vec".to_string(),
+        restriction_cloning_vector("AAAAGAATTCGGGGGAAGCTTTTTT", Some("EcoRI,HindIII")),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("restriction_directed".to_string()),
+        })
+        .expect("design primer pairs");
+
+    engine
+        .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "restriction_directed".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: Some("HindIII".to_string()),
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        })
+        .expect("prepare directed restriction cloning handoff");
+
+    let summary = engine
+        .list_restriction_cloning_pcr_handoffs()
+        .into_iter()
+        .find(|row| row.primer_report_id == "restriction_directed")
+        .expect("directed handoff summary");
+    let report = engine
+        .get_restriction_cloning_pcr_handoff(&summary.report_id)
+        .expect("directed handoff report");
+    assert_eq!(report.mode, RestrictionCloningPcrHandoffMode::DirectedPair);
+    assert_eq!(report.compatibility.status, "compatible");
+    assert_eq!(report.compatibility.order_source, "mcs_expected_sites");
+    assert!(report.compatibility.directed_order_ok);
+    assert_eq!(
+        report
+            .compatibility
+            .vector_cut_position_0based_by_enzyme
+            .get("EcoRI")
+            .copied(),
+        Some(5)
+    );
+    assert_eq!(
+        report
+            .compatibility
+            .vector_cut_position_0based_by_enzyme
+            .get("HindIII")
+            .copied(),
+        Some(16)
+    );
+}
+
+#[test]
+fn test_prepare_restriction_cloning_pcr_handoff_blocks_internal_insert_site_collisions() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGAATTCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert(
+        "vec".to_string(),
+        restriction_cloning_vector("AAAAGAATTCGGGGGTTTTT", Some("EcoRI")),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("restriction_internal_collision".to_string()),
+        })
+        .expect("design primer pairs");
+
+    let err = engine
+        .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "restriction_internal_collision".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: None,
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        })
+        .expect_err("internal insert site collision should block handoff");
+    assert!(err.message.contains("Predicted tailed amplicon carries"));
+}
+
+#[test]
+fn test_prepare_restriction_cloning_pcr_handoff_blocks_non_unique_vector_cutter() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert(
+        "vec".to_string(),
+        restriction_cloning_vector("AAAAGAATTCGGGGGAATTCTTTT", Some("EcoRI")),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("restriction_non_unique_vector".to_string()),
+        })
+        .expect("design primer pairs");
+
+    let err = engine
+        .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "restriction_non_unique_vector".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: None,
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        })
+        .expect_err("non-unique vector cutter should block handoff");
+    assert!(err.message.contains("must contain exactly one usable 'EcoRI' site"));
 }
 
 #[test]
@@ -8535,6 +8928,8 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8544,6 +8939,8 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8610,6 +9007,8 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -8619,6 +9018,8 @@ fn test_render_dotplot_overlay_svg_supports_bp_alignment_variants() {
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -16586,6 +16987,8 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
                     seq_id: "iso_a".to_string(),
                     label: "Isoform A".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([29, 78, 216]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -16595,6 +16998,8 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
                     seq_id: "iso_b".to_string(),
                     label: "Isoform B".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     color_rgb: Some([220, 38, 38]),
                     mode: DotplotMode::PairForward,
                     span_start_0based: None,
@@ -16686,6 +17091,8 @@ fn test_compute_dotplot_overlay_stores_shared_exon_anchor_metadata() {
                     seq_id: tx_a,
                     label: "TX1".to_string(),
                     transcript_feature_id: Some(0),
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,
@@ -16695,6 +17102,8 @@ fn test_compute_dotplot_overlay_stores_shared_exon_anchor_metadata() {
                     seq_id: tx_b,
                     label: "TX2".to_string(),
                     transcript_feature_id: Some(1),
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,
@@ -16704,6 +17113,8 @@ fn test_compute_dotplot_overlay_stores_shared_exon_anchor_metadata() {
                     seq_id: "iso_misc".to_string(),
                     label: "misc".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,
@@ -16773,6 +17184,8 @@ fn test_render_dotplot_overlay_svg_supports_shared_exon_anchor_mode() {
                     seq_id: derived.created_seq_ids[0].clone(),
                     label: "TX1".to_string(),
                     transcript_feature_id: Some(0),
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,
@@ -16782,6 +17195,8 @@ fn test_render_dotplot_overlay_svg_supports_shared_exon_anchor_mode() {
                     seq_id: derived.created_seq_ids[1].clone(),
                     label: "TX2".to_string(),
                     transcript_feature_id: Some(1),
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,
@@ -16791,6 +17206,8 @@ fn test_render_dotplot_overlay_svg_supports_shared_exon_anchor_mode() {
                     seq_id: "iso_misc".to_string(),
                     label: "misc".to_string(),
                     transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: DotplotMode::PairForward,

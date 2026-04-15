@@ -1,5 +1,5 @@
 {
-   "command_count": 310,
+   "command_count": 311,
    "commands": [
       {
          "aliases": [
@@ -1806,6 +1806,20 @@
          "path": "primers design-qpcr",
          "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
          "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareRestrictionCloningPcrHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers prepare-restriction-cloning",
+         "summary": "Create a restriction-site cloning handoff from one persisted primer-pair report and a destination vector.",
+         "usage": "primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE"
       },
       {
          "aliases": [],

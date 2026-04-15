@@ -1788,6 +1788,7 @@ enum LineageAnalysisKind {
     RnaReadInterpretation,
     PrimerDesign,
     QpcrDesign,
+    RestrictionCloningPcrHandoff,
     ProteinDerivation,
     ReverseTranslation,
     ConstructReasoning,
@@ -1803,6 +1804,7 @@ impl LineageAnalysisKind {
             Self::RnaReadInterpretation => "rna_read_interpretation",
             Self::PrimerDesign => "primer_design",
             Self::QpcrDesign => "qpcr_design",
+            Self::RestrictionCloningPcrHandoff => "restriction_cloning_pcr_handoff",
             Self::ProteinDerivation => "protein_derivation",
             Self::ReverseTranslation => "reverse_translation",
             Self::ConstructReasoning => "construct_reasoning",
@@ -5642,6 +5644,45 @@ Error: `{err}`"
         }
     }
 
+    fn open_sequence_window_for_restriction_cloning_pcr_handoff(
+        &mut self,
+        seq_id: &str,
+        report_id: &str,
+    ) {
+        if !report_id.trim().is_empty() {
+            if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                if let Some(window) = self.windows.get(&viewport_id) {
+                    if let Ok(mut window) = window.write() {
+                        window.focus_restriction_cloning_handoff_report(report_id);
+                    }
+                }
+            } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                window.focus_restriction_cloning_handoff_report(report_id);
+            } else {
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    window.focus_restriction_cloning_handoff_report(report_id);
+                    self.new_windows.push(window);
+                }
+            }
+        } else {
+            self.open_sequence_window(seq_id);
+        }
+        if let Err(err) = self.open_pcr_design_dialog_for_seq_id(seq_id) {
+            self.app_status = format!(
+                "Cannot open PCR Designer for restriction-cloning handoff '{}' on '{}': {}",
+                report_id, seq_id, err
+            );
+        }
+    }
+
     fn open_sequence_window_for_rna_read_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
@@ -5692,6 +5733,9 @@ Error: `{err}`"
             }
             LineageAnalysisKind::QpcrDesign => {
                 self.open_sequence_window_for_qpcr_design_report(seq_id, artifact_id);
+            }
+            LineageAnalysisKind::RestrictionCloningPcrHandoff => {
+                self.open_sequence_window_for_restriction_cloning_pcr_handoff(seq_id, artifact_id);
             }
             LineageAnalysisKind::ProteinDerivation => {
                 self.open_sequence_window_for_protein_derivation_report(seq_id, artifact_id);
@@ -31943,6 +31987,72 @@ Error: `{err}`"
                 }
             }
 
+            let restriction_cloning_summaries = engine.list_restriction_cloning_pcr_handoffs();
+            for summary in restriction_cloning_summaries {
+                let node_id = format!("analysis:restriction_cloning_pcr:{}", summary.report_id);
+                let created_by_op = summary.op_id.clone().unwrap_or_else(|| "-".to_string());
+                let edge_op_id = if created_by_op == "-" {
+                    format!("analysis:restriction_cloning_pcr:{}", summary.report_id)
+                } else {
+                    created_by_op.clone()
+                };
+                op_label_by_id.entry(edge_op_id.clone()).or_insert_with(|| {
+                    format!(
+                        "Prepare restriction-site cloning PCR handoff: template={}, vector={}, report_id={}",
+                        summary.template, summary.destination_vector_seq_id, summary.report_id
+                    )
+                });
+                let seq_id = summary.template.clone();
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Analysis,
+                    node_id: node_id.clone(),
+                    seq_id: seq_id.clone(),
+                    display_name: summary.report_id.clone(),
+                    origin: "RestrictionCloningPcrHandoff".to_string(),
+                    created_by_op,
+                    created_at: summary.generated_at_unix_ms,
+                    parents: vec![seq_id.clone()],
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    retrieval_descriptor: None,
+                    analysis_kind: Some(LineageAnalysisKind::RestrictionCloningPcrHandoff),
+                    analysis_artifact_id: Some(summary.report_id.clone()),
+                    analysis_reference_seq_id: Some(summary.destination_vector_seq_id.clone()),
+                    analysis_mode: Some(summary.mode.clone()),
+                    analysis_status: Some(summary.compatibility_status.clone()),
+                    analysis_point_count: None,
+                    analysis_bin_count: None,
+                    analysis_read_count: None,
+                    analysis_trace_count: None,
+                    analysis_target_count: Some(1),
+                    analysis_variant_count: None,
+                    macro_instance_id: None,
+                    macro_routine_id: None,
+                    macro_template_name: None,
+                    macro_status: None,
+                    macro_status_message: None,
+                    macro_op_ids: vec![],
+                    macro_inputs: vec![],
+                    macro_outputs: vec![],
+                });
+                if let Some(source_node_id) = state.lineage.seq_to_node.get(&seq_id) {
+                    lineage_edges.push((
+                        source_node_id.clone(),
+                        node_id.clone(),
+                        edge_op_id.clone(),
+                    ));
+                }
+            }
+
             let protein_derivation_summaries = engine.list_protein_derivation_reports(None);
             for summary in protein_derivation_summaries {
                 let node_id = format!("analysis:protein_derive:{}", summary.report_id);
@@ -34429,6 +34539,15 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::QpcrDesign);
         }
+        if row
+            .node_id
+            .starts_with("analysis:restriction_cloning_pcr:")
+            || row
+                .origin
+                .eq_ignore_ascii_case("restrictioncloningpcrhandoff")
+        {
+            return Some(LineageAnalysisKind::RestrictionCloningPcrHandoff);
+        }
         if row.node_id.starts_with("analysis:protein_derive:")
             || row.node_id.starts_with("analysis:protein_derivation:")
             || row.origin.eq_ignore_ascii_case("proteinderivation")
@@ -34508,6 +34627,15 @@ Error: `{err}`"
             }
         }
         if let Some(rest) = row.node_id.strip_prefix("analysis:qpcr:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+        if let Some(rest) = row
+            .node_id
+            .strip_prefix("analysis:restriction_cloning_pcr:")
+        {
             let id = rest.trim();
             if !id.is_empty() {
                 return Some(id.to_string());
@@ -35436,6 +35564,19 @@ Error: `{err}`"
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                                        format!(
+                                                            "{} | mode={} | status={} | vector={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-")
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::ProteinDerivation) => {
                                                         format!(
                                                             "{} | mode={} | proteins={}",
@@ -36077,6 +36218,19 @@ Error: `{err}`"
                                                             row.analysis_target_count.unwrap_or(0)
                                                         )
                                                     }
+                                                    Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                                        format!(
+                                                            "restriction_handoff={} | mode={} | status={} | vector={}",
+                                                            artifact_id,
+                                                            mode,
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-")
+                                                        )
+                                                    }
                                                     Some(LineageAnalysisKind::ProteinDerivation) => {
                                                         format!(
                                                             "protein_derivation={} | mode={} | proteins={}",
@@ -36336,6 +36490,21 @@ Error: `{err}`"
                                                                 .as_deref()
                                                                 .unwrap_or("-"),
                                                             row.analysis_target_count.unwrap_or(0)
+                                                        ));
+                                                    }
+                                                    Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                                        ui.small(format!(
+                                                            "template={} | vector={} | mode={} | status={}",
+                                                            row.seq_id,
+                                                            row.analysis_reference_seq_id
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_mode
+                                                                .as_deref()
+                                                                .unwrap_or("-"),
+                                                            row.analysis_status
+                                                                .as_deref()
+                                                                .unwrap_or("-")
                                                         ));
                                                     }
                                                     Some(LineageAnalysisKind::ProteinDerivation) => {
@@ -37090,6 +37259,10 @@ Error: `{err}`"
                                                 "Open qPCR Report",
                                                 "Open the PCR Designer on this persisted qPCR-design report",
                                             ),
+                                            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => (
+                                                "Open Cloning Handoff",
+                                                "Open the PCR Designer on this persisted restriction-site cloning handoff",
+                                            ),
                                             Some(LineageAnalysisKind::ProteinDerivation) => (
                                                 "Open Derived Protein Expert",
                                                 "Open the transcript-native Protein Expert on this persisted protein-derivation artifact",
@@ -37383,6 +37556,9 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::RnaReadInterpretation) => "profile",
                             Some(LineageAnalysisKind::PrimerDesign)
                             | Some(LineageAnalysisKind::QpcrDesign) => "backend",
+                            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                "handoff_mode"
+                            }
                             Some(LineageAnalysisKind::ProteinDerivation) => "derivation_mode",
                             Some(LineageAnalysisKind::ReverseTranslation) => "speed_profile",
                             Some(LineageAnalysisKind::ConstructReasoning) => "objective_id",
@@ -37401,6 +37577,9 @@ Error: `{err}`"
                             Some(LineageAnalysisKind::ReverseTranslation) => "diagnostics",
                             Some(LineageAnalysisKind::ConstructReasoning) => "goal",
                             Some(LineageAnalysisKind::UniprotProjection) => "transcript_filter",
+                            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                "compatibility_status"
+                            }
                             _ => "status",
                         };
                         ui.small(format!("{status_label}={status}"));
@@ -37436,6 +37615,9 @@ Error: `{err}`"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "pair_count",
                             Some(LineageAnalysisKind::QpcrDesign) => "assay_count",
+                            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                "handoff_count"
+                            }
                             Some(LineageAnalysisKind::ProteinDerivation) => "protein_count",
                             Some(LineageAnalysisKind::ReverseTranslation) => "coding_bp",
                             Some(LineageAnalysisKind::ConstructReasoning) => "candidate_count",
@@ -37477,6 +37659,9 @@ Error: `{err}`"
                             }
                             Some(LineageAnalysisKind::PrimerDesign) => "Open Primer Report",
                             Some(LineageAnalysisKind::QpcrDesign) => "Open qPCR Report",
+                            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff) => {
+                                "Open Cloning Handoff"
+                            }
                             Some(LineageAnalysisKind::ProteinDerivation) => {
                                 "Open Derived Protein Expert"
                             }
@@ -42404,7 +42589,8 @@ mod tests {
             PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
             PrimerDesignSideConstraint, ProjectState, ProteinToDnaHandoffRankingGoal,
             ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate, RackFillDirection,
-            RackProfileKind, RackProfileSnapshot, RenderSvgMode, RestrictionEnzymeDisplayMode,
+            RackProfileKind, RackProfileSnapshot, RenderSvgMode,
+            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode,
             ReverseTranslationReport, RoutineDecisionTraceDisambiguationAnswer,
             RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
             RoutineDecisionTraceStore, SequenceOrigin, TranslationSpeedMark,
@@ -46599,6 +46785,31 @@ mod tests {
     }
 
     #[test]
+    fn open_lineage_analysis_artifact_opens_restriction_cloning_handoff_in_pcr_designer() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_handoff".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_lineage_analysis_artifact(
+            LineageAnalysisKind::RestrictionCloningPcrHandoff,
+            "seq_handoff",
+            "restriction_handoff_1",
+        );
+
+        assert!(app.show_pcr_design_dialog);
+        assert_eq!(app.pcr_design_seq_id, "seq_handoff");
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::pcr_design_viewport_id())
+        );
+    }
+
+    #[test]
     fn reopen_pcr_designer_from_operation_opens_specialist_for_template() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -50486,6 +50697,23 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             ))
         );
 
+        let mut restriction_handoff_row = make_lineage_row(
+            "analysis:restriction_cloning_pcr:tp73_clone_handoff",
+            "seq_clone",
+        );
+        restriction_handoff_row.kind = LineageNodeKind::Analysis;
+        restriction_handoff_row.display_name.clear();
+        restriction_handoff_row.analysis_kind = None;
+        restriction_handoff_row.analysis_artifact_id = None;
+        assert_eq!(
+            GENtleApp::lineage_analysis_open_payload(&restriction_handoff_row),
+            Some((
+                LineageAnalysisKind::RestrictionCloningPcrHandoff,
+                "seq_clone".to_string(),
+                "tp73_clone_handoff".to_string(),
+            ))
+        );
+
         let mut protein_row =
             make_lineage_row("analysis:protein_derive:tp73_protein", "seq_protein");
         protein_row.kind = LineageNodeKind::Analysis;
@@ -51124,6 +51352,118 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         assert_eq!(
             app.lineage_reopenable_pcr_op_seq_ids.get(&qpcr_op_id),
             Some(&"tpl".to_string())
+        );
+    }
+
+    #[test]
+    fn refresh_lineage_cache_includes_restriction_cloning_pcr_handoff_analysis_nodes() {
+        let mut app = GENtleApp::default();
+        {
+            let mut engine = app.engine.write().unwrap();
+            let state = engine.state_mut();
+            state.sequences.insert(
+                "tpl".to_string(),
+                DNAsequence::from_sequence(
+                    "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+                )
+                .unwrap(),
+            );
+            let mut vector =
+                DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
+            *vector.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+            let vector_len_i64 = vector.len().try_into().expect("vector len fits i64");
+            vector.features_mut().push(gb_io::seq::Feature {
+                kind: "misc_feature".into(),
+                location: gb_io::seq::Location::simple_range(0, vector_len_i64),
+                qualifiers: vec![
+                    ("label".into(), Some("MCS".to_string())),
+                    ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+                ],
+            });
+            vector.update_computed_features();
+            state.sequences.insert("vec".to_string(), vector);
+            insert_test_lineage_node(state, "n_tpl", "tpl");
+        }
+
+        let handoff_op_id = {
+            let mut engine = app.engine.write().unwrap();
+            engine.state_mut().parameters.primer_design_backend =
+                crate::engine::PrimerDesignBackend::Internal;
+            engine
+                .apply(Operation::DesignPrimerPairs {
+                    template: "tpl".to_string(),
+                    roi_start_0based: 40,
+                    roi_end_0based: 80,
+                    forward: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(5),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 0.0,
+                        max_tm_c: 100.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 1000,
+                        ..Default::default()
+                    },
+                    reverse: PrimerDesignSideConstraint {
+                        min_length: 20,
+                        max_length: 20,
+                        location_0based: Some(90),
+                        start_0based: None,
+                        end_0based: None,
+                        min_tm_c: 0.0,
+                        max_tm_c: 100.0,
+                        min_gc_fraction: 0.0,
+                        max_gc_fraction: 1.0,
+                        max_anneal_hits: 1000,
+                        ..Default::default()
+                    },
+                    pair_constraints: PrimerDesignPairConstraint::default(),
+                    min_amplicon_bp: 40,
+                    max_amplicon_bp: 150,
+                    max_tm_delta_c: Some(100.0),
+                    max_pairs: Some(10),
+                    report_id: Some("tp73_primer_handoff".to_string()),
+                })
+                .expect("design primer pairs");
+            let handoff = engine
+                .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+                    template: "tpl".to_string(),
+                    primer_report_id: "tp73_primer_handoff".to_string(),
+                    pair_index: 0,
+                    destination_vector_seq_id: "vec".to_string(),
+                    mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+                    forward_enzyme: "EcoRI".to_string(),
+                    reverse_enzyme: Some("HindIII".to_string()),
+                    forward_leader_5prime: Some("GC".to_string()),
+                    reverse_leader_5prime: Some("AT".to_string()),
+                })
+                .expect("prepare restriction-cloning handoff");
+            handoff.op_id
+        };
+
+        app.refresh_lineage_cache_if_needed();
+
+        let handoff_row = app
+            .lineage_rows
+            .iter()
+            .find(|row| row.origin == "RestrictionCloningPcrHandoff")
+            .expect("restriction-cloning lineage row");
+        assert_eq!(handoff_row.kind, LineageNodeKind::Analysis);
+        assert_eq!(
+            handoff_row.analysis_kind,
+            Some(LineageAnalysisKind::RestrictionCloningPcrHandoff)
+        );
+        assert_eq!(handoff_row.analysis_reference_seq_id.as_deref(), Some("vec"));
+        assert_eq!(handoff_row.analysis_mode.as_deref(), Some("directed_pair"));
+        assert_eq!(handoff_row.analysis_status.as_deref(), Some("compatible"));
+        assert_eq!(handoff_row.created_by_op, handoff_op_id);
+        assert!(
+            app.lineage_edges.iter().any(|(from, to, op_id)| from == "n_tpl"
+                && to == &handoff_row.node_id
+                && op_id == &handoff_op_id)
         );
     }
 

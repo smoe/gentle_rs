@@ -78,6 +78,12 @@ impl Window {
         }
     }
 
+    pub fn focus_restriction_cloning_handoff_report(&mut self, report_id: &str) {
+        match self {
+            Self::Dna(window) => window.focus_restriction_cloning_handoff_report(report_id),
+        }
+    }
+
     pub fn focus_sequencing_confirmation_report(&mut self, report_id: &str) {
         match self {
             Self::Dna(window) => window.focus_sequencing_confirmation_report(report_id),

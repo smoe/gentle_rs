@@ -1316,6 +1316,8 @@ impl MainAreaDna {
                     seq_id,
                     label: choice.label,
                     transcript_feature_id: Some(choice.transcript_feature_id),
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
                     span_start_0based: None,
                     span_end_0based: None,
                     mode: choice.mode,

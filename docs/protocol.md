@@ -3308,6 +3308,76 @@ Operation progress/cancellation semantics:
   - no dedicated GUI form yet; operation is available through `op`/workflow
     payloads.
 
+`PrepareRestrictionCloningPcrHandoff` contract (implemented v1):
+
+- Purpose:
+  - take one persisted `DesignPrimerPairs` result pair and turn it into a
+    cloning-aware handoff with restriction-site tails matched against a chosen
+    destination vector
+  - keep core primer proposal/ranking unchanged while creating new extended
+    primer artifacts and one restriction-ready amplicon artifact for downstream
+    digest/ligation staging
+- Operation payload shape:
+
+```json
+{
+  "PrepareRestrictionCloningPcrHandoff": {
+    "template": "seq_id",
+    "primer_report_id": "tp73_pairs_v1",
+    "pair_index": 0,
+    "destination_vector_seq_id": "pgl3_mcs",
+    "mode": "directed_pair",
+    "forward_enzyme": "EcoRI",
+    "reverse_enzyme": "HindIII",
+    "forward_leader_5prime": "GC",
+    "reverse_leader_5prime": "AT"
+  }
+}
+```
+
+- Baseline behavior:
+  - validates that `primer_report_id` belongs to `template` and that
+    `pair_index` exists in the persisted report
+  - derives:
+    - extended forward primer =
+      `forward_leader_5prime + forward restriction site + original forward primer`
+    - extended reverse primer =
+      `reverse_leader_5prime + reverse restriction site + original reverse primer`
+    - predicted tailed amplicon from the full extended primer sequences
+  - preserves annealing Tm/GC/hit semantics from the original annealing segment
+    while recomputing full-oligo secondary-structure and pair-dimer heuristics
+    as advisory diagnostics
+  - blocking compatibility checks:
+    - vector site absent or non-unique
+    - tailed amplicon site counts imply internal collisions instead of only
+      terminally added restriction sites
+    - directed-pair order disagrees with vector MCS order
+      (`mcs_expected_sites`) or, if absent, unique-cut order by cut position
+  - successful runs materialize graph-visible artifacts:
+    - one extended forward primer sequence
+    - one extended reverse primer sequence
+    - one predicted tailed amplicon sequence
+    - one per-handoff pool container
+  - successful runs also persist structured downstream hints:
+    - one `PcrAdvanced` operation payload using the full tailed oligos with
+      preserved `anneal_len`
+    - one insert `Digest` payload
+    - one vector `Digest` payload
+    - one ligation JSON snippet placeholder
+- Report schema:
+  - `gentle.restriction_cloning_pcr_handoff.v1`
+  - key fields include:
+    - `template`, `primer_report_id`, `pair_index`, `pair_rank`
+    - `destination_vector_seq_id`
+    - `mode`, selected enzymes, optional leaders
+    - original and extended primer records
+    - created artifact ids
+    - tailed amplicon length plus 5'/3' sequence previews
+    - extended pair dimer diagnostics
+    - `compatibility` summary with vector-site counts, insert-site counts,
+      cut positions, blocking errors, and warnings
+    - `workflow_hints` with suggested downstream operation payloads
+
 `PcrOverlapExtensionMutagenesis` contract (implemented baseline):
 
 - Purpose:
@@ -3400,6 +3470,7 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
@@ -3412,6 +3483,8 @@ Primer-design shell command family (implemented):
   `{"DesignPrimerPairs": {...}}`.
 - `primers design-qpcr` expects an operation payload whose root variant is
   `{"DesignQpcrAssays": {...}}`.
+- `primers prepare-restriction-cloning` expects an operation payload whose root
+  variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
@@ -3430,6 +3503,7 @@ Primer-design shell command family (implemented):
   - `gentle.primer_design_report_list.v1`
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
+  - `gentle.restriction_cloning_pcr_handoff.v1`
 - `gentle.primer_seed_request.v1` payload fields:
   - `template`
   - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)

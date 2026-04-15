@@ -3429,6 +3429,51 @@ impl GentleEngine {
         })
     }
 
+    pub(super) fn render_restriction_cloning_pcr_handoff_report_id(
+        primer_report_id: &str,
+        pair_rank: usize,
+        destination_vector_seq_id: &str,
+        mode: RestrictionCloningPcrHandoffMode,
+        forward_enzyme: &str,
+        reverse_enzyme: &str,
+        forward_leader_5prime: &str,
+        reverse_leader_5prime: &str,
+    ) -> String {
+        let sanitize = |text: &str| {
+            text.chars()
+                .map(|ch| {
+                    if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                        ch
+                    } else {
+                        '_'
+                    }
+                })
+                .collect::<String>()
+        };
+        let mut hasher = DefaultHasher::new();
+        primer_report_id.hash(&mut hasher);
+        pair_rank.hash(&mut hasher);
+        destination_vector_seq_id.hash(&mut hasher);
+        mode.as_str().hash(&mut hasher);
+        forward_enzyme.hash(&mut hasher);
+        reverse_enzyme.hash(&mut hasher);
+        forward_leader_5prime.hash(&mut hasher);
+        reverse_leader_5prime.hash(&mut hasher);
+        let digest = hasher.finish();
+        let base = format!(
+            "{}_r{:02}_{}_{}_{}_{}",
+            sanitize(primer_report_id),
+            pair_rank.max(1),
+            sanitize(destination_vector_seq_id),
+            sanitize(forward_enzyme),
+            sanitize(reverse_enzyme),
+            mode.as_str()
+        );
+        let candidate = format!("{base}_{digest:08x}");
+        Self::normalize_primer_design_report_id(&candidate)
+            .unwrap_or_else(|_| format!("restriction_clone_handoff_{digest:08x}"))
+    }
+
     pub(super) fn annotate_primer_record_heuristics(
         mut record: PrimerDesignPrimerRecord,
         anneal_length_bp: usize,

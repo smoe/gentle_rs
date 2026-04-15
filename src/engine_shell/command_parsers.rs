@@ -1921,7 +1921,7 @@ pub(super) fn build_seeded_qpcr_operation(
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -2004,6 +2004,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 request_json,
                 backend,
                 primer3_executable,
+            })
+        }
+        "prepare-restriction-cloning" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "primers prepare-restriction-cloning requires REQUEST_JSON_OR_@FILE"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersPrepareRestrictionCloning {
+                request_json: tokens[2].clone(),
             })
         }
         "preflight" => {
@@ -2109,7 +2120,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

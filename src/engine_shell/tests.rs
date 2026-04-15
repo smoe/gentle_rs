@@ -3807,6 +3807,18 @@ fn parse_primers_design_qpcr_with_backend_overrides() {
 }
 
 #[test]
+fn parse_primers_prepare_restriction_cloning_request() {
+    let cmd = parse_shell_line("primers prepare-restriction-cloning @handoff_request.json")
+        .expect("parse restriction-cloning handoff");
+    match cmd {
+        ShellCommand::PrimersPrepareRestrictionCloning { request_json } => {
+            assert_eq!(request_json, "@handoff_request.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_primers_preflight_with_backend_overrides() {
     let cmd = parse_shell_line(
         "primers preflight --backend primer3 --primer3-exec /opt/primer3/primer3_core",
@@ -8092,6 +8104,124 @@ fn execute_primers_design_list_show_export() {
     );
     let text = fs::read_to_string(&export_path).expect("read export");
     assert!(text.contains("gentle.primer_design_report.v1"));
+}
+
+#[test]
+fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        )
+        .expect("template"),
+    );
+    let mut vector = DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
+    *vector.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    let vector_len_i64 = vector.len().try_into().unwrap();
+    vector.features_mut().push(Feature {
+        kind: "misc_feature".into(),
+        location: Location::simple_range(0, vector_len_i64),
+        qualifiers: vec![
+            ("label".into(), Some("MCS".to_string())),
+            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+        ],
+    });
+    vector.update_computed_features();
+    state.sequences.insert("vec".to_string(), vector);
+    let mut engine = GentleEngine::from_state(state);
+
+    let primer_request = serde_json::to_string(&Operation::DesignPrimerPairs {
+        template: "tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        },
+        reverse: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(10),
+        report_id: Some("shell_handoff_pairs".to_string()),
+    })
+    .expect("serialize primer design request");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesign {
+            request_json: primer_request,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("design primer pairs");
+
+    let handoff_request = serde_json::to_string(
+        &Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "shell_handoff_pairs".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: Some("HindIII".to_string()),
+            forward_leader_5prime: Some("GC".to_string()),
+            reverse_leader_5prime: Some("AT".to_string()),
+        },
+    )
+    .expect("serialize handoff request");
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrepareRestrictionCloning {
+            request_json: handoff_request,
+        },
+    )
+    .expect("execute handoff shell command");
+
+    assert!(run.state_changed);
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.restriction_cloning_pcr_handoff.v1")
+    );
+    assert_eq!(
+        run.output["report"]["destination_vector_seq_id"].as_str(),
+        Some("vec")
+    );
+    assert_eq!(
+        run.output["report"]["mode"].as_str(),
+        Some("directed_pair")
+    );
+    assert_eq!(
+        run.output["report"]["compatibility"]["status"].as_str(),
+        Some("compatible")
+    );
+    assert_eq!(
+        run.output["report"]["workflow_hints"]["pcr_advanced_operation"]["PcrAdvanced"]["forward_primer"]["anneal_len"].as_u64(),
+        Some(20)
+    );
 }
 
 #[test]
@@ -13314,6 +13444,8 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                             seq_id: "iso_a".to_string(),
                             label: "Isoform A".to_string(),
                             transcript_feature_id: None,
+                            query_anchor_0based: None,
+                            query_anchor_label: None,
                             span_start_0based: None,
                             span_end_0based: None,
                             mode: DotplotMode::PairForward,
@@ -13323,6 +13455,8 @@ fn execute_dotplot_and_flex_commands_store_payloads() {
                             seq_id: "iso_b".to_string(),
                             label: "Isoform B".to_string(),
                             transcript_feature_id: None,
+                            query_anchor_0based: None,
+                            query_anchor_label: None,
                             span_start_0based: None,
                             span_end_0based: None,
                             mode: DotplotMode::PairForward,
