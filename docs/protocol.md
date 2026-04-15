@@ -3471,6 +3471,7 @@ Primer-design shell command family (implemented):
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
+  - `primers restriction-cloning-vector-suggestions SEQ_ID`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
@@ -3485,6 +3486,9 @@ Primer-design shell command family (implemented):
   `{"DesignQpcrAssays": {...}}`.
 - `primers prepare-restriction-cloning` expects an operation payload whose root
   variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
+- `primers restriction-cloning-vector-suggestions` is non-mutating and returns
+  the same MCS-first / unique-cutter suggestion ordering the GUI PCR Designer
+  uses for the selected destination vector.
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
@@ -3504,6 +3508,7 @@ Primer-design shell command family (implemented):
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
   - `gentle.restriction_cloning_pcr_handoff.v1`
+  - `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
 - `gentle.primer_seed_request.v1` payload fields:
   - `template`
   - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
@@ -3511,6 +3516,13 @@ Primer-design shell command family (implemented):
   - `roi_end_0based_exclusive`
   - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
   - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
+- `gentle.restriction_cloning_vector_enzyme_suggestions.v1` payload fields:
+  - `suggestions.seq_id`
+  - `suggestions.selected_mcs[]` (preferred MCS-annotated cutters that are
+    currently unique/usable)
+  - `suggestions.other_unique[]` (other unique cutters on the vector)
+  - `suggestions.missing_mcs[]` (annotated MCS cutters that were named but are
+    not currently uniquely usable on the vector)
 
 Feature-query shell contract (implemented):
 

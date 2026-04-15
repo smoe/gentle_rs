@@ -1367,6 +1367,9 @@ pub enum ShellCommand {
     PrimersPrepareRestrictionCloning {
         request_json: String,
     },
+    PrimersRestrictionCloningVectorSuggestions {
+        seq_id: String,
+    },
     PrimersPreflight {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
@@ -6691,6 +6694,10 @@ impl ShellCommand {
             Self::PrimersPrepareRestrictionCloning { request_json } => format!(
                 "prepare restriction-site cloning handoff from JSON request payload (len={})",
                 request_json.len()
+            ),
+            Self::PrimersRestrictionCloningVectorSuggestions { seq_id } => format!(
+                "list restriction-cloning vector enzyme suggestions for '{}'",
+                seq_id
             ),
             Self::PrimersPreflight {
                 backend,
@@ -17878,6 +17885,18 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersRestrictionCloningVectorSuggestions { seq_id } => {
+            let suggestions = engine
+                .restriction_cloning_vector_enzyme_suggestions(seq_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_vector_enzyme_suggestions.v1",
+                    "suggestions": suggestions,
+                }),
+            })
+        }
         ShellCommand::PrimersPreflight {
             backend,
             primer3_executable,
@@ -19721,6 +19740,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+            | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
             | ShellCommand::PrimersPreflight { .. }
             | ShellCommand::PrimersListReports
             | ShellCommand::PrimersShowReport { .. }
@@ -21962,6 +21982,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+        | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
         | ShellCommand::PrimersPreflight { .. }
         | ShellCommand::PrimersListReports
         | ShellCommand::PrimersShowReport { .. }

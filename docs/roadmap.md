@@ -1000,6 +1000,10 @@ order. Durable architecture constraints and decisions remain in
       `gentle.restriction_cloning_pcr_handoff.v1`
     - stores downstream `PcrAdvanced` / `Digest` hint payloads for later
       cloning workflow staging
+  - shared-shell/CLI primer helpers now also expose non-mutating restriction-
+    cloning vector suggestions (`primers restriction-cloning-vector-suggestions`)
+    so GUI and command-line/agent reasoning can inspect the same MCS-first /
+    unique-cutter preference order
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged

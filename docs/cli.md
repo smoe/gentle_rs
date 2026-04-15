@@ -358,7 +358,7 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`) and persisted report inspect/export helpers
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 
@@ -1720,6 +1720,15 @@ Shared shell command:
         `gentle.restriction_cloning_pcr_handoff.v1`
       - shell/direct output includes the saved handoff report in the command
         response `output`
+    - Restriction-cloning vector suggestion notes
+      (`primers restriction-cloning-vector-suggestions SEQ_ID`):
+      - non-mutating helper for command-line/agent reasoning against one
+        destination vector
+      - returns schema
+        `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
+      - reports `selected_mcs`, `other_unique`, and `missing_mcs`
+      - mirrors the GUI preference order:
+        annotated `mcs_expected_sites` first, then other unique cutters
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`

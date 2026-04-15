@@ -1,5 +1,5 @@
 {
-   "command_count": 311,
+   "command_count": 312,
    "commands": [
       {
          "aliases": [
@@ -1820,6 +1820,18 @@
          "path": "primers prepare-restriction-cloning",
          "summary": "Create a restriction-site cloning handoff from one persisted primer-pair report and a destination vector.",
          "usage": "primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers restriction-cloning-vector-suggestions",
+         "summary": "Inspect MCS-first and unique-cutter restriction-enzyme suggestions for one destination vector.",
+         "usage": "primers restriction-cloning-vector-suggestions SEQ_ID"
       },
       {
          "aliases": [],

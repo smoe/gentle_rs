@@ -3819,6 +3819,18 @@ fn parse_primers_prepare_restriction_cloning_request() {
 }
 
 #[test]
+fn parse_primers_restriction_cloning_vector_suggestions_request() {
+    let cmd = parse_shell_line("primers restriction-cloning-vector-suggestions vec")
+        .expect("parse restriction-cloning vector suggestions");
+    match cmd {
+        ShellCommand::PrimersRestrictionCloningVectorSuggestions { seq_id } => {
+            assert_eq!(seq_id, "vec");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_primers_preflight_with_backend_overrides() {
     let cmd = parse_shell_line(
         "primers preflight --backend primer3 --primer3-exec /opt/primer3/primer3_core",
@@ -8221,6 +8233,66 @@ fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
     assert_eq!(
         run.output["report"]["workflow_hints"]["pcr_advanced_operation"]["PcrAdvanced"]["forward_primer"]["anneal_len"].as_u64(),
         Some(20)
+    );
+}
+
+#[test]
+fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_unique() {
+    let mut state = ProjectState::default();
+    let mut vector =
+        DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTTGCGGCCGCTTTT").expect("vector");
+    *vector.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    let vector_len_i64 = vector.len().try_into().unwrap();
+    vector.features_mut().push(Feature {
+        kind: "misc_feature".into(),
+        location: Location::simple_range(0, vector_len_i64),
+        qualifiers: vec![
+            ("label".into(), Some("MCS".to_string())),
+            ("mcs_expected_sites".into(), Some("EcoRI,HindIII,BamHI".to_string())),
+        ],
+    });
+    vector.update_computed_features();
+    state.sequences.insert("vec".to_string(), vector);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersRestrictionCloningVectorSuggestions {
+            seq_id: "vec".to_string(),
+        },
+    )
+    .expect("execute restriction-cloning vector suggestions");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["schema"].as_str(),
+        Some("gentle.restriction_cloning_vector_enzyme_suggestions.v1")
+    );
+    assert_eq!(
+        run.output["suggestions"]["seq_id"].as_str(),
+        Some("vec")
+    );
+    assert_eq!(
+        run.output["suggestions"]["selected_mcs"][0].as_str(),
+        Some("EcoRI")
+    );
+    assert_eq!(
+        run.output["suggestions"]["selected_mcs"][1].as_str(),
+        Some("HindIII")
+    );
+    let other_unique = run.output["suggestions"]["other_unique"]
+        .as_array()
+        .expect("other_unique array");
+    assert!(
+        other_unique
+            .iter()
+            .filter_map(|value| value.as_str())
+            .any(|name| name == "NotI"),
+        "expected NotI in other_unique suggestions, got {other_unique:?}"
+    );
+    assert_eq!(
+        run.output["suggestions"]["missing_mcs"][0].as_str(),
+        Some("BamHI")
     );
 }
 
