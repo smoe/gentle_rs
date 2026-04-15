@@ -261,7 +261,9 @@ shared-reference TP73 multi-isoform dotplot overlay from the same local
 derives four curated transcript variants (`NM_005427.4`, `NM_001126240.3`,
 `NM_001126241.3`, `NM_001204189.2`), computes one
 `ComputeDotplotOverlay` payload against the shared genomic reference, and
-writes the combined SVG `tp73_multi_isoform_overlay_dotplot.svg`.
+writes the combined SVG `tp73_multi_isoform_overlay_dotplot.svg`. The stored
+query specs now also include their original TP73 transcript feature ids so the
+same overlay payload remains eligible for shared-exon-anchor exports.
 
 `tp73_multi_isoform_overlay_dotplot.png` is the README-friendly raster
 derivative. It is rendered from the SVG with `resvg` through
@@ -280,6 +282,32 @@ cargo run --quiet --bin gentle_examples_docs -- \
   svg-png \
   docs/figures/tp73_multi_isoform_overlay_dotplot.svg \
   docs/figures/tp73_multi_isoform_overlay_dotplot.png \
+  --drop-dotplot-metadata
+```
+
+`tp73_multi_isoform_anchor_dotplot.workflow.json` renders the README-facing
+TP73 shared-exon-anchor variant of that overlay. It uses the same four curated
+TP73 transcripts, restricts the genomic reference span to the shared downstream
+region (`54001..83686` local TP73 slice coordinates), and renders the overlay
+with `overlay_x_axis_mode=shared_exon_anchor` around the common exon
+`55034..55276`. The output SVG is
+`tp73_multi_isoform_anchor_dotplot.svg`.
+
+`tp73_multi_isoform_anchor_dotplot.png` is the README-friendly raster
+derivative of that anchored export.
+
+Regenerate the TP73 shared-exon-anchor dotplot assets from the repository root
+with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_anchor_readme.state.json \
+  workflow @docs/figures/tp73_multi_isoform_anchor_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_multi_isoform_anchor_dotplot.svg \
+  docs/figures/tp73_multi_isoform_anchor_dotplot.png \
   --drop-dotplot-metadata
 ```
 

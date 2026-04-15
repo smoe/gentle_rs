@@ -250,38 +250,27 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/pcr_overlap_extension_substitution_fig1_style.svg
 ```
 
-### TP53/P53 Isoform Architecture
+### TP73 Dotplot Views
 
-![GENtle TP53/p53 isoform architecture](docs/figures/tp53_isoform_architecture.svg)
+| Pairwise cDNA vs genome | Shared-exon anchored isoforms |
+| --- | --- |
+| ![GENtle TP73 cDNA vs genomic dotplot](docs/figures/tp73_cdna_genomic_dotplot.png) | ![GENtle TP73 shared-exon anchored multi-isoform dotplot](docs/figures/tp73_multi_isoform_anchor_dotplot.png) |
 
-Curated TP53/p53 isoform architecture showcase: transcript/CDS geometry comes
-from the Ensembl 116 TP53 annotation on GRCh38, while isoform labels and
-protein-domain blocks come from the curated panel resource in
-`assets/panels/tp53_isoforms_v1.json`. The figure is rendered through the same
-shared expert-view route used by GENtle interfaces rather than from a
-standalone illustration.
+The README dotplot story now stays on one locus: TP73. The left panel is the
+simple pairwise baseline, with `NM_001126241.3` derived locally from
+`test_files/tp73.ncbi.gb` and aligned back to the same TP73 genomic locus. The
+right panel is the more integrated multi-isoform view: the longest curated TP73
+transcript (`NM_005427.4`) is overlaid with variants `NM_001126240.3`,
+`NM_001126241.3`, and `NM_001204189.2`, all against the same genomic
+reference, while the shared exon `55034..55276` is anchored to one common
+x-position. That makes downstream splice losses and retained exon chains easier
+to compare at a glance without leaving the shared dotplot engine route.
 
-The TP53/p53 figure was generated with:
+Both figures remain available interactively in the GUI through a DNA window's
+`Dotplot map` mode and the standalone `Dotplot` workspace, where the same
+payloads can be re-rendered with alternative overlay x-axis layouts.
 
-```sh
-cargo run --quiet --bin gentle_cli -- \
-  workflow @docs/figures/tp53_isoform_architecture.workflow.json
-```
-
-### TP73 cDNA vs Genomic Dotplot
-
-![GENtle TP73 cDNA vs genomic dotplot](docs/figures/tp73_cdna_genomic_dotplot.png)
-
-Offline TP73 cDNA-vs-genomic showcase: the `NM_001126241.3` transcript is
-derived locally from `test_files/tp73.ncbi.gb`, aligned against the same TP73
-genomic locus with the shared dotplot engine route, and then rasterized to PNG
-for README display while preserving the basepair axis labels. The same graphic
-is available interactively in the GUI through a DNA window's `Dotplot map`
-mode and standalone `Dotplot` workspace, where it can be used for coordinate
-navigation back into the sequence context as a contribution to cloning-oriented
-analysis and design.
-
-The TP73 dotplot figure was generated with:
+The TP73 README dotplot figures were generated with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
@@ -292,6 +281,16 @@ cargo run --quiet --bin gentle_examples_docs -- \
   svg-png \
   docs/figures/tp73_cdna_genomic_dotplot.svg \
   docs/figures/tp73_cdna_genomic_dotplot.png \
+  --drop-dotplot-metadata
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_anchor_readme.state.json \
+  workflow @docs/figures/tp73_multi_isoform_anchor_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_multi_isoform_anchor_dotplot.svg \
+  docs/figures/tp73_multi_isoform_anchor_dotplot.png \
   --drop-dotplot-metadata
 ```
 

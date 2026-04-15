@@ -293,8 +293,17 @@ Primary map modes (linear topology):
         - `overlay x-axis` chooses how transcript queries share the x-axis:
           `% transcript` normalizes each isoform to 0..100%, `bp left-aligned`
           aligns transcript starts to emphasize different 3' splice endings,
-          and `bp right-aligned` aligns transcript ends to emphasize different
-          5' splice starts
+          `bp right-aligned` aligns transcript ends to emphasize different
+          5' splice starts, and `shared exon anchored` shifts only the
+          transcripts that contain the chosen shared exon so that exon start is
+          shown at one common x-position
+        - in `shared exon anchored` mode an explicit exon picker appears:
+          - it lists only exons shared by at least two of the currently
+            selected transcript lanes
+          - the transcript checkbox state stays unchanged, but only the
+            transcripts containing the picked exon are actually drawn/exported
+          - the common anchor position is the maximal transcript-local exon
+            start observed among the displayed transcripts for that exon
         - each isoform gets a deterministic color while the y-axis stays in
           shared genomic coordinates
         - merged exon annotation for the reference span is drawn beside the
@@ -333,6 +342,9 @@ Primary map modes (linear topology):
         selected overlay x-axis layout; query sync and locked crosshair stay
         disabled there because the overlay does not have one unambiguous shared
         query coordinate system
+        - in `shared exon anchored` mode, transcripts that do support the
+          chosen exon still report `outside` when the cursor lies beyond that
+          shifted transcript extent
     - status panel:
       - deterministic request diagnostics (mode, spans, seed parameters, estimated
         window counts / pair evaluations)

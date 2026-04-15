@@ -3763,6 +3763,11 @@ Status (2026-03-19):
     - shared-shell/direct CLI parsing now accepts `shared_exon_anchor` too, so
       adapter parity now matches the GUI/protocol enum instead of rejecting the
       newest layout at parse time
+    - anchored overlays now persist transcript feature ids plus shared-exon
+      anchor metadata in the dotplot payload, so `shared_exon_anchor` rendering
+      no longer depends on a live GUI splicing view
+    - README/docs figure set now includes a TP73 shared-exon-anchor hero export
+      to make the anchored overlay behavior inspectable outside the GUI
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers
@@ -3772,9 +3777,6 @@ Status (2026-03-19):
     as new dotplot operations are added
   - additional overlay controls beyond the current shared-reference multi-series
     baseline
-  - anchor-based overlay alignment modes (for example align every isoform to a
-    shared exon anchor on the longest transcript) remain a plausible follow-up
-    after the current percent/left/right layout baseline
 
 Latest GUI baseline (2026-03-09):
 
