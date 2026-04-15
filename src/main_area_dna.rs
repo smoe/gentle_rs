@@ -3199,6 +3199,84 @@ mod tests {
     }
 
     #[test]
+    fn apply_restriction_cloning_single_site_recommendation_sets_mode_and_clears_saved_handoff() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = "handoff_old".to_string();
+        area.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::DirectedPair;
+        area.primer_design_ui.restriction_cloning.reverse_enzyme = "HindIII".to_string();
+
+        area.apply_restriction_cloning_single_site_recommendation("EcoRI");
+
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.mode,
+            RestrictionCloningPcrHandoffMode::SingleSite
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.forward_enzyme,
+            "EcoRI"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.reverse_enzyme,
+            "EcoRI"
+        );
+        assert!(
+            area.primer_design_ui
+                .restriction_cloning
+                .selected_saved_report_id
+                .is_empty()
+        );
+        assert!(area.op_status.contains("single-site recommendation 'EcoRI'"));
+        assert!(area.op_status.contains("vec1"));
+    }
+
+    #[test]
+    fn apply_restriction_cloning_directed_pair_recommendation_sets_mode_and_order() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = "handoff_old".to_string();
+
+        area.apply_restriction_cloning_directed_pair_recommendation(
+            "EcoRI",
+            "HindIII",
+            "mcs_expected_sites",
+        );
+
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.mode,
+            RestrictionCloningPcrHandoffMode::DirectedPair
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.forward_enzyme,
+            "EcoRI"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.reverse_enzyme,
+            "HindIII"
+        );
+        assert!(
+            area.primer_design_ui
+                .restriction_cloning
+                .selected_saved_report_id
+                .is_empty()
+        );
+        assert!(area.op_status.contains("EcoRI -> HindIII"));
+        assert!(area.op_status.contains("mcs_expected_sites"));
+        assert!(area.op_status.contains("vec1"));
+    }
+
+    #[test]
     fn seed_simple_pcr_roi_sets_flanking_and_min_amplicon() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -29270,6 +29348,82 @@ impl MainAreaDna {
             .map_err(|err| err.message)
     }
 
+    fn apply_restriction_cloning_single_site_recommendation(&mut self, enzyme: &str) {
+        let enzyme = enzyme.trim();
+        if enzyme.is_empty() {
+            return;
+        }
+        self.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::SingleSite;
+        self.primer_design_ui.restriction_cloning.forward_enzyme = enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme = enzyme.to_string();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .clear();
+        self.save_engine_ops_state();
+        let vector = self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim();
+        if vector.is_empty() {
+            self.op_status = format!(
+                "Applied restriction-cloning single-site recommendation '{}'",
+                enzyme
+            );
+        } else {
+            self.op_status = format!(
+                "Applied restriction-cloning single-site recommendation '{}' for vector '{}'",
+                enzyme, vector
+            );
+        }
+    }
+
+    fn apply_restriction_cloning_directed_pair_recommendation(
+        &mut self,
+        forward_enzyme: &str,
+        reverse_enzyme: &str,
+        order_source: &str,
+    ) {
+        let forward_enzyme = forward_enzyme.trim();
+        let reverse_enzyme = reverse_enzyme.trim();
+        if forward_enzyme.is_empty() || reverse_enzyme.is_empty() {
+            return;
+        }
+        self.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::DirectedPair;
+        self.primer_design_ui.restriction_cloning.forward_enzyme =
+            forward_enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme =
+            reverse_enzyme.to_string();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .clear();
+        self.save_engine_ops_state();
+        let vector = self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim();
+        let source_label = if order_source.trim().is_empty() {
+            "engine ordering".to_string()
+        } else {
+            order_source.trim().to_string()
+        };
+        if vector.is_empty() {
+            self.op_status = format!(
+                "Applied restriction-cloning directed-pair recommendation '{} -> {}' ({})",
+                forward_enzyme, reverse_enzyme, source_label
+            );
+        } else {
+            self.op_status = format!(
+                "Applied restriction-cloning directed-pair recommendation '{} -> {}' for vector '{}' ({})",
+                forward_enzyme, reverse_enzyme, vector, source_label
+            );
+        }
+    }
+
     fn latest_restriction_cloning_handoff_report_id_matching_ui(&self) -> Option<String> {
         let Some(engine) = self.engine.clone() else {
             return None;
@@ -29593,15 +29747,19 @@ impl MainAreaDna {
         };
         let mut suggested_enzymes = vec![];
         let mut suggestion_note = None::<String>;
+        let mut recommended_single_site = vec![];
+        let mut recommended_directed_pairs = vec![];
         if let Some(result) = suggestion_result {
             match result {
                 Ok(suggestions) => {
-                    suggested_enzymes.extend(suggestions.selected_mcs.clone());
-                    for enzyme in suggestions.other_unique {
-                        if !suggested_enzymes.iter().any(|value| value == &enzyme) {
-                            suggested_enzymes.push(enzyme);
+                    suggested_enzymes.extend(suggestions.selected_mcs.iter().cloned());
+                    for enzyme in &suggestions.other_unique {
+                        if !suggested_enzymes.iter().any(|value| value == enzyme) {
+                            suggested_enzymes.push(enzyme.clone());
                         }
                     }
+                    recommended_single_site = suggestions.recommended_single_site.clone();
+                    recommended_directed_pairs = suggestions.recommended_directed_pairs.clone();
                     if !suggestions.missing_mcs.is_empty() {
                         suggestion_note = Some(format!(
                             "MCS annotations mention unavailable/non-unique sites: {}",
@@ -29834,6 +29992,56 @@ impl MainAreaDna {
                         });
                 });
             }
+            if !recommended_single_site.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recommended single-site");
+                    for suggestion in &recommended_single_site {
+                        let button_label = format!(
+                            "{} @ {}",
+                            suggestion.enzyme, suggestion.cut_position_0based
+                        );
+                        if ui
+                            .button(&button_label)
+                            .on_hover_text(
+                                "Use this MCS-aware single-cutter recommendation for both primer tails",
+                            )
+                            .clicked()
+                        {
+                            self.apply_restriction_cloning_single_site_recommendation(
+                                &suggestion.enzyme,
+                            );
+                        }
+                    }
+                });
+            }
+            if !recommended_directed_pairs.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recommended directed pairs");
+                    for suggestion in &recommended_directed_pairs {
+                        let button_label = format!(
+                            "{} -> {}",
+                            suggestion.forward_enzyme, suggestion.reverse_enzyme
+                        );
+                        let hover = format!(
+                            "Use directed insertion order from {} (cuts at {} and {})",
+                            suggestion.order_source,
+                            suggestion.forward_cut_position_0based,
+                            suggestion.reverse_cut_position_0based
+                        );
+                        if ui
+                            .button(&button_label)
+                            .on_hover_text(hover)
+                            .clicked()
+                        {
+                            self.apply_restriction_cloning_directed_pair_recommendation(
+                                &suggestion.forward_enzyme,
+                                &suggestion.reverse_enzyme,
+                                &suggestion.order_source,
+                            );
+                        }
+                    }
+                });
+            }
             if !suggested_enzymes.is_empty() {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Suggested enzymes");
@@ -29905,6 +30113,11 @@ impl MainAreaDna {
                     "Vector suggestions prefer annotated MCS cutters first, then fall back to other unique cutters: {}",
                     suggested_enzymes.join(", ")
                 ));
+            }
+            if !recommended_directed_pairs.is_empty() {
+                ui.small(
+                    "Directed-pair recommendations follow MCS order when available, otherwise unique-cut position order on the vector.",
+                );
             }
 
             ui.horizontal_wrapped(|ui| {

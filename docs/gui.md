@@ -2743,7 +2743,11 @@ Restriction-site cloning handoff:
   - `mode` (`single_site` / `directed_pair`)
   - `forward enzyme`, `reverse enzyme`
   - optional `forward 5' leader`, `reverse 5' leader`
-  - `Vector shortcuts` / `Use suggested pair` from MCS-aware enzyme hints
+  - `Vector shortcuts`
+  - one-click `Recommended single-site` and `Recommended directed pairs` from
+    the same MCS-first / unique-cutter ordering used by CLI/shared-shell
+    reasoning helpers
+  - `Suggested enzymes` fallback pickers
   - `Create restriction-tail handoff`
 - behavior:
   - creates new extended forward/reverse primer artifacts plus one predicted

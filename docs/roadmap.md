@@ -1007,6 +1007,9 @@ order. Durable architecture constraints and decisions remain in
     - the suggestion payload now also includes deterministic
       single-site and directed-pair recommendations from the same engine-owned
       ordering logic
+    - PCR Designer now exposes those same recommendations directly as one-click
+      `Recommended single-site` / `Recommended directed pairs` actions instead
+      of only flat enzyme pickers
   - shared-shell/CLI primer helpers now expose saved restriction-cloning
     handoff lifecycle routes:
     - `primers list-restriction-cloning-handoffs`
