@@ -4,7 +4,7 @@ authors = ["Magnus Manske <magnusmanske@googlemail.com>", "Steffen Möller <moel
 description = "GENtle"
 keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
-repository = "https://github.com/magnusmanske/gentle_rs/"
+repository = "https://github.com/smoe/gentle_rs/"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -22,7 +22,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 edition = "2024"
 
 [package.metadata.bundle]

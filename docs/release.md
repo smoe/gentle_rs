@@ -126,7 +126,7 @@ Release-workflow assumptions to re-check before tagging:
 1. Ensure `main` is green in CI.
 2. Create and push a version tag:
    - `git tag vX.Y.Z`
-   - `git push origin vX.Y.Z`
+   - `git push smoe vX.Y.Z`
 3. Wait for `Release Installers` workflow completion.
 4. Verify GitHub Release contains both installer assets.
 

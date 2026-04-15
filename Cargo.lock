@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "GENtle"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 dependencies = [
  "anyhow",
  "bio",
@@ -23,7 +23,7 @@ dependencies = [
  "icu_calendar",
  "icu_locale",
  "image",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "mlua",
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -2304,11 +2304,11 @@ dependencies = [
 
 [[package]]
 name = "gentle-engine"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 
 [[package]]
 name = "gentle-gui"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 dependencies = [
  "egui",
  "serde",
@@ -2318,7 +2318,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-protocol"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-render"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 dependencies = [
  "gentle-protocol",
  "serde",
@@ -2336,7 +2336,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-shell"
-version = "0.1.0-internal.4"
+version = "0.1.0-internal.5"
 dependencies = [
  "serde",
  "serde_json",

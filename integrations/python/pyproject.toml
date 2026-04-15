@@ -27,8 +27,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/ulfschubert/gentle_rs"
-Repository = "https://github.com/ulfschubert/gentle_rs"
+Homepage = "https://github.com/smoe/gentle_rs"
+Repository = "https://github.com/smoe/gentle_rs"
 
 [tool.setuptools]
 include-package-data = false

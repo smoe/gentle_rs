@@ -2,7 +2,7 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: GENtle
 Upstream-Contact:
  Magnus Manske <magnusmanske@googlemail.com>
-Source: https://github.com/magnusmanske/gentle_rs/
+Source: https://github.com/smoe/gentle_rs/
 
 Files: *
 Copyright: 2024-2025, Magnus Manske
