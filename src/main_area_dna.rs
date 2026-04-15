@@ -3021,6 +3021,29 @@ mod tests {
     }
 
     #[test]
+    fn seed_primer_design_roi_from_current_selection_opens_engine_ops() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.dna_display
+            .write()
+            .expect("display lock")
+            .select(Selection::new(25, 145, 400));
+
+        area.seed_primer_design_roi_from_current_selection()
+            .expect("selection should seed PCR ROI");
+
+        assert_eq!(area.primer_design_ui.roi_start_0based, "25");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "145");
+        assert_eq!(area.qpcr_design_ui.roi_start_0based, "25");
+        assert_eq!(area.qpcr_design_ui.roi_end_0based, "145");
+        assert!(area.show_engine_ops);
+        assert!(
+            area.op_status
+                .contains("Seeded primer/qPCR ROI from current sequence selection")
+        );
+    }
+
+    #[test]
     fn seed_simple_pcr_roi_sets_flanking_and_min_amplicon() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -11835,6 +11858,24 @@ impl MainAreaDna {
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
                 }
+                let set_roi_response = ui.add_enabled(
+                    selection_roi.is_some(),
+                    egui::Button::new("Set PCR ROI"),
+                );
+                let set_roi_response = if selection_roi.is_some() {
+                    set_roi_response.on_hover_text(
+                        "Seed Primer/qPCR ROI from the current linear selection and open Engine Ops",
+                    )
+                } else {
+                    set_roi_response.on_hover_text(
+                        "Requires a non-empty linear map/sequence selection; drag-select a region first",
+                    )
+                };
+                if set_roi_response.clicked()
+                    && let Err(err) = self.seed_primer_design_roi_from_current_selection()
+                {
+                    self.op_status = err;
+                }
                 ui.menu_button("PCR ROI", |ui| {
                     let selection_response = ui.add_enabled(
                         selection_roi.is_some(),
@@ -11850,12 +11891,8 @@ impl MainAreaDna {
                         )
                     };
                     if selection_response.clicked() {
-                        if let Some((start, end_exclusive)) = selection_roi {
-                            self.seed_primer_design_roi_0based(
-                                start,
-                                end_exclusive,
-                                "current sequence selection",
-                            );
+                        if let Err(err) = self.seed_primer_design_roi_from_current_selection() {
+                            self.op_status = err;
                         }
                         ui.close();
                     }
@@ -11937,7 +11974,7 @@ impl MainAreaDna {
             if let Some((start, end_exclusive)) = selection_roi {
                 ui.label(
                     egui::RichText::new(format!(
-                        "Selection ready for PCR: {start}..{end_exclusive}. Use `Queue PCR selection` or `PCR ROI -> Add current selection to PCR queue`."
+                        "Selection ready for PCR: {start}..{end_exclusive}. Use `Set PCR ROI`, `Queue PCR selection`, or the `PCR ROI` menu."
                     ))
                     .weak()
                     .italics(),
@@ -15045,6 +15082,16 @@ impl MainAreaDna {
         Ok(())
     }
 
+    fn seed_primer_design_roi_from_current_selection(&mut self) -> Result<(), String> {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            return Err(
+                "No active map/sequence selection. Drag-select a region first.".to_string(),
+            );
+        };
+        self.seed_primer_design_roi_0based(start, end_exclusive, "current sequence selection");
+        Ok(())
+    }
+
     fn seed_primer_design_roi_0based(&mut self, start: usize, end_exclusive: usize, source: &str) {
         let Some((start, end_exclusive)) = self.normalize_roi_range_0based(start, end_exclusive)
         else {
@@ -15141,6 +15188,26 @@ impl MainAreaDna {
 
     fn render_selection_simple_pcr_context_action(&mut self, ui: &mut egui::Ui) -> bool {
         let selection_roi = self.current_selection_range_0based();
+        let set_roi_response = ui.add_enabled(
+            selection_roi.is_some(),
+            egui::Button::new("Set PCR ROI from selection"),
+        );
+        let set_roi_response = if let Some((start, end_exclusive)) = selection_roi {
+            set_roi_response.on_hover_text(format!(
+                "Seed Primer/qPCR ROI from the current selection {}..{} and open Engine Ops",
+                start, end_exclusive
+            ))
+        } else {
+            set_roi_response
+                .on_hover_text("Requires a non-empty current selection on the linear DNA map")
+        };
+        if set_roi_response.clicked() {
+            if let Err(err) = self.seed_primer_design_roi_from_current_selection() {
+                self.op_status = err;
+            }
+            return true;
+        }
+
         let response = ui.add_enabled(
             selection_roi.is_some(),
             egui::Button::new("Simple PCR from selection"),

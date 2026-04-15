@@ -1619,16 +1619,20 @@ Controls:
        - optional signed offsets (`+N`, `-N`)
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
-     or `PCR ROI` menu actions.
+     or `PCR ROI` actions.
    - The same `Selection formula` + `Apply Sel` control is also shown in the
      dedicated `PCR Designer` specialist window so pair-PCR setup can stay
      selection-first without switching back to the sequence toolbar.
 20. PCR ROI
+   - The DNA-window toolbar now also exposes a direct `Set PCR ROI` button for
+     the current map/text selection, alongside `Queue PCR selection`.
    - `PCR ROI` menu supports both single-ROI seeding and batch-queue capture:
      - seed Primer/qPCR ROI from current map/text selection
      - add current map/text selection to PCR region queue
      - seed Primer/qPCR ROI from selected feature bounds
      - add selected feature(s) to PCR region queue (one queued row per feature)
+   - map context menu now also offers `Set PCR ROI from selection` for the
+     active linear-map selection.
    - map context menu now also offers `Simple PCR from selection` whenever a
      non-empty selection is active:
      - seeds the selected span as the core ROI
