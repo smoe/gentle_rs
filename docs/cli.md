@@ -358,9 +358,9 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and `DesignQpcrAssays` plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`) and persisted report inspect/export helpers
-- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
-- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports
+- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
+- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 
 Dotplot/flexibility capability status:
 
@@ -1711,6 +1711,29 @@ Shared shell command:
       - includes ready-to-run operations:
         `operations.design_primer_pairs` (`DesignPrimerPairs`) and
         `operations.design_qpcr_assays` (`DesignQpcrAssays`)
+    - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
+      - expects an `Operation` payload whose root variant is
+        `PrepareRestrictionCloningPcrHandoff`
+      - creates extended forward/reverse primer artifacts plus one predicted
+        tailed amplicon artifact and one per-handoff container
+      - persists report schema
+        `gentle.restriction_cloning_pcr_handoff.v1`
+      - shell/direct output includes the saved handoff report in the command
+        response `output`
+    - Restriction-cloning vector suggestion notes
+      (`primers restriction-cloning-vector-suggestions SEQ_ID`):
+      - non-mutating helper for command-line/agent reasoning against one
+        destination vector
+      - returns schema
+        `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
+      - reports `selected_mcs`, `other_unique`, `missing_mcs`,
+        `recommended_single_site`, and `recommended_directed_pairs`
+      - mirrors the GUI preference order:
+        annotated `mcs_expected_sites` first, then other unique cutters
+    - Restriction-cloning saved-report helpers:
+      - `primers list-restriction-cloning-handoffs`
+      - `primers show-restriction-cloning-handoff REPORT_ID`
+      - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`
@@ -2744,6 +2767,12 @@ Advanced PCR with degenerate/randomized primer library:
 
 ```json
 {"PcrAdvanced":{"template":"pgex","forward_primer":{"sequence":"ATNAAA","anneal_len":6,"max_mismatches":1,"require_3prime_exact_bases":3,"library_mode":"Sample","max_variants":10,"sample_seed":42},"reverse_primer":{"sequence":"AAACCC","anneal_len":6,"max_mismatches":0,"require_3prime_exact_bases":4},"unique":false}}
+```
+
+Restriction-site cloning PCR handoff from a saved primer-pair report:
+
+```json
+{"PrepareRestrictionCloningPcrHandoff":{"template":"insert_tpl","primer_report_id":"insert_tpl_pairs_v1","pair_index":0,"destination_vector_seq_id":"pgl3_mcs","mode":"directed_pair","forward_enzyme":"EcoRI","reverse_enzyme":"HindIII","forward_leader_5prime":"GC","reverse_leader_5prime":"AT"}}
 ```
 
 PCR mutagenesis (explicit SNP intent):

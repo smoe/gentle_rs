@@ -3308,6 +3308,76 @@ Operation progress/cancellation semantics:
   - no dedicated GUI form yet; operation is available through `op`/workflow
     payloads.
 
+`PrepareRestrictionCloningPcrHandoff` contract (implemented v1):
+
+- Purpose:
+  - take one persisted `DesignPrimerPairs` result pair and turn it into a
+    cloning-aware handoff with restriction-site tails matched against a chosen
+    destination vector
+  - keep core primer proposal/ranking unchanged while creating new extended
+    primer artifacts and one restriction-ready amplicon artifact for downstream
+    digest/ligation staging
+- Operation payload shape:
+
+```json
+{
+  "PrepareRestrictionCloningPcrHandoff": {
+    "template": "seq_id",
+    "primer_report_id": "tp73_pairs_v1",
+    "pair_index": 0,
+    "destination_vector_seq_id": "pgl3_mcs",
+    "mode": "directed_pair",
+    "forward_enzyme": "EcoRI",
+    "reverse_enzyme": "HindIII",
+    "forward_leader_5prime": "GC",
+    "reverse_leader_5prime": "AT"
+  }
+}
+```
+
+- Baseline behavior:
+  - validates that `primer_report_id` belongs to `template` and that
+    `pair_index` exists in the persisted report
+  - derives:
+    - extended forward primer =
+      `forward_leader_5prime + forward restriction site + original forward primer`
+    - extended reverse primer =
+      `reverse_leader_5prime + reverse restriction site + original reverse primer`
+    - predicted tailed amplicon from the full extended primer sequences
+  - preserves annealing Tm/GC/hit semantics from the original annealing segment
+    while recomputing full-oligo secondary-structure and pair-dimer heuristics
+    as advisory diagnostics
+  - blocking compatibility checks:
+    - vector site absent or non-unique
+    - tailed amplicon site counts imply internal collisions instead of only
+      terminally added restriction sites
+    - directed-pair order disagrees with vector MCS order
+      (`mcs_expected_sites`) or, if absent, unique-cut order by cut position
+  - successful runs materialize graph-visible artifacts:
+    - one extended forward primer sequence
+    - one extended reverse primer sequence
+    - one predicted tailed amplicon sequence
+    - one per-handoff pool container
+  - successful runs also persist structured downstream hints:
+    - one `PcrAdvanced` operation payload using the full tailed oligos with
+      preserved `anneal_len`
+    - one insert `Digest` payload
+    - one vector `Digest` payload
+    - one ligation JSON snippet placeholder
+- Report schema:
+  - `gentle.restriction_cloning_pcr_handoff.v1`
+  - key fields include:
+    - `template`, `primer_report_id`, `pair_index`, `pair_rank`
+    - `destination_vector_seq_id`
+    - `mode`, selected enzymes, optional leaders
+    - original and extended primer records
+    - created artifact ids
+    - tailed amplicon length plus 5'/3' sequence previews
+    - extended pair dimer diagnostics
+    - `compatibility` summary with vector-site counts, insert-site counts,
+      cut positions, blocking errors, and warnings
+    - `workflow_hints` with suggested downstream operation payloads
+
 `PcrOverlapExtensionMutagenesis` contract (implemented baseline):
 
 - Purpose:
@@ -3400,6 +3470,11 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
+  - `primers restriction-cloning-vector-suggestions SEQ_ID`
+  - `primers list-restriction-cloning-handoffs`
+  - `primers show-restriction-cloning-handoff REPORT_ID`
+  - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
@@ -3412,6 +3487,16 @@ Primer-design shell command family (implemented):
   `{"DesignPrimerPairs": {...}}`.
 - `primers design-qpcr` expects an operation payload whose root variant is
   `{"DesignQpcrAssays": {...}}`.
+- `primers prepare-restriction-cloning` expects an operation payload whose root
+  variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
+- `primers restriction-cloning-vector-suggestions` is non-mutating and returns
+  the same MCS-first / unique-cutter suggestion ordering the GUI PCR Designer
+  uses for the selected destination vector.
+- restriction-cloning saved-report helpers mirror the existing primer/qPCR
+  lifecycle:
+  - list stored handoff summaries
+  - inspect one persisted handoff report by id
+  - export one persisted handoff report to JSON
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
@@ -3430,6 +3515,8 @@ Primer-design shell command family (implemented):
   - `gentle.primer_design_report_list.v1`
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
+  - `gentle.restriction_cloning_pcr_handoff.v1`
+  - `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
 - `gentle.primer_seed_request.v1` payload fields:
   - `template`
   - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
@@ -3437,6 +3524,18 @@ Primer-design shell command family (implemented):
   - `roi_end_0based_exclusive`
   - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
   - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
+- `gentle.restriction_cloning_vector_enzyme_suggestions.v1` payload fields:
+  - `suggestions.seq_id`
+  - `suggestions.selected_mcs[]` (preferred MCS-annotated cutters that are
+    currently unique/usable)
+  - `suggestions.other_unique[]` (other unique cutters on the vector)
+  - `suggestions.missing_mcs[]` (annotated MCS cutters that were named but are
+    not currently uniquely usable on the vector)
+  - `suggestions.recommended_single_site[]`
+    (`enzyme`, `cut_position_0based`)
+  - `suggestions.recommended_directed_pairs[]`
+    (`order_source`, `forward_enzyme`, `reverse_enzyme`,
+    `forward_cut_position_0based`, `reverse_cut_position_0based`)
 
 Feature-query shell contract (implemented):
 

@@ -1431,6 +1431,9 @@ Node click behavior in lineage `Graph` view:
 - Single-click on a PCR-related operation glyph in graph view, or on the `Op`
   cell for PCR-/primer-design-created outputs in the table: opens the
   dedicated `PCR Designer` on the stored template sequence context.
+- Single-click on a `RestrictionCloningPcrHandoff` analysis node: reopens the
+  same `PCR Designer` on the originating template and restores the saved
+  cloning-handoff selection (vector, enzymes, leaders, and saved handoff id).
 - Right-click context menu (graph and table node-id cells):
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
@@ -2727,6 +2730,46 @@ Beginner tutorial:
 Both operations persist reports into project metadata (same report store used by
 CLI/shared-shell `primers ...` commands).
 
+Restriction-site cloning handoff:
+
+- lives inside the PCR Designer as a post-design block, not as part of core
+  primer proposal/ranking
+- uses one persisted primer-pair report + selected pair rank as input and
+  creates a cloning-facing handoff without modifying the original short-primer
+  report artifacts
+- controls:
+  - `pair rank`
+  - `destination vector`
+  - `mode` (`single_site` / `directed_pair`)
+  - `forward enzyme`, `reverse enzyme`
+  - optional `forward 5' leader`, `reverse 5' leader`
+  - `Vector shortcuts`
+  - one-click `Recommended single-site` and `Recommended directed pairs` from
+    the same MCS-first / unique-cutter ordering used by CLI/shared-shell
+    reasoning helpers
+  - `Suggested enzymes` fallback pickers
+  - `Create restriction-tail handoff`
+- behavior:
+  - creates new extended forward/reverse primer artifacts plus one predicted
+    tailed amplicon artifact and one per-handoff pool container
+  - keeps annealing Tm semantics tied to the original annealing segment while
+    recomputing full-oligo self/dimer heuristics for advisory warnings
+  - blocks incompatible cloning setups when vector sites are absent/non-unique,
+    insert-site counts imply internal collisions, or directed MCS order does
+    not match the chosen forward/reverse site order
+- saved-handoff helpers:
+  - `List saved handoffs`
+  - `Show saved handoff`
+  - `Export saved handoff...`
+- preview shows:
+  - extended primer sequences
+  - predicted tailed amplicon ends/length
+  - vector cut positions and compatibility verdict
+  - suggested downstream `PcrAdvanced` / `Digest` payload hints
+- vector enzyme suggestions prefer `mcs_expected_sites` from MCS-like features
+  and fall back to unique cutters by cut position when no explicit MCS order is
+  available
+
 Persisted primer/qPCR reports now also appear in the project lineage graph/table
 as analysis artifacts linked from the template sequence.
 
@@ -2735,6 +2778,9 @@ as analysis artifacts linked from the template sequence.
 - clicking the underlying PCR-related operation glyph or `Op` cell reopens the
   same PCR Designer on the originating template sequence
 - lineage details expose the stored backend plus pair/assay counts
+- restriction-cloning handoffs also appear as lineage analysis artifacts linked
+  from the template sequence and reopen the same PCR Designer with the saved
+  handoff highlighted
 
 `Design Primer Pairs` materializes lineage-visible sequence artifacts for each
 accepted pair:

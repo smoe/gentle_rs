@@ -68,7 +68,9 @@ use crate::{
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
         PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry, RenderSvgMode,
-        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
+        RnaReadAlignConfig, RnaReadAlignmentDisplay,
         RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
@@ -480,6 +482,7 @@ struct PrimerDesignOpsUiState {
     max_tm_delta_c: String,
     max_pairs: String,
     report_id: String,
+    restriction_cloning: RestrictionCloningPcrHandoffUiState,
 }
 
 impl Default for PrimerDesignOpsUiState {
@@ -495,6 +498,35 @@ impl Default for PrimerDesignOpsUiState {
             max_tm_delta_c: "2.0".to_string(),
             max_pairs: "200".to_string(),
             report_id: "primer_report_gui".to_string(),
+            restriction_cloning: RestrictionCloningPcrHandoffUiState::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct RestrictionCloningPcrHandoffUiState {
+    selected_pair_rank_1based: String,
+    destination_vector_seq_id: String,
+    mode: RestrictionCloningPcrHandoffMode,
+    forward_enzyme: String,
+    reverse_enzyme: String,
+    forward_leader_5prime: String,
+    reverse_leader_5prime: String,
+    selected_saved_report_id: String,
+}
+
+impl Default for RestrictionCloningPcrHandoffUiState {
+    fn default() -> Self {
+        Self {
+            selected_pair_rank_1based: "1".to_string(),
+            destination_vector_seq_id: String::new(),
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: String::new(),
+            reverse_enzyme: String::new(),
+            forward_leader_5prime: String::new(),
+            reverse_leader_5prime: String::new(),
+            selected_saved_report_id: String::new(),
         }
     }
 }
@@ -1054,7 +1086,8 @@ mod tests {
             FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
             OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RestrictionEnzymeDisplayMode,
+            ProtocolCartoonPreviewTelemetry, RestrictionCloningPcrHandoffMode,
+            RestrictionEnzymeDisplayMode,
             RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
             RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
             RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
@@ -2465,6 +2498,8 @@ mod tests {
                 seq_id: "tp53_201".to_string(),
                 label: "TP53-201".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2479,6 +2514,8 @@ mod tests {
                 seq_id: "tp53_202".to_string(),
                 label: "TP53-202".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2527,6 +2564,8 @@ mod tests {
                 label: "toy-1".to_string(),
                 color_rgb: [29, 78, 216],
                 transcript_feature_id: Some(0),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 120,
@@ -2541,6 +2580,8 @@ mod tests {
                 label: "toy-2".to_string(),
                 color_rgb: [220, 38, 38],
                 transcript_feature_id: Some(1),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 132,
@@ -2555,6 +2596,8 @@ mod tests {
                 label: "toy-3".to_string(),
                 color_rgb: [5, 150, 105],
                 transcript_feature_id: Some(2),
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
                 span_end_0based: 140,
@@ -2620,6 +2663,8 @@ mod tests {
                 seq_id: "iso_a".to_string(),
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -2634,6 +2679,8 @@ mod tests {
                 seq_id: "iso_b".to_string(),
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -3149,6 +3196,84 @@ mod tests {
                 .contains("Seeded primer/qPCR ROI from painted ROI interval")
         );
         assert!(area.op_status.contains("open PCR Designer"));
+    }
+
+    #[test]
+    fn apply_restriction_cloning_single_site_recommendation_sets_mode_and_clears_saved_handoff() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = "handoff_old".to_string();
+        area.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::DirectedPair;
+        area.primer_design_ui.restriction_cloning.reverse_enzyme = "HindIII".to_string();
+
+        area.apply_restriction_cloning_single_site_recommendation("EcoRI");
+
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.mode,
+            RestrictionCloningPcrHandoffMode::SingleSite
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.forward_enzyme,
+            "EcoRI"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.reverse_enzyme,
+            "EcoRI"
+        );
+        assert!(
+            area.primer_design_ui
+                .restriction_cloning
+                .selected_saved_report_id
+                .is_empty()
+        );
+        assert!(area.op_status.contains("single-site recommendation 'EcoRI'"));
+        assert!(area.op_status.contains("vec1"));
+    }
+
+    #[test]
+    fn apply_restriction_cloning_directed_pair_recommendation_sets_mode_and_order() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = "handoff_old".to_string();
+
+        area.apply_restriction_cloning_directed_pair_recommendation(
+            "EcoRI",
+            "HindIII",
+            "mcs_expected_sites",
+        );
+
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.mode,
+            RestrictionCloningPcrHandoffMode::DirectedPair
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.forward_enzyme,
+            "EcoRI"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.reverse_enzyme,
+            "HindIII"
+        );
+        assert!(
+            area.primer_design_ui
+                .restriction_cloning
+                .selected_saved_report_id
+                .is_empty()
+        );
+        assert!(area.op_status.contains("EcoRI -> HindIII"));
+        assert!(area.op_status.contains("mcs_expected_sites"));
+        assert!(area.op_status.contains("vec1"));
     }
 
     #[test]
@@ -4535,6 +4660,130 @@ mod tests {
         assert!(area.show_engine_ops);
         assert_eq!(area.qpcr_design_ui.report_id, "qpcr_ui_focus");
         assert!(area.op_status.contains("qPCR report 'qpcr_ui_focus'"));
+    }
+
+    #[test]
+    fn focus_restriction_cloning_handoff_report_selects_saved_handoff_and_updates_pcr_designer() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+            )
+            .expect("sequence"),
+        );
+        let mut vector =
+            DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
+        *vector.restriction_enzymes_mut() = active_restriction_enzymes();
+        let vector_len_i64 = vector.len().try_into().unwrap();
+        vector.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, vector_len_i64),
+            qualifiers: vec![
+                ("label".into(), Some("MCS".to_string())),
+                ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+            ],
+        });
+        vector.update_computed_features();
+        state.sequences.insert("vec".to_string(), vector);
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(90),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_handoff".to_string()),
+            })
+            .expect("design primer pairs");
+        engine
+            .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+                template: "tpl".to_string(),
+                primer_report_id: "primer_ui_handoff".to_string(),
+                pair_index: 0,
+                destination_vector_seq_id: "vec".to_string(),
+                mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+                forward_enzyme: "EcoRI".to_string(),
+                reverse_enzyme: Some("HindIII".to_string()),
+                forward_leader_5prime: Some("GC".to_string()),
+                reverse_leader_5prime: Some("AT".to_string()),
+            })
+            .expect("prepare restriction-cloning handoff");
+        let handoff_id = engine
+            .list_restriction_cloning_pcr_handoffs()
+            .into_iter()
+            .find(|row| row.primer_report_id == "primer_ui_handoff")
+            .expect("handoff summary")
+            .report_id;
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+
+        area.focus_restriction_cloning_handoff_report(&handoff_id);
+
+        assert!(area.show_engine_ops);
+        assert_eq!(area.primer_design_ui.report_id, "primer_ui_handoff");
+        assert_eq!(
+            area.primer_design_ui
+                .restriction_cloning
+                .destination_vector_seq_id,
+            "vec"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.mode,
+            RestrictionCloningPcrHandoffMode::DirectedPair
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.forward_enzyme,
+            "EcoRI"
+        );
+        assert_eq!(
+            area.primer_design_ui.restriction_cloning.reverse_enzyme,
+            "HindIII"
+        );
+        assert_eq!(
+            area.primer_design_ui
+                .restriction_cloning
+                .selected_saved_report_id,
+            handoff_id
+        );
+        assert!(area.op_status.contains("Restriction-cloning handoff"));
     }
 
     #[test]
@@ -7626,6 +7875,8 @@ mod tests {
                 seq_id: "iso_a".to_string(),
                 label: "Isoform A".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [29, 78, 216],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -7644,6 +7895,8 @@ mod tests {
                 seq_id: "iso_b".to_string(),
                 label: "Isoform B".to_string(),
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 color_rgb: [220, 38, 38],
                 mode: DotplotMode::PairForward,
                 span_start_0based: 0,
@@ -28927,6 +29180,417 @@ impl MainAreaDna {
             })
     }
 
+    fn load_restriction_cloning_pcr_handoff_report(
+        &self,
+        report_id: &str,
+    ) -> Result<RestrictionCloningPcrHandoffReport, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Restriction-cloning handoff report_id is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_restriction_cloning_pcr_handoff(report_id)
+            .map_err(|err| {
+                format!(
+                    "Could not load restriction-cloning handoff report '{report_id}': {}",
+                    err.message
+                )
+            })
+    }
+
+    fn list_restriction_cloning_pcr_handoffs(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let reports = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .list_restriction_cloning_pcr_handoffs();
+        if reports.is_empty() {
+            self.op_status = "No persisted restriction-cloning PCR handoff reports".to_string();
+            return;
+        }
+        let preview_ids = reports
+            .iter()
+            .take(8)
+            .map(|row| row.report_id.clone())
+            .collect::<Vec<_>>();
+        let suffix = if reports.len() > preview_ids.len() {
+            ", ..."
+        } else {
+            ""
+        };
+        self.op_status = format!(
+            "Restriction-cloning PCR handoffs: {} total [{}{}]",
+            reports.len(),
+            preview_ids.join(", "),
+            suffix
+        );
+    }
+
+    fn show_restriction_cloning_pcr_handoff_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Restriction-cloning handoff report_id is empty".to_string();
+            return;
+        }
+        let report = match self.load_restriction_cloning_pcr_handoff_report(report_id) {
+            Ok(report) => report,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = report.report_id.clone();
+        let warning_count = report.compatibility.warnings.len();
+        let blocking_count = report.compatibility.blocking_errors.len();
+        let workflow_hint_count = usize::from(report.workflow_hints.pcr_advanced_operation.is_some())
+            + usize::from(report.workflow_hints.insert_digest_operation.is_some())
+            + usize::from(report.workflow_hints.vector_digest_operation.is_some())
+            + usize::from(report.workflow_hints.ligation_operation_snippet.is_some());
+        self.op_status = format!(
+            "Restriction-cloning handoff '{}' template='{}' pair=#{} vector='{}' mode={} enzymes={}/{} status={} warnings={} blocking={} workflow_hints={}",
+            report.report_id,
+            report.template,
+            report.pair_rank.max(report.pair_index + 1),
+            report.destination_vector_seq_id,
+            report.mode.as_str(),
+            report.forward_enzyme,
+            report.reverse_enzyme,
+            report.compatibility.status,
+            warning_count,
+            blocking_count,
+            workflow_hint_count
+        );
+    }
+
+    fn export_restriction_cloning_pcr_handoff_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Restriction-cloning handoff report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.restriction_cloning_pcr_handoff.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Restriction-cloning handoff export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let exported = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_restriction_cloning_pcr_handoff(report_id, &path_text);
+        match exported {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported restriction-cloning handoff '{}' to {}",
+                    report.report_id, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export restriction-cloning handoff '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn restriction_cloning_sequence_ids(&self) -> Vec<String> {
+        let Some(engine) = self.engine.clone() else {
+            return vec![];
+        };
+        let mut ids = engine
+            .read()
+            .ok()
+            .map(|guard| guard.state().sequences.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        ids.sort_unstable();
+        let active = self.seq_id.as_deref().unwrap_or_default();
+        ids.sort_by(|left, right| {
+            let left_active = left == active;
+            let right_active = right == active;
+            left_active.cmp(&right_active).reverse().then(left.cmp(right))
+        });
+        ids
+    }
+
+    fn restriction_cloning_vector_enzyme_suggestions(
+        &self,
+        seq_id: &str,
+    ) -> Result<RestrictionCloningVectorEnzymeSuggestions, String> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err("Restriction-cloning destination vector is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        engine
+            .read()
+            .expect("Engine lock poisoned")
+            .restriction_cloning_vector_enzyme_suggestions(seq_id)
+            .map_err(|err| err.message)
+    }
+
+    fn apply_restriction_cloning_single_site_recommendation(&mut self, enzyme: &str) {
+        let enzyme = enzyme.trim();
+        if enzyme.is_empty() {
+            return;
+        }
+        self.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::SingleSite;
+        self.primer_design_ui.restriction_cloning.forward_enzyme = enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme = enzyme.to_string();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .clear();
+        self.save_engine_ops_state();
+        let vector = self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim();
+        if vector.is_empty() {
+            self.op_status = format!(
+                "Applied restriction-cloning single-site recommendation '{}'",
+                enzyme
+            );
+        } else {
+            self.op_status = format!(
+                "Applied restriction-cloning single-site recommendation '{}' for vector '{}'",
+                enzyme, vector
+            );
+        }
+    }
+
+    fn apply_restriction_cloning_directed_pair_recommendation(
+        &mut self,
+        forward_enzyme: &str,
+        reverse_enzyme: &str,
+        order_source: &str,
+    ) {
+        let forward_enzyme = forward_enzyme.trim();
+        let reverse_enzyme = reverse_enzyme.trim();
+        if forward_enzyme.is_empty() || reverse_enzyme.is_empty() {
+            return;
+        }
+        self.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::DirectedPair;
+        self.primer_design_ui.restriction_cloning.forward_enzyme =
+            forward_enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme =
+            reverse_enzyme.to_string();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .clear();
+        self.save_engine_ops_state();
+        let vector = self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim();
+        let source_label = if order_source.trim().is_empty() {
+            "engine ordering".to_string()
+        } else {
+            order_source.trim().to_string()
+        };
+        if vector.is_empty() {
+            self.op_status = format!(
+                "Applied restriction-cloning directed-pair recommendation '{} -> {}' ({})",
+                forward_enzyme, reverse_enzyme, source_label
+            );
+        } else {
+            self.op_status = format!(
+                "Applied restriction-cloning directed-pair recommendation '{} -> {}' for vector '{}' ({})",
+                forward_enzyme, reverse_enzyme, vector, source_label
+            );
+        }
+    }
+
+    fn latest_restriction_cloning_handoff_report_id_matching_ui(&self) -> Option<String> {
+        let Some(engine) = self.engine.clone() else {
+            return None;
+        };
+        let selected_rank = self
+            .primer_design_ui
+            .restriction_cloning
+            .selected_pair_rank_1based
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .and_then(|value| value.checked_sub(1));
+        let mode = self.primer_design_ui.restriction_cloning.mode.as_str();
+        let vector = self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim()
+            .to_string();
+        let forward = self
+            .primer_design_ui
+            .restriction_cloning
+            .forward_enzyme
+            .trim()
+            .to_string();
+        let reverse = if self.primer_design_ui.restriction_cloning.mode
+            == RestrictionCloningPcrHandoffMode::SingleSite
+        {
+            if self
+                .primer_design_ui
+                .restriction_cloning
+                .reverse_enzyme
+                .trim()
+                .is_empty()
+            {
+                forward.clone()
+            } else {
+                self.primer_design_ui
+                    .restriction_cloning
+                    .reverse_enzyme
+                    .trim()
+                    .to_string()
+            }
+        } else {
+            self.primer_design_ui
+                .restriction_cloning
+                .reverse_enzyme
+                .trim()
+                .to_string()
+        };
+        engine
+            .read()
+            .ok()
+            .map(|guard| {
+                guard
+                    .list_restriction_cloning_pcr_handoffs()
+                    .into_iter()
+                    .filter(|summary| {
+                        summary.template == self.seq_id.clone().unwrap_or_default()
+                            && summary.primer_report_id == self.primer_design_ui.report_id
+                            && selected_rank.is_none_or(|pair_index| summary.pair_index == pair_index)
+                            && (vector.is_empty()
+                                || summary.destination_vector_seq_id.eq_ignore_ascii_case(&vector))
+                            && (forward.is_empty()
+                                || summary.forward_enzyme.eq_ignore_ascii_case(&forward))
+                            && (reverse.is_empty()
+                                || summary.reverse_enzyme.eq_ignore_ascii_case(&reverse))
+                            && summary.mode == mode
+                    })
+                    .max_by(|left, right| {
+                        left.generated_at_unix_ms
+                            .cmp(&right.generated_at_unix_ms)
+                            .then(left.report_id.cmp(&right.report_id))
+                    })
+                    .map(|summary| summary.report_id)
+            })
+            .flatten()
+    }
+
+    fn build_prepare_restriction_cloning_pcr_handoff_operation(
+        &self,
+        template: &str,
+    ) -> Result<Operation, String> {
+        let ui = &self.primer_design_ui.restriction_cloning;
+        let pair_rank = Self::parse_positive_usize_text(
+            &ui.selected_pair_rank_1based,
+            "restriction_cloning.selected_pair_rank_1based",
+        )?;
+        let pair_index = pair_rank
+            .checked_sub(1)
+            .ok_or_else(|| "Restriction-cloning selected pair rank must be >= 1".to_string())?;
+        let vector_seq_id = ui.destination_vector_seq_id.trim();
+        if vector_seq_id.is_empty() {
+            return Err("Choose a destination vector sequence before creating a restriction-tail handoff".to_string());
+        }
+        let primer_report_id = self.primer_design_ui.report_id.trim();
+        if primer_report_id.is_empty() {
+            return Err("Primer report_id is empty; create or select a saved primer report first".to_string());
+        }
+        let forward_enzyme = ui.forward_enzyme.trim();
+        if forward_enzyme.is_empty() {
+            return Err("Choose a forward restriction enzyme before creating a handoff".to_string());
+        }
+        let reverse_enzyme = if ui.mode == RestrictionCloningPcrHandoffMode::SingleSite {
+            if ui.reverse_enzyme.trim().is_empty() {
+                forward_enzyme.to_string()
+            } else {
+                ui.reverse_enzyme.trim().to_string()
+            }
+        } else if ui.reverse_enzyme.trim().is_empty() {
+            return Err("Choose a reverse restriction enzyme for directed_pair handoff".to_string());
+        } else {
+            ui.reverse_enzyme.trim().to_string()
+        };
+        Ok(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: template.to_string(),
+            primer_report_id: primer_report_id.to_string(),
+            pair_index,
+            destination_vector_seq_id: vector_seq_id.to_string(),
+            mode: ui.mode,
+            forward_enzyme: forward_enzyme.to_string(),
+            reverse_enzyme: Some(reverse_enzyme),
+            forward_leader_5prime: (!ui.forward_leader_5prime.trim().is_empty())
+                .then(|| ui.forward_leader_5prime.trim().to_string()),
+            reverse_leader_5prime: (!ui.reverse_leader_5prime.trim().is_empty())
+                .then(|| ui.reverse_leader_5prime.trim().to_string()),
+        })
+    }
+
+    pub fn focus_restriction_cloning_handoff_report(&mut self, report_id: &str) {
+        let normalized_id = report_id.trim();
+        if normalized_id.is_empty() {
+            self.op_status =
+                "Could not open restriction-cloning handoff: report_id is empty".to_string();
+            return;
+        }
+        let report = match self.load_restriction_cloning_pcr_handoff_report(normalized_id) {
+            Ok(report) => report,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        self.primer_design_ui.report_id = report.primer_report_id.clone();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_pair_rank_1based = report.pair_rank.max(report.pair_index + 1).to_string();
+        self.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = report.destination_vector_seq_id.clone();
+        self.primer_design_ui.restriction_cloning.mode = report.mode;
+        self.primer_design_ui.restriction_cloning.forward_enzyme = report.forward_enzyme.clone();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme = report.reverse_enzyme.clone();
+        self.primer_design_ui
+            .restriction_cloning
+            .forward_leader_5prime = report.forward_leader_5prime.clone();
+        self.primer_design_ui
+            .restriction_cloning
+            .reverse_leader_5prime = report.reverse_leader_5prime.clone();
+        self.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id = report.report_id.clone();
+        self.show_engine_ops = true;
+        self.show_restriction_cloning_pcr_handoff_report(normalized_id);
+        self.save_engine_ops_state();
+    }
+
     fn render_primer_design_report_preview(&mut self, ui: &mut egui::Ui) {
         let report_id = self.primer_design_ui.report_id.trim().to_string();
         if report_id.is_empty() {
@@ -29016,6 +29680,597 @@ impl MainAreaDna {
                 ui.small(format!(
                     "Showing 5 of {} accepted primer pairs. Use `Export report_id...` for the full saved report.",
                     report.pairs.len()
+                ));
+            }
+        });
+    }
+
+    fn render_restriction_cloning_handoff_section(&mut self, ui: &mut egui::Ui, template: &str) {
+        let report = match self.load_primer_design_report(&self.primer_design_ui.report_id) {
+            Ok(report) => report,
+            Err(message) => {
+                ui.group(|ui| {
+                    ui.label("Restriction-site cloning handoff");
+                    ui.small(message);
+                    ui.small(
+                        "Create or select a saved primer report first, then extend one accepted pair with restriction-site tails for cloning preflight.",
+                    );
+                });
+                return;
+            }
+        };
+        let pair_count = report.pairs.len();
+        let pair_preview = report
+            .pairs
+            .iter()
+            .take(8)
+            .map(|pair| {
+                format!(
+                    "#{} {}..{}",
+                    pair.rank, pair.amplicon_start_0based, pair.amplicon_end_0based_exclusive
+                )
+            })
+            .collect::<Vec<_>>();
+        let sequence_ids = self.restriction_cloning_sequence_ids();
+        let vector_options = sequence_ids
+            .iter()
+            .filter(|seq_id| seq_id.as_str() != template)
+            .cloned()
+            .collect::<Vec<_>>();
+        if self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim()
+            .is_empty()
+            && let Some(first_vector) = vector_options.first()
+        {
+            self.primer_design_ui
+                .restriction_cloning
+                .destination_vector_seq_id = first_vector.clone();
+        }
+        let suggestion_result = if self
+            .primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id
+            .trim()
+            .is_empty()
+        {
+            None
+        } else {
+            Some(self.restriction_cloning_vector_enzyme_suggestions(
+                &self
+                    .primer_design_ui
+                    .restriction_cloning
+                    .destination_vector_seq_id,
+            ))
+        };
+        let mut suggested_enzymes = vec![];
+        let mut suggestion_note = None::<String>;
+        let mut recommended_single_site = vec![];
+        let mut recommended_directed_pairs = vec![];
+        if let Some(result) = suggestion_result {
+            match result {
+                Ok(suggestions) => {
+                    suggested_enzymes.extend(suggestions.selected_mcs.iter().cloned());
+                    for enzyme in &suggestions.other_unique {
+                        if !suggested_enzymes.iter().any(|value| value == enzyme) {
+                            suggested_enzymes.push(enzyme.clone());
+                        }
+                    }
+                    recommended_single_site = suggestions.recommended_single_site.clone();
+                    recommended_directed_pairs = suggestions.recommended_directed_pairs.clone();
+                    if !suggestions.missing_mcs.is_empty() {
+                        suggestion_note = Some(format!(
+                            "MCS annotations mention unavailable/non-unique sites: {}",
+                            suggestions.missing_mcs.join(", ")
+                        ));
+                    }
+                }
+                Err(err) => suggestion_note = Some(err),
+            }
+        }
+        if !self
+            .primer_design_ui
+            .restriction_cloning
+            .forward_enzyme
+            .trim()
+            .is_empty()
+            && !suggested_enzymes.iter().any(|value| {
+                value.eq_ignore_ascii_case(
+                    self.primer_design_ui
+                        .restriction_cloning
+                        .forward_enzyme
+                        .trim(),
+                )
+            })
+        {
+            suggested_enzymes.push(
+                self.primer_design_ui
+                    .restriction_cloning
+                    .forward_enzyme
+                    .trim()
+                    .to_string(),
+            );
+        }
+        if !self
+            .primer_design_ui
+            .restriction_cloning
+            .reverse_enzyme
+            .trim()
+            .is_empty()
+            && !suggested_enzymes.iter().any(|value| {
+                value.eq_ignore_ascii_case(
+                    self.primer_design_ui
+                        .restriction_cloning
+                        .reverse_enzyme
+                        .trim(),
+                )
+            })
+        {
+            suggested_enzymes.push(
+                self.primer_design_ui
+                    .restriction_cloning
+                    .reverse_enzyme
+                    .trim()
+                    .to_string(),
+            );
+        }
+        suggested_enzymes.sort_unstable();
+        suggested_enzymes.dedup();
+
+        let selected_report_id = self
+            .primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .trim()
+            .to_string();
+        let selected_report = if selected_report_id.is_empty() {
+            None
+        } else {
+            self.load_restriction_cloning_pcr_handoff_report(&selected_report_id)
+                .ok()
+        };
+
+        ui.group(|ui| {
+            ui.label("Restriction-site cloning handoff");
+            ui.small(
+                "Post-design cloning preflight: extend one accepted primer pair with restriction-site tails, create new primer-vial artifacts plus a tailed amplicon, and stage digest/ligation hints without running cloning automatically.",
+            );
+            ui.small(format!(
+                "Saved primer report '{}' has {} accepted pair(s) [{}{}]",
+                report.report_id,
+                pair_count,
+                pair_preview.join(", "),
+                if pair_count > pair_preview.len() {
+                    ", ..."
+                } else {
+                    ""
+                }
+            ));
+            egui::Grid::new("restriction_cloning_handoff_grid")
+                .num_columns(4)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("pair rank");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .selected_pair_rank_1based,
+                        )
+                        .desired_width(80.0),
+                    )
+                    .on_hover_text("Accepted primer-pair rank from the saved primer report (1-based).");
+                    ui.label("destination vector");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .destination_vector_seq_id,
+                        )
+                        .desired_width(220.0),
+                    )
+                    .on_hover_text("Sequence ID of the destination cloning vector whose restriction sites constrain this handoff.");
+                    ui.end_row();
+                    ui.label("mode");
+                    egui::ComboBox::from_id_salt("restriction_cloning_mode")
+                        .selected_text(
+                            self.primer_design_ui
+                                .restriction_cloning
+                                .mode
+                                .as_str(),
+                        )
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.primer_design_ui.restriction_cloning.mode,
+                                RestrictionCloningPcrHandoffMode::SingleSite,
+                                "single_site",
+                            );
+                            ui.selectable_value(
+                                &mut self.primer_design_ui.restriction_cloning.mode,
+                                RestrictionCloningPcrHandoffMode::DirectedPair,
+                                "directed_pair",
+                            );
+                        });
+                    ui.label("saved handoff");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .selected_saved_report_id,
+                        )
+                        .desired_width(220.0),
+                    )
+                    .on_hover_text("Optional persisted restriction-cloning handoff report_id to reopen/export.");
+                    ui.end_row();
+                    ui.label("forward enzyme");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.primer_design_ui.restriction_cloning.forward_enzyme,
+                        )
+                        .desired_width(120.0),
+                    )
+                    .on_hover_text("Restriction enzyme on the forward-primer side (must be a usable vector cutter).");
+                    ui.label("reverse enzyme");
+                    ui.add_enabled(
+                        self.primer_design_ui.restriction_cloning.mode
+                            == RestrictionCloningPcrHandoffMode::DirectedPair,
+                        egui::TextEdit::singleline(
+                            &mut self.primer_design_ui.restriction_cloning.reverse_enzyme,
+                        )
+                        .desired_width(120.0),
+                    )
+                    .on_hover_text("Restriction enzyme on the reverse-primer side. In single_site mode the same enzyme is reused.");
+                    ui.end_row();
+                    ui.label("forward 5' leader");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .forward_leader_5prime,
+                        )
+                        .desired_width(120.0),
+                    )
+                    .on_hover_text("Optional additional 5' bases placed before the forward restriction site.");
+                    ui.label("reverse 5' leader");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .reverse_leader_5prime,
+                        )
+                        .desired_width(120.0),
+                    )
+                    .on_hover_text("Optional additional 5' bases placed before the reverse restriction site.");
+                    ui.end_row();
+                });
+
+            if self.primer_design_ui.restriction_cloning.mode
+                == RestrictionCloningPcrHandoffMode::SingleSite
+            {
+                self.primer_design_ui.restriction_cloning.reverse_enzyme =
+                    self.primer_design_ui.restriction_cloning.forward_enzyme.clone();
+            }
+
+            if !vector_options.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Vector shortcuts");
+                    egui::ComboBox::from_id_salt("restriction_cloning_vector_combo")
+                        .selected_text(
+                            if self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .destination_vector_seq_id
+                                .trim()
+                                .is_empty()
+                            {
+                                "choose destination vector"
+                            } else {
+                                self.primer_design_ui
+                                    .restriction_cloning
+                                    .destination_vector_seq_id
+                                    .as_str()
+                            },
+                        )
+                        .show_ui(ui, |ui| {
+                            for seq_id in &vector_options {
+                                ui.selectable_value(
+                                    &mut self
+                                        .primer_design_ui
+                                        .restriction_cloning
+                                        .destination_vector_seq_id,
+                                    seq_id.clone(),
+                                    seq_id,
+                                );
+                            }
+                        });
+                });
+            }
+            if !recommended_single_site.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recommended single-site");
+                    for suggestion in &recommended_single_site {
+                        let button_label = format!(
+                            "{} @ {}",
+                            suggestion.enzyme, suggestion.cut_position_0based
+                        );
+                        if ui
+                            .button(&button_label)
+                            .on_hover_text(
+                                "Use this MCS-aware single-cutter recommendation for both primer tails",
+                            )
+                            .clicked()
+                        {
+                            self.apply_restriction_cloning_single_site_recommendation(
+                                &suggestion.enzyme,
+                            );
+                        }
+                    }
+                });
+            }
+            if !recommended_directed_pairs.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recommended directed pairs");
+                    for suggestion in &recommended_directed_pairs {
+                        let button_label = format!(
+                            "{} -> {}",
+                            suggestion.forward_enzyme, suggestion.reverse_enzyme
+                        );
+                        let hover = format!(
+                            "Use directed insertion order from {} (cuts at {} and {})",
+                            suggestion.order_source,
+                            suggestion.forward_cut_position_0based,
+                            suggestion.reverse_cut_position_0based
+                        );
+                        if ui
+                            .button(&button_label)
+                            .on_hover_text(hover)
+                            .clicked()
+                        {
+                            self.apply_restriction_cloning_directed_pair_recommendation(
+                                &suggestion.forward_enzyme,
+                                &suggestion.reverse_enzyme,
+                                &suggestion.order_source,
+                            );
+                        }
+                    }
+                });
+            }
+            if !suggested_enzymes.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Suggested enzymes");
+                    egui::ComboBox::from_id_salt("restriction_cloning_forward_combo")
+                        .selected_text(
+                            if self
+                                .primer_design_ui
+                                .restriction_cloning
+                                .forward_enzyme
+                                .trim()
+                                .is_empty()
+                            {
+                                "choose forward enzyme"
+                            } else {
+                                self.primer_design_ui
+                                    .restriction_cloning
+                                    .forward_enzyme
+                                    .as_str()
+                            },
+                        )
+                        .show_ui(ui, |ui| {
+                            for enzyme in &suggested_enzymes {
+                                ui.selectable_value(
+                                    &mut self.primer_design_ui.restriction_cloning.forward_enzyme,
+                                    enzyme.clone(),
+                                    enzyme,
+                                );
+                            }
+                        });
+                    if self.primer_design_ui.restriction_cloning.mode
+                        == RestrictionCloningPcrHandoffMode::DirectedPair
+                    {
+                        egui::ComboBox::from_id_salt("restriction_cloning_reverse_combo")
+                            .selected_text(
+                                if self
+                                    .primer_design_ui
+                                    .restriction_cloning
+                                    .reverse_enzyme
+                                    .trim()
+                                    .is_empty()
+                                {
+                                    "choose reverse enzyme"
+                                } else {
+                                    self.primer_design_ui
+                                        .restriction_cloning
+                                        .reverse_enzyme
+                                        .as_str()
+                                },
+                            )
+                            .show_ui(ui, |ui| {
+                                for enzyme in &suggested_enzymes {
+                                    ui.selectable_value(
+                                        &mut self
+                                            .primer_design_ui
+                                            .restriction_cloning
+                                            .reverse_enzyme,
+                                        enzyme.clone(),
+                                        enzyme,
+                                    );
+                                }
+                            });
+                    }
+                });
+            }
+            if let Some(note) = suggestion_note {
+                ui.small(note);
+            } else if !suggested_enzymes.is_empty() {
+                ui.small(format!(
+                    "Vector suggestions prefer annotated MCS cutters first, then fall back to other unique cutters: {}",
+                    suggested_enzymes.join(", ")
+                ));
+            }
+            if !recommended_directed_pairs.is_empty() {
+                ui.small(
+                    "Directed-pair recommendations follow MCS order when available, otherwise unique-cut position order on the vector.",
+                );
+            }
+
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Create restriction-tail handoff")
+                    .on_hover_text(
+                        "Create extended primer-vial artifacts plus a tailed amplicon and digest/ligation preflight hints for the selected primer pair",
+                    )
+                    .clicked()
+                {
+                    match self.build_prepare_restriction_cloning_pcr_handoff_operation(template) {
+                        Ok(op) => {
+                            let started = Instant::now();
+                            let apply_result = self
+                                .engine
+                                .clone()
+                                .ok_or_else(|| "No engine attached".to_string())
+                                .and_then(|engine| {
+                                    engine
+                                        .write()
+                                        .map_err(|_| {
+                                            "Engine lock poisoned while preparing restriction-cloning handoff".to_string()
+                                        })?
+                                        .apply(op)
+                                        .map_err(|err| err.message)
+                                });
+                            match apply_result {
+                                Ok(result) => {
+                                    self.handle_operation_success(result, started);
+                                    if let Some(report_id) =
+                                        self.latest_restriction_cloning_handoff_report_id_matching_ui()
+                                    {
+                                        self.focus_restriction_cloning_handoff_report(&report_id);
+                                    } else {
+                                        self.save_engine_ops_state();
+                                    }
+                                }
+                                Err(message) => {
+                                    self.op_status =
+                                        format!("Restriction-cloning handoff failed: {message}");
+                                    self.op_error_popup = Some(message);
+                                }
+                            }
+                        }
+                        Err(err) => self.op_status = err,
+                    }
+                }
+                if ui
+                    .button("List saved handoffs")
+                    .on_hover_text("List persisted restriction-cloning PCR handoff report IDs")
+                    .clicked()
+                {
+                    self.list_restriction_cloning_pcr_handoffs();
+                }
+                let show_enabled = !self
+                    .primer_design_ui
+                    .restriction_cloning
+                    .selected_saved_report_id
+                    .trim()
+                    .is_empty();
+                if ui
+                    .add_enabled(show_enabled, egui::Button::new("Show saved handoff"))
+                    .on_hover_text("Show summary for the selected saved handoff report")
+                    .clicked()
+                {
+                    let report_id = self
+                        .primer_design_ui
+                        .restriction_cloning
+                        .selected_saved_report_id
+                        .clone();
+                    self.show_restriction_cloning_pcr_handoff_report(&report_id);
+                }
+                if ui
+                    .add_enabled(show_enabled, egui::Button::new("Export saved handoff..."))
+                    .on_hover_text("Export the selected saved handoff report to JSON")
+                    .clicked()
+                {
+                    let report_id = self
+                        .primer_design_ui
+                        .restriction_cloning
+                        .selected_saved_report_id
+                        .clone();
+                    self.export_restriction_cloning_pcr_handoff_report_dialog(&report_id);
+                }
+            });
+
+            if let Some(saved) = selected_report {
+                ui.separator();
+                ui.label("Saved handoff preview");
+                ui.small(format!(
+                    "report={} pair=#{} vector={} mode={} status={}",
+                    saved.report_id,
+                    saved.pair_rank.max(saved.pair_index + 1),
+                    saved.destination_vector_seq_id,
+                    saved.mode.as_str(),
+                    saved.compatibility.status
+                ));
+                egui::Grid::new("restriction_cloning_saved_detail_grid")
+                    .num_columns(2)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label("Extended forward");
+                        ui.monospace(&saved.extended_forward.sequence);
+                        ui.end_row();
+                        ui.label("Extended reverse");
+                        ui.monospace(&saved.extended_reverse.sequence);
+                        ui.end_row();
+                        ui.label("Tailed amplicon ends");
+                        ui.monospace(format!(
+                            "5' {} | 3' {} | len {} bp",
+                            saved.predicted_tailed_amplicon_5prime,
+                            saved.predicted_tailed_amplicon_3prime,
+                            saved.predicted_tailed_amplicon_length_bp
+                        ));
+                        ui.end_row();
+                        ui.label("Created artifacts");
+                        ui.monospace(format!(
+                            "fwd={} | rev={} | amplicon={}",
+                            saved.extended_forward_seq_id,
+                            saved.extended_reverse_seq_id,
+                            saved.tailed_amplicon_seq_id
+                        ));
+                        ui.end_row();
+                        ui.label("Digest geometry");
+                        ui.monospace(format!(
+                            "forward={} reverse={} order={}",
+                            saved.compatibility.forward_end_geometry,
+                            saved.compatibility.reverse_end_geometry,
+                            saved.compatibility.order_source
+                        ));
+                        ui.end_row();
+                    });
+                if !saved.compatibility.blocking_errors.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(183, 28, 28),
+                        format!(
+                            "Blocking errors: {}",
+                            saved.compatibility.blocking_errors.join(" | ")
+                        ),
+                    );
+                }
+                if !saved.compatibility.warnings.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 83, 9),
+                        format!("Warnings: {}", saved.compatibility.warnings.join(" | ")),
+                    );
+                }
+                ui.small(format!(
+                    "Suggested next steps: PCR advanced={} insert digest={} vector digest={} ligation snippet={}",
+                    saved.workflow_hints.pcr_advanced_operation.is_some(),
+                    saved.workflow_hints.insert_digest_operation.is_some(),
+                    saved.workflow_hints.vector_digest_operation.is_some(),
+                    saved.workflow_hints.ligation_operation_snippet.is_some()
                 ));
             }
         });
@@ -31140,6 +32395,7 @@ impl MainAreaDna {
                     }
                 });
                 self.render_primer_design_report_preview(ui);
+                self.render_restriction_cloning_handoff_section(ui, &template);
             });
 
         if include_qpcr_section {

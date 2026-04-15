@@ -4205,6 +4205,572 @@ impl GentleEngine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn execute_prepare_restriction_cloning_pcr_handoff(
+        &mut self,
+        result: &mut OpResult,
+        parent_seq_ids: &mut Vec<SeqId>,
+        run_id: &str,
+        op_id: &str,
+        template: SeqId,
+        primer_report_id: String,
+        pair_index: usize,
+        destination_vector_seq_id: SeqId,
+        mode: RestrictionCloningPcrHandoffMode,
+        forward_enzyme: String,
+        reverse_enzyme: Option<String>,
+        forward_leader_5prime: Option<String>,
+        reverse_leader_5prime: Option<String>,
+    ) -> Result<(), EngineError> {
+        let primer_report_id = Self::normalize_primer_design_report_id(&primer_report_id)?;
+        let primer_report = self.get_primer_design_report(&primer_report_id)?;
+        if primer_report.template != template {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer report '{}' belongs to template '{}' rather than requested template '{}'",
+                    primer_report_id, primer_report.template, template
+                ),
+            });
+        }
+        let Some(source_pair) = primer_report.pairs.get(pair_index).cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Primer report '{}' does not contain pair_index {} (pairs={})",
+                    primer_report_id,
+                    pair_index,
+                    primer_report.pairs.len()
+                ),
+            });
+        };
+        let pair_rank = if source_pair.rank == 0 {
+            pair_index + 1
+        } else {
+            source_pair.rank
+        };
+        let forward_enzyme = forward_enzyme.trim().to_string();
+        if forward_enzyme.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "forward_enzyme cannot be empty".to_string(),
+            });
+        }
+        let reverse_enzyme = reverse_enzyme
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| forward_enzyme.clone());
+        if mode == RestrictionCloningPcrHandoffMode::DirectedPair
+            && forward_enzyme.eq_ignore_ascii_case(&reverse_enzyme)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "directed_pair restriction-cloning handoff requires different forward and reverse enzymes"
+                        .to_string(),
+            });
+        }
+        let forward_leader_5prime = forward_leader_5prime
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?
+            .unwrap_or_default();
+        let reverse_leader_5prime = reverse_leader_5prime
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?
+            .unwrap_or_default();
+
+        let (enzymes, missing) =
+            self.resolve_enzymes(&[forward_enzyme.clone(), reverse_enzyme.clone()])?;
+        if !missing.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Restriction-cloning handoff could not resolve requested enzymes: {}",
+                    missing.join(",")
+                ),
+            });
+        }
+        let enzyme_by_name = enzymes
+            .into_iter()
+            .map(|enzyme| (enzyme.name.clone(), enzyme))
+            .collect::<HashMap<_, _>>();
+        let forward_enzyme_spec =
+            enzyme_by_name
+                .get(&forward_enzyme)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Forward enzyme '{}' was not available after resolution",
+                        forward_enzyme
+                    ),
+                })?;
+        let reverse_enzyme_spec =
+            enzyme_by_name
+                .get(&reverse_enzyme)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Reverse enzyme '{}' was not available after resolution",
+                        reverse_enzyme
+                    ),
+                })?;
+
+        let template_seq = self
+            .state
+            .sequences
+            .get(&template)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", template),
+            })?
+            .get_forward_string()
+            .to_ascii_uppercase();
+        let vector = self
+            .state
+            .sequences
+            .get(&destination_vector_seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", destination_vector_seq_id),
+            })?
+            .clone();
+
+        let extended_forward_sequence = format!(
+            "{}{}{}",
+            forward_leader_5prime, forward_enzyme_spec.sequence, source_pair.forward.sequence
+        );
+        let extended_reverse_sequence = format!(
+            "{}{}{}",
+            reverse_leader_5prime, reverse_enzyme_spec.sequence, source_pair.reverse.sequence
+        );
+        let mut extended_forward = source_pair.forward.clone();
+        extended_forward.sequence = extended_forward_sequence.clone();
+        extended_forward = Self::annotate_primer_record_heuristics(
+            extended_forward,
+            source_pair.forward.anneal_length_bp,
+        );
+        extended_forward.tm_c = source_pair.forward.tm_c;
+        extended_forward.gc_fraction = source_pair.forward.gc_fraction;
+        extended_forward.anneal_hits = source_pair.forward.anneal_hits;
+
+        let mut extended_reverse = source_pair.reverse.clone();
+        extended_reverse.sequence = extended_reverse_sequence.clone();
+        extended_reverse = Self::annotate_primer_record_heuristics(
+            extended_reverse,
+            source_pair.reverse.anneal_length_bp,
+        );
+        extended_reverse.tm_c = source_pair.reverse.tm_c;
+        extended_reverse.gc_fraction = source_pair.reverse.gc_fraction;
+        extended_reverse.anneal_hits = source_pair.reverse.anneal_hits;
+
+        let mut tailed_pair = source_pair.clone();
+        tailed_pair.forward = extended_forward.clone();
+        tailed_pair.reverse = extended_reverse.clone();
+        tailed_pair.primer_pair_complementary_run_bp = Self::compute_primer_pair_dimer_metrics(
+            extended_forward_sequence.as_bytes(),
+            extended_reverse_sequence.as_bytes(),
+        )
+        .max_complementary_run_bp;
+        tailed_pair.primer_pair_3prime_complementary_run_bp =
+            Self::compute_primer_pair_dimer_metrics(
+                extended_forward_sequence.as_bytes(),
+                extended_reverse_sequence.as_bytes(),
+            )
+            .max_3prime_complementary_run_bp;
+        tailed_pair.rule_flags.forward_secondary_structure_ok =
+            extended_forward.longest_homopolymer_run_bp
+                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                && extended_forward.self_complementary_run_bp
+                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        tailed_pair.rule_flags.reverse_secondary_structure_ok =
+            extended_reverse.longest_homopolymer_run_bp
+                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                && extended_reverse.self_complementary_run_bp
+                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        tailed_pair.rule_flags.primer_pair_dimer_risk_low =
+            tailed_pair.primer_pair_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                && tailed_pair.primer_pair_3prime_complementary_run_bp
+                    <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP;
+
+        let tailed_amplicon_sequence =
+            Self::build_tailed_amplicon_sequence_from_primer_pair(&template_seq, &tailed_pair)?;
+        let mut tailed_amplicon_dna =
+            DNAsequence::from_sequence(&tailed_amplicon_sequence).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not materialize predicted tailed amplicon for primer report '{}' pair {}: {e}",
+                    primer_report_id, pair_rank
+                ),
+            })?;
+        tailed_amplicon_dna.set_circular(false);
+        *tailed_amplicon_dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        Self::prepare_sequence(&mut tailed_amplicon_dna);
+
+        let vector_cut_positions = Self::restriction_cloning_cut_positions_0based(&vector);
+        let insert_cut_positions = Self::restriction_cloning_cut_positions_0based(&tailed_amplicon_dna);
+        let expected_insert_forward = if mode == RestrictionCloningPcrHandoffMode::SingleSite {
+            2usize
+        } else {
+            1usize
+        };
+        let expected_insert_reverse = if mode == RestrictionCloningPcrHandoffMode::SingleSite {
+            2usize
+        } else {
+            1usize
+        };
+
+        let mut compatibility = RestrictionCloningPcrDigestCompatibility {
+            status: "compatible".to_string(),
+            order_source: "vector_unique_cut_position_order".to_string(),
+            vector_site_count_by_enzyme: BTreeMap::new(),
+            insert_site_count_by_enzyme: BTreeMap::new(),
+            expected_insert_site_count_by_enzyme: BTreeMap::new(),
+            vector_cut_position_0based_by_enzyme: BTreeMap::new(),
+            vector_sites_unique_ok: true,
+            insert_sites_unique_to_tails_ok: true,
+            directed_order_ok: true,
+            termini_compatible: true,
+            forward_end_geometry: forward_enzyme_spec.end_geometry().kind_label().to_string(),
+            reverse_end_geometry: reverse_enzyme_spec.end_geometry().kind_label().to_string(),
+            blocking_errors: vec![],
+            warnings: vec![],
+        };
+
+        let forward_vector_count = vector_cut_positions
+            .get(&forward_enzyme)
+            .map(|cuts| cuts.len())
+            .unwrap_or(0);
+        let reverse_vector_count = vector_cut_positions
+            .get(&reverse_enzyme)
+            .map(|cuts| cuts.len())
+            .unwrap_or(0);
+        compatibility
+            .vector_site_count_by_enzyme
+            .insert(forward_enzyme.clone(), forward_vector_count);
+        compatibility
+            .vector_site_count_by_enzyme
+            .insert(reverse_enzyme.clone(), reverse_vector_count);
+        compatibility
+            .insert_site_count_by_enzyme
+            .insert(
+                forward_enzyme.clone(),
+                insert_cut_positions
+                    .get(&forward_enzyme)
+                    .map(|cuts| cuts.len())
+                    .unwrap_or(0),
+            );
+        compatibility
+            .insert_site_count_by_enzyme
+            .insert(
+                reverse_enzyme.clone(),
+                insert_cut_positions
+                    .get(&reverse_enzyme)
+                    .map(|cuts| cuts.len())
+                    .unwrap_or(0),
+            );
+        compatibility
+            .expected_insert_site_count_by_enzyme
+            .insert(forward_enzyme.clone(), expected_insert_forward);
+        compatibility
+            .expected_insert_site_count_by_enzyme
+            .insert(reverse_enzyme.clone(), expected_insert_reverse);
+        if let Some(cut) = vector_cut_positions
+            .get(&forward_enzyme)
+            .and_then(|cuts| cuts.first().copied())
+        {
+            compatibility
+                .vector_cut_position_0based_by_enzyme
+                .insert(forward_enzyme.clone(), cut);
+        }
+        if let Some(cut) = vector_cut_positions
+            .get(&reverse_enzyme)
+            .and_then(|cuts| cuts.first().copied())
+        {
+            compatibility
+                .vector_cut_position_0based_by_enzyme
+                .insert(reverse_enzyme.clone(), cut);
+        }
+
+        let count_or_zero = |map: &BTreeMap<String, Vec<usize>>, key: &str| -> usize {
+            map.get(key).map(|rows| rows.len()).unwrap_or(0)
+        };
+        if forward_vector_count != 1 {
+            compatibility.vector_sites_unique_ok = false;
+            compatibility.blocking_errors.push(format!(
+                "Destination vector '{}' must contain exactly one usable '{}' site (found {})",
+                destination_vector_seq_id, forward_enzyme, forward_vector_count
+            ));
+        }
+        if reverse_vector_count != 1 {
+            compatibility.vector_sites_unique_ok = false;
+            compatibility.blocking_errors.push(format!(
+                "Destination vector '{}' must contain exactly one usable '{}' site (found {})",
+                destination_vector_seq_id, reverse_enzyme, reverse_vector_count
+            ));
+        }
+        let insert_forward_count = count_or_zero(&insert_cut_positions, &forward_enzyme);
+        let insert_reverse_count = count_or_zero(&insert_cut_positions, &reverse_enzyme);
+        if insert_forward_count != expected_insert_forward {
+            compatibility.insert_sites_unique_to_tails_ok = false;
+            compatibility.blocking_errors.push(format!(
+                "Predicted tailed amplicon carries {} '{}' site(s); expected {} after adding only terminal restriction tails",
+                insert_forward_count, forward_enzyme, expected_insert_forward
+            ));
+        }
+        if insert_reverse_count != expected_insert_reverse {
+            compatibility.insert_sites_unique_to_tails_ok = false;
+            compatibility.blocking_errors.push(format!(
+                "Predicted tailed amplicon carries {} '{}' site(s); expected {} after adding only terminal restriction tails",
+                insert_reverse_count, reverse_enzyme, expected_insert_reverse
+            ));
+        }
+
+        if mode == RestrictionCloningPcrHandoffMode::DirectedPair {
+            let mcs_order = Self::restriction_cloning_mcs_expected_site_order(&vector);
+            let directed_order_ok = if !mcs_order.is_empty()
+                && mcs_order.iter().any(|name| name == &forward_enzyme)
+                && mcs_order.iter().any(|name| name == &reverse_enzyme)
+            {
+                compatibility.order_source = "mcs_expected_sites".to_string();
+                let forward_idx = mcs_order
+                    .iter()
+                    .position(|name| name == &forward_enzyme)
+                    .unwrap_or(usize::MAX);
+                let reverse_idx = mcs_order
+                    .iter()
+                    .position(|name| name == &reverse_enzyme)
+                    .unwrap_or(usize::MAX);
+                forward_idx < reverse_idx
+            } else {
+                let forward_cut = compatibility
+                    .vector_cut_position_0based_by_enzyme
+                    .get(&forward_enzyme)
+                    .copied();
+                let reverse_cut = compatibility
+                    .vector_cut_position_0based_by_enzyme
+                    .get(&reverse_enzyme)
+                    .copied();
+                match (forward_cut, reverse_cut) {
+                    (Some(forward_cut), Some(reverse_cut)) => forward_cut < reverse_cut,
+                    _ => false,
+                }
+            };
+            compatibility.directed_order_ok = directed_order_ok;
+            if !directed_order_ok {
+                compatibility.blocking_errors.push(format!(
+                    "Directed insertion requires destination-vector site order '{}' then '{}'; the selected vector order did not match that direction",
+                    forward_enzyme, reverse_enzyme
+                ));
+            }
+        }
+
+        let advisories = Self::primer_pair_heuristic_advisories(&tailed_pair);
+        for advisory in advisories {
+            compatibility.warnings.push(advisory.clone());
+            result.warnings.push(format!(
+                "Restriction-cloning handoff '{}' advisory: {}",
+                primer_report_id, advisory
+            ));
+        }
+        if !compatibility.blocking_errors.is_empty() {
+            compatibility.status = "blocked".to_string();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: compatibility.blocking_errors.join(" | "),
+            });
+        }
+
+        let report_id = Self::render_restriction_cloning_pcr_handoff_report_id(
+            &primer_report_id,
+            pair_rank,
+            &destination_vector_seq_id,
+            mode,
+            &forward_enzyme,
+            &reverse_enzyme,
+            &forward_leader_5prime,
+            &reverse_leader_5prime,
+        );
+        let report_token = Self::normalize_id_token(&report_id);
+        let extended_forward_seq_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{report_token}_fwd_ext"),
+            &extended_forward_sequence,
+        )?;
+        let extended_reverse_seq_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{report_token}_rev_ext"),
+            &extended_reverse_sequence,
+        )?;
+        let tailed_amplicon_seq_id = self.materialize_derived_linear_sequence(
+            result,
+            &format!("{report_token}_amplicon_tailed"),
+            &tailed_amplicon_sequence,
+        )?;
+        let handoff_container_id = self.add_container(
+            &[
+                extended_forward_seq_id.clone(),
+                extended_reverse_seq_id.clone(),
+                tailed_amplicon_seq_id.clone(),
+            ],
+            ContainerKind::Pool,
+            Some(format!("Restriction cloning handoff {}", report_id)),
+            Some(&result.op_id),
+        );
+
+        let pcr_advanced_operation = Operation::PcrAdvanced {
+            template: template.clone(),
+            forward_primer: PcrPrimerSpec {
+                sequence: extended_forward_sequence.clone(),
+                anneal_len: Some(source_pair.forward.anneal_length_bp),
+                max_mismatches: Some(0),
+                require_3prime_exact_bases: None,
+                library_mode: None,
+                max_variants: None,
+                sample_seed: None,
+            },
+            reverse_primer: PcrPrimerSpec {
+                sequence: extended_reverse_sequence.clone(),
+                anneal_len: Some(source_pair.reverse.anneal_length_bp),
+                max_mismatches: Some(0),
+                require_3prime_exact_bases: None,
+                library_mode: None,
+                max_variants: None,
+                sample_seed: None,
+            },
+            output_id: Some(format!("{report_token}_pcr_product")),
+            unique: Some(true),
+        };
+        let insert_digest_operation = Operation::Digest {
+            input: tailed_amplicon_seq_id.clone(),
+            enzymes: if mode == RestrictionCloningPcrHandoffMode::SingleSite {
+                vec![forward_enzyme.clone()]
+            } else {
+                vec![forward_enzyme.clone(), reverse_enzyme.clone()]
+            },
+            output_prefix: Some(format!("{report_token}_insert_digest")),
+        };
+        let vector_digest_operation = Operation::Digest {
+            input: destination_vector_seq_id.clone(),
+            enzymes: if mode == RestrictionCloningPcrHandoffMode::SingleSite {
+                vec![forward_enzyme.clone()]
+            } else {
+                vec![forward_enzyme.clone(), reverse_enzyme.clone()]
+            },
+            output_prefix: Some(format!("{report_token}_vector_digest")),
+        };
+        let ligation_operation_snippet = serde_json::json!({
+            "Ligation": {
+                "inputs": [
+                    "<vector_backbone_fragment_seq_id>",
+                    "<insert_core_fragment_seq_id>"
+                ],
+                "circularize_if_possible": true,
+                "output_id": format!("{report_token}_clone"),
+                "protocol": "sticky",
+                "output_prefix": format!("{report_token}_ligation"),
+                "unique": true
+            }
+        });
+        let report = RestrictionCloningPcrHandoffReport {
+            schema: RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA.to_string(),
+            report_id: report_id.clone(),
+            template: template.clone(),
+            primer_report_id: primer_report_id.clone(),
+            pair_index,
+            pair_rank,
+            destination_vector_seq_id: destination_vector_seq_id.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(op_id.to_string()),
+            run_id: Some(run_id.to_string()),
+            mode,
+            forward_enzyme: forward_enzyme.clone(),
+            reverse_enzyme: reverse_enzyme.clone(),
+            forward_leader_5prime: forward_leader_5prime.clone(),
+            reverse_leader_5prime: reverse_leader_5prime.clone(),
+            original_forward: source_pair.forward.clone(),
+            original_reverse: source_pair.reverse.clone(),
+            extended_forward: extended_forward.clone(),
+            extended_reverse: extended_reverse.clone(),
+            extended_forward_seq_id: extended_forward_seq_id.clone(),
+            extended_reverse_seq_id: extended_reverse_seq_id.clone(),
+            tailed_amplicon_seq_id: tailed_amplicon_seq_id.clone(),
+            handoff_container_id: handoff_container_id.clone(),
+            predicted_tailed_amplicon_length_bp: tailed_amplicon_sequence.len(),
+            predicted_tailed_amplicon_5prime: tailed_amplicon_sequence
+                .chars()
+                .take(40)
+                .collect(),
+            predicted_tailed_amplicon_3prime: tailed_amplicon_sequence
+                .chars()
+                .rev()
+                .take(40)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect(),
+            extended_pair_complementary_run_bp: tailed_pair.primer_pair_complementary_run_bp,
+            extended_pair_3prime_complementary_run_bp: tailed_pair
+                .primer_pair_3prime_complementary_run_bp,
+            compatibility,
+            workflow_hints: RestrictionCloningPcrWorkflowHints {
+                pcr_advanced_operation: Some(pcr_advanced_operation),
+                insert_digest_operation: Some(insert_digest_operation),
+                vector_digest_operation: Some(vector_digest_operation),
+                ligation_operation_snippet: Some(ligation_operation_snippet),
+                insert_fragment_hint: Some(
+                    "Digest of the tailed amplicon is expected to retain the central fragment between the added restriction sites.".to_string(),
+                ),
+                vector_fragment_hint: Some(if mode == RestrictionCloningPcrHandoffMode::SingleSite {
+                    "Use the linearized vector backbone fragment produced by the single-cutter digest.".to_string()
+                } else {
+                    "Use the destination-vector backbone fragment spanning the chosen forward/reverse openings; the small intervening MCS fragment is expected to be discarded.".to_string()
+                }),
+            },
+        };
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .restriction_cloning_handoffs
+            .insert(report.report_id.clone(), report.clone())
+            .is_some();
+        self.write_primer_design_store(store)?;
+
+        parent_seq_ids.push(template.clone());
+        parent_seq_ids.push(destination_vector_seq_id.clone());
+        result.messages.push(format!(
+            "{} restriction-cloning PCR handoff '{}' from primer report '{}' pair {} onto vector '{}'",
+            if replaced { "Updated" } else { "Created" },
+            report.report_id,
+            primer_report_id,
+            pair_rank,
+            destination_vector_seq_id
+        ));
+        if let Some(container_id) = handoff_container_id {
+            result.messages.push(format!(
+                "Created restriction-cloning handoff container '{}' with extended primer and tailed amplicon artifacts",
+                container_id
+            ));
+        }
+        result.messages.push(format!(
+            "Extended primers '{}', '{}' and predicted tailed amplicon '{}' were materialized for cloning handoff '{}'",
+            extended_forward_seq_id,
+            extended_reverse_seq_id,
+            tailed_amplicon_seq_id,
+            report.report_id
+        ));
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn execute_overlap_extension_mutagenesis(
         &mut self,
         result: &mut OpResult,
@@ -8680,6 +9246,34 @@ impl GentleEngine {
                     max_pairs,
                     report_id,
                     Some(insertion),
+                )?;
+            }
+            Operation::PrepareRestrictionCloningPcrHandoff {
+                template,
+                primer_report_id,
+                pair_index,
+                destination_vector_seq_id,
+                mode,
+                forward_enzyme,
+                reverse_enzyme,
+                forward_leader_5prime,
+                reverse_leader_5prime,
+            } => {
+                let op_id = result.op_id.clone();
+                self.execute_prepare_restriction_cloning_pcr_handoff(
+                    &mut result,
+                    &mut parent_seq_ids,
+                    run_id,
+                    &op_id,
+                    template,
+                    primer_report_id,
+                    pair_index,
+                    destination_vector_seq_id,
+                    mode,
+                    forward_enzyme,
+                    reverse_enzyme,
+                    forward_leader_5prime,
+                    reverse_leader_5prime,
                 )?;
             }
             Operation::PcrOverlapExtensionMutagenesis {

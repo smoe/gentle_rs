@@ -262,6 +262,8 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
+    "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
 const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_reports.v1";
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
@@ -2030,6 +2032,7 @@ struct PrimerDesignStore {
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
+    restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2841,6 +2844,17 @@ pub enum Operation {
         max_tm_delta_c: Option<f64>,
         max_pairs: Option<usize>,
         report_id: Option<String>,
+    },
+    PrepareRestrictionCloningPcrHandoff {
+        template: SeqId,
+        primer_report_id: String,
+        pair_index: usize,
+        destination_vector_seq_id: SeqId,
+        mode: RestrictionCloningPcrHandoffMode,
+        forward_enzyme: String,
+        reverse_enzyme: Option<String>,
+        forward_leader_5prime: Option<String>,
+        reverse_leader_5prime: Option<String>,
     },
     PcrOverlapExtensionMutagenesis {
         template: SeqId,
@@ -4351,6 +4365,7 @@ impl GentleEngine {
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
                 "DesignInsertionPrimerPairs".to_string(),
+                "PrepareRestrictionCloningPcrHandoff".to_string(),
                 "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
                 "DeriveTranscriptSequences".to_string(),
@@ -6685,6 +6700,25 @@ impl GentleEngine {
             .collect()
     }
 
+    fn rebase_name_lookup_by_normalized() -> HashMap<String, String> {
+        let mut lookup = HashMap::new();
+        for enzyme in active_restriction_enzymes() {
+            let normalized_name = Self::normalize_enzyme_match_token(&enzyme.name);
+            if !normalized_name.is_empty() {
+                lookup.entry(normalized_name).or_insert(enzyme.name);
+            }
+        }
+        lookup
+    }
+
+    fn canonicalize_rebase_enzyme_name(
+        raw: &str,
+        lookup: &HashMap<String, String>,
+    ) -> Option<String> {
+        let normalized = Self::normalize_enzyme_match_token(raw);
+        lookup.get(&normalized).cloned()
+    }
+
     fn extract_rebase_enzyme_names_from_text(text: &str) -> Vec<String> {
         let tokens = text
             .split(|c: char| !c.is_ascii_alphanumeric())
@@ -6695,13 +6729,7 @@ impl GentleEngine {
         if tokens.is_empty() {
             return vec![];
         }
-        let mut lookup: HashMap<String, String> = HashMap::new();
-        for enzyme in active_restriction_enzymes() {
-            let normalized_name = Self::normalize_enzyme_match_token(&enzyme.name);
-            if !normalized_name.is_empty() {
-                lookup.entry(normalized_name).or_insert(enzyme.name);
-            }
-        }
+        let lookup = Self::rebase_name_lookup_by_normalized();
         let mut out: Vec<String> = vec![];
         let mut seen: HashSet<String> = HashSet::new();
         let mut push_candidate = |candidate: String| {
@@ -6739,6 +6767,184 @@ impl GentleEngine {
         )
         .unwrap_or_default();
         Self::text_mentions_mcs(&text)
+    }
+
+    fn restriction_cloning_cut_positions_0based(
+        dna: &DNAsequence,
+    ) -> BTreeMap<String, Vec<usize>> {
+        let seq_len = dna.len();
+        let mut by_enzyme: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for site in dna
+            .restriction_enzyme_sites()
+            .iter()
+            .filter(|site| site.forward_strand)
+        {
+            let Some((cut_start, _)) = site.recessed_opening_window_0based(seq_len) else {
+                continue;
+            };
+            by_enzyme
+                .entry(site.enzyme.name.clone())
+                .or_default()
+                .push(cut_start);
+        }
+        by_enzyme
+    }
+
+    fn restriction_cloning_mcs_expected_site_order(dna: &DNAsequence) -> Vec<String> {
+        let lookup = Self::rebase_name_lookup_by_normalized();
+        let mut ordered = vec![];
+        let mut seen = HashSet::new();
+        for feature in dna.features().iter().filter(|feature| Self::feature_looks_like_mcs(feature)) {
+            for raw in feature.qualifier_values("mcs_expected_sites") {
+                for token in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
+                        if seen.insert(name.clone()) {
+                            ordered.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        ordered
+    }
+
+    pub fn restriction_cloning_vector_enzyme_suggestions(
+        &self,
+        seq_id: &str,
+    ) -> Result<RestrictionCloningVectorEnzymeSuggestions, EngineError> {
+        let dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Sequence '{}' not found", seq_id),
+        })?;
+        let cut_positions = Self::restriction_cloning_cut_positions_0based(dna);
+        let unique_cutters = cut_positions
+            .iter()
+            .filter_map(|(name, cuts)| (cuts.len() == 1).then_some(name.clone()))
+            .collect::<HashSet<_>>();
+        let lookup = Self::rebase_name_lookup_by_normalized();
+        let mut selected_mcs = vec![];
+        let mut missing_mcs = vec![];
+        let mut seen_selected = HashSet::new();
+        let mut seen_missing = HashSet::new();
+        for feature in dna.features().iter().filter(|feature| Self::feature_looks_like_mcs(feature)) {
+            let mut candidates = vec![];
+            for raw in feature.qualifier_values("mcs_expected_sites") {
+                for token in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
+                        candidates.push(name);
+                    } else {
+                        candidates.extend(Self::extract_rebase_enzyme_names_from_text(token));
+                    }
+                }
+            }
+            for key in ["note", "label", "gene", "name", "standard_name"] {
+                for raw in feature.qualifier_values(key) {
+                    candidates.extend(Self::extract_rebase_enzyme_names_from_text(raw));
+                }
+            }
+            for name in candidates {
+                if unique_cutters.contains(&name) {
+                    if seen_selected.insert(name.clone()) {
+                        selected_mcs.push(name);
+                    }
+                } else if seen_missing.insert(name.clone()) {
+                    missing_mcs.push(name);
+                }
+            }
+        }
+        let mut other_unique = unique_cutters
+            .into_iter()
+            .filter(|name| !seen_selected.contains(name))
+            .collect::<Vec<_>>();
+        other_unique.sort_by(|left, right| {
+            cut_positions
+                .get(left)
+                .and_then(|cuts| cuts.first().copied())
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &cut_positions
+                        .get(right)
+                        .and_then(|cuts| cuts.first().copied())
+                        .unwrap_or(usize::MAX),
+                )
+                .then(left.cmp(right))
+        });
+        let recommended_single_site = selected_mcs
+            .iter()
+            .chain(other_unique.iter())
+            .filter_map(|name| {
+                cut_positions
+                    .get(name)
+                    .and_then(|cuts| cuts.first().copied())
+                    .map(|cut_position_0based| RestrictionCloningSingleSiteSuggestion {
+                        enzyme: name.clone(),
+                        cut_position_0based,
+                    })
+            })
+            .collect::<Vec<_>>();
+        let recommended_directed_pairs = if selected_mcs.len() >= 2 {
+            let mut pairs = vec![];
+            for left_idx in 0..selected_mcs.len() {
+                for right_idx in (left_idx + 1)..selected_mcs.len() {
+                    let forward = &selected_mcs[left_idx];
+                    let reverse = &selected_mcs[right_idx];
+                    let Some(forward_cut_position_0based) = cut_positions
+                        .get(forward)
+                        .and_then(|cuts| cuts.first().copied())
+                    else {
+                        continue;
+                    };
+                    let Some(reverse_cut_position_0based) = cut_positions
+                        .get(reverse)
+                        .and_then(|cuts| cuts.first().copied())
+                    else {
+                        continue;
+                    };
+                    pairs.push(RestrictionCloningDirectedPairSuggestion {
+                        order_source: "mcs_expected_sites".to_string(),
+                        forward_enzyme: forward.clone(),
+                        reverse_enzyme: reverse.clone(),
+                        forward_cut_position_0based,
+                        reverse_cut_position_0based,
+                    });
+                }
+            }
+            pairs
+        } else {
+            let mut ordered_unique = other_unique
+                .iter()
+                .filter_map(|name| {
+                    cut_positions
+                        .get(name)
+                        .and_then(|cuts| cuts.first().copied())
+                        .map(|cut| (name.clone(), cut))
+                })
+                .collect::<Vec<_>>();
+            ordered_unique.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
+            let mut pairs = vec![];
+            for left_idx in 0..ordered_unique.len() {
+                for right_idx in (left_idx + 1)..ordered_unique.len() {
+                    let (forward_enzyme, forward_cut_position_0based) = &ordered_unique[left_idx];
+                    let (reverse_enzyme, reverse_cut_position_0based) = &ordered_unique[right_idx];
+                    pairs.push(RestrictionCloningDirectedPairSuggestion {
+                        order_source: "vector_unique_cut_position_order".to_string(),
+                        forward_enzyme: forward_enzyme.clone(),
+                        reverse_enzyme: reverse_enzyme.clone(),
+                        forward_cut_position_0based: *forward_cut_position_0based,
+                        reverse_cut_position_0based: *reverse_cut_position_0based,
+                    });
+                }
+            }
+            pairs
+        };
+        Ok(RestrictionCloningVectorEnzymeSuggestions {
+            seq_id: seq_id.to_string(),
+            selected_mcs,
+            other_unique,
+            missing_mcs,
+            recommended_single_site,
+            recommended_directed_pairs,
+        })
     }
 
     fn feature_overlaps_span(
@@ -7750,7 +7956,10 @@ impl GentleEngine {
         &mut self,
         mut store: PrimerDesignStore,
     ) -> Result<(), EngineError> {
-        if store.reports.is_empty() && store.qpcr_reports.is_empty() {
+        if store.reports.is_empty()
+            && store.qpcr_reports.is_empty()
+            && store.restriction_cloning_handoffs.is_empty()
+        {
             self.state
                 .metadata
                 .remove(PRIMER_DESIGN_REPORTS_METADATA_KEY);
@@ -8070,6 +8279,77 @@ impl GentleEngine {
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write qPCR design report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_restriction_cloning_pcr_handoffs(
+        &self,
+    ) -> Vec<RestrictionCloningPcrHandoffReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store
+            .restriction_cloning_handoffs
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.restriction_cloning_handoffs.get(&id))
+            .map(|report| RestrictionCloningPcrHandoffReportSummary {
+                report_id: report.report_id.clone(),
+                template: report.template.clone(),
+                primer_report_id: report.primer_report_id.clone(),
+                pair_index: report.pair_index,
+                pair_rank: report.pair_rank,
+                destination_vector_seq_id: report.destination_vector_seq_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                mode: report.mode.as_str().to_string(),
+                forward_enzyme: report.forward_enzyme.clone(),
+                reverse_enzyme: report.reverse_enzyme.clone(),
+                compatibility_status: report.compatibility.status.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_restriction_cloning_pcr_handoff(
+        &self,
+        report_id: &str,
+    ) -> Result<RestrictionCloningPcrHandoffReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        let store = self.read_primer_design_store();
+        store
+            .restriction_cloning_handoffs
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Restriction-cloning PCR handoff report '{}' not found",
+                    report_id
+                ),
+            })
+    }
+
+    pub fn export_restriction_cloning_pcr_handoff(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<RestrictionCloningPcrHandoffReport, EngineError> {
+        let report = self.get_restriction_cloning_pcr_handoff(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize restriction-cloning PCR handoff report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write restriction-cloning PCR handoff report to '{path}': {e}"
+            ),
         })?;
         Ok(report)
     }
@@ -14723,6 +15003,8 @@ impl GentleEngine {
             label,
             color_rgb,
             transcript_feature_id,
+            query_anchor_0based: None,
+            query_anchor_label: None,
             mode,
             span_start_0based,
             span_end_0based,

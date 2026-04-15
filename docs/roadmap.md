@@ -991,6 +991,30 @@ order. Durable architecture constraints and decisions remain in
     insertion-first wrapper over pair design (requested anchors + extension
     sequences + anchor-adjacent windows) while persisting the same report
     schema with optional `insertion_context` compensation rows
+  - engine operation `PrepareRestrictionCloningPcrHandoff` now provides a
+    post-design cloning handoff from one persisted primer-pair report:
+    - validates vector restriction-site compatibility and directed MCS order
+    - materializes extended forward/reverse primer artifacts plus one tailed
+      amplicon artifact and one per-handoff container
+    - persists report schema
+      `gentle.restriction_cloning_pcr_handoff.v1`
+    - stores downstream `PcrAdvanced` / `Digest` hint payloads for later
+      cloning workflow staging
+  - shared-shell/CLI primer helpers now also expose non-mutating restriction-
+    cloning vector suggestions (`primers restriction-cloning-vector-suggestions`)
+    so GUI and command-line/agent reasoning can inspect the same MCS-first /
+    unique-cutter preference order
+    - the suggestion payload now also includes deterministic
+      single-site and directed-pair recommendations from the same engine-owned
+      ordering logic
+    - PCR Designer now exposes those same recommendations directly as one-click
+      `Recommended single-site` / `Recommended directed pairs` actions instead
+      of only flat enzyme pickers
+  - shared-shell/CLI primer helpers now expose saved restriction-cloning
+    handoff lifecycle routes:
+    - `primers list-restriction-cloning-handoffs`
+    - `primers show-restriction-cloning-handoff`
+    - `primers export-restriction-cloning-handoff`
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged
@@ -1024,6 +1048,13 @@ order. Durable architecture constraints and decisions remain in
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
+  - the PCR Designer now also exposes a cloning-aware
+    `Restriction-site cloning handoff` block:
+    - choose saved pair rank, destination vector, mode, enzymes, and optional
+      5' leaders
+    - reuse MCS-aware vector enzyme suggestions
+    - inspect saved compatibility summaries and downstream digest/PCR hints
+    - reopen saved handoffs from lineage analysis nodes
   - GUI Engine Ops now also exposes report-management helpers in the same
     primer/qPCR panel:
     - list persisted report IDs

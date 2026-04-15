@@ -1,5 +1,5 @@
 {
-   "command_count": 310,
+   "command_count": 315,
    "commands": [
       {
          "aliases": [
@@ -1806,6 +1806,68 @@
          "path": "primers design-qpcr",
          "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
          "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareRestrictionCloningPcrHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers prepare-restriction-cloning",
+         "summary": "Create a restriction-site cloning handoff from one persisted primer-pair report and a destination vector.",
+         "usage": "primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers restriction-cloning-vector-suggestions",
+         "summary": "Inspect MCS-first and unique-cutter restriction-enzyme suggestions for one destination vector.",
+         "usage": "primers restriction-cloning-vector-suggestions SEQ_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-restriction-cloning-handoffs",
+         "summary": "List persisted restriction-cloning PCR handoff reports.",
+         "usage": "primers list-restriction-cloning-handoffs"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-restriction-cloning-handoff",
+         "summary": "Inspect one persisted restriction-cloning PCR handoff report by report ID.",
+         "usage": "primers show-restriction-cloning-handoff REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-restriction-cloning-handoff",
+         "summary": "Write one persisted restriction-cloning PCR handoff report to JSON.",
+         "usage": "primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],

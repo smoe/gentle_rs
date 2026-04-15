@@ -1739,6 +1739,158 @@ pub struct PrimerDesignReportSummary {
     pub backend_used: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RestrictionCloningPcrHandoffMode {
+    #[default]
+    SingleSite,
+    DirectedPair,
+}
+
+impl RestrictionCloningPcrHandoffMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleSite => "single_site",
+            Self::DirectedPair => "directed_pair",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningSingleSiteSuggestion {
+    pub enzyme: String,
+    pub cut_position_0based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningDirectedPairSuggestion {
+    pub order_source: String,
+    pub forward_enzyme: String,
+    pub reverse_enzyme: String,
+    pub forward_cut_position_0based: usize,
+    pub reverse_cut_position_0based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningVectorEnzymeSuggestions {
+    pub seq_id: String,
+    #[serde(default)]
+    pub selected_mcs: Vec<String>,
+    #[serde(default)]
+    pub other_unique: Vec<String>,
+    #[serde(default)]
+    pub missing_mcs: Vec<String>,
+    #[serde(default)]
+    pub recommended_single_site: Vec<RestrictionCloningSingleSiteSuggestion>,
+    #[serde(default)]
+    pub recommended_directed_pairs: Vec<RestrictionCloningDirectedPairSuggestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningPcrDigestCompatibility {
+    pub status: String,
+    pub order_source: String,
+    #[serde(default)]
+    pub vector_site_count_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub insert_site_count_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub expected_insert_site_count_by_enzyme: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub vector_cut_position_0based_by_enzyme: BTreeMap<String, usize>,
+    pub vector_sites_unique_ok: bool,
+    pub insert_sites_unique_to_tails_ok: bool,
+    pub directed_order_ok: bool,
+    pub termini_compatible: bool,
+    pub forward_end_geometry: String,
+    pub reverse_end_geometry: String,
+    #[serde(default)]
+    pub blocking_errors: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningPcrWorkflowHints {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcr_advanced_operation: Option<Operation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_digest_operation: Option<Operation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_digest_operation: Option<Operation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ligation_operation_snippet: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_fragment_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_fragment_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningPcrHandoffReport {
+    pub schema: String,
+    pub report_id: String,
+    pub template: String,
+    pub primer_report_id: String,
+    pub pair_index: usize,
+    pub pair_rank: usize,
+    pub destination_vector_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub mode: RestrictionCloningPcrHandoffMode,
+    pub forward_enzyme: String,
+    pub reverse_enzyme: String,
+    pub forward_leader_5prime: String,
+    pub reverse_leader_5prime: String,
+    pub original_forward: PrimerDesignPrimerRecord,
+    pub original_reverse: PrimerDesignPrimerRecord,
+    pub extended_forward: PrimerDesignPrimerRecord,
+    pub extended_reverse: PrimerDesignPrimerRecord,
+    pub extended_forward_seq_id: String,
+    pub extended_reverse_seq_id: String,
+    pub tailed_amplicon_seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handoff_container_id: Option<String>,
+    pub predicted_tailed_amplicon_length_bp: usize,
+    pub predicted_tailed_amplicon_5prime: String,
+    pub predicted_tailed_amplicon_3prime: String,
+    pub extended_pair_complementary_run_bp: usize,
+    pub extended_pair_3prime_complementary_run_bp: usize,
+    #[serde(default)]
+    pub compatibility: RestrictionCloningPcrDigestCompatibility,
+    #[serde(default)]
+    pub workflow_hints: RestrictionCloningPcrWorkflowHints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningPcrHandoffReportSummary {
+    pub report_id: String,
+    pub template: String,
+    pub primer_report_id: String,
+    pub pair_index: usize,
+    pub pair_rank: usize,
+    pub destination_vector_seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub mode: String,
+    pub forward_enzyme: String,
+    pub reverse_enzyme: String,
+    pub compatibility_status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct QpcrAssayRuleFlags {

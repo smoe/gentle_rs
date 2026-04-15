@@ -1364,6 +1364,20 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersPrepareRestrictionCloning {
+        request_json: String,
+    },
+    PrimersRestrictionCloningVectorSuggestions {
+        seq_id: String,
+    },
+    PrimersListRestrictionCloningHandoffs,
+    PrimersShowRestrictionCloningHandoff {
+        report_id: String,
+    },
+    PrimersExportRestrictionCloningHandoff {
+        report_id: String,
+        path: String,
+    },
     PrimersPreflight {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
@@ -6685,6 +6699,25 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersPrepareRestrictionCloning { request_json } => format!(
+                "prepare restriction-site cloning handoff from JSON request payload (len={})",
+                request_json.len()
+            ),
+            Self::PrimersRestrictionCloningVectorSuggestions { seq_id } => format!(
+                "list restriction-cloning vector enzyme suggestions for '{}'",
+                seq_id
+            ),
+            Self::PrimersListRestrictionCloningHandoffs => {
+                "list stored restriction-cloning PCR handoff reports".to_string()
+            }
+            Self::PrimersShowRestrictionCloningHandoff { report_id } => format!(
+                "show stored restriction-cloning PCR handoff report '{}'",
+                report_id
+            ),
+            Self::PrimersExportRestrictionCloningHandoff { report_id, path } => format!(
+                "export stored restriction-cloning PCR handoff report '{}' to '{}'",
+                report_id, path
+            ),
             Self::PrimersPreflight {
                 backend,
                 primer3_executable,
@@ -7512,6 +7545,10 @@ impl ShellCommand {
                 | Self::GuidesProtocolExport { .. }
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
+                | Self::PrimersPrepareRestrictionCloning { .. }
+                | Self::PrimersListRestrictionCloningHandoffs
+                | Self::PrimersShowRestrictionCloningHandoff { .. }
+                | Self::PrimersExportRestrictionCloningHandoff { .. }
                 | Self::TranscriptsDerive { .. }
                 | Self::DotplotCompute { .. }
                 | Self::DotplotOverlayCompute { .. }
@@ -17791,6 +17828,133 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersPrepareRestrictionCloning { request_json } => {
+            let json_text = parse_json_payload(request_json)?;
+            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
+                format!(
+                    "Invalid primers prepare-restriction-cloning request JSON: {} (expected Operation payload with PrepareRestrictionCloningPcrHandoff)",
+                    e
+                )
+            })?;
+            let (
+                template_id,
+                requested_primer_report_id,
+                destination_vector_seq_id,
+                pair_index,
+                mode,
+                forward_enzyme,
+                reverse_enzyme,
+            ) = match &op {
+                Operation::PrepareRestrictionCloningPcrHandoff {
+                    template,
+                    primer_report_id,
+                    pair_index,
+                    destination_vector_seq_id,
+                    mode,
+                    forward_enzyme,
+                    reverse_enzyme,
+                    ..
+                } => (
+                    template.clone(),
+                    primer_report_id.clone(),
+                    destination_vector_seq_id.clone(),
+                    *pair_index,
+                    mode.as_str().to_string(),
+                    forward_enzyme.clone(),
+                    reverse_enzyme.clone().unwrap_or_else(|| forward_enzyme.clone()),
+                ),
+                _ => {
+                    return Err(
+                        "primers prepare-restriction-cloning expects an Operation payload with PrepareRestrictionCloningPcrHandoff"
+                            .to_string(),
+                    );
+                }
+            };
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let selected_report = engine
+                .list_restriction_cloning_pcr_handoffs()
+                .into_iter()
+                .filter(|summary| {
+                    summary.template == template_id
+                        && summary.primer_report_id == requested_primer_report_id
+                        && summary.destination_vector_seq_id == destination_vector_seq_id
+                        && summary.pair_index == pair_index
+                        && summary.mode == mode
+                        && summary.forward_enzyme == forward_enzyme
+                        && summary.reverse_enzyme == reverse_enzyme
+                })
+                .max_by_key(|summary| summary.generated_at_unix_ms)
+                .and_then(|summary| {
+                    engine
+                        .get_restriction_cloning_pcr_handoff(&summary.report_id)
+                        .ok()
+                });
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "report": selected_report,
+                }),
+            })
+        }
+        ShellCommand::PrimersRestrictionCloningVectorSuggestions { seq_id } => {
+            let suggestions = engine
+                .restriction_cloning_vector_enzyme_suggestions(seq_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_vector_enzyme_suggestions.v1",
+                    "suggestions": suggestions,
+                }),
+            })
+        }
+        ShellCommand::PrimersListRestrictionCloningHandoffs => {
+            let reports = engine.list_restriction_cloning_pcr_handoffs();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_pcr_handoff_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowRestrictionCloningHandoff { report_id } => {
+            let report = engine
+                .get_restriction_cloning_pcr_handoff(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportRestrictionCloningHandoff { report_id, path } => {
+            let report = engine
+                .export_restriction_cloning_pcr_handoff(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_pcr_handoff_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "compatibility_status": report.compatibility.status,
+                }),
+            })
+        }
         ShellCommand::PrimersPreflight {
             backend,
             primer3_executable,
@@ -19633,6 +19797,11 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersSeedFromSplicing { .. }
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
+            | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+            | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
+            | ShellCommand::PrimersListRestrictionCloningHandoffs
+            | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }
+            | ShellCommand::PrimersExportRestrictionCloningHandoff { .. }
             | ShellCommand::PrimersPreflight { .. }
             | ShellCommand::PrimersListReports
             | ShellCommand::PrimersShowReport { .. }
@@ -21873,6 +22042,11 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSeedFromSplicing { .. }
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
+        | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+        | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
+        | ShellCommand::PrimersListRestrictionCloningHandoffs
+        | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }
+        | ShellCommand::PrimersExportRestrictionCloningHandoff { .. }
         | ShellCommand::PrimersPreflight { .. }
         | ShellCommand::PrimersListReports
         | ShellCommand::PrimersShowReport { .. }
