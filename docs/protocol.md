@@ -3472,6 +3472,9 @@ Primer-design shell command family (implemented):
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers restriction-cloning-vector-suggestions SEQ_ID`
+  - `primers list-restriction-cloning-handoffs`
+  - `primers show-restriction-cloning-handoff REPORT_ID`
+  - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
@@ -3489,6 +3492,11 @@ Primer-design shell command family (implemented):
 - `primers restriction-cloning-vector-suggestions` is non-mutating and returns
   the same MCS-first / unique-cutter suggestion ordering the GUI PCR Designer
   uses for the selected destination vector.
+- restriction-cloning saved-report helpers mirror the existing primer/qPCR
+  lifecycle:
+  - list stored handoff summaries
+  - inspect one persisted handoff report by id
+  - export one persisted handoff report to JSON
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
@@ -3523,6 +3531,11 @@ Primer-design shell command family (implemented):
   - `suggestions.other_unique[]` (other unique cutters on the vector)
   - `suggestions.missing_mcs[]` (annotated MCS cutters that were named but are
     not currently uniquely usable on the vector)
+  - `suggestions.recommended_single_site[]`
+    (`enzyme`, `cut_position_0based`)
+  - `suggestions.recommended_directed_pairs[]`
+    (`order_source`, `forward_enzyme`, `reverse_enzyme`,
+    `forward_cut_position_0based`, `reverse_cut_position_0based`)
 
 Feature-query shell contract (implemented):
 

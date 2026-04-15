@@ -1370,6 +1370,14 @@ pub enum ShellCommand {
     PrimersRestrictionCloningVectorSuggestions {
         seq_id: String,
     },
+    PrimersListRestrictionCloningHandoffs,
+    PrimersShowRestrictionCloningHandoff {
+        report_id: String,
+    },
+    PrimersExportRestrictionCloningHandoff {
+        report_id: String,
+        path: String,
+    },
     PrimersPreflight {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
@@ -6699,6 +6707,17 @@ impl ShellCommand {
                 "list restriction-cloning vector enzyme suggestions for '{}'",
                 seq_id
             ),
+            Self::PrimersListRestrictionCloningHandoffs => {
+                "list stored restriction-cloning PCR handoff reports".to_string()
+            }
+            Self::PrimersShowRestrictionCloningHandoff { report_id } => format!(
+                "show stored restriction-cloning PCR handoff report '{}'",
+                report_id
+            ),
+            Self::PrimersExportRestrictionCloningHandoff { report_id, path } => format!(
+                "export stored restriction-cloning PCR handoff report '{}' to '{}'",
+                report_id, path
+            ),
             Self::PrimersPreflight {
                 backend,
                 primer3_executable,
@@ -7527,6 +7546,9 @@ impl ShellCommand {
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
+                | Self::PrimersListRestrictionCloningHandoffs
+                | Self::PrimersShowRestrictionCloningHandoff { .. }
+                | Self::PrimersExportRestrictionCloningHandoff { .. }
                 | Self::TranscriptsDerive { .. }
                 | Self::DotplotCompute { .. }
                 | Self::DotplotOverlayCompute { .. }
@@ -17897,6 +17919,42 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersListRestrictionCloningHandoffs => {
+            let reports = engine.list_restriction_cloning_pcr_handoffs();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_pcr_handoff_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::PrimersShowRestrictionCloningHandoff { report_id } => {
+            let report = engine
+                .get_restriction_cloning_pcr_handoff(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::PrimersExportRestrictionCloningHandoff { report_id, path } => {
+            let report = engine
+                .export_restriction_cloning_pcr_handoff(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.restriction_cloning_pcr_handoff_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "compatibility_status": report.compatibility.status,
+                }),
+            })
+        }
         ShellCommand::PrimersPreflight {
             backend,
             primer3_executable,
@@ -19741,6 +19799,9 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
+            | ShellCommand::PrimersListRestrictionCloningHandoffs
+            | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }
+            | ShellCommand::PrimersExportRestrictionCloningHandoff { .. }
             | ShellCommand::PrimersPreflight { .. }
             | ShellCommand::PrimersListReports
             | ShellCommand::PrimersShowReport { .. }
@@ -21983,6 +22044,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
+        | ShellCommand::PrimersListRestrictionCloningHandoffs
+        | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }
+        | ShellCommand::PrimersExportRestrictionCloningHandoff { .. }
         | ShellCommand::PrimersPreflight { .. }
         | ShellCommand::PrimersListReports
         | ShellCommand::PrimersShowReport { .. }

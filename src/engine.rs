@@ -6869,11 +6869,81 @@ impl GentleEngine {
                 )
                 .then(left.cmp(right))
         });
+        let recommended_single_site = selected_mcs
+            .iter()
+            .chain(other_unique.iter())
+            .filter_map(|name| {
+                cut_positions
+                    .get(name)
+                    .and_then(|cuts| cuts.first().copied())
+                    .map(|cut_position_0based| RestrictionCloningSingleSiteSuggestion {
+                        enzyme: name.clone(),
+                        cut_position_0based,
+                    })
+            })
+            .collect::<Vec<_>>();
+        let recommended_directed_pairs = if selected_mcs.len() >= 2 {
+            let mut pairs = vec![];
+            for left_idx in 0..selected_mcs.len() {
+                for right_idx in (left_idx + 1)..selected_mcs.len() {
+                    let forward = &selected_mcs[left_idx];
+                    let reverse = &selected_mcs[right_idx];
+                    let Some(forward_cut_position_0based) = cut_positions
+                        .get(forward)
+                        .and_then(|cuts| cuts.first().copied())
+                    else {
+                        continue;
+                    };
+                    let Some(reverse_cut_position_0based) = cut_positions
+                        .get(reverse)
+                        .and_then(|cuts| cuts.first().copied())
+                    else {
+                        continue;
+                    };
+                    pairs.push(RestrictionCloningDirectedPairSuggestion {
+                        order_source: "mcs_expected_sites".to_string(),
+                        forward_enzyme: forward.clone(),
+                        reverse_enzyme: reverse.clone(),
+                        forward_cut_position_0based,
+                        reverse_cut_position_0based,
+                    });
+                }
+            }
+            pairs
+        } else {
+            let mut ordered_unique = other_unique
+                .iter()
+                .filter_map(|name| {
+                    cut_positions
+                        .get(name)
+                        .and_then(|cuts| cuts.first().copied())
+                        .map(|cut| (name.clone(), cut))
+                })
+                .collect::<Vec<_>>();
+            ordered_unique.sort_by(|left, right| left.1.cmp(&right.1).then(left.0.cmp(&right.0)));
+            let mut pairs = vec![];
+            for left_idx in 0..ordered_unique.len() {
+                for right_idx in (left_idx + 1)..ordered_unique.len() {
+                    let (forward_enzyme, forward_cut_position_0based) = &ordered_unique[left_idx];
+                    let (reverse_enzyme, reverse_cut_position_0based) = &ordered_unique[right_idx];
+                    pairs.push(RestrictionCloningDirectedPairSuggestion {
+                        order_source: "vector_unique_cut_position_order".to_string(),
+                        forward_enzyme: forward_enzyme.clone(),
+                        reverse_enzyme: reverse_enzyme.clone(),
+                        forward_cut_position_0based: *forward_cut_position_0based,
+                        reverse_cut_position_0based: *reverse_cut_position_0based,
+                    });
+                }
+            }
+            pairs
+        };
         Ok(RestrictionCloningVectorEnzymeSuggestions {
             seq_id: seq_id.to_string(),
             selected_mcs,
             other_unique,
             missing_mcs,
+            recommended_single_site,
+            recommended_directed_pairs,
         })
     }
 

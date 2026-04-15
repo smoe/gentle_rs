@@ -358,7 +358,7 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 
@@ -1726,9 +1726,14 @@ Shared shell command:
         destination vector
       - returns schema
         `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
-      - reports `selected_mcs`, `other_unique`, and `missing_mcs`
+      - reports `selected_mcs`, `other_unique`, `missing_mcs`,
+        `recommended_single_site`, and `recommended_directed_pairs`
       - mirrors the GUI preference order:
         annotated `mcs_expected_sites` first, then other unique cutters
+    - Restriction-cloning saved-report helpers:
+      - `primers list-restriction-cloning-handoffs`
+      - `primers show-restriction-cloning-handoff REPORT_ID`
+      - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`

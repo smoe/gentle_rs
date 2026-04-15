@@ -1921,7 +1921,7 @@ pub(super) fn build_seeded_qpcr_operation(
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -2028,6 +2028,37 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 seq_id: tokens[2].clone(),
             })
         }
+        "list-restriction-cloning-handoffs" => {
+            if tokens.len() != 2 {
+                return Err(
+                    "primers list-restriction-cloning-handoffs takes no extra arguments"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersListRestrictionCloningHandoffs)
+        }
+        "show-restriction-cloning-handoff" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "primers show-restriction-cloning-handoff requires REPORT_ID".to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersShowRestrictionCloningHandoff {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-restriction-cloning-handoff" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "primers export-restriction-cloning-handoff requires REPORT_ID OUTPUT.json"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersExportRestrictionCloningHandoff {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
         "preflight" => {
             let mut backend: Option<PrimerDesignBackend> = None;
             let mut primer3_executable: Option<String> = None;
@@ -2131,7 +2162,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

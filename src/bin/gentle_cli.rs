@@ -649,6 +649,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
   gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers list-restriction-cloning-handoffs\n  \
+  gentle_cli [--state PATH|--project PATH] primers show-restriction-cloning-handoff REPORT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json\n  \
   gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \

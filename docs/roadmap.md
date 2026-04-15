@@ -1004,6 +1004,14 @@ order. Durable architecture constraints and decisions remain in
     cloning vector suggestions (`primers restriction-cloning-vector-suggestions`)
     so GUI and command-line/agent reasoning can inspect the same MCS-first /
     unique-cutter preference order
+    - the suggestion payload now also includes deterministic
+      single-site and directed-pair recommendations from the same engine-owned
+      ordering logic
+  - shared-shell/CLI primer helpers now expose saved restriction-cloning
+    handoff lifecycle routes:
+    - `primers list-restriction-cloning-handoffs`
+    - `primers show-restriction-cloning-handoff`
+    - `primers export-restriction-cloning-handoff`
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged

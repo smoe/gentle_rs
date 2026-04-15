@@ -1758,6 +1758,23 @@ impl RestrictionCloningPcrHandoffMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RestrictionCloningSingleSiteSuggestion {
+    pub enzyme: String,
+    pub cut_position_0based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RestrictionCloningDirectedPairSuggestion {
+    pub order_source: String,
+    pub forward_enzyme: String,
+    pub reverse_enzyme: String,
+    pub forward_cut_position_0based: usize,
+    pub reverse_cut_position_0based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RestrictionCloningVectorEnzymeSuggestions {
     pub seq_id: String,
     #[serde(default)]
@@ -1766,6 +1783,10 @@ pub struct RestrictionCloningVectorEnzymeSuggestions {
     pub other_unique: Vec<String>,
     #[serde(default)]
     pub missing_mcs: Vec<String>,
+    #[serde(default)]
+    pub recommended_single_site: Vec<RestrictionCloningSingleSiteSuggestion>,
+    #[serde(default)]
+    pub recommended_directed_pairs: Vec<RestrictionCloningDirectedPairSuggestion>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

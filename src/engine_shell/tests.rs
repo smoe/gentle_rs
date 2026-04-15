@@ -3831,6 +3831,33 @@ fn parse_primers_restriction_cloning_vector_suggestions_request() {
 }
 
 #[test]
+fn parse_primers_restriction_cloning_handoff_report_commands() {
+    let list = parse_shell_line("primers list-restriction-cloning-handoffs")
+        .expect("parse restriction-cloning handoff list");
+    assert!(matches!(
+        list,
+        ShellCommand::PrimersListRestrictionCloningHandoffs
+    ));
+
+    let show = parse_shell_line("primers show-restriction-cloning-handoff handoff_1")
+        .expect("parse restriction-cloning handoff show");
+    assert!(matches!(
+        show,
+        ShellCommand::PrimersShowRestrictionCloningHandoff { report_id } if report_id == "handoff_1"
+    ));
+
+    let export = parse_shell_line(
+        "primers export-restriction-cloning-handoff handoff_1 handoff_1.json",
+    )
+    .expect("parse restriction-cloning handoff export");
+    assert!(matches!(
+        export,
+        ShellCommand::PrimersExportRestrictionCloningHandoff { report_id, path }
+            if report_id == "handoff_1" && path == "handoff_1.json"
+    ));
+}
+
+#[test]
 fn parse_primers_preflight_with_backend_overrides() {
     let cmd = parse_shell_line(
         "primers preflight --backend primer3 --primer3-exec /opt/primer3/primer3_core",
@@ -8294,6 +8321,164 @@ fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_uniqu
         run.output["suggestions"]["missing_mcs"][0].as_str(),
         Some("BamHI")
     );
+    assert_eq!(
+        run.output["suggestions"]["recommended_single_site"][0]["enzyme"].as_str(),
+        Some("EcoRI")
+    );
+    assert_eq!(
+        run.output["suggestions"]["recommended_directed_pairs"][0]["forward_enzyme"]
+            .as_str(),
+        Some("EcoRI")
+    );
+    assert_eq!(
+        run.output["suggestions"]["recommended_directed_pairs"][0]["reverse_enzyme"]
+            .as_str(),
+        Some("HindIII")
+    );
+}
+
+#[test]
+fn execute_primers_restriction_cloning_handoff_report_commands() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        )
+        .expect("template"),
+    );
+    let mut vector = DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
+    *vector.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    let vector_len_i64 = vector.len().try_into().unwrap();
+    vector.features_mut().push(Feature {
+        kind: "misc_feature".into(),
+        location: Location::simple_range(0, vector_len_i64),
+        qualifiers: vec![
+            ("label".into(), Some("MCS".to_string())),
+            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+        ],
+    });
+    vector.update_computed_features();
+    state.sequences.insert("vec".to_string(), vector);
+    let mut engine = GentleEngine::from_state(state);
+
+    let primer_request = serde_json::to_string(&Operation::DesignPrimerPairs {
+        template: "tpl".to_string(),
+        roi_start_0based: 40,
+        roi_end_0based: 80,
+        forward: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        },
+        reverse: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(10),
+        report_id: Some("shell_handoff_list".to_string()),
+    })
+    .expect("serialize primer design request");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesign {
+            request_json: primer_request,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("design primer pairs");
+
+    let handoff_request = serde_json::to_string(
+        &Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "shell_handoff_list".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: "EcoRI".to_string(),
+            reverse_enzyme: Some("HindIII".to_string()),
+            forward_leader_5prime: Some("GC".to_string()),
+            reverse_leader_5prime: Some("AT".to_string()),
+        },
+    )
+    .expect("serialize handoff request");
+    let create = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersPrepareRestrictionCloning {
+            request_json: handoff_request,
+        },
+    )
+    .expect("create restriction-cloning handoff");
+    let report_id = create.output["report"]["report_id"]
+        .as_str()
+        .expect("created handoff report id")
+        .to_string();
+
+    let list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersListRestrictionCloningHandoffs,
+    )
+    .expect("list restriction-cloning handoffs");
+    assert_eq!(
+        list.output["schema"].as_str(),
+        Some("gentle.restriction_cloning_pcr_handoff_report_list.v1")
+    );
+    assert!(list.output["report_count"].as_u64().unwrap_or(0) >= 1);
+
+    let show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersShowRestrictionCloningHandoff {
+            report_id: report_id.clone(),
+        },
+    )
+    .expect("show restriction-cloning handoff");
+    assert_eq!(
+        show.output["report"]["report_id"].as_str(),
+        Some(report_id.as_str())
+    );
+
+    let td = tempdir().expect("tempdir");
+    let export_path = td
+        .path()
+        .join("restriction_cloning_handoff_export.json")
+        .to_string_lossy()
+        .to_string();
+    let export = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersExportRestrictionCloningHandoff {
+            report_id: report_id.clone(),
+            path: export_path.clone(),
+        },
+    )
+    .expect("export restriction-cloning handoff");
+    assert_eq!(
+        export.output["schema"].as_str(),
+        Some("gentle.restriction_cloning_pcr_handoff_report_export.v1")
+    );
+    let text = fs::read_to_string(&export_path).expect("read handoff export");
+    assert!(text.contains("gentle.restriction_cloning_pcr_handoff.v1"));
 }
 
 #[test]
