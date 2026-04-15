@@ -2623,6 +2623,84 @@ mod tests {
     }
 
     #[test]
+    fn dotplot_svg_default_filename_mentions_query_anchor_label() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("ref".to_string()), None);
+        let mut view = DotplotView::default();
+        view.dotplot_id = "p53.family.overlay".to_string();
+        view.owner_seq_id = "tp73_family_ref".to_string();
+        view.seq_id = "tp73_family_ref".to_string();
+        view.reference_seq_id = Some("tp73_family_ref".to_string());
+        view.reference_span_start_0based = 0;
+        view.reference_span_end_0based = 5192;
+        view.mode = DotplotMode::PairForward;
+        view.word_size = 9;
+        view.step_bp = 2;
+        view.max_mismatches = 0;
+        view.series_count = 3;
+        view.query_series = vec![
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp73".to_string(),
+                seq_id: "tp73_family_ref".to_string(),
+                label: "TP73".to_string(),
+                color_rgb: [29, 78, 216],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(926),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 5192,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp63".to_string(),
+                seq_id: "tp63_family_query".to_string(),
+                label: "TP63".to_string(),
+                color_rgb: [220, 38, 38],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(1044),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 4944,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+            crate::engine::DotplotQuerySeries {
+                series_id: "tp53".to_string(),
+                seq_id: "tp53_family_query".to_string(),
+                label: "TP53".to_string(),
+                color_rgb: [5, 150, 105],
+                transcript_feature_id: None,
+                query_anchor_0based: Some(707),
+                query_anchor_label: Some("shared core motif".to_string()),
+                mode: DotplotMode::PairForward,
+                span_start_0based: 0,
+                span_end_0based: 1018,
+                point_count: 0,
+                points: vec![],
+                boxplot_bin_count: 0,
+                boxplot_bins: vec![],
+            },
+        ];
+        let file_name = area.default_dotplot_svg_file_name(
+            &view,
+            None,
+            0.08,
+            2.20,
+            DotplotOverlayXAxisMode::QueryAnchorBp,
+            None,
+        );
+        assert!(file_name.contains("x-query_anchor_bp"));
+        assert!(file_name.contains("anchor-shared_core_motif"));
+    }
+
+    #[test]
     fn dotplot_query_context_prefers_override_sequence() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -27191,6 +27269,13 @@ impl MainAreaDna {
             let exon_token =
                 Self::sanitize_export_name_component(&exon.token(), "anchor");
             stem.push_str(&format!("_anchor-{exon_token}"));
+        } else if overlay_mode
+            && overlay_x_axis_mode == DotplotOverlayXAxisMode::QueryAnchorBp
+            && let Some(anchor_label) = view.query_anchor_label()
+        {
+            let anchor_token =
+                Self::sanitize_export_name_component(anchor_label, "anchor");
+            stem.push_str(&format!("_anchor-{anchor_token}"));
         }
         if stem.len() > 220 {
             stem.truncate(220);

@@ -1,0 +1,63 @@
+{
+  "run_id": "p53_family_query_anchor_dotplot",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "docs/figures/p53_family_tp73_longest.fasta",
+        "as_id": "tp73_family_ref"
+      }
+    },
+    {
+      "LoadFile": {
+        "path": "docs/figures/p53_family_tp63_canonical.fasta",
+        "as_id": "tp63_family_query"
+      }
+    },
+    {
+      "LoadFile": {
+        "path": "docs/figures/p53_family_tp53_canonical.fasta",
+        "as_id": "tp53_family_query"
+      }
+    },
+    {
+      "ComputeDotplotOverlay": {
+        "owner_seq_id": "tp73_family_ref",
+        "reference_seq_id": "tp73_family_ref",
+        "reference_span_start_0based": 700,
+        "reference_span_end_0based": 1700,
+        "queries": [
+          {
+            "seq_id": "tp63_family_query",
+            "label": "TP63",
+            "query_anchor_0based": 1044,
+            "query_anchor_label": "shared core motif CATGTGTAACAG",
+            "mode": "pair_forward",
+            "color_rgb": [220, 38, 38]
+          },
+          {
+            "seq_id": "tp53_family_query",
+            "label": "TP53",
+            "query_anchor_0based": 707,
+            "query_anchor_label": "shared core motif CATGTGTAACAG",
+            "mode": "pair_forward",
+            "color_rgb": [5, 150, 105]
+          }
+        ],
+        "word_size": 10,
+        "step_bp": 1,
+        "max_mismatches": 1,
+        "store_as": "p53_family_query_anchor_dotplot"
+      }
+    },
+    {
+      "RenderDotplotSvg": {
+        "seq_id": "tp73_family_ref",
+        "dotplot_id": "p53_family_query_anchor_dotplot",
+        "path": "docs/figures/p53_family_query_anchor_dotplot.svg",
+        "display_density_threshold": 0.0,
+        "display_intensity_gain": 4.0,
+        "overlay_x_axis_mode": "query_anchor_bp"
+      }
+    }
+  ]
+}

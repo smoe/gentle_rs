@@ -11406,7 +11406,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "render-dotplot-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]".to_string(),
+                    "render-dotplot-svg requires: SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]".to_string(),
                 );
             }
             let seq_id = tokens[1].trim();
@@ -11473,9 +11473,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             "left_aligned_bp" => DotplotOverlayXAxisMode::LeftAlignedBp,
                             "right_aligned_bp" => DotplotOverlayXAxisMode::RightAlignedBp,
                             "shared_exon_anchor" => DotplotOverlayXAxisMode::SharedExonAnchor,
+                            "query_anchor_bp" => DotplotOverlayXAxisMode::QueryAnchorBp,
                             other => {
                                 return Err(format!(
-                                    "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, or shared_exon_anchor",
+                                    "Invalid --overlay-x-axis '{}': expected percent_length, left_aligned_bp, right_aligned_bp, shared_exon_anchor, or query_anchor_bp",
                                     other
                                 ));
                             }

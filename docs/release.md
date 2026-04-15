@@ -55,12 +55,15 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     `:cli` / `:<tag>-cli` for headless use and `:gui` / `:<tag>` for GUI use.
   - Moves `latest` only on release-tag publishes, as a GUI compatibility tag.
 - Release workflow: `.github/workflows/release.yml`
-  - Triggered by tag pushes matching `v*`.
+  - Triggered automatically when a GitHub Release is published.
   - Can also be run manually via `workflow_dispatch` with inputs:
     - `tag`
     - `linux_distribution` (`deferred|deb|appimage|rpm|tarball`)
   - Builds macOS and Windows installers, runs smoke checks, and publishes assets
     to the corresponding GitHub Release.
+  - Uses the release tag itself as the checkout/build target on `release`
+    events, so publishing a release for an already-pushed tag still produces
+    the desktop installers without needing a second tag push.
   - Forces `CARGO_TARGET_DIR=target` for the release job so installer artifact
     discovery stays inside the checked-out workspace even though normal local
     development builds default to the shared worktree target directory from
@@ -127,8 +130,9 @@ Release-workflow assumptions to re-check before tagging:
 2. Create and push a version tag:
    - `git tag vX.Y.Z`
    - `git push smoe vX.Y.Z`
-3. Wait for `Release Installers` workflow completion.
-4. Verify GitHub Release contains both installer assets.
+3. Publish a GitHub Release for that tag.
+4. Wait for `Release Installers` workflow completion.
+5. Verify GitHub Release contains both installer assets.
 
 ## Manual Release Re-run
 
@@ -140,7 +144,8 @@ Use Actions → `Release Installers` → `Run workflow` and provide:
 This rebuilds installers and updates assets on that tag’s release.
 
 Container publishing remains tag-driven through `.github/workflows/container.yml`
-rather than the desktop-installer release workflow.
+rather than the desktop-installer release workflow, so the tag push should
+still happen before or alongside release publication.
 
 ## Smoke Checks in Release Workflow
 

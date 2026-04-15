@@ -2417,7 +2417,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional `flex_track_id` (adds flexibility panel in same SVG)
   - optional `display_density_threshold` and `display_intensity_gain` (display tuning)
   - optional `overlay_x_axis_mode` for overlay payloads:
-    `percent_length | left_aligned_bp | right_aligned_bp | shared_exon_anchor`
+    `percent_length | left_aligned_bp | right_aligned_bp | shared_exon_anchor | query_anchor_bp`
   - optional `overlay_anchor_exon` for anchored overlay exports
     (`{ start_1based, end_1based }`)
 - Ownership checks:
@@ -2428,10 +2428,14 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - overlay payloads render all stored `query_series` with legend + merged
     reference-exon side track; `overlay_x_axis_mode` chooses whether transcript
     queries are shown as normalized percent length, as left/right aligned
-    base-pair coordinates, or as shared-exon-anchored coordinates.
+    base-pair coordinates, as shared-exon-anchored coordinates, or as
+    explicit per-query-anchor coordinates.
   - `shared_exon_anchor` filters the overlay down to series that contain the
     selected reference exon and shifts each supporting transcript so the exon
     start lands at the maximal observed transcript-local start for that exon.
+  - `query_anchor_bp` filters the overlay down to series carrying stored
+    `query_anchor_0based` values and shifts each supporting query so the anchor
+    base lands at the maximal observed anchor position across the drawn series.
   - flexibility panel is suppressed there because the overlay does not expose
     one shared query-axis coordinate system.
 
@@ -3614,6 +3618,9 @@ Dotplot + flexibility operation contract (implemented baseline):
       (`boxplot_bin_count`, `boxplot_bins[]` with
       `min/q1/median/q3/max + hit_count`)
     - `query_series[]` for multi-query overlays
+      - each series may also carry optional `query_anchor_0based` +
+        `query_anchor_label` values for curated cross-family/domain-anchored
+        rendering with `query_anchor_bp`
     - optional `reference_annotation` with merged reference-side exon intervals
     - optional `query_series[].transcript_feature_id` when overlays originate
       from locus transcript lanes
@@ -3646,8 +3653,8 @@ Dotplot + flexibility operation contract (implemented baseline):
     - each `--query-spec` must deserialize into one `DotplotOverlayQuerySpec`
   - `dotplot list [SEQ_ID]`
   - `dotplot show DOTPLOT_ID`
-  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
-  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]` (alias)
+  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
+  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]` (alias)
   - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
   - `flex list [SEQ_ID]`
   - `flex show TRACK_ID`

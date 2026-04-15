@@ -294,9 +294,11 @@ Primary map modes (linear topology):
           `% transcript` normalizes each isoform to 0..100%, `bp left-aligned`
           aligns transcript starts to emphasize different 3' splice endings,
           `bp right-aligned` aligns transcript ends to emphasize different
-          5' splice starts, and `shared exon anchored` shifts only the
-          transcripts that contain the chosen shared exon so that exon start is
-          shown at one common x-position
+          5' splice starts, `shared exon anchored` shifts only the transcripts
+          that contain the chosen shared exon so that exon start is shown at
+          one common x-position, and `manual/domain anchor` uses explicit
+          per-query anchors already stored in the loaded overlay payload
+          (intended for curated cross-family/domain comparisons)
         - in `shared exon anchored` mode an explicit exon picker appears:
           - it lists only exons shared by at least two of the currently
             selected transcript lanes
@@ -308,6 +310,10 @@ Primary map modes (linear topology):
           shared genomic coordinates
         - merged exon annotation for the reference span is drawn beside the
           genomic axis when exon features are present on the reference sequence
+        - manually anchored overlay payloads can also be re-opened here even if
+          they were computed outside the current locus-transcript picker; the
+          x-axis selector stays available so those persisted family/domain
+          overlays can still be re-rendered/exported from the GUI
     - default parameters:
       - `half_window_bp`: defaults to the larger query/reference sequence length
         so the initial view spans the full comparison context
@@ -345,6 +351,9 @@ Primary map modes (linear topology):
         - in `shared exon anchored` mode, transcripts that do support the
           chosen exon still report `outside` when the cursor lies beyond that
           shifted transcript extent
+        - in `manual/domain anchor` mode, the same `outside` readout is used
+          for series whose explicit anchored extent does not cover the hovered
+          x position
     - status panel:
       - deterministic request diagnostics (mode, spans, seed parameters, estimated
         window counts / pair evaluations)

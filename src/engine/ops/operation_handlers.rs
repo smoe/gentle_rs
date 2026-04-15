@@ -443,30 +443,32 @@ impl GentleEngine {
             .unwrap_or(view.seq_id.as_str());
 
         if overlay_mode {
-            let resolved_anchor_series =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    overlay_anchor_exon
-                        .map(|exon| view.resolve_overlay_anchor_series(exon))
-                        .unwrap_or_default()
-                } else {
-                    vec![]
-                };
-            let rendered_series_source =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    resolved_anchor_series
-                        .iter()
-                        .filter_map(|resolved| {
-                            view.query_series
-                                .get(resolved.series_index)
-                                .map(|series| (series, resolved.shift_bp))
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    view.query_series
-                        .iter()
-                        .map(|series| (series, 0usize))
-                        .collect()
-                };
+            let uses_shifted_anchor_axis = matches!(
+                overlay_x_axis_mode,
+                DotplotOverlayXAxisMode::SharedExonAnchor | DotplotOverlayXAxisMode::QueryAnchorBp
+            );
+            let resolved_anchor_series = match overlay_x_axis_mode {
+                DotplotOverlayXAxisMode::SharedExonAnchor => overlay_anchor_exon
+                    .map(|exon| view.resolve_overlay_anchor_series(exon))
+                    .unwrap_or_default(),
+                DotplotOverlayXAxisMode::QueryAnchorBp => view.resolve_query_anchor_series(),
+                _ => vec![],
+            };
+            let rendered_series_source = if uses_shifted_anchor_axis {
+                resolved_anchor_series
+                    .iter()
+                    .filter_map(|resolved| {
+                        view.query_series
+                            .get(resolved.series_index)
+                            .map(|series| (series, resolved.shift_bp))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                view.query_series
+                    .iter()
+                    .map(|series| (series, 0usize))
+                    .collect()
+            };
             let total_points: usize = rendered_series_source
                 .iter()
                 .map(|(series, _)| series.point_count)
@@ -493,20 +495,25 @@ impl GentleEngine {
                 .checked_div(rendered_series_source.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            let plotted_query_span =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    resolved_anchor_series
-                        .iter()
-                        .map(|resolved| resolved.plotted_span_end_0based)
-                        .max()
-                        .unwrap_or(1)
-                        .max(1)
-                } else {
-                    overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
-                };
+            let plotted_query_span = if uses_shifted_anchor_axis {
+                resolved_anchor_series
+                    .iter()
+                    .map(|resolved| resolved.plotted_span_end_0based)
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            } else {
+                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+            };
             let (x_axis_start_label, x_axis_end_label) =
                 overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
-            let anchor_token = overlay_anchor_exon.map(|exon| exon.token());
+            let anchor_token = match overlay_x_axis_mode {
+                DotplotOverlayXAxisMode::SharedExonAnchor => {
+                    overlay_anchor_exon.map(|exon| exon.token())
+                }
+                DotplotOverlayXAxisMode::QueryAnchorBp => view.query_anchor_label().map(str::to_string),
+                _ => None,
+            };
             let total_series_count = rendered_series_source.len();
             let total_series_cap = total_series_count.max(1);
             let reference_annotation = view
@@ -514,21 +521,41 @@ impl GentleEngine {
                 .as_ref()
                 .filter(|track| !track.intervals.is_empty());
 
-            let anchor_status_message =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+            let anchor_status_message = match overlay_x_axis_mode {
+                DotplotOverlayXAxisMode::SharedExonAnchor => {
                     if overlay_anchor_exon.is_none() {
                         Some("No shared exon anchor selected.".to_string())
                     } else if rendered_series_source.len() < 2 {
                         Some(
-                        "Selected shared exon is not present in at least two plotted transcripts."
-                            .to_string(),
-                    )
+                            "Selected shared exon is not present in at least two plotted transcripts."
+                                .to_string(),
+                        )
                     } else {
                         None
                     }
-                } else {
-                    None
-                };
+                }
+                DotplotOverlayXAxisMode::QueryAnchorBp => {
+                    let anchored_series_count = view
+                        .query_series
+                        .iter()
+                        .filter(|series| series.query_anchor_0based.is_some())
+                        .count();
+                    if anchored_series_count == 0 {
+                        Some(
+                            "This overlay payload has no explicit manual/domain query anchors."
+                                .to_string(),
+                        )
+                    } else if rendered_series_source.len() < 2 {
+                        Some(
+                            "At least two plotted query series need manual/domain anchors."
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
 
             let outer_margin = 18.0_f32;
             let left_margin = if reference_annotation.is_some() {
@@ -567,8 +594,7 @@ impl GentleEngine {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
-                    {
+                    let x_frac = if uses_shifted_anchor_axis {
                         let x_local = point.x_0based.saturating_sub(series.span_start_0based).min(
                             series
                                 .span_end_0based
@@ -835,6 +861,19 @@ impl GentleEngine {
                 outer_margin + 56.0,
                 Self::dotplot_svg_xml_escape(overlay_x_axis_mode.axis_label())
             ));
+            if let Some(anchor_token) = anchor_token.as_ref() {
+                let anchor_prefix = match overlay_x_axis_mode {
+                    DotplotOverlayXAxisMode::SharedExonAnchor => "anchor exon",
+                    DotplotOverlayXAxisMode::QueryAnchorBp => "anchor",
+                    _ => "anchor",
+                };
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>",
+                    dotplot_left + 280.0,
+                    outer_margin + 56.0,
+                    Self::dotplot_svg_xml_escape(&format!("{anchor_prefix} {anchor_token}"))
+                ));
+            }
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">y: {}</text>",
                 dotplot_right,
@@ -10413,6 +10452,8 @@ impl GentleEngine {
                     seq_id.clone(),
                     Self::default_dotplot_series_color(0),
                     None,
+                    None,
+                    None,
                     mode,
                     span_start_0based,
                     span_end_0based,
@@ -10584,6 +10625,22 @@ impl GentleEngine {
                             query.span_start_0based,
                             query.span_end_0based,
                         )?;
+                    if let Some(query_anchor_0based) = query.query_anchor_0based {
+                        if query_anchor_0based < query_span_start_0based
+                            || query_anchor_0based >= query_span_end_0based
+                        {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "ComputeDotplotOverlay query '{}' anchor {} is outside selected span {}..{}",
+                                    query_seq_id,
+                                    query_anchor_0based.saturating_add(1),
+                                    query_span_start_0based.saturating_add(1),
+                                    query_span_end_0based
+                                ),
+                            });
+                        }
+                    }
                     let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
                     let (points, truncated) = Self::compute_dotplot_points(
                         query_span,
@@ -10618,6 +10675,12 @@ impl GentleEngine {
                             .color_rgb
                             .unwrap_or_else(|| Self::default_dotplot_series_color(index)),
                         query.transcript_feature_id,
+                        query.query_anchor_0based,
+                        query
+                            .query_anchor_label
+                            .as_ref()
+                            .map(|label| label.trim().to_string())
+                            .filter(|label| !label.is_empty()),
                         query.mode,
                         query_span_start_0based,
                         query_span_end_0based,

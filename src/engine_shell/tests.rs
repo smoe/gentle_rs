@@ -13167,6 +13167,20 @@ fn parse_dotplot_and_flex_commands() {
         other => panic!("expected RenderDotplotSvg, got {other:?}"),
     }
 
+    let render_dotplot_query_anchor = parse_shell_line(
+        "dotplot render-svg seq_a pair_dp /tmp/pair_dp.query-anchor.svg --overlay-x-axis query_anchor_bp",
+    )
+    .expect("parse dotplot render-svg query anchor");
+    match render_dotplot_query_anchor {
+        ShellCommand::RenderDotplotSvg {
+            overlay_x_axis_mode,
+            ..
+        } => {
+            assert_eq!(overlay_x_axis_mode, DotplotOverlayXAxisMode::QueryAnchorBp);
+        }
+        other => panic!("expected RenderDotplotSvg, got {other:?}"),
+    }
+
     let flex = parse_shell_line(
             "flex compute seq_a --start 25 --end 325 --model at_skew --bin-bp 20 --smoothing-bp 60 --id promoter_flex",
         )

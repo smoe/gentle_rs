@@ -2435,32 +2435,35 @@ impl MainAreaDna {
                 .saturating_sub(view.reference_span_start_0based)
                 .max(1);
             let reference_span_max = reference_span.saturating_sub(1).max(1);
-            let resolved_anchor_series =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    self.dotplot_ui
-                        .overlay_anchor_exon
-                        .as_ref()
-                        .map(|exon| view.resolve_overlay_anchor_series(exon))
-                        .unwrap_or_default()
-                } else {
-                    vec![]
-                };
-            let rendered_series_source =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    resolved_anchor_series
-                        .iter()
-                        .filter_map(|resolved| {
-                            view.query_series
-                                .get(resolved.series_index)
-                                .map(|series| (series, resolved.shift_bp))
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    view.query_series
-                        .iter()
-                        .map(|series| (series, 0usize))
-                        .collect()
-                };
+            let uses_shifted_anchor_axis = matches!(
+                overlay_x_axis_mode,
+                DotplotOverlayXAxisMode::SharedExonAnchor | DotplotOverlayXAxisMode::QueryAnchorBp
+            );
+            let resolved_anchor_series = match overlay_x_axis_mode {
+                DotplotOverlayXAxisMode::SharedExonAnchor => self
+                    .dotplot_ui
+                    .overlay_anchor_exon
+                    .as_ref()
+                    .map(|exon| view.resolve_overlay_anchor_series(exon))
+                    .unwrap_or_default(),
+                DotplotOverlayXAxisMode::QueryAnchorBp => view.resolve_query_anchor_series(),
+                _ => vec![],
+            };
+            let rendered_series_source = if uses_shifted_anchor_axis {
+                resolved_anchor_series
+                    .iter()
+                    .filter_map(|resolved| {
+                        view.query_series
+                            .get(resolved.series_index)
+                            .map(|series| (series, resolved.shift_bp))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                view.query_series
+                    .iter()
+                    .map(|series| (series, 0usize))
+                    .collect()
+            };
             let max_query_span = rendered_series_source
                 .iter()
                 .map(|(series, _)| {
@@ -2483,35 +2486,54 @@ impl MainAreaDna {
                 .checked_div(rendered_series_source.len().max(1))
                 .unwrap_or(1)
                 .max(1);
-            let plotted_query_span =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
-                    resolved_anchor_series
-                        .iter()
-                        .map(|resolved| resolved.plotted_span_end_0based)
-                        .max()
-                        .unwrap_or(1)
-                        .max(1)
-                } else {
-                    overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
-                };
+            let plotted_query_span = if uses_shifted_anchor_axis {
+                resolved_anchor_series
+                    .iter()
+                    .map(|resolved| resolved.plotted_span_end_0based)
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            } else {
+                overlay_x_axis_mode.plot_query_span_bp(max_query_span, average_query_span)
+            };
             let plotted_query_span_max = plotted_query_span.saturating_sub(1).max(1);
             let (x_axis_start_label, x_axis_end_label) =
                 overlay_x_axis_mode.axis_edge_labels(plotted_query_span);
-            let anchor_status_message =
-                if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor {
+            let anchor_status_message = match overlay_x_axis_mode {
+                DotplotOverlayXAxisMode::SharedExonAnchor => {
                     if self.dotplot_ui.overlay_anchor_exon.is_none() {
                         Some("No shared exon anchor selected.".to_string())
                     } else if rendered_series_source.len() < 2 {
                         Some(
-                        "Selected shared exon is not present in at least two plotted transcripts."
-                            .to_string(),
-                    )
+                            "Selected shared exon is not present in at least two plotted transcripts."
+                                .to_string(),
+                        )
                     } else {
                         None
                     }
-                } else {
-                    None
-                };
+                }
+                DotplotOverlayXAxisMode::QueryAnchorBp => {
+                    let anchored_series_count = view
+                        .query_series
+                        .iter()
+                        .filter(|series| series.query_anchor_0based.is_some())
+                        .count();
+                    if anchored_series_count == 0 {
+                        Some(
+                            "This overlay payload has no explicit manual/domain query anchors."
+                                .to_string(),
+                        )
+                    } else if rendered_series_source.len() < 2 {
+                        Some(
+                            "At least two plotted query series need manual/domain anchors."
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
             let reference_seq_label = view
                 .reference_seq_id
                 .as_deref()
@@ -2533,8 +2555,7 @@ impl MainAreaDna {
                         .y_0based
                         .saturating_sub(view.reference_span_start_0based)
                         .min(reference_span_max);
-                    let x_frac = if overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
-                    {
+                    let x_frac = if uses_shifted_anchor_axis {
                         let x_local = point.x_0based.saturating_sub(series.span_start_0based).min(
                             series
                                 .span_end_0based
@@ -2746,6 +2767,16 @@ impl MainAreaDna {
                     egui::FontId::monospace(10.0),
                     egui::Color32::from_rgb(71, 85, 105),
                 );
+            } else if overlay_x_axis_mode == DotplotOverlayXAxisMode::QueryAnchorBp
+                && let Some(anchor_label) = view.query_anchor_label()
+            {
+                painter.text(
+                    egui::pos2(dotplot_rect.left() + 220.0, canvas_rect.top() + 20.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("anchor {anchor_label}"),
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::from_rgb(71, 85, 105),
+                );
             }
             painter.text(
                 egui::pos2(dotplot_rect.right(), canvas_rect.top() + 20.0),
@@ -2854,9 +2885,7 @@ impl MainAreaDna {
                     for series in &rendered_series {
                         let cell_density = series.cells.get(&(x_cell, y_cell)).copied().unwrap_or(0);
                         let rendered = series.visible_cells.contains_key(&(x_cell, y_cell));
-                        let query_label = if overlay_x_axis_mode
-                            == DotplotOverlayXAxisMode::SharedExonAnchor
-                        {
+                        let query_label = if uses_shifted_anchor_axis {
                             let global_bp =
                                 (fx * plotted_query_span_max as f32).round() as usize;
                             let series_span_max = series
@@ -4332,11 +4361,18 @@ impl MainAreaDna {
                                 );
                             }
                         });
-                        if self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty() {
+                        let loaded_overlay_view = self
+                            .dotplot_cached_view
+                            .as_ref()
+                            .map(Self::dotplot_view_is_overlay)
+                            .unwrap_or(false);
+                        if (self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty())
+                            || loaded_overlay_view
+                        {
                             let overlay_anchor_choices = self.dotplot_overlay_anchor_choices();
                             ui.horizontal_wrapped(|ui| {
                                 ui.label("overlay x-axis").on_hover_text(
-                                    "Choose how overlaid transcript queries share the x-axis: normalize each transcript to percent length, align by one end in bp, or anchor one exon shared across transcripts.",
+                                    "Choose how overlaid transcript queries share the x-axis: normalize each transcript to percent length, align by one end in bp, anchor one exon shared across transcripts, or align explicit manual/domain anchors carried in the overlay payload.",
                                 );
                                 let before = self.dotplot_ui.overlay_x_axis_mode;
                                 egui::ComboBox::from_id_salt(format!(
@@ -4376,6 +4412,14 @@ impl MainAreaDna {
                                     )
                                     .on_hover_text(
                                         "Choose one exon shared by multiple selected transcripts and align that exon start to one common x position.",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.dotplot_ui.overlay_x_axis_mode,
+                                        DotplotOverlayXAxisMode::QueryAnchorBp,
+                                        DotplotOverlayXAxisMode::QueryAnchorBp.ui_label(),
+                                    )
+                                    .on_hover_text(
+                                        "Use explicit per-query anchors stored in the overlay payload. This is intended for cross-family or domain-anchored comparisons where the plotted series do not share one genomic exon identity.",
                                     );
                                 });
                                 if self.dotplot_ui.overlay_x_axis_mode != before {
@@ -4448,49 +4492,56 @@ impl MainAreaDna {
                                     }
                                 });
                             }
-                            ui.horizontal_wrapped(|ui| {
-                                for choice in &overlay_choices {
-                                    let mut selected = self
-                                        .dotplot_ui
-                                        .overlay_transcript_feature_ids
-                                        .contains(&choice.transcript_feature_id);
-                                    let swatch = egui::Color32::from_rgb(
-                                        choice.color_rgb[0],
-                                        choice.color_rgb[1],
-                                        choice.color_rgb[2],
-                                    );
-                                    let label = format!(
-                                        "{} ({} bp)",
-                                        choice.label, choice.estimated_length_bp
-                                    );
-                                    if ui
-                                        .checkbox(&mut selected, egui::RichText::new(label).color(swatch))
-                                        .on_hover_text(format!(
-                                            "Use transcript '{}' as an overlaid query against the shared reference span.",
-                                            choice.transcript_id
-                                        ))
-                                        .changed()
-                                    {
-                                        if selected {
+                            if self.dotplot_ui.overlay_enabled && !overlay_choices.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    for choice in &overlay_choices {
+                                        let mut selected = self
+                                            .dotplot_ui
+                                            .overlay_transcript_feature_ids
+                                            .contains(&choice.transcript_feature_id);
+                                        let swatch = egui::Color32::from_rgb(
+                                            choice.color_rgb[0],
+                                            choice.color_rgb[1],
+                                            choice.color_rgb[2],
+                                        );
+                                        let label = format!(
+                                            "{} ({} bp)",
+                                            choice.label, choice.estimated_length_bp
+                                        );
+                                        if ui
+                                            .checkbox(
+                                                &mut selected,
+                                                egui::RichText::new(label).color(swatch),
+                                            )
+                                            .on_hover_text(format!(
+                                                "Use transcript '{}' as an overlaid query against the shared reference span.",
+                                                choice.transcript_id
+                                            ))
+                                            .changed()
+                                        {
+                                            if selected {
+                                                self.dotplot_ui
+                                                    .overlay_transcript_feature_ids
+                                                    .push(choice.transcript_feature_id);
+                                            } else {
+                                                self.dotplot_ui
+                                                    .overlay_transcript_feature_ids
+                                                    .retain(|feature_id| {
+                                                        *feature_id != choice.transcript_feature_id
+                                                    });
+                                            }
                                             self.dotplot_ui
                                                 .overlay_transcript_feature_ids
-                                                .push(choice.transcript_feature_id);
-                                        } else {
-                                            self.dotplot_ui.overlay_transcript_feature_ids.retain(
-                                                |feature_id| *feature_id != choice.transcript_feature_id,
-                                            );
+                                                .sort_unstable();
+                                            self.dotplot_ui
+                                                .overlay_transcript_feature_ids
+                                                .dedup();
+                                            save_state = true;
+                                            compute_inputs_changed = true;
                                         }
-                                        self.dotplot_ui
-                                            .overlay_transcript_feature_ids
-                                            .sort_unstable();
-                                        self.dotplot_ui
-                                            .overlay_transcript_feature_ids
-                                            .dedup();
-                                        save_state = true;
-                                        compute_inputs_changed = true;
                                     }
-                                }
-                            });
+                                });
+                            }
                         }
                     }
 

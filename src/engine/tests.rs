@@ -17251,6 +17251,109 @@ fn test_render_dotplot_overlay_svg_supports_shared_exon_anchor_mode() {
 }
 
 #[test]
+fn test_render_dotplot_overlay_svg_supports_query_anchor_mode() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "ref".to_string(),
+        DNAsequence::from_sequence("AAACCCGGGTTTAAACCCGGGTTTAAACCCGGGTTTAAACCCGGG")
+            .expect("reference"),
+    );
+    state.sequences.insert(
+        "tp73".to_string(),
+        DNAsequence::from_sequence("TTTAAACCCGGG").expect("tp73"),
+    );
+    state.sequences.insert(
+        "tp63".to_string(),
+        DNAsequence::from_sequence("GGGTTTAAACCC").expect("tp63"),
+    );
+    state.sequences.insert(
+        "misc".to_string(),
+        DNAsequence::from_sequence("CCCCAAAATTTT").expect("misc"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplotOverlay {
+            owner_seq_id: "ref".to_string(),
+            reference_seq_id: "ref".to_string(),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(45),
+            queries: vec![
+                DotplotOverlayQuerySpec {
+                    seq_id: "tp73".to_string(),
+                    label: "TP73".to_string(),
+                    transcript_feature_id: None,
+                    query_anchor_0based: Some(3),
+                    query_anchor_label: Some("shared core motif".to_string()),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([29, 78, 216]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "tp63".to_string(),
+                    label: "TP63".to_string(),
+                    transcript_feature_id: None,
+                    query_anchor_0based: Some(6),
+                    query_anchor_label: Some("shared core motif".to_string()),
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([220, 38, 38]),
+                },
+                DotplotOverlayQuerySpec {
+                    seq_id: "misc".to_string(),
+                    label: "misc".to_string(),
+                    transcript_feature_id: None,
+                    query_anchor_0based: None,
+                    query_anchor_label: None,
+                    span_start_0based: None,
+                    span_end_0based: None,
+                    mode: DotplotMode::PairForward,
+                    color_rgb: Some([5, 150, 105]),
+                },
+            ],
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("query_anchor_plot".to_string()),
+        })
+        .expect("compute query-anchor overlay");
+
+    let view = engine
+        .get_dotplot_view("query_anchor_plot")
+        .expect("query-anchor overlay view");
+    assert_eq!(view.query_series[0].query_anchor_0based, Some(3));
+    assert_eq!(view.query_series[1].query_anchor_0based, Some(6));
+    assert_eq!(view.query_series[2].query_anchor_0based, None);
+    assert_eq!(view.query_anchor_label(), Some("shared core motif"));
+
+    let path = tempfile::NamedTempFile::new()
+        .expect("tmp")
+        .path()
+        .with_extension("overlay.query-anchor.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "ref".to_string(),
+            dotplot_id: "query_anchor_plot".to_string(),
+            path: path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::QueryAnchorBp,
+            overlay_anchor_exon: None,
+        })
+        .expect("render query-anchor overlay");
+    let text = std::fs::read_to_string(path).expect("read query-anchor svg");
+    assert!(text.contains("x_axis=query_anchor_bp"));
+    assert!(text.contains("anchor=shared core motif"));
+    assert!(text.contains("x: isoform query bp (manual/domain anchor)"));
+    assert!(text.contains("TP73"));
+    assert!(text.contains("TP63"));
+    assert!(!text.contains(">misc</text>"));
+}
+
+#[test]
 fn test_preview_pair_dotplot_view_builds_transient_view() {
     let view = GentleEngine::preview_pair_dotplot_view(
         "read_1",

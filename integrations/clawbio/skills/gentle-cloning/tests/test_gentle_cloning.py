@@ -577,6 +577,23 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     ]
     assert splicing_workflow_payload["timeout_secs"] == 300
 
+    p53_family_workflow_payload = json.loads(
+        (
+            examples_dir / "request_workflow_p53_family_query_anchor_dotplot.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert p53_family_workflow_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert p53_family_workflow_payload["mode"] == "workflow"
+    assert p53_family_workflow_payload["state_path"] == ".gentle_state.json"
+    assert (
+        p53_family_workflow_payload["workflow_path"]
+        == "docs/figures/p53_family_query_anchor_dotplot.workflow.json"
+    )
+    assert p53_family_workflow_payload["expected_artifacts"] == [
+        "docs/figures/p53_family_query_anchor_dotplot.svg"
+    ]
+    assert p53_family_workflow_payload["timeout_secs"] == 300
+
     splicing_workflow_definition = json.loads(
         (
             Path(__file__).resolve().parents[3]

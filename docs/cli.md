@@ -139,6 +139,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
 
@@ -265,6 +266,10 @@ Included follow-on analysis/planning/graphics examples:
 - `request_workflow_tp53_splicing_expert_svg.json`
   - replays a deterministic offline splicing-expert workflow from the bundled
     TP53 Ensembl 116 panel-source GenBank asset and collects the rendered SVG
+- `request_workflow_p53_family_query_anchor_dotplot.json`
+  - replays the anchored p53-family comparison with TP73 on the shared
+    reference axis and TP63 plus TP53 aligned by the conserved motif
+    `CATGTGTAACAG`
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the
     ClawBio output bundle under `generated/...`
@@ -1888,7 +1893,10 @@ Rendering export commands:
     merged-exon side track when reference exon annotation is available.
   - `shared_exon_anchor` requires `--overlay-anchor-exon START..END` using the
     stored reference-exon coordinates from the overlay payload.
-  - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`.
+  - `query_anchor_bp` uses explicit `query_anchor_0based` values already stored
+    in the overlay payload. This is the shared route for curated cross-family
+    or domain-anchor figures; it does not require `--overlay-anchor-exon`.
+  - Alias: `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`.
 - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
   - Calls engine operation `ComputeDotplotOverlay`.
   - `OWNER_SEQ_ID` identifies the stored payload owner and is also reused as
@@ -1899,6 +1907,9 @@ Rendering export commands:
   - Query specs can optionally narrow one isoform/query span via
     `span_start_0based` / `span_end_0based` and switch per-series orientation
     with `mode=pair_forward|pair_reverse_complement`.
+  - Cross-family/domain-anchor overlays can also carry
+    `query_anchor_0based` plus optional `query_anchor_label`, for example:
+    `{"seq_id":"tp63_family_query","label":"TP63","query_anchor_0based":1044,"query_anchor_label":"shared core motif CATGTGTAACAG","mode":"pair_forward","color_rgb":[220,38,38]}`
   - `--ref-start` / `--ref-end` constrain the shared reference span on the
     y-axis for every stored series.
 - `render-rna-svg SEQ_ID OUTPUT.svg`

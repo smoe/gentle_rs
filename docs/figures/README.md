@@ -120,6 +120,49 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/qpcr_assay_protocol_cartoon.svg
 ```
 
+`pcr_blunt_vector_ligation_template.json` is the small custom protocol-cartoon
+template for the blunt-end cloning README hero. It is intentionally more
+minimal than the Gibson strips: one blunt PCR product, one intact circular
+pGEX vector with a separately colored MCS, one `SmaI` opening event that leaves
+tiny yellow blunt vector ends, and two possible blunt ligation products.
+
+Regenerate the hero SVG from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon template-validate \
+  docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_vector_ligation_template.json \
+  docs/figures/pgex_blunt_pcr_ligation_hero.svg
+```
+
+`pgex_blunt_pcr_ligation.workflow.json` is the corresponding replayable
+off-line workflow behind that README section. It deliberately splits the same
+cloning story across two stable local source files:
+
+- `test_files/pGEX_3X.fa`
+  - used as the linear PCR template so the shared `Pcr` route can derive the
+    250 bp amplicon with primers `ATCCGCTCATGAGACAATAA` and
+    `AAACGTTCTTCGGGGCGAAA`
+- `test_files/pGEX-3X.gb`
+  - used as the circular pGEX vector so `Digest` with `SmaI` yields one opened
+    blunt backbone instead of two linear fragments
+
+The workflow then runs blunt ligation with the PCR product and writes
+`pgex_blunt_pcr_ligation_lineage.svg`, which shows the exact two orientation
+products expected for a non-directional blunt insertion.
+
+Regenerate that workflow figure from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/pgex_blunt_pcr_ligation.state.json \
+  workflow @docs/figures/pgex_blunt_pcr_ligation.workflow.json
+```
+
 `gibson_single_insert_readme.plan.json` is the deterministic pGEX + insert demo
 Gibson plan used to generate the README lineage figure. It is not hand-drawn;
 it reuses the same tutorial destination/insert pair and the same `SmaI`
@@ -339,6 +382,52 @@ cargo run --quiet --bin gentle_examples_docs -- \
   svg-png \
   docs/figures/toy_shared_exon_anchor_dotplot.svg \
   docs/figures/toy_shared_exon_anchor_dotplot.png \
+  --drop-dotplot-metadata
+```
+
+`p53_family_tp73_longest.fasta`, `p53_family_tp63_canonical.fasta`, and
+`p53_family_tp53_canonical.fasta` are a small curated cross-family demo set:
+
+- `p53_family_tp73_longest.fasta`
+  - copied from record 1 of
+    `test_files/fixtures/mapping/ensembl_human_tp73_all.fasta`
+    (`ENST00000378295.9`, protein-coding, longest bundled human TP73 transcript)
+- `p53_family_tp63_canonical.fasta`
+  - copied from record 2 of
+    `test_files/fixtures/mapping/ensembl_human_tp63_all.fasta`
+    (`ENST00000264731.8`, protein-coding TP63 transcript)
+- `p53_family_tp53_canonical.fasta`
+  - copied from record 1 of
+    `test_files/fixtures/mapping/ensembl_human_tp53_all.fasta`
+    (`ENST00000413465.6`, protein-coding TP53 transcript)
+
+The copied headers retain their Ensembl transcript provenance and add the exact
+source fixture path plus selected record index so the demo stays reviewable and
+re-creatable from the committed mapping fixture pack.
+
+`p53_family_query_anchor_dotplot.workflow.json` renders the first cross-family
+anchored overlay demo. It loads those three curated transcripts, keeps TP73 as
+the shared reference/Y-axis, restricts the reference span to the conserved
+TP73 core region (`701..1700` in local cDNA coordinates), and overlays TP63
+plus TP53 using explicit per-query anchors at the conserved motif
+`CATGTGTAACAG`. The workflow exercises the new `query_anchor_bp` overlay
+x-axis mode rather than the same-locus `shared_exon_anchor` mode.
+
+`p53_family_query_anchor_dotplot.svg` and
+`p53_family_query_anchor_dotplot.png` are the corresponding cross-family demo
+artifacts.
+
+Regenerate the anchored p53-family demo from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/p53_family_anchor.state.json \
+  workflow @docs/figures/p53_family_query_anchor_dotplot.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/p53_family_query_anchor_dotplot.svg \
+  docs/figures/p53_family_query_anchor_dotplot.png \
   --drop-dotplot-metadata
 ```
 

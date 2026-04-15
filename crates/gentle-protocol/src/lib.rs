@@ -503,6 +503,7 @@ pub enum DotplotOverlayXAxisMode {
     LeftAlignedBp,
     RightAlignedBp,
     SharedExonAnchor,
+    QueryAnchorBp,
 }
 
 impl DotplotOverlayXAxisMode {
@@ -512,6 +513,7 @@ impl DotplotOverlayXAxisMode {
             Self::LeftAlignedBp => "left_aligned_bp",
             Self::RightAlignedBp => "right_aligned_bp",
             Self::SharedExonAnchor => "shared_exon_anchor",
+            Self::QueryAnchorBp => "query_anchor_bp",
         }
     }
 
@@ -521,6 +523,7 @@ impl DotplotOverlayXAxisMode {
             Self::LeftAlignedBp => "bp left-aligned",
             Self::RightAlignedBp => "bp right-aligned",
             Self::SharedExonAnchor => "shared exon anchored",
+            Self::QueryAnchorBp => "manual/domain anchor",
         }
     }
 
@@ -530,6 +533,7 @@ impl DotplotOverlayXAxisMode {
             Self::LeftAlignedBp => "x: isoform query bp (left-aligned)",
             Self::RightAlignedBp => "x: isoform query bp (right-aligned)",
             Self::SharedExonAnchor => "x: isoform query bp (shared exon anchored)",
+            Self::QueryAnchorBp => "x: isoform query bp (manual/domain anchor)",
         }
     }
 
@@ -540,7 +544,10 @@ impl DotplotOverlayXAxisMode {
     ) -> usize {
         match self {
             Self::PercentLength => average_query_span_bp.max(1),
-            Self::LeftAlignedBp | Self::RightAlignedBp | Self::SharedExonAnchor => {
+            Self::LeftAlignedBp
+            | Self::RightAlignedBp
+            | Self::SharedExonAnchor
+            | Self::QueryAnchorBp => {
                 max_query_span_bp.max(1)
             }
         }
@@ -549,7 +556,10 @@ impl DotplotOverlayXAxisMode {
     pub fn axis_edge_labels(self, max_query_span_bp: usize) -> (String, String) {
         match self {
             Self::PercentLength => ("0%".to_string(), "100%".to_string()),
-            Self::LeftAlignedBp | Self::RightAlignedBp | Self::SharedExonAnchor => {
+            Self::LeftAlignedBp
+            | Self::RightAlignedBp
+            | Self::SharedExonAnchor
+            | Self::QueryAnchorBp => {
                 ("1".to_string(), max_query_span_bp.max(1).to_string())
             }
         }
@@ -579,6 +589,9 @@ impl DotplotOverlayXAxisMode {
                     .clamp(0.0, 1.0)
             }
             Self::SharedExonAnchor => {
+                (query_local_bp as f32 / max_query_span_max as f32).clamp(0.0, 1.0)
+            }
+            Self::QueryAnchorBp => {
                 (query_local_bp as f32 / max_query_span_max as f32).clamp(0.0, 1.0)
             }
         }
@@ -618,6 +631,10 @@ impl DotplotOverlayXAxisMode {
                 }
             }
             Self::SharedExonAnchor => Some(
+                span_start_0based
+                    .saturating_add((axis_fraction * max_query_span_max as f32).round() as usize),
+            ),
+            Self::QueryAnchorBp => Some(
                 span_start_0based
                     .saturating_add((axis_fraction * max_query_span_max as f32).round() as usize),
             ),
@@ -1630,6 +1647,10 @@ pub struct DotplotQuerySeries {
     pub color_rgb: [u8; 3],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_anchor_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_anchor_label: Option<String>,
     #[serde(default)]
     pub mode: DotplotMode,
     pub span_start_0based: usize,
@@ -1732,6 +1753,10 @@ pub struct DotplotOverlayQuerySpec {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_anchor_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_anchor_label: Option<String>,
     #[serde(default)]
     pub span_start_0based: Option<usize>,
     #[serde(default)]
@@ -1819,6 +1844,8 @@ impl DotplotView {
                 label,
                 color_rgb: [29, 78, 216],
                 transcript_feature_id: None,
+                query_anchor_0based: None,
+                query_anchor_label: None,
                 mode: self.mode,
                 span_start_0based: self.span_start_0based,
                 span_end_0based: self.span_end_0based,
@@ -1903,6 +1930,54 @@ impl DotplotView {
             });
         }
         resolved
+    }
+
+    pub fn resolve_query_anchor_series(&self) -> Vec<DotplotOverlayResolvedAnchorSeries> {
+        let max_query_anchor_0based = self
+            .query_series
+            .iter()
+            .filter_map(|series| {
+                series
+                    .query_anchor_0based
+                    .map(|anchor| anchor.saturating_sub(series.span_start_0based))
+            })
+            .max();
+        let Some(max_query_anchor_0based) = max_query_anchor_0based else {
+            return vec![];
+        };
+        let mut resolved = vec![];
+        for (series_index, series) in self.query_series.iter().enumerate() {
+            let Some(anchor_0based) = series.query_anchor_0based else {
+                continue;
+            };
+            let query_anchor_local_0based = anchor_0based.saturating_sub(series.span_start_0based);
+            let shift_bp = max_query_anchor_0based.saturating_sub(query_anchor_local_0based);
+            let series_span_bp = series
+                .span_end_0based
+                .saturating_sub(series.span_start_0based)
+                .max(1);
+            resolved.push(DotplotOverlayResolvedAnchorSeries {
+                series_index,
+                shift_bp,
+                plotted_span_end_0based: shift_bp.saturating_add(series_span_bp),
+            });
+        }
+        resolved
+    }
+
+    pub fn query_anchor_label(&self) -> Option<&str> {
+        let mut labels = self
+            .query_series
+            .iter()
+            .filter_map(|series| series.query_anchor_label.as_deref())
+            .map(str::trim)
+            .filter(|label| !label.is_empty());
+        let first = labels.next()?;
+        if labels.all(|label| label.eq_ignore_ascii_case(first)) {
+            Some(first)
+        } else {
+            None
+        }
     }
 }
 
@@ -3736,7 +3811,10 @@ pub struct RnaReadInterpretationReportSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::{DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode};
+    use super::{
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
+        DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView,
+    };
 
     #[test]
     fn dotplot_overlay_x_axis_bp_alignment_projects_left_and_right_variants() {
@@ -3768,5 +3846,85 @@ mod tests {
         assert_eq!(exon.start_1based, 27);
         assert_eq!(exon.end_1based, 34);
         assert_eq!(exon.token(), "27..34");
+    }
+
+    #[test]
+    fn dotplot_view_resolves_manual_query_anchor_series() {
+        let view = DotplotView {
+            query_series: vec![
+                DotplotQuerySeries {
+                    series_id: "tp73".to_string(),
+                    seq_id: "tp73".to_string(),
+                    label: "TP73".to_string(),
+                    color_rgb: [29, 78, 216],
+                    transcript_feature_id: None,
+                    query_anchor_0based: Some(926),
+                    query_anchor_label: Some("shared core motif".to_string()),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: 0,
+                    span_end_0based: 1200,
+                    point_count: 0,
+                    points: vec![],
+                    boxplot_bin_count: 0,
+                    boxplot_bins: vec![],
+                },
+                DotplotQuerySeries {
+                    series_id: "tp63".to_string(),
+                    seq_id: "tp63".to_string(),
+                    label: "TP63".to_string(),
+                    color_rgb: [220, 38, 38],
+                    transcript_feature_id: None,
+                    query_anchor_0based: Some(1044),
+                    query_anchor_label: Some("shared core motif".to_string()),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: 0,
+                    span_end_0based: 1300,
+                    point_count: 0,
+                    points: vec![],
+                    boxplot_bin_count: 0,
+                    boxplot_bins: vec![],
+                },
+                DotplotQuerySeries {
+                    series_id: "tp53".to_string(),
+                    seq_id: "tp53".to_string(),
+                    label: "TP53".to_string(),
+                    color_rgb: [5, 150, 105],
+                    transcript_feature_id: None,
+                    query_anchor_0based: Some(707),
+                    query_anchor_label: Some("shared core motif".to_string()),
+                    mode: DotplotMode::PairForward,
+                    span_start_0based: 0,
+                    span_end_0based: 950,
+                    point_count: 0,
+                    points: vec![],
+                    boxplot_bin_count: 0,
+                    boxplot_bins: vec![],
+                },
+            ],
+            ..DotplotView::default()
+        };
+        let resolved = view.resolve_query_anchor_series();
+        assert_eq!(resolved.len(), 3);
+        assert_eq!(
+            resolved,
+            vec![
+                DotplotOverlayResolvedAnchorSeries {
+                    series_index: 0,
+                    shift_bp: 118,
+                    plotted_span_end_0based: 1318,
+                },
+                DotplotOverlayResolvedAnchorSeries {
+                    series_index: 1,
+                    shift_bp: 0,
+                    plotted_span_end_0based: 1300,
+                },
+                DotplotOverlayResolvedAnchorSeries {
+                    series_index: 2,
+                    shift_bp: 337,
+                    plotted_span_end_0based: 1287,
+                },
+            ]
+        );
+        assert_eq!(view.query_anchor_label(), Some("shared core motif"));
     }
 }
