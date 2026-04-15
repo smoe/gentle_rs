@@ -1603,6 +1603,10 @@ Controls:
      the active span and the same PCR queue action.
 19. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
+   - Drag-selecting on the linear map now also updates this field to the
+     current `=start .. end_exclusive` range, and existing map selections can
+     be adjusted by dragging their left or right edge handles directly in the
+     map.
    - Formula must start with `=` and define a range:
      - `=left .. right`
      - `=left to right`
