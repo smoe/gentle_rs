@@ -19,6 +19,8 @@
 //!   - `main_area_dna/formula_controls.rs` for selection/ROI formula parsing
 //!     helpers and apply controls
 //!   - `main_area_dna/rna_read_support.rs` for RNA-read report/cache helpers
+//!   - `main_area_dna/variant_followup.rs` for promoter-SNP-to-reporter GUI
+//!     coordination on top of shared engine operations
 //! - early enums and UI-state structs define the sequence-window control
 //!   surface: primer/qPCR dialogs, genome-anchor actions, and engine-op panels
 //! - `MainAreaDna` itself is the central mutable window state record
@@ -47,6 +49,9 @@ mod formula_controls;
 #[path = "main_area_dna/rna_read_support.rs"]
 mod rna_read_support;
 
+#[path = "main_area_dna/variant_followup.rs"]
+mod variant_followup;
+
 use crate::{
     app::{
         request_open_pcr_design_for_sequence_from_native_menu,
@@ -68,11 +73,11 @@ use crate::{
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionCloningPcrHandoffMode,
-        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
-        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
-        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
+        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
+        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -90,8 +95,8 @@ use crate::{
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, Workflow,
-        resolve_formula_roi_range_inputs_0based_on_sequence,
+        TfThresholdOverride, TfbsProgress, VariantAlleleChoice, VariantPromoterContextReport,
+        Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -6974,6 +6979,63 @@ mod tests {
     }
 
     #[test]
+    fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "variation".into(),
+            location: Location::simple_range(10, 11),
+            qualifiers: vec![
+                ("label".into(), Some("rs9923231".to_string())),
+                ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
+                ("gene".into(), Some("VKORC1".to_string())),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
+
+        let opened = area.open_variant_followup_for_feature(0, "test");
+
+        assert!(opened);
+        assert!(area.show_variant_followup_window);
+        assert_eq!(area.variant_followup_ui.source_seq_id, "vkorc1_context");
+        assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
+        assert_eq!(area.variant_followup_ui.variant_label_or_id, "rs9923231");
+        assert_eq!(area.variant_followup_ui.gene_label, "VKORC1");
+        assert_eq!(
+            area.variant_followup_ui.fragment_output_id,
+            "rs9923231_promoter_fragment"
+        );
+        assert_eq!(
+            area.variant_followup_ui.reference_output_id,
+            "rs9923231_promoter_reference"
+        );
+        assert_eq!(
+            area.variant_followup_ui.alternate_output_id,
+            "rs9923231_promoter_alternate"
+        );
+    }
+
+    #[test]
+    fn feature_supports_variant_followup_only_for_variation_features() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "variation".into(),
+            location: Location::simple_range(10, 11),
+            qualifiers: vec![("label".into(), Some("rs9923231".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: "gene".into(),
+            location: Location::simple_range(2, 20),
+            qualifiers: vec![("label".into(), Some("VKORC1".to_string()))],
+        });
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        assert!(area.feature_supports_variant_followup(0));
+        assert!(!area.feature_supports_variant_followup(1));
+    }
+
+    #[test]
     fn open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -9417,6 +9479,7 @@ struct FeatureTreeEntry {
     is_regulatory: bool,
     disable_grouping: bool,
     supports_splicing_expert: bool,
+    supports_variant_followup: bool,
     can_seed_promoter_anchor: bool,
     regulatory_primary_group_key: Option<String>,
     regulatory_primary_group_label: Option<String>,
@@ -9885,6 +9948,8 @@ pub struct MainAreaDna {
     show_rna_read_mapping_window: bool,
     rna_read_mapping_window_feature_id: Option<usize>,
     rna_read_mapping_window_view: Option<Arc<SplicingExpertView>>,
+    show_variant_followup_window: bool,
+    variant_followup_ui: VariantFollowupUiState,
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
     isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
@@ -9928,6 +9993,56 @@ struct ConstructReasoningOverlaySyncKey {
     seq_id: String,
     focused_graph_id: Option<String>,
     engine_operation_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct VariantFollowupUiState {
+    source_seq_id: String,
+    source_feature_id: Option<usize>,
+    variant_label_or_id: String,
+    gene_label: String,
+    transcript_id: String,
+    promoter_upstream_bp: String,
+    promoter_downstream_bp: String,
+    tfbs_focus_half_window_bp: String,
+    retain_downstream_from_tss_bp: String,
+    retain_upstream_beyond_variant_bp: String,
+    max_candidates: String,
+    fragment_output_id: String,
+    reference_output_id: String,
+    alternate_output_id: String,
+    reporter_backbone_seq_id: String,
+    reporter_backbone_path: String,
+    reporter_output_prefix: String,
+    cached_report: Option<VariantPromoterContextReport>,
+    cached_candidates: Option<PromoterReporterCandidateSet>,
+}
+
+impl Default for VariantFollowupUiState {
+    fn default() -> Self {
+        Self {
+            source_seq_id: String::new(),
+            source_feature_id: None,
+            variant_label_or_id: String::new(),
+            gene_label: String::new(),
+            transcript_id: String::new(),
+            promoter_upstream_bp: "1000".to_string(),
+            promoter_downstream_bp: "200".to_string(),
+            tfbs_focus_half_window_bp: "100".to_string(),
+            retain_downstream_from_tss_bp: "200".to_string(),
+            retain_upstream_beyond_variant_bp: "500".to_string(),
+            max_candidates: "5".to_string(),
+            fragment_output_id: String::new(),
+            reference_output_id: String::new(),
+            alternate_output_id: String::new(),
+            reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
+            reporter_backbone_path:
+                "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
+            reporter_output_prefix: String::new(),
+            cached_report: None,
+            cached_candidates: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10345,6 +10460,8 @@ impl MainAreaDna {
             show_rna_read_mapping_window: false,
             rna_read_mapping_window_feature_id: None,
             rna_read_mapping_window_view: None,
+            show_variant_followup_window: false,
+            variant_followup_ui: VariantFollowupUiState::default(),
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
             isoform_expert_window_view: None,
@@ -40659,6 +40776,9 @@ impl MainAreaDna {
                             supports_splicing_expert: Self::feature_kind_supports_splicing_expert(
                                 kind_upper.as_str(),
                             ),
+                            supports_variant_followup: Self::feature_kind_supports_variant_followup(
+                                kind_upper.as_str(),
+                            ),
                             can_seed_promoter_anchor,
                             regulatory_primary_group_key: regulatory_grouping
                                 .as_ref()
@@ -41034,6 +41154,7 @@ impl MainAreaDna {
         let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
         let mut promoter_anchor_seed_feature: Option<usize> = None;
+        let mut open_variant_followup_feature: Option<usize> = None;
         let mut open_splicing_feature: Option<usize> = None;
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
@@ -41177,6 +41298,19 @@ impl MainAreaDna {
                                     if promoter_response.clicked() {
                                         clicked_feature = Some((entry.id, false));
                                         promoter_anchor_seed_feature = Some(entry.id);
+                                        ui.close();
+                                    }
+                                    let variant_followup_response = ui.add_enabled(
+                                        entry.supports_variant_followup,
+                                        egui::Button::new("Open Variant Follow-up"),
+                                    );
+                                    let variant_followup_response =
+                                        variant_followup_response.on_hover_text(
+                                            "Open the promoter follow-up expert for this variation feature",
+                                        );
+                                    if variant_followup_response.clicked() {
+                                        clicked_feature = Some((entry.id, false));
+                                        open_variant_followup_feature = Some(entry.id);
                                         ui.close();
                                     }
                                     let splicing_response = ui.add_enabled(
@@ -41348,6 +41482,9 @@ impl MainAreaDna {
         }
         if let Some(feature_id) = promoter_anchor_seed_feature {
             self.seed_anchored_promoter_from_feature_id(feature_id);
+        }
+        if let Some(feature_id) = open_variant_followup_feature {
+            self.open_variant_followup_for_feature(feature_id, "feature tree action");
         }
         if let Some(feature_id) = open_splicing_feature {
             self.open_splicing_expert_for_feature(feature_id, "feature tree action");
@@ -41672,6 +41809,37 @@ impl MainAreaDna {
                         .monospace()
                         .size(detail_font_size),
                 );
+            }
+            if let Some(feature_id) = self
+                .description_cache_selected_id
+                .filter(|feature_id| self.feature_supports_variant_followup(*feature_id))
+            {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Variant follow-up")
+                        .strong()
+                        .size(detail_font_size),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Open the dedicated promoter follow-up expert to classify promoter context, propose a reporter fragment, and preview the mammalian luciferase pair through shared engine operations.",
+                    )
+                    .size(detail_font_size),
+                );
+                let button_label = if self.show_variant_followup_window {
+                    "Focus Variant Follow-up"
+                } else {
+                    "Open Variant Follow-up"
+                };
+                if ui
+                    .button(button_label)
+                    .on_hover_text(
+                        "Open or focus the dedicated Variant Follow-up window for this variation feature",
+                    )
+                    .clicked()
+                {
+                    self.open_variant_followup_for_feature(feature_id, "description panel");
+                }
             }
             if let Some(reasoning) = self.description_cache_construct_reasoning.clone() {
                 ui.separator();
@@ -42254,6 +42422,7 @@ impl MainAreaDna {
                 }
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
+                let mut map_open_variant_followup_feature: Option<usize> = None;
                 let mut map_open_splicing_feature: Option<usize> = None;
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
@@ -42282,6 +42451,17 @@ impl MainAreaDna {
                     };
                     if showed_any {
                         ui.separator();
+                    }
+                    let variant_response = ui.add_enabled(
+                        self.feature_supports_variant_followup(feature_id),
+                        egui::Button::new("Open Variant Follow-up"),
+                    );
+                    let variant_response = variant_response.on_hover_text(
+                        "Open the dedicated promoter follow-up expert for this variation feature",
+                    );
+                    if variant_response.clicked() {
+                        map_open_variant_followup_feature = Some(feature_id);
+                        ui.close();
                     }
                     let open_response = ui.add_enabled(
                         self.feature_supports_splicing_expert(feature_id),
@@ -42405,6 +42585,9 @@ impl MainAreaDna {
                         self.open_splicing_expert_for_feature(feature_id, "double-clicked map feature");
                     }
                 }
+                if let Some(feature_id) = map_open_variant_followup_feature {
+                    self.open_variant_followup_for_feature(feature_id, "map context menu");
+                }
                 if let Some(feature_id) = map_open_splicing_feature {
                     self.open_splicing_expert_for_feature(feature_id, "map context menu");
                 }
@@ -42419,6 +42602,7 @@ impl MainAreaDna {
         self.render_dotplot_window(ctx);
         self.render_splicing_expert_window(ctx);
         self.render_rna_read_mapping_window(ctx);
+        self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
     }
 }

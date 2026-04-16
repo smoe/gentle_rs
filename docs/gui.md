@@ -3587,6 +3587,13 @@ Tutorial projects:
     promoter-luciferase planning using the dbSNP fetch path, derived
     promoter-window / promoter-context reasoning, and one pinned local
     mammalian luciferase backbone, with per-step GUI/CLI parity mapping.
+  - the sequence window now exposes a dedicated `Variant Follow-up` expert for
+    `variation` features via the feature description pane, feature-tree context
+    menu, and map context menu; it drives shared `AnnotatePromoterWindows`,
+    `SummarizeVariantPromoterContext`,
+    `SuggestPromoterReporterFragments`, `ExtractRegion`,
+    `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and `Branch`
+    operations without dropping into generic `Engine Ops`.
   - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
     keeps `rs9923231` inside the cloned insert instead of on its edge.
   - the preferred community-facing opener for that story is the

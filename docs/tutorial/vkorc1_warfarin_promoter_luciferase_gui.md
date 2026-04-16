@@ -157,17 +157,15 @@ GUI:
 
 1. open `vkorc1_rs9923231_context`
 2. confirm `Variation`, `Gene`, and `mRNA` are visible
-3. open `Engine Ops`
-4. run `AnnotatePromoterWindows` with:
-   - `input = vkorc1_rs9923231_context`
-   - `gene_label = VKORC1`
-   - `upstream_bp = 1000`
-   - `downstream_bp = 200`
-   - `collapse_mode = transcript`
-5. run `SummarizeVariantPromoterContext` with:
-   - `input = vkorc1_rs9923231_context`
-   - `variant_label_or_id = rs9923231`
-   - `gene_label = VKORC1`
+3. select the `variation` marker for `rs9923231`
+4. open `Variant Follow-up`
+   - from the description pane, map context menu, or feature-tree context menu
+5. in the dedicated window:
+   - leave `variant_label_or_id = rs9923231`
+   - keep `gene_label = VKORC1`
+   - keep promoter window defaults `1000 / 200`
+6. click `Annotate promoter windows`
+7. click `Summarize promoter context`
 
 What to look for:
 
@@ -198,24 +196,23 @@ cargo run --quiet --bin gentle_cli -- \
 
 GUI:
 
-1. stay on `vkorc1_rs9923231_context`
-2. in `Engine Ops`, run `SuggestPromoterReporterFragments` with:
-   - `input = vkorc1_rs9923231_context`
-   - `variant_label_or_id = rs9923231`
-   - `gene_label = VKORC1`
+1. stay in `Variant Follow-up`
+2. keep the default fragment heuristic:
    - `retain_downstream_from_tss_bp = 200`
    - `retain_upstream_beyond_variant_bp = 500`
    - `max_candidates = 5`
-3. inspect the recommended top candidate
+3. click `Propose reporter fragment`
+4. inspect the recommended top candidate
+5. click `Extract recommended fragment`
 
 Current default recommended interval:
 
 - start = `2412`
 - end = `3501`
 
-For this baseline tutorial, we still use `ExtractRegion` to materialize that
-candidate, but the geometry is now justified by the engine rather than chosen
-manually first.
+For this baseline tutorial, the GUI expert still calls the shared
+`ExtractRegion` operation under the hood, but the geometry is now justified by
+the engine rather than chosen manually first.
 
 CLI parity:
 
@@ -240,7 +237,11 @@ the boundaries.
 
 GUI:
 
-1. in `Engine Ops`, run `MaterializeVariantAllele` twice:
+1. stay in `Variant Follow-up`
+2. confirm the default fragment id:
+   - `vkorc1_rs9923231_promoter_fragment`
+3. click `Make reference/alternate inserts`
+4. expect:
    - reference -> `vkorc1_rs9923231_promoter_reference`
    - alternate -> `vkorc1_rs9923231_promoter_alternate`
 
@@ -266,14 +267,17 @@ This is a key reproducibility point:
 - same backbone later
 - only the allele changes
 
-## Step 5: Load the Local Mammalian Reporter Backbone
+## Step 5: Use the Local Mammalian Reporter Backbone
 
 GUI:
 
-1. `File -> Open Sequence...`
-2. open
-   [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
-3. use sequence id `gentle_mammalian_luciferase_backbone_v1`
+1. stay in `Variant Follow-up`
+2. confirm the pinned local backbone fields:
+   - sequence id `gentle_mammalian_luciferase_backbone_v1`
+   - path
+     [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+3. the GUI expert loads this backbone automatically on first preview if it is
+   not already present in the current project state
 
 CLI parity:
 
@@ -286,6 +290,17 @@ cargo run --quiet --bin gentle_cli -- \
 ## Step 6: Preview the Reporter Pair
 
 There are two equivalent ways to do this now.
+
+GUI:
+
+1. stay in `Variant Follow-up`
+2. click `Preview luciferase pair`
+3. expect two derived preview ids:
+   - `vkorc1_rs9923231_reporter_reference`
+   - `vkorc1_rs9923231_reporter_alternate`
+4. these are still preview/build artifacts, not a wet-lab validation claim
+5. the current GUI expert uses the same shared `LoadFile`, `Ligation`, and
+   `Branch` operations described below
 
 ### Direct operation path
 

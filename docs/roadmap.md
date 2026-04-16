@@ -962,11 +962,20 @@ order. Durable architecture constraints and decisions remain in
         accession-only transcript labels are demoted in favor of gene-style
         names when possible, and nearby duplicate labels are compacted for
         cleaner figure output
+      - the first dedicated GUI `Variant Follow-up` expert is now in place:
+        - it opens from `variation` features through the description pane,
+          feature-tree context menu, or map context menu
+        - it seeds the selected rsID/dbSNP marker into a dedicated window and
+          drives shared `AnnotatePromoterWindows`,
+          `SummarizeVariantPromoterContext`,
+          `SuggestPromoterReporterFragments`, `ExtractRegion`,
+          `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and `Branch`
+          operations without dropping into generic `Engine Ops`
+        - it keeps the source context sequence pinned even if the active DNA
+          window later switches to derived fragment or reporter products
       - remaining gap on this track:
-        - a dedicated GUI `Variant Follow-up Expert` still needs to be added so
-          the promoter-context summary, transcript choice, recommended fragment,
-          and allele-paired reporter preview can be driven from a variation
-          feature without dropping into generic `Engine Ops`
+        - the GUI expert still stops at preview/build actions; one explicit
+          `Export handoff bundle` path would complete the planned surface
         - the promoter-context JSON/SVG side of the reproducibility bundle is
           now live and replay-verified, but the final paired reporter SVGs still
           need one clean end-to-end workflow smoke test before they can be
