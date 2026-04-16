@@ -52,6 +52,7 @@ use crate::{
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
+        RestrictionCloningPcrHandoffMode,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
@@ -1366,6 +1367,16 @@ pub enum ShellCommand {
     },
     PrimersPrepareRestrictionCloning {
         request_json: String,
+    },
+    PrimersSeedRestrictionCloningHandoff {
+        primer_report_id: String,
+        destination_vector_seq_id: String,
+        pair_rank_1based: usize,
+        mode: RestrictionCloningPcrHandoffMode,
+        forward_enzyme: Option<String>,
+        reverse_enzyme: Option<String>,
+        forward_leader_5prime: Option<String>,
+        reverse_leader_5prime: Option<String>,
     },
     PrimersRestrictionCloningVectorSuggestions {
         seq_id: String,
@@ -6703,6 +6714,31 @@ impl ShellCommand {
                 "prepare restriction-site cloning handoff from JSON request payload (len={})",
                 request_json.len()
             ),
+            Self::PrimersSeedRestrictionCloningHandoff {
+                primer_report_id,
+                destination_vector_seq_id,
+                pair_rank_1based,
+                mode,
+                forward_enzyme,
+                reverse_enzyme,
+                ..
+            } => format!(
+                "seed restriction-site cloning handoff request from primer report '{}' to vector '{}' (pair_rank={}, mode={}, forward='{}', reverse='{}')",
+                primer_report_id,
+                destination_vector_seq_id,
+                pair_rank_1based,
+                mode.as_str(),
+                forward_enzyme
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("auto"),
+                reverse_enzyme
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("auto"),
+            ),
             Self::PrimersRestrictionCloningVectorSuggestions { seq_id } => format!(
                 "list restriction-cloning vector enzyme suggestions for '{}'",
                 seq_id
@@ -7546,6 +7582,7 @@ impl ShellCommand {
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
+                | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
                 | Self::PrimersShowRestrictionCloningHandoff { .. }
                 | Self::PrimersExportRestrictionCloningHandoff { .. }
@@ -17908,6 +17945,37 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id,
+            destination_vector_seq_id,
+            pair_rank_1based,
+            mode,
+            forward_enzyme,
+            reverse_enzyme,
+            forward_leader_5prime,
+            reverse_leader_5prime,
+        } => {
+            let seed = engine
+                .seed_restriction_cloning_pcr_handoff_request(
+                    primer_report_id,
+                    destination_vector_seq_id,
+                    Some(*pair_rank_1based),
+                    *mode,
+                    forward_enzyme.as_deref(),
+                    reverse_enzyme.as_deref(),
+                    forward_leader_5prime.as_deref(),
+                    reverse_leader_5prime.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(seed).map_err(|e| {
+                    format!(
+                        "Could not serialize restriction-cloning handoff seed request: {e}"
+                    )
+                })?,
+            })
+        }
         ShellCommand::PrimersRestrictionCloningVectorSuggestions { seq_id } => {
             let suggestions = engine
                 .restriction_cloning_vector_enzyme_suggestions(seq_id)
@@ -19799,6 +19867,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+            | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
             | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
             | ShellCommand::PrimersListRestrictionCloningHandoffs
             | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }
@@ -22044,6 +22113,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
+        | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
         | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
         | ShellCommand::PrimersListRestrictionCloningHandoffs
         | ShellCommand::PrimersShowRestrictionCloningHandoff { .. }

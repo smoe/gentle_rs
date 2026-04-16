@@ -6947,6 +6947,272 @@ impl GentleEngine {
         })
     }
 
+    fn restriction_cloning_suggested_enzyme_lookup(
+        suggestions: &RestrictionCloningVectorEnzymeSuggestions,
+    ) -> HashMap<String, String> {
+        let mut lookup = HashMap::new();
+        for enzyme in suggestions
+            .selected_mcs
+            .iter()
+            .chain(suggestions.other_unique.iter())
+        {
+            let normalized = Self::normalize_enzyme_match_token(enzyme);
+            if !normalized.is_empty() {
+                lookup.entry(normalized).or_insert_with(|| enzyme.clone());
+            }
+        }
+        lookup
+    }
+
+    fn restriction_cloning_available_enzyme_names(
+        suggestions: &RestrictionCloningVectorEnzymeSuggestions,
+    ) -> Vec<String> {
+        suggestions
+            .selected_mcs
+            .iter()
+            .chain(suggestions.other_unique.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
+    pub fn seed_restriction_cloning_pcr_handoff_request(
+        &self,
+        primer_report_id: &str,
+        destination_vector_seq_id: &str,
+        pair_rank_1based: Option<usize>,
+        mode: RestrictionCloningPcrHandoffMode,
+        forward_enzyme: Option<&str>,
+        reverse_enzyme: Option<&str>,
+        forward_leader_5prime: Option<&str>,
+        reverse_leader_5prime: Option<&str>,
+    ) -> Result<RestrictionCloningPcrHandoffSeedRequest, EngineError> {
+        let report = self.get_primer_design_report(primer_report_id)?;
+        if report.pairs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Primer-design report '{}' has no accepted primer pairs",
+                    report.report_id
+                ),
+            });
+        }
+        let pair_rank = pair_rank_1based.unwrap_or(1);
+        if pair_rank == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Restriction-cloning pair rank must be >= 1".to_string(),
+            });
+        }
+        let pair_index = pair_rank - 1;
+        let selected_pair = report
+            .pairs
+            .get(pair_index)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Primer-design report '{}' does not have accepted pair rank {}",
+                    report.report_id, pair_rank
+                ),
+            })?;
+        let pair_geometry = report.pair_core_geometry(&selected_pair);
+        let destination_vector_seq_id = destination_vector_seq_id.trim();
+        if destination_vector_seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Restriction-cloning destination vector is empty".to_string(),
+            });
+        }
+        let suggestions =
+            self.restriction_cloning_vector_enzyme_suggestions(destination_vector_seq_id)?;
+        let enzyme_lookup = Self::restriction_cloning_suggested_enzyme_lookup(&suggestions);
+        let available_names = Self::restriction_cloning_available_enzyme_names(&suggestions);
+        let canonicalize_enzyme =
+            |raw: &str, side_label: &str| -> Result<String, EngineError> {
+                let trimmed = raw.trim();
+                let normalized = Self::normalize_enzyme_match_token(trimmed);
+                enzyme_lookup
+                    .get(&normalized)
+                    .cloned()
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: if available_names.is_empty() {
+                            format!(
+                                "Restriction-cloning {} enzyme '{}' is not a unique usable cutter on vector '{}'",
+                                side_label, trimmed, destination_vector_seq_id
+                            )
+                        } else {
+                            format!(
+                                "Restriction-cloning {} enzyme '{}' is not a unique usable cutter on vector '{}'; available suggestions: {}",
+                                side_label,
+                                trimmed,
+                                destination_vector_seq_id,
+                                available_names.join(", ")
+                            )
+                        },
+                    })
+            };
+        let explicit_forward = forward_enzyme
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let explicit_reverse = reverse_enzyme
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let (resolved_forward, resolved_reverse, selection_source, suggestion_order_source) =
+            match mode {
+                RestrictionCloningPcrHandoffMode::SingleSite => {
+                    let explicit = explicit_forward.or(explicit_reverse);
+                    if let (Some(fwd), Some(rev)) = (explicit_forward, explicit_reverse)
+                        && !fwd.eq_ignore_ascii_case(rev)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Restriction-cloning single_site seed requires matching forward/reverse enzymes, got '{}' and '{}'",
+                                fwd, rev
+                            ),
+                        });
+                    }
+                    if let Some(raw) = explicit {
+                        let canonical = canonicalize_enzyme(raw, "single-site")?;
+                        (
+                            canonical.clone(),
+                            canonical,
+                            "explicit_single_site".to_string(),
+                            None,
+                        )
+                    } else {
+                        let suggestion = suggestions
+                            .recommended_single_site
+                            .first()
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Vector '{}' has no recommended single-site restriction cutters for restriction-cloning seed generation",
+                                    destination_vector_seq_id
+                                ),
+                            })?;
+                        (
+                            suggestion.enzyme.clone(),
+                            suggestion.enzyme.clone(),
+                            "recommended_single_site".to_string(),
+                            None,
+                        )
+                    }
+                }
+                RestrictionCloningPcrHandoffMode::DirectedPair => {
+                    if explicit_forward.is_some() ^ explicit_reverse.is_some() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Restriction-cloning directed_pair seed requires both forward and reverse enzymes, or neither to use the top recommendation".to_string(),
+                        });
+                    }
+                    if let (Some(fwd), Some(rev)) = (explicit_forward, explicit_reverse) {
+                        let canonical_forward = canonicalize_enzyme(fwd, "forward")?;
+                        let canonical_reverse = canonicalize_enzyme(rev, "reverse")?;
+                        let matching = suggestions.recommended_directed_pairs.iter().find(|pair| {
+                            pair.forward_enzyme.eq_ignore_ascii_case(&canonical_forward)
+                                && pair.reverse_enzyme.eq_ignore_ascii_case(&canonical_reverse)
+                        });
+                        let Some(matching) = matching else {
+                            let recommended = suggestions
+                                .recommended_directed_pairs
+                                .iter()
+                                .map(|pair| {
+                                    format!(
+                                        "{} -> {}",
+                                        pair.forward_enzyme, pair.reverse_enzyme
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: if recommended.is_empty() {
+                                    format!(
+                                        "Restriction-cloning directed pair '{} -> {}' is not available on vector '{}'",
+                                        canonical_forward, canonical_reverse, destination_vector_seq_id
+                                    )
+                                } else {
+                                    format!(
+                                        "Restriction-cloning directed pair '{} -> {}' does not match the valid order on vector '{}'; recommended pairs: {}",
+                                        canonical_forward,
+                                        canonical_reverse,
+                                        destination_vector_seq_id,
+                                        recommended.join(", ")
+                                    )
+                                },
+                            });
+                        };
+                        (
+                            canonical_forward,
+                            canonical_reverse,
+                            "explicit_directed_pair".to_string(),
+                            Some(matching.order_source.clone()),
+                        )
+                    } else {
+                        let suggestion = suggestions
+                            .recommended_directed_pairs
+                            .first()
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Vector '{}' has no recommended directed restriction-site pairs for restriction-cloning seed generation",
+                                    destination_vector_seq_id
+                                ),
+                            })?;
+                        (
+                            suggestion.forward_enzyme.clone(),
+                            suggestion.reverse_enzyme.clone(),
+                            "recommended_directed_pair".to_string(),
+                            Some(suggestion.order_source.clone()),
+                        )
+                    }
+                }
+            };
+        let forward_leader_5prime = forward_leader_5prime
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default()
+            .to_string();
+        let reverse_leader_5prime = reverse_leader_5prime
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default()
+            .to_string();
+        let operation = Operation::PrepareRestrictionCloningPcrHandoff {
+            template: report.template.clone(),
+            primer_report_id: report.report_id.clone(),
+            pair_index,
+            destination_vector_seq_id: destination_vector_seq_id.to_string(),
+            mode,
+            forward_enzyme: resolved_forward.clone(),
+            reverse_enzyme: Some(resolved_reverse.clone()),
+            forward_leader_5prime: (!forward_leader_5prime.is_empty())
+                .then_some(forward_leader_5prime.clone()),
+            reverse_leader_5prime: (!reverse_leader_5prime.is_empty())
+                .then_some(reverse_leader_5prime.clone()),
+        };
+        Ok(RestrictionCloningPcrHandoffSeedRequest {
+            schema: "gentle.restriction_cloning_pcr_handoff_seed.v1".to_string(),
+            primer_report_id: report.report_id.clone(),
+            template: report.template.clone(),
+            destination_vector_seq_id: destination_vector_seq_id.to_string(),
+            pair_index,
+            pair_rank,
+            selected_pair,
+            selected_pair_core_geometry: pair_geometry,
+            mode,
+            forward_enzyme: resolved_forward,
+            reverse_enzyme: resolved_reverse,
+            forward_leader_5prime,
+            reverse_leader_5prime,
+            selection_source,
+            suggestion_order_source,
+            vector_suggestions: suggestions,
+            operation,
+        })
+    }
+
     fn feature_overlaps_span(
         feature: &gb_io::seq::Feature,
         start_0based: usize,

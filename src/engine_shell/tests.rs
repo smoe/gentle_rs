@@ -15,7 +15,7 @@ use crate::engine::{
     Arrangement, ArrangementMode, Container, ContainerKind, ProteinExternalOpinionSource,
     ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
     RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot,
+    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
 };
 use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::test_support::{
@@ -3832,6 +3832,32 @@ fn parse_primers_restriction_cloning_vector_suggestions_request() {
 
 #[test]
 fn parse_primers_restriction_cloning_handoff_report_commands() {
+    let seed = parse_shell_line(
+        "primers seed-restriction-cloning-handoff primer_report_1 vec_a --pair-rank 3 --mode directed_pair --forward-enzyme EcoRI --reverse-enzyme HindIII --forward-leader GC --reverse-leader AT",
+    )
+    .expect("parse restriction-cloning handoff seed");
+    assert!(matches!(
+        seed,
+        ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id,
+            destination_vector_seq_id,
+            pair_rank_1based,
+            mode,
+            forward_enzyme,
+            reverse_enzyme,
+            forward_leader_5prime,
+            reverse_leader_5prime,
+        }
+            if primer_report_id == "primer_report_1"
+                && destination_vector_seq_id == "vec_a"
+                && pair_rank_1based == 3
+                && mode == RestrictionCloningPcrHandoffMode::DirectedPair
+                && forward_enzyme.as_deref() == Some("EcoRI")
+                && reverse_enzyme.as_deref() == Some("HindIII")
+                && forward_leader_5prime.as_deref() == Some("GC")
+                && reverse_leader_5prime.as_deref() == Some("AT")
+    ));
+
     let list = parse_shell_line("primers list-restriction-cloning-handoffs")
         .expect("parse restriction-cloning handoff list");
     assert!(matches!(
@@ -8334,6 +8360,141 @@ fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_uniqu
         run.output["suggestions"]["recommended_directed_pairs"][0]["reverse_enzyme"]
             .as_str(),
         Some("HindIII")
+    );
+}
+
+#[test]
+fn execute_primers_seed_restriction_cloning_handoff_uses_recommendations_or_validates_order() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        )
+        .expect("template"),
+    );
+    let mut vector =
+        DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTTGCGGCCGCTTTT").expect("vector");
+    *vector.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    let vector_len_i64 = vector.len().try_into().unwrap();
+    vector.features_mut().push(Feature {
+        kind: "misc_feature".into(),
+        location: Location::simple_range(0, vector_len_i64),
+        qualifiers: vec![
+            ("label".into(), Some("MCS".to_string())),
+            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+        ],
+    });
+    vector.update_computed_features();
+    state.sequences.insert("vec".to_string(), vector);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: Default::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("primer_seed_handoff".to_string()),
+        })
+        .expect("design primer pairs");
+
+    let single = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id: "primer_seed_handoff".to_string(),
+            destination_vector_seq_id: "vec".to_string(),
+            pair_rank_1based: 1,
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: None,
+            reverse_enzyme: None,
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        },
+    )
+    .expect("seed single-site handoff");
+    assert!(!single.state_changed);
+    assert_eq!(
+        single.output["schema"].as_str(),
+        Some("gentle.restriction_cloning_pcr_handoff_seed.v1")
+    );
+    assert_eq!(
+        single.output["selection_source"].as_str(),
+        Some("recommended_single_site")
+    );
+    assert_eq!(single.output["forward_enzyme"].as_str(), Some("EcoRI"));
+    assert_eq!(single.output["reverse_enzyme"].as_str(), Some("EcoRI"));
+    assert_eq!(
+        single.output["operation"]["PrepareRestrictionCloningPcrHandoff"]["forward_enzyme"]
+            .as_str(),
+        Some("EcoRI")
+    );
+
+    let directed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id: "primer_seed_handoff".to_string(),
+            destination_vector_seq_id: "vec".to_string(),
+            pair_rank_1based: 1,
+            mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: None,
+            reverse_enzyme: None,
+            forward_leader_5prime: Some("GC".to_string()),
+            reverse_leader_5prime: Some("AT".to_string()),
+        },
+    )
+    .expect("seed directed handoff");
+    assert_eq!(
+        directed.output["selection_source"].as_str(),
+        Some("recommended_directed_pair")
+    );
+    assert_eq!(
+        directed.output["suggestion_order_source"].as_str(),
+        Some("mcs_expected_sites")
+    );
+    assert_eq!(directed.output["forward_enzyme"].as_str(), Some("EcoRI"));
+    assert_eq!(directed.output["reverse_enzyme"].as_str(), Some("HindIII"));
+    assert_eq!(
+        directed.output["operation"]["PrepareRestrictionCloningPcrHandoff"]["reverse_enzyme"]
+            .as_str(),
+        Some("HindIII")
+    );
+    assert_eq!(
+        directed.output["operation"]["PrepareRestrictionCloningPcrHandoff"]
+            ["forward_leader_5prime"]
+            .as_str(),
+        Some("GC")
     );
 }
 

@@ -1,5 +1,5 @@
 {
-   "command_count": 315,
+   "command_count": 316,
    "commands": [
       {
          "aliases": [
@@ -1820,6 +1820,18 @@
          "path": "primers prepare-restriction-cloning",
          "summary": "Create a restriction-site cloning handoff from one persisted primer-pair report and a destination vector.",
          "usage": "primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-restriction-cloning-handoff",
+         "summary": "Build a validated restriction-cloning handoff request from a saved primer report and destination vector.",
+         "usage": "primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]"
       },
       {
          "aliases": [],

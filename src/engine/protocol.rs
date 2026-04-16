@@ -1789,6 +1789,28 @@ pub struct RestrictionCloningVectorEnzymeSuggestions {
     pub recommended_directed_pairs: Vec<RestrictionCloningDirectedPairSuggestion>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestrictionCloningPcrHandoffSeedRequest {
+    pub schema: String,
+    pub primer_report_id: String,
+    pub template: String,
+    pub destination_vector_seq_id: String,
+    pub pair_index: usize,
+    pub pair_rank: usize,
+    pub selected_pair: PrimerDesignPairRecord,
+    pub selected_pair_core_geometry: PrimerPairCoreGeometry,
+    pub mode: RestrictionCloningPcrHandoffMode,
+    pub forward_enzyme: String,
+    pub reverse_enzyme: String,
+    pub forward_leader_5prime: String,
+    pub reverse_leader_5prime: String,
+    pub selection_source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion_order_source: Option<String>,
+    pub vector_suggestions: RestrictionCloningVectorEnzymeSuggestions,
+    pub operation: Operation,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RestrictionCloningPcrDigestCompatibility {

@@ -3475,6 +3475,7 @@ Primer-design shell command family (implemented):
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
+  - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`
   - `primers restriction-cloning-vector-suggestions SEQ_ID`
   - `primers list-restriction-cloning-handoffs`
   - `primers show-restriction-cloning-handoff REPORT_ID`
@@ -3493,6 +3494,9 @@ Primer-design shell command family (implemented):
   `{"DesignQpcrAssays": {...}}`.
 - `primers prepare-restriction-cloning` expects an operation payload whose root
   variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
+- `primers seed-restriction-cloning-handoff` is non-mutating and returns a
+  validated `PrepareRestrictionCloningPcrHandoff` payload plus the
+  recommendation context used to select or validate the enzyme pair.
 - `primers restriction-cloning-vector-suggestions` is non-mutating and returns
   the same MCS-first / unique-cutter suggestion ordering the GUI PCR Designer
   uses for the selected destination vector.
@@ -3520,6 +3524,7 @@ Primer-design shell command family (implemented):
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
   - `gentle.restriction_cloning_pcr_handoff.v1`
+  - `gentle.restriction_cloning_pcr_handoff_seed.v1`
   - `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
 - `gentle.primer_seed_request.v1` payload fields:
   - `template`
@@ -3540,6 +3545,20 @@ Primer-design shell command family (implemented):
   - `suggestions.recommended_directed_pairs[]`
     (`order_source`, `forward_enzyme`, `reverse_enzyme`,
     `forward_cut_position_0based`, `reverse_cut_position_0based`)
+- `gentle.restriction_cloning_pcr_handoff_seed.v1` payload fields:
+  - `primer_report_id`
+  - `template`
+  - `destination_vector_seq_id`
+  - `pair_index`, `pair_rank`
+  - `selected_pair`
+  - `selected_pair_core_geometry`
+  - `mode`
+  - `forward_enzyme`, `reverse_enzyme`
+  - `forward_leader_5prime`, `reverse_leader_5prime`
+  - `selection_source`
+  - optional `suggestion_order_source`
+  - `vector_suggestions`
+  - `operation` (`{"PrepareRestrictionCloningPcrHandoff": ...}`)
 
 Feature-query shell contract (implemented):
 

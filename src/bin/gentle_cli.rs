@@ -648,6 +648,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]\n  \
   gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers list-restriction-cloning-handoffs\n  \
   gentle_cli [--state PATH|--project PATH] primers show-restriction-cloning-handoff REPORT_ID\n  \

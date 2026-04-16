@@ -1918,10 +1918,26 @@ pub(super) fn build_seeded_qpcr_operation(
     }
 }
 
+fn parse_restriction_cloning_handoff_mode(
+    raw: &str,
+) -> Result<RestrictionCloningPcrHandoffMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "single_site" | "single-site" | "single" => {
+            Ok(RestrictionCloningPcrHandoffMode::SingleSite)
+        }
+        "directed_pair" | "directed-pair" | "directed" | "pair" => {
+            Ok(RestrictionCloningPcrHandoffMode::DirectedPair)
+        }
+        other => Err(format!(
+            "Unsupported restriction-cloning handoff mode '{other}', expected single_site|directed_pair"
+        )),
+    }
+}
+
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -2015,6 +2031,97 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             }
             Ok(ShellCommand::PrimersPrepareRestrictionCloning {
                 request_json: tokens[2].clone(),
+            })
+        }
+        "seed-restriction-cloning-handoff" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers seed-restriction-cloning-handoff requires PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]"
+                        .to_string(),
+                );
+            }
+            let primer_report_id = tokens[2].clone();
+            let destination_vector_seq_id = tokens[3].clone();
+            let mut pair_rank_1based = 1usize;
+            let mut mode = RestrictionCloningPcrHandoffMode::SingleSite;
+            let mut forward_enzyme: Option<String> = None;
+            let mut reverse_enzyme: Option<String> = None;
+            let mut forward_leader_5prime: Option<String> = None;
+            let mut reverse_leader_5prime: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--pair-rank" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--pair-rank",
+                            "primers seed-restriction-cloning-handoff",
+                        )?;
+                        pair_rank_1based = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --pair-rank value '{raw}': {e}")
+                        })?;
+                        if pair_rank_1based == 0 {
+                            return Err("--pair-rank must be >= 1".to_string());
+                        }
+                    }
+                    "--mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--mode",
+                            "primers seed-restriction-cloning-handoff",
+                        )?;
+                        mode = parse_restriction_cloning_handoff_mode(&raw)?;
+                    }
+                    "--forward-enzyme" => {
+                        forward_enzyme = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--forward-enzyme",
+                            "primers seed-restriction-cloning-handoff",
+                        )?);
+                    }
+                    "--reverse-enzyme" => {
+                        reverse_enzyme = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reverse-enzyme",
+                            "primers seed-restriction-cloning-handoff",
+                        )?);
+                    }
+                    "--forward-leader" => {
+                        forward_leader_5prime = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--forward-leader",
+                            "primers seed-restriction-cloning-handoff",
+                        )?);
+                    }
+                    "--reverse-leader" => {
+                        reverse_leader_5prime = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reverse-leader",
+                            "primers seed-restriction-cloning-handoff",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers seed-restriction-cloning-handoff"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersSeedRestrictionCloningHandoff {
+                primer_report_id,
+                destination_vector_seq_id,
+                pair_rank_1based,
+                mode,
+                forward_enzyme,
+                reverse_enzyme,
+                forward_leader_5prime,
+                reverse_leader_5prime,
             })
         }
         "restriction-cloning-vector-suggestions" => {
@@ -2162,7 +2269,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

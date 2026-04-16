@@ -363,7 +363,7 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 
@@ -1725,6 +1725,17 @@ Shared shell command:
         `gentle.restriction_cloning_pcr_handoff.v1`
       - shell/direct output includes the saved handoff report in the command
         response `output`
+    - Restriction-cloning handoff seed helper
+      (`primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID ...`):
+      - non-mutating helper returning schema
+        `gentle.restriction_cloning_pcr_handoff_seed.v1`
+      - resolves one saved primer-pair report + pair rank into a ready-to-run
+        `PrepareRestrictionCloningPcrHandoff` operation payload
+      - if enzymes are omitted, uses the top recommended single-site or
+        directed-pair suggestion for the destination vector
+      - if directed-pair enzymes are provided explicitly, validates that their
+        order matches the same MCS/unique-cut ordering used by vector
+        suggestions
     - Restriction-cloning vector suggestion notes
       (`primers restriction-cloning-vector-suggestions SEQ_ID`):
       - non-mutating helper for command-line/agent reasoning against one

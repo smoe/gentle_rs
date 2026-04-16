@@ -1019,6 +1019,12 @@ order. Durable architecture constraints and decisions remain in
     - `primers list-restriction-cloning-handoffs`
     - `primers show-restriction-cloning-handoff`
     - `primers export-restriction-cloning-handoff`
+  - shared-shell/CLI primer helpers now also expose a non-mutating seeded
+    restriction-cloning handoff request builder:
+    - `primers seed-restriction-cloning-handoff`
+    - returns a validated ready-to-run
+      `PrepareRestrictionCloningPcrHandoff` payload plus the recommendation
+      context used to choose/validate enzymes
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged
