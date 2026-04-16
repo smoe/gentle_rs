@@ -112,6 +112,12 @@ impl LuaInterface {
             "  - list_ensembl_installable_genomes([collection], [filter]): Lists Ensembl species directories that currently appear installable"
         );
         println!(
+            "  - list_construct_reasoning_graphs(project, [seq_id]): Lists stored construct-reasoning graphs plus summary rows"
+        );
+        println!(
+            "  - show_construct_reasoning_graph(project, graph_id): Shows one construct-reasoning graph plus compact summary details"
+        );
+        println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
         );
         println!(
@@ -286,6 +292,34 @@ impl LuaInterface {
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::discover_ensembl_installable_genomes(collection, filter)
             .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_construct_reasoning_graphs(
+        state: ProjectState,
+        seq_id: Option<String>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningListGraphs {
+            seq_id: seq_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("construct-reasoning list-graphs failed: {e}")))?;
+        Ok(run.output)
+    }
+
+    fn show_construct_reasoning_graph(
+        state: ProjectState,
+        graph_id: String,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningShowGraph { graph_id };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("construct-reasoning show-graph failed: {e}")))?;
+        Ok(run.output)
     }
 
     fn list_agent_systems(catalog_path: Option<String>) -> LuaResult<serde_json::Value> {
@@ -705,6 +739,30 @@ impl LuaInterface {
                     lua.to_value(&report)
                 },
             )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_construct_reasoning_graphs",
+            self.lua
+                .create_function(|lua, (state, seq_id): (Value, Option<String>)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::list_construct_reasoning_graphs(state, seq_id)?;
+                    lua.to_value(&output)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "show_construct_reasoning_graph",
+            self.lua
+                .create_function(|lua, (state, graph_id): (Value, String)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::show_construct_reasoning_graph(state, graph_id)?;
+                    lua.to_value(&output)
+                })?,
         )?;
 
         self.lua.globals().set(
@@ -1601,6 +1659,11 @@ impl FromLuaMulti for DNAsequence {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dna_sequence::DNAsequence;
+    use crate::engine::{
+        AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+        ConstructObjective, GentleEngine, ProjectState,
+    };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
         decision_trace_fixture_state, write_demo_jaspar_pfm, write_demo_pool_json,
@@ -1880,7 +1943,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -1985,6 +2048,76 @@ mod tests {
             )
             .exec()
             .expect("list host profile catalog entries");
+    }
+
+    #[test]
+    fn lua_construct_reasoning_graph_wrappers_match_shared_shell_output() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "adapter_capture_lua".to_string(),
+            DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state.clone());
+        let objective = engine
+            .upsert_construct_objective(ConstructObjective {
+                title: "Lua adapter capture".to_string(),
+                goal: "Expose adapter capture shell summary via Lua".to_string(),
+                adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                    capture_id: "mcs_capture".to_string(),
+                    restriction_enzyme_name: "EcoRI".to_string(),
+                    blunt_insert_required: true,
+                    adapter_style: AdapterCaptureStyle::McsLike,
+                    protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                    extra_retrieval_enzyme_names: vec!["XbaI".to_string(), "NotI".to_string()],
+                    notes: vec![],
+                }],
+                ..ConstructObjective::default()
+            })
+            .expect("objective");
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "adapter_capture_lua",
+                Some(&objective.objective_id),
+                Some("adapter_capture_lua_graph"),
+            )
+            .expect("build graph");
+        state = engine.state().clone();
+
+        let wrapper_list = LuaInterface::list_construct_reasoning_graphs(
+            state.clone(),
+            Some("adapter_capture_lua".to_string()),
+        )
+        .expect("lua list wrapper");
+        let wrapper_show =
+            LuaInterface::show_construct_reasoning_graph(state.clone(), graph.graph_id.clone())
+                .expect("lua show wrapper");
+
+        let mut shell_engine = GentleEngine::from_state(state);
+        let shell_list = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningListGraphs {
+                seq_id: Some("adapter_capture_lua".to_string()),
+            },
+        )
+        .expect("shell list");
+        let shell_show = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningShowGraph {
+                graph_id: graph.graph_id.clone(),
+            },
+        )
+        .expect("shell show");
+
+        assert_eq!(wrapper_list, shell_list.output);
+        assert_eq!(wrapper_show, shell_show.output);
+        assert!(
+            wrapper_show["summary"]["fact_summaries"]
+                .as_array()
+                .map(|rows| rows.iter().any(|row| {
+                    row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+                }))
+                .unwrap_or(false)
+        );
     }
 
     #[test]

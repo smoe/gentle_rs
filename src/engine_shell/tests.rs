@@ -12,7 +12,8 @@
 use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Arrangement, ArrangementMode, Container, ContainerKind, ProteinExternalOpinionSource,
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
+    ArrangementMode, ConstructObjective, Container, ContainerKind, ProteinExternalOpinionSource,
     ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
     RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
     RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
@@ -1080,6 +1081,11 @@ fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_expo
         show.output["graph"]["candidates"][0]["protein_to_dna_handoff"]["strategy"].as_str(),
         Some("reverse_translated_synthetic")
     );
+    assert!(
+        show.output["summary"]["summary_lines"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    );
 
     let export = execute_shell_command(
         &mut engine,
@@ -1094,6 +1100,89 @@ fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_expo
         Some("protein_handoff_shell")
     );
     assert!(export_path.exists());
+}
+
+#[test]
+fn execute_construct_reasoning_show_graph_includes_adapter_capture_summary() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "adapter_capture_cli".to_string(),
+        DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "CLI adapter capture".to_string(),
+            goal: "Expose adapter capture review in shell summaries".to_string(),
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: "mcs_capture".to_string(),
+                restriction_enzyme_name: "EcoRI".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::McsLike,
+                protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                extra_retrieval_enzyme_names: vec!["XbaI".to_string(), "NotI".to_string()],
+                notes: vec![],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "adapter_capture_cli",
+            Some(&objective.objective_id),
+            Some("adapter_capture_cli_graph"),
+        )
+        .expect("build graph");
+
+    let show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningShowGraph {
+            graph_id: graph.graph_id.clone(),
+        },
+    )
+    .expect("show construct-reasoning graph");
+
+    assert!(
+        show.output["summary"]["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str().is_some_and(|text| {
+                    text.contains("Adapter/linker restriction capture requires review")
+                        && text.contains("review_needed")
+                })
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        show.output["summary"]["fact_summaries"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+                    && row["detail_lines"]
+                        .as_array()
+                        .map(|detail_rows| {
+                            detail_rows.iter().any(|entry| {
+                                entry.as_str().is_some_and(|text| {
+                                    text.contains(
+                                        "aggregate: mcs_capture: all_named_motifs_present",
+                                    )
+                                })
+                            })
+                        })
+                        .unwrap_or(false)
+                    && row["warning_lines"]
+                        .as_array()
+                        .map(|warning_rows| {
+                            warning_rows.iter().any(|entry| {
+                                entry.as_str().is_some_and(|text| {
+                                    text == "All adapter motifs already occur on the insert"
+                                })
+                            })
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
 }
 
 #[test]

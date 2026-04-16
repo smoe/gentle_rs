@@ -1325,6 +1325,8 @@ external coding agent runtime, see:
     - `helper_catalog_entries` (shared `helpers list` catalog contract)
     - `host_profile_catalog_entries` (shared `hosts list` catalog contract)
     - `ensembl_installable_genomes` (shared Ensembl discovery contract for currently installable candidates)
+    - `construct_reasoning_graphs` (shared `construct-reasoning list-graphs` inspection contract)
+    - `construct_reasoning_graph` (shared `construct-reasoning show-graph` inspection contract)
     - `helper_interpretation` (direct helper-construct interpretation lookup)
     - `ui_intents` (shared `ui intents` catalog)
     - `ui_intent` (shared `ui open|focus ...` resolution path)
@@ -1373,6 +1375,26 @@ MCP query/introspection tool contracts (current):
       `hosts list [--catalog ...] [--filter ...]`
   - result:
     - `catalog_path`, `filter`, `profile_count`, `profile_ids[]`, `entries[]`
+
+- `construct_reasoning_graphs`
+  - arguments:
+    - optional: `state_path`, `seq_id`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `construct-reasoning list-graphs [SEQ_ID]`
+  - result:
+    - graph summary list payload with shared summary rows for stored graphs
+
+- `construct_reasoning_graph`
+  - arguments:
+    - required: `graph_id`
+    - optional: `state_path`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `construct-reasoning show-graph GRAPH_ID`
+  - result:
+    - full portable graph payload plus the compact shared summary block used by
+      CLI/GUI adapter-facing inspection surfaces
 
 - `ensembl_installable_genomes`
   - arguments:

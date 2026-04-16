@@ -342,6 +342,13 @@ Reference genome capability status:
 - `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 - `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
+Construct-reasoning inspection capability status:
+
+- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning export-graph`)
+- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
+- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
+- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`)
+
 Agent-assistant capability status:
 
 - `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
@@ -660,6 +667,17 @@ UniProt mapping capability status:
   - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
   backed by `BuildProteinToDnaHandoffReasoning` plus the existing persisted
   construct-reasoning graph store.
+  - `construct-reasoning show-graph` now returns both the full portable graph
+    and a compact CLI-facing `summary` block:
+    - `summary_lines`
+    - `warning_lines`
+    - `fact_summaries`
+  - for adapter/linker restriction-capture facts, that summary now surfaces the
+    same shared-engine review as the GUI inspector:
+    - per-motif conflicts across capture plus retrieval sites
+    - the stronger `all named adapter motifs already occur on the insert` case
+    - `methylation may rescue this, but the enzyme-specific methylation
+      knowledge base is still incomplete`
 - additional protein-sequence operations are still available through the shared
   engine contract (`apply_operation` / workflow JSON):
   - `ImportUniprotEntrySequence`
@@ -832,30 +850,35 @@ Exit methods:
 17. `list_ensembl_installable_genomes(collection, filter)`
     - Lists Ensembl species directories that currently appear installable because both FASTA and GTF listings are present.
     - `collection` is optional (`all`, `vertebrates`, `metazoa`).
-18. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+18. `list_construct_reasoning_graphs(state, seq_id)`
+    - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
+    - `seq_id` is optional and limits rows to one active sequence.
+19. `show_construct_reasoning_graph(state, graph_id)`
+    - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-19. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+21. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-20. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+22. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-21. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+23. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-22. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+24. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-23. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
+25. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
     - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
-22. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
+26. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
-23. `set_parameter(state, name, value)`
+27. `set_parameter(state, name, value)`
     - Convenience wrapper for engine `SetParameter`.
-24. `set_vcf_display_filter(state, options)`
+28. `set_vcf_display_filter(state, options)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
-25. `list_agent_systems(catalog_path)`
+29. `list_agent_systems(catalog_path)`
     - Lists configured agent systems from catalog JSON.
     - `catalog_path` is optional (`null`/`""` uses `assets/agent_systems.json`).
-24. `ask_agent_system(state, system_id, prompt, options)`
+30. `ask_agent_system(state, system_id, prompt, options)`
     - Invokes one configured agent system through shared shell execution.
     - Returns `{ state, state_changed, output }`.
     - `state` may be `null` to use an empty/default project state.
@@ -1134,30 +1157,34 @@ Exit methods:
     - Lists structured host-profile catalog entries for construct-reasoning host/strain lookup.
 17. `list_ensembl_installable_genomes([collection], [filter])`
     - Lists current Ensembl candidates where both FASTA and GTF species listings exist.
-18. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+18. `list_construct_reasoning_graphs(project, [seq_id])`
+    - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
+19. `show_construct_reasoning_graph(project, graph_id)`
+    - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-19. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+21. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-20. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+22. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-21. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+23. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-22. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
+24. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features, extract_mode, promoter_upstream_bp)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-21. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
+25. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
     - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
-22. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
+26. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
-23. `set_parameter(project, name, value)`
+27. `set_parameter(project, name, value)`
     - Convenience wrapper for engine `SetParameter`.
-24. `set_vcf_display_filter(project, opts)`
+28. `set_vcf_display_filter(project, opts)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
-25. `list_agent_systems([catalog_path])`
+29. `list_agent_systems([catalog_path])`
     - Lists configured agent systems from catalog JSON.
     - `catalog_path` is optional (defaults to `assets/agent_systems.json`).
-24. `ask_agent_system(project, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary])`
+30. `ask_agent_system(project, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary])`
     - Invokes one configured agent system through shared shell execution.
     - Returns table with `state`, `state_changed`, and `output`.
     - `project` may be `nil` to use an empty/default project state.

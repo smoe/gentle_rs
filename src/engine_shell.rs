@@ -46,8 +46,8 @@ use crate::{
         ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode,
-        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -19525,6 +19525,166 @@ fn format_reverse_translation_report_detail_summary(report: &ReverseTranslationR
     )
 }
 
+fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> Option<Value> {
+    let status = fact
+        .value_json
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .map(|value| value.to_string());
+    let mut detail_lines = vec![];
+    let mut warning_lines = vec![];
+    match fact.fact_type.as_str() {
+        "adapter_restriction_capture_context" => {
+            let capture_rows = fact
+                .value_json
+                .get("capture_plans")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .filter_map(|row| {
+                            let capture_id =
+                                row.get("capture_id").and_then(serde_json::Value::as_str)?;
+                            let enzyme = row
+                                .get("restriction_enzyme_name")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("enzyme");
+                            let site_status = row
+                                .get("internal_site_status")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("unspecified");
+                            let count = row
+                                .get("internal_site_count")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0);
+                            Some(format!(
+                                "{capture_id}: {enzyme} ({site_status}, internal_sites={count})"
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            detail_lines.extend(capture_rows);
+
+            let motif_rows = fact
+                .value_json
+                .get("capture_plans")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .filter_map(|row| {
+                            let capture_id = row
+                                .get("capture_id")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("capture");
+                            let motifs = row
+                                .get("motif_summaries")
+                                .and_then(serde_json::Value::as_array)
+                                .map(|entries| {
+                                    entries
+                                        .iter()
+                                        .filter_map(|entry| {
+                                            let enzyme = entry
+                                                .get("enzyme_name")
+                                                .and_then(serde_json::Value::as_str)?;
+                                            let role = entry
+                                                .get("motif_role")
+                                                .and_then(serde_json::Value::as_str)
+                                                .unwrap_or("motif");
+                                            let motif_status = entry
+                                                .get("internal_site_status")
+                                                .and_then(serde_json::Value::as_str)
+                                                .unwrap_or("unspecified");
+                                            let count = entry
+                                                .get("internal_site_count")
+                                                .and_then(serde_json::Value::as_u64)
+                                                .unwrap_or(0);
+                                            Some(format!(
+                                                "{role}:{enzyme} ({motif_status}, internal_sites={count})"
+                                            ))
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                })
+                                .unwrap_or_default();
+                            (!motifs.is_empty()).then(|| format!("{capture_id}: {motifs}"))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if !motif_rows.is_empty() {
+                detail_lines.push(format!("motifs: {}", motif_rows.join(" | ")));
+            }
+
+            let all_present = fact
+                .value_json
+                .get("capture_plans")
+                .and_then(serde_json::Value::as_array)
+                .map(|rows| {
+                    rows.iter()
+                        .filter_map(|row| {
+                            let capture_id =
+                                row.get("capture_id").and_then(serde_json::Value::as_str)?;
+                            let all_present = row
+                                .get("all_named_motifs_present_on_insert")
+                                .and_then(serde_json::Value::as_bool)
+                                .unwrap_or(false);
+                            all_present.then(|| format!("{capture_id}: all_named_motifs_present"))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if !all_present.is_empty() {
+                detail_lines.push(format!("aggregate: {}", all_present.join(" | ")));
+            }
+
+            warning_lines.extend(
+                fact.value_json
+                    .get("review_items")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                row.get("label")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(|value| value.to_string())
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
+            );
+        }
+        _ => {}
+    }
+
+    if detail_lines.is_empty() && warning_lines.is_empty() {
+        return None;
+    }
+
+    Some(json!({
+        "fact_type": fact.fact_type,
+        "label": fact.label,
+        "status": status,
+        "detail_lines": detail_lines,
+        "warning_lines": warning_lines,
+    }))
+}
+
+fn format_construct_reasoning_graph_summary(
+    graph: &crate::engine::ConstructReasoningGraph,
+) -> Value {
+    let summary = GentleEngine::summarize_process_run_bundle_construct_reasoning_graph(graph);
+    let fact_summaries = graph
+        .facts
+        .iter()
+        .filter_map(format_construct_reasoning_fact_summary)
+        .collect::<Vec<_>>();
+    json!({
+        "summary_lines": summary.summary_lines,
+        "warning_lines": summary.warning_lines,
+        "fact_summaries": fact_summaries,
+    })
+}
+
 #[inline(never)]
 fn execute_protein_sequence_command(
     engine: &mut GentleEngine,
@@ -19809,10 +19969,12 @@ fn execute_protein_sequence_command(
             let graph = engine
                 .construct_reasoning_graph(graph_id)
                 .map_err(|e| e.to_string())?;
+            let summary = format_construct_reasoning_graph_summary(&graph);
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "graph": graph,
+                    "summary": summary,
                 }),
             })
         }

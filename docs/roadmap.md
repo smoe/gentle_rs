@@ -4287,7 +4287,14 @@ Post-baseline follow-ups:
     only the primary capture site, keeps unresolved enzymes / internal
     same-site conflicts / “all adapter motifs already present” /
     methylation-protection review explicit, surfaces the result in GUI +
-    run-bundle summaries, and lets that same reasoning bias routine
+    run-bundle summaries, and now also exposes the same compact inspection
+    surface outside the GUI across shared shell/CLI, JS, Lua, and MCP:
+    - shell/CLI `construct-reasoning show-graph` summary block
+    - JS/Lua `list_construct_reasoning_graphs(...)` /
+      `show_construct_reasoning_graph(...)`
+    - MCP `construct_reasoning_graphs` / `construct_reasoning_graph`
+    Deterministic adapter-equivalence tests now cover those wrappers against
+    the shared shell contract as well. The same reasoning still biases routine
     preference synthesis toward restriction-family workflows.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.

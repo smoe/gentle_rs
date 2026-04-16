@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-03-04
+Last updated: 2026-04-16
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -70,6 +70,8 @@ Current MCP tool families include:
   - `helper_catalog_entries`
   - `host_profile_catalog_entries`
   - `ensembl_installable_genomes`
+  - `construct_reasoning_graphs`
+  - `construct_reasoning_graph`
   - `helper_interpretation`
 - UI-intent tools:
   - `ui_intents`

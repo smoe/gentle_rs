@@ -356,6 +356,45 @@ fn tool_list() -> Value {
             }
         },
         {
+            "name": "construct_reasoning_graphs",
+            "title": "Construct Reasoning Graphs",
+            "description": "Return stored construct-reasoning graph summaries through the shared `construct-reasoning list-graphs` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "seq_id": {
+                        "type": "string",
+                        "description": "Optional sequence id filter."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "construct_reasoning_graph",
+            "title": "Construct Reasoning Graph",
+            "description": "Return one stored construct-reasoning graph plus compact summary details through the shared `construct-reasoning show-graph` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to inspect."
+                    }
+                },
+                "required": ["graph_id"],
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "helper_interpretation",
             "title": "Helper Interpretation",
             "description": "Return the normalized helper-construct interpretation for one helper id or alias.",
@@ -959,6 +998,52 @@ fn ensembl_installable_genomes_tool_result(arguments: &Value) -> Value {
     }
 }
 
+fn construct_reasoning_graphs_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let seq_id = match optional_string_arg(&args, "seq_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["construct-reasoning".to_string(), "list-graphs".to_string()];
+    if let Some(seq_id) = seq_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        tokens.push(seq_id.to_string());
+    }
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        tokens,
+        "construct_reasoning_graphs",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn construct_reasoning_graph_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        vec![
+            "construct-reasoning".to_string(),
+            "show-graph".to_string(),
+            graph_id,
+        ],
+        "construct_reasoning_graph",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn helper_interpretation_tool_result(arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let helper_id = match required_string_arg(&args, "helper_id") {
@@ -1503,6 +1588,12 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
             host_profile_catalog_entries_tool_result(&params.arguments)
         }
         "ensembl_installable_genomes" => ensembl_installable_genomes_tool_result(&params.arguments),
+        "construct_reasoning_graphs" => {
+            construct_reasoning_graphs_tool_result(default_state_path, &params.arguments)
+        }
+        "construct_reasoning_graph" => {
+            construct_reasoning_graph_tool_result(default_state_path, &params.arguments)
+        }
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
@@ -1660,6 +1751,11 @@ fn handle_message<W: Write>(
 mod tests {
     use super::*;
     use crate::{
+        dna_sequence::DNAsequence,
+        engine::{
+            AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+            ConstructObjective,
+        },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
     };
@@ -2488,6 +2584,101 @@ mod tests {
             "deoR".to_string(),
         ]);
         assert_eq!(mcp_host["result"]["structuredContent"], expected_host);
+    }
+
+    #[test]
+    fn mcp_construct_reasoning_tools_match_shared_shell_contracts() {
+        let td = tempdir().expect("tempdir");
+        let state_path = td.path().join("construct_reasoning_state.json");
+        let state_path_str = state_path.to_string_lossy().to_string();
+
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "adapter_capture_mcp".to_string(),
+            DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let objective = engine
+            .upsert_construct_objective(ConstructObjective {
+                title: "MCP adapter capture".to_string(),
+                goal: "Expose adapter capture shell summary via MCP".to_string(),
+                adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                    capture_id: "mcs_capture".to_string(),
+                    restriction_enzyme_name: "EcoRI".to_string(),
+                    blunt_insert_required: true,
+                    adapter_style: AdapterCaptureStyle::McsLike,
+                    protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                    extra_retrieval_enzyme_names: vec!["XbaI".to_string(), "NotI".to_string()],
+                    notes: vec![],
+                }],
+                ..ConstructObjective::default()
+            })
+            .expect("objective");
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "adapter_capture_mcp",
+                Some(&objective.objective_id),
+                Some("adapter_capture_mcp_graph"),
+            )
+            .expect("build graph");
+        engine
+            .state()
+            .save_to_path(&state_path_str)
+            .expect("save state");
+
+        let mcp_list = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "construct_reasoning_graphs",
+            json!({
+                "state_path": state_path_str,
+                "seq_id": "adapter_capture_mcp"
+            }),
+        );
+        assert_eq!(
+            mcp_list.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_list = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "construct-reasoning".to_string(),
+                "list-graphs".to_string(),
+                "adapter_capture_mcp".to_string(),
+            ])
+            .expect("parse shell list");
+            execute_shell_command(&mut engine, &command)
+                .expect("execute shell list")
+                .output
+        };
+        assert_eq!(mcp_list["result"]["structuredContent"], expected_list);
+
+        let mcp_show = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "construct_reasoning_graph",
+            json!({
+                "state_path": state_path_str,
+                "graph_id": graph.graph_id.clone()
+            }),
+        );
+        assert_eq!(
+            mcp_show.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_show = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "construct-reasoning".to_string(),
+                "show-graph".to_string(),
+                graph.graph_id.clone(),
+            ])
+            .expect("parse shell show");
+            execute_shell_command(&mut engine, &command)
+                .expect("execute shell show")
+                .output
+        };
+        assert_eq!(mcp_show["result"]["structuredContent"], expected_show);
     }
 
     #[test]

@@ -197,6 +197,32 @@ fn list_agent_systems_impl(catalog_path: &str) -> Result<serde_json::Value, JsAn
     Ok(run.output)
 }
 
+fn list_construct_reasoning_graphs_impl(
+    state: ProjectState,
+    seq_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::ConstructReasoningListGraphs {
+        seq_id: empty_to_none(seq_id).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("construct-reasoning list-graphs failed: {e}"))?;
+    Ok(run.output)
+}
+
+fn show_construct_reasoning_graph_impl(
+    state: ProjectState,
+    graph_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::ConstructReasoningShowGraph {
+        graph_id: graph_id.to_string(),
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("construct-reasoning show-graph failed: {e}"))?;
+    Ok(run.output)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn ask_agent_system_impl(
     state: ProjectState,
@@ -413,6 +439,24 @@ fn list_ensembl_installable_genomes(
 
 #[op2]
 #[serde]
+fn list_construct_reasoning_graphs(
+    #[serde] state: ProjectState,
+    #[string] seq_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    list_construct_reasoning_graphs_impl(state, seq_id)
+}
+
+#[op2]
+#[serde]
+fn show_construct_reasoning_graph(
+    #[serde] state: ProjectState,
+    #[string] graph_id: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    show_construct_reasoning_graph_impl(state, graph_id)
+}
+
+#[op2]
+#[serde]
 fn list_agent_systems(#[string] catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
@@ -599,6 +643,8 @@ impl JavaScriptInterface {
         const LIST_HELPER_CATALOG_ENTRIES: OpDecl = list_helper_catalog_entries();
         const LIST_HOST_PROFILE_CATALOG_ENTRIES: OpDecl = list_host_profile_catalog_entries();
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
+        const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
+        const SHOW_CONSTRUCT_REASONING_GRAPH: OpDecl = show_construct_reasoning_graph();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
@@ -629,6 +675,8 @@ impl JavaScriptInterface {
                 LIST_HELPER_CATALOG_ENTRIES,
                 LIST_HOST_PROFILE_CATALOG_ENTRIES,
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
+                LIST_CONSTRUCT_REASONING_GRAPHS,
+                SHOW_CONSTRUCT_REASONING_GRAPH,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
                 IS_REFERENCE_GENOME_PREPARED,
@@ -690,6 +738,12 @@ impl JavaScriptInterface {
                       }
                       function list_ensembl_installable_genomes(collection, filter) {
                         return Deno.core.ops.list_ensembl_installable_genomes(collection ?? "", filter ?? "");
+                      }
+                      function list_construct_reasoning_graphs(state, seq_id) {
+                        return Deno.core.ops.list_construct_reasoning_graphs(state, seq_id ?? "");
+                      }
+                      function show_construct_reasoning_graph(state, graph_id) {
+                        return Deno.core.ops.show_construct_reasoning_graph(state, graph_id);
                       }
                       function list_agent_systems(catalog_path) {
                         return Deno.core.ops.list_agent_systems(catalog_path ?? "");
@@ -982,6 +1036,11 @@ impl Default for JavaScriptInterface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dna_sequence::DNAsequence;
+    use crate::engine::{
+        AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+        ConstructObjective, GentleEngine, ProjectState,
+    };
     use crate::engine_shell::execute_shell_command;
     use crate::test_support::{
         decision_trace_fixture_state, write_demo_jaspar_pfm, write_demo_pool_json,
@@ -1264,6 +1323,12 @@ mod tests {
                 if (typeof list_ensembl_installable_genomes !== "function") {
                     throw new Error("list_ensembl_installable_genomes wrapper is missing");
                 }
+                if (typeof list_construct_reasoning_graphs !== "function") {
+                    throw new Error("list_construct_reasoning_graphs wrapper is missing");
+                }
+                if (typeof show_construct_reasoning_graph !== "function") {
+                    throw new Error("show_construct_reasoning_graph wrapper is missing");
+                }
             "#
             .to_string(),
         )
@@ -1360,6 +1425,73 @@ mod tests {
             "#
         ))
         .expect("host profile catalog entries via js");
+    }
+
+    #[test]
+    fn js_construct_reasoning_graph_wrappers_match_shared_shell_output() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "adapter_capture_js".to_string(),
+            DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state.clone());
+        let objective = engine
+            .upsert_construct_objective(ConstructObjective {
+                title: "JS adapter capture".to_string(),
+                goal: "Expose adapter capture shell summary via JS".to_string(),
+                adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                    capture_id: "mcs_capture".to_string(),
+                    restriction_enzyme_name: "EcoRI".to_string(),
+                    blunt_insert_required: true,
+                    adapter_style: AdapterCaptureStyle::McsLike,
+                    protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                    extra_retrieval_enzyme_names: vec!["XbaI".to_string(), "NotI".to_string()],
+                    notes: vec![],
+                }],
+                ..ConstructObjective::default()
+            })
+            .expect("objective");
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "adapter_capture_js",
+                Some(&objective.objective_id),
+                Some("adapter_capture_js_graph"),
+            )
+            .expect("build graph");
+        state = engine.state().clone();
+
+        let wrapper_list =
+            list_construct_reasoning_graphs_impl(state.clone(), "adapter_capture_js")
+                .expect("js list wrapper");
+        let wrapper_show = show_construct_reasoning_graph_impl(state.clone(), &graph.graph_id)
+            .expect("js show wrapper");
+
+        let mut shell_engine = GentleEngine::from_state(state);
+        let shell_list = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningListGraphs {
+                seq_id: Some("adapter_capture_js".to_string()),
+            },
+        )
+        .expect("shell list");
+        let shell_show = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningShowGraph {
+                graph_id: graph.graph_id.clone(),
+            },
+        )
+        .expect("shell show");
+
+        assert_eq!(wrapper_list, shell_list.output);
+        assert_eq!(wrapper_show, shell_show.output);
+        assert!(
+            wrapper_show["summary"]["fact_summaries"]
+                .as_array()
+                .map(|rows| rows.iter().any(|row| {
+                    row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+                }))
+                .unwrap_or(false)
+        );
     }
 
     #[test]
