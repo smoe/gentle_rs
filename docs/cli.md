@@ -177,8 +177,8 @@ Notes:
 - `GENTLE_HELPER_CACHE_DIR=$GENTLE_REPO_ROOT/data/helper_genomes`
 
 That keeps both builds and prepared caches inside the local GENtle checkout, so
-first-run ClawBio preparation does not depend on the shared worktree target
-layout used by Codex development checkouts.
+first-run ClawBio preparation does not depend on any external/shared worktree
+target layout.
 
 Relative `workflow_path` values inside the wrapper resolve in this order:
 

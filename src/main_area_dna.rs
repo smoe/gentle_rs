@@ -101,8 +101,8 @@ use crate::{
     enzymes::active_restriction_enzymes,
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
-        RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, TfbsExpertView,
-        compute_splicing_exon_transition_matrix,
+        RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
+        TfbsExpertView, compute_splicing_exon_transition_matrix,
     },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
@@ -1104,8 +1104,9 @@ mod tests {
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
-            FeatureExpertView, IsoformArchitectureExpertView, SplicingExonSummary,
-            SplicingExpertView, SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
+            FeatureExpertView, IsoformArchitectureExpertView, SplicingBoundaryMarker,
+            SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, SplicingRange,
+            SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
         protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -1854,6 +1855,77 @@ mod tests {
             MainAreaDna::sequencing_trace_sample_window(&trace, None, Some(3), 1),
             Some((12, 68))
         );
+    }
+
+    #[test]
+    fn splicing_boundary_motif_rows_pair_donor_and_acceptor_markers() {
+        let view = SplicingExpertView {
+            seq_id: "seq".to_string(),
+            target_feature_id: 1,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 40,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![SplicingTranscriptLane {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                label: "tx1".to_string(),
+                strand: "+".to_string(),
+                exons: vec![],
+                exon_cds_phases: vec![],
+                introns: vec![],
+                has_target_feature: true,
+            }],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![
+                SplicingBoundaryMarker {
+                    transcript_feature_id: 11,
+                    transcript_id: "tx1".to_string(),
+                    side: "donor".to_string(),
+                    position_1based: 10,
+                    motif_2bp: "GC".to_string(),
+                    canonical: false,
+                    canonical_pair: false,
+                    partner_position_1based: 20,
+                    paired_motif_signature: "GC-AG".to_string(),
+                    motif_class: "gc_ag_major_noncanonical".to_string(),
+                    annotation:
+                        "GC-AG intron; a known non-canonical major/U2-type splice-site motif class."
+                            .to_string(),
+                },
+                SplicingBoundaryMarker {
+                    transcript_feature_id: 11,
+                    transcript_id: "tx1".to_string(),
+                    side: "acceptor".to_string(),
+                    position_1based: 20,
+                    motif_2bp: "AG".to_string(),
+                    canonical: true,
+                    canonical_pair: false,
+                    partner_position_1based: 10,
+                    paired_motif_signature: "GC-AG".to_string(),
+                    motif_class: "gc_ag_major_noncanonical".to_string(),
+                    annotation:
+                        "GC-AG intron; a known non-canonical major/U2-type splice-site motif class."
+                            .to_string(),
+                },
+            ],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let rows = MainAreaDna::splicing_boundary_motif_rows(&view);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].transcript_feature_id, 11);
+        assert_eq!(rows[0].donor_position_1based, 10);
+        assert_eq!(rows[0].donor_motif_2bp, "GC");
+        assert_eq!(rows[0].acceptor_position_1based, 20);
+        assert_eq!(rows[0].acceptor_motif_2bp, "AG");
+        assert_eq!(rows[0].paired_motif_signature, "GC-AG");
+        assert_eq!(rows[0].motif_class, "gc_ag_major_noncanonical");
     }
 
     #[test]
@@ -9040,6 +9112,19 @@ impl SplicingLaneCanvasStyle {
             min_plot_width_px: 780.0,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SplicingBoundaryMotifRow {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    donor_position_1based: usize,
+    donor_motif_2bp: String,
+    acceptor_position_1based: usize,
+    acceptor_motif_2bp: String,
+    paired_motif_signature: String,
+    motif_class: String,
+    annotation: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17947,6 +18032,96 @@ impl MainAreaDna {
         }
     }
 
+    fn splicing_boundary_motif_rows(view: &SplicingExpertView) -> Vec<SplicingBoundaryMotifRow> {
+        let acceptor_lookup = view
+            .boundaries
+            .iter()
+            .filter(|marker| marker.side.eq_ignore_ascii_case("acceptor"))
+            .map(|marker| {
+                (
+                    (marker.transcript_feature_id, marker.position_1based),
+                    marker,
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let mut rows = view
+            .boundaries
+            .iter()
+            .filter(|marker| marker.side.eq_ignore_ascii_case("donor"))
+            .map(|donor| {
+                let acceptor = acceptor_lookup
+                    .get(&(donor.transcript_feature_id, donor.partner_position_1based))
+                    .copied();
+                let (_paired_donor, paired_acceptor) = donor
+                    .paired_motif_signature
+                    .split_once('-')
+                    .unwrap_or((donor.motif_2bp.as_str(), ""));
+                SplicingBoundaryMotifRow {
+                    transcript_feature_id: donor.transcript_feature_id,
+                    transcript_id: donor.transcript_id.clone(),
+                    donor_position_1based: donor.position_1based,
+                    donor_motif_2bp: donor.motif_2bp.clone(),
+                    acceptor_position_1based: donor.partner_position_1based,
+                    acceptor_motif_2bp: acceptor
+                        .map(|marker| marker.motif_2bp.clone())
+                        .unwrap_or_else(|| {
+                            if paired_acceptor.is_empty() {
+                                String::new()
+                            } else {
+                                paired_acceptor.to_string()
+                            }
+                        }),
+                    paired_motif_signature: donor.paired_motif_signature.clone(),
+                    motif_class: donor.motif_class.clone(),
+                    annotation: donor.annotation.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.donor_position_1based
+                .cmp(&right.donor_position_1based)
+                .then_with(|| {
+                    left.acceptor_position_1based
+                        .cmp(&right.acceptor_position_1based)
+                })
+                .then_with(|| left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        rows
+    }
+
+    fn splicing_boundary_motif_class_label(class: &str) -> &'static str {
+        match class {
+            "gt_ag_major_canonical" => "canonical major (GT-AG)",
+            "gc_ag_major_noncanonical" => "major non-canonical (GC-AG)",
+            "at_ac_minor_u12_like" => "minor/U12-like (AT-AC)",
+            "at_ag_minor_u12_like" => "minor/U12-like (AT-AG)",
+            "other_noncanonical" => "other non-canonical",
+            _ => "splice-site motif",
+        }
+    }
+
+    fn splicing_boundary_motif_class_color(class: &str) -> egui::Color32 {
+        match class {
+            "gt_ag_major_canonical" => egui::Color32::from_rgb(5, 150, 105),
+            "gc_ag_major_noncanonical" => egui::Color32::from_rgb(180, 83, 9),
+            "at_ac_minor_u12_like" | "at_ag_minor_u12_like" => {
+                egui::Color32::from_rgb(124, 58, 237)
+            }
+            "other_noncanonical" => egui::Color32::from_rgb(185, 28, 28),
+            _ => egui::Color32::from_rgb(71, 85, 105),
+        }
+    }
+
+    fn splicing_boundary_marker_color(marker: &SplicingBoundaryMarker) -> egui::Color32 {
+        let base = Self::splicing_boundary_motif_class_color(marker.motif_class.as_str());
+        if marker.side.eq_ignore_ascii_case("donor") {
+            base
+        } else {
+            egui::Color32::from_rgba_premultiplied(base.r(), base.g(), base.b(), 220)
+        }
+    }
+
     fn render_splicing_lane_canvas_ui(
         &self,
         ui: &mut egui::Ui,
@@ -18093,29 +18268,32 @@ impl MainAreaDna {
                     let y =
                         lanes_top + *idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
                     let x = to_x(marker.position_1based);
-                    let (dy, color) = if marker.side.eq_ignore_ascii_case("donor") {
-                        (
-                            9.0,
-                            if marker.canonical {
-                                egui::Color32::from_rgb(16, 185, 129)
-                            } else {
-                                egui::Color32::from_rgb(220, 38, 38)
-                            },
-                        )
+                    let dy = if marker.side.eq_ignore_ascii_case("donor") {
+                        9.0
                     } else {
-                        (
-                            -9.0,
-                            if marker.canonical {
-                                egui::Color32::from_rgb(6, 95, 70)
-                            } else {
-                                egui::Color32::from_rgb(153, 27, 27)
-                            },
-                        )
+                        -9.0
                     };
+                    let color = Self::splicing_boundary_marker_color(marker);
                     painter.line_segment(
                         [egui::pos2(x, y), egui::pos2(x, y + dy)],
                         egui::Stroke::new(1.3, color),
                     );
+                    painter.circle_filled(egui::pos2(x, y + dy), 2.2, color);
+                    if view.boundaries.len() <= 16
+                        || marker.motif_class.as_str() != "gt_ag_major_canonical"
+                    {
+                        painter.text(
+                            egui::pos2(x + 3.0, y + dy),
+                            if marker.side.eq_ignore_ascii_case("donor") {
+                                egui::Align2::LEFT_TOP
+                            } else {
+                                egui::Align2::LEFT_BOTTOM
+                            },
+                            marker.motif_2bp.as_str(),
+                            egui::FontId::monospace(7.0),
+                            color,
+                        );
+                    }
                 }
 
                 for (idx, transcript) in view.transcripts.iter().enumerate() {
@@ -18213,102 +18391,157 @@ impl MainAreaDna {
                     }
                 }
 
+                let mut has_boundary_hover = false;
                 let mut has_exon_hover = false;
                 if let Some(pointer_pos) = response.hover_pos() {
-                    let mut hovered_exon = None;
-                    for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
+                    let mut hovered_boundary: Option<&SplicingBoundaryMarker> = None;
+                    for marker in &view.boundaries {
+                        let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
+                            continue;
+                        };
                         let y = lanes_top
-                            + lane_idx as f32 * style.lane_height_px
+                            + *idx as f32 * style.lane_height_px
                             + style.lane_height_px * 0.5;
-                        for (exon_idx, exon) in transcript.exons.iter().enumerate() {
-                            let x1 = to_x(exon.start_1based);
-                            let x2 = to_x(exon.end_1based);
-                            let rect = egui::Rect::from_min_max(
-                                egui::pos2(x1, y - 6.5),
-                                egui::pos2((x2).max(x1 + 1.0), y + 6.5),
-                            );
-                            if !rect.expand(1.0).contains(pointer_pos) {
-                                continue;
-                            }
-                            let phase_info = transcript
-                                .exon_cds_phases
-                                .get(exon_idx)
-                                .filter(|phase| {
-                                    phase.start_1based == exon.start_1based
-                                        && phase.end_1based == exon.end_1based
-                                })
-                                .or_else(|| {
-                                    transcript.exon_cds_phases.iter().find(|phase| {
-                                        phase.start_1based == exon.start_1based
-                                            && phase.end_1based == exon.end_1based
-                                    })
-                                });
-                            hovered_exon = Some((
-                                transcript.transcript_feature_id,
-                                transcript.transcript_id.as_str(),
-                                exon.start_1based,
-                                exon.end_1based,
-                                phase_info.and_then(|phase| phase.left_cds_phase),
-                                phase_info.and_then(|phase| phase.right_cds_phase),
-                            ));
-                            break;
-                        }
-                        if hovered_exon.is_some() {
+                        let dy = if marker.side.eq_ignore_ascii_case("donor") {
+                            9.0
+                        } else {
+                            -9.0
+                        };
+                        let x = to_x(marker.position_1based);
+                        let hit_rect = egui::Rect::from_min_max(
+                            egui::pos2(x - 6.0, y.min(y + dy) - 4.0),
+                            egui::pos2(x + 16.0, y.max(y + dy) + 4.0),
+                        );
+                        if hit_rect.contains(pointer_pos) {
+                            hovered_boundary = Some(marker);
                             break;
                         }
                     }
-                    if let Some((
-                        feature_id,
-                        transcript_id,
-                        start_1based,
-                        end_1based,
-                        left_phase,
-                        right_phase,
-                    )) = hovered_exon
-                    {
-                        has_exon_hover = true;
-                        let exon_len = end_1based
-                            .max(start_1based)
-                            .saturating_sub(end_1based.min(start_1based))
-                            + 1;
-                        let support_count = exon_support_by_range
-                            .get(&(start_1based, end_1based))
-                            .copied()
-                            .unwrap_or(0);
+                    if let Some(marker) = hovered_boundary {
+                        has_boundary_hover = true;
                         response.clone().on_hover_ui_at_pointer(|ui| {
-                            ui.monospace(format!("n-{feature_id} {transcript_id}"));
                             ui.monospace(format!(
-                                "exon {}..{}  len={} bp  len%3={}",
-                                start_1based,
-                                end_1based,
-                                exon_len,
-                                exon_len % 3
+                                "n-{} {}",
+                                marker.transcript_feature_id, marker.transcript_id
+                            ));
+                            ui.monospace(format!(
+                                "{} site @ {}  motif={}  pair={}",
+                                marker.side,
+                                marker.position_1based,
+                                marker.motif_2bp,
+                                marker.paired_motif_signature
                             ));
                             ui.label(format!(
-                                "Support {}",
-                                Self::format_support_fraction(support_count, transcript_total)
+                                "Class: {}",
+                                Self::splicing_boundary_motif_class_label(
+                                    marker.motif_class.as_str()
+                                )
                             ));
+                            ui.label(marker.annotation.as_str());
                             ui.label(format!(
-                                "CDS flank phase: left={} right={} (0=blue, 1=amber, 2=rose)",
-                                left_phase
-                                    .map(|phase| phase.to_string())
-                                    .unwrap_or_else(|| "n/a".to_string()),
-                                right_phase
-                                    .map(|phase| phase.to_string())
-                                    .unwrap_or_else(|| "n/a".to_string()),
+                                "Partner boundary at {}",
+                                marker.partner_position_1based
                             ));
-                            if interactive {
-                                ui.label(
+                        });
+                    }
+                }
+                if let Some(pointer_pos) = response.hover_pos() {
+                    if !has_boundary_hover {
+                        let mut hovered_exon = None;
+                        for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
+                            let y = lanes_top
+                                + lane_idx as f32 * style.lane_height_px
+                                + style.lane_height_px * 0.5;
+                            for (exon_idx, exon) in transcript.exons.iter().enumerate() {
+                                let x1 = to_x(exon.start_1based);
+                                let x2 = to_x(exon.end_1based);
+                                let rect = egui::Rect::from_min_max(
+                                    egui::pos2(x1, y - 6.5),
+                                    egui::pos2((x2).max(x1 + 1.0), y + 6.5),
+                                );
+                                if !rect.expand(1.0).contains(pointer_pos) {
+                                    continue;
+                                }
+                                let phase_info = transcript
+                                    .exon_cds_phases
+                                    .get(exon_idx)
+                                    .filter(|phase| {
+                                        phase.start_1based == exon.start_1based
+                                            && phase.end_1based == exon.end_1based
+                                    })
+                                    .or_else(|| {
+                                        transcript.exon_cds_phases.iter().find(|phase| {
+                                            phase.start_1based == exon.start_1based
+                                                && phase.end_1based == exon.end_1based
+                                        })
+                                    });
+                                hovered_exon = Some((
+                                    transcript.transcript_feature_id,
+                                    transcript.transcript_id.as_str(),
+                                    exon.start_1based,
+                                    exon.end_1based,
+                                    phase_info.and_then(|phase| phase.left_cds_phase),
+                                    phase_info.and_then(|phase| phase.right_cds_phase),
+                                ));
+                                break;
+                            }
+                            if hovered_exon.is_some() {
+                                break;
+                            }
+                        }
+                        if let Some((
+                            feature_id,
+                            transcript_id,
+                            start_1based,
+                            end_1based,
+                            left_phase,
+                            right_phase,
+                        )) = hovered_exon
+                        {
+                            has_exon_hover = true;
+                            let exon_len = end_1based
+                                .max(start_1based)
+                                .saturating_sub(end_1based.min(start_1based))
+                                + 1;
+                            let support_count = exon_support_by_range
+                                .get(&(start_1based, end_1based))
+                                .copied()
+                                .unwrap_or(0);
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                ui.monospace(format!("n-{feature_id} {transcript_id}"));
+                                ui.monospace(format!(
+                                    "exon {}..{}  len={} bp  len%3={}",
+                                    start_1based,
+                                    end_1based,
+                                    exon_len,
+                                    exon_len % 3
+                                ));
+                                ui.label(format!(
+                                    "Support {}",
+                                    Self::format_support_fraction(support_count, transcript_total)
+                                ));
+                                ui.label(format!(
+                                    "CDS flank phase: left={} right={} (0=blue, 1=amber, 2=rose)",
+                                    left_phase
+                                        .map(|phase| phase.to_string())
+                                        .unwrap_or_else(|| "n/a".to_string()),
+                                    right_phase
+                                        .map(|phase| phase.to_string())
+                                        .unwrap_or_else(|| "n/a".to_string()),
+                                ));
+                                if interactive {
+                                    ui.label(
                                     "Click lane to focus this transcript feature in sequence view",
                                 );
-                            }
-                        });
+                                }
+                            });
+                        }
                     }
                 }
 
                 if interactive {
                     if let Some(pointer_pos) = response.hover_pos() {
-                        if !has_exon_hover {
+                        if !has_boundary_hover && !has_exon_hover {
                             if let Some(lane_idx) = Self::splicing_lane_index_at_y(
                                 pointer_pos.y,
                                 lanes_top,
@@ -29959,6 +30192,25 @@ impl MainAreaDna {
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
+        let forward_enzyme = ui.forward_enzyme.trim();
+        if forward_enzyme.is_empty() {
+            return Err(
+                "Choose a forward restriction enzyme before creating a handoff".to_string(),
+            );
+        }
+        let reverse_enzyme = if ui.mode == RestrictionCloningPcrHandoffMode::SingleSite {
+            if ui.reverse_enzyme.trim().is_empty() {
+                forward_enzyme.to_string()
+            } else {
+                ui.reverse_enzyme.trim().to_string()
+            }
+        } else if ui.reverse_enzyme.trim().is_empty() {
+            return Err(
+                "Choose a reverse restriction enzyme for directed_pair handoff".to_string(),
+            );
+        } else {
+            ui.reverse_enzyme.trim().to_string()
+        };
         engine
             .read()
             .map_err(|_| {
@@ -29969,8 +30221,8 @@ impl MainAreaDna {
                 vector_seq_id,
                 Some(pair_rank),
                 ui.mode,
-                (!ui.forward_enzyme.trim().is_empty()).then_some(ui.forward_enzyme.trim()),
-                (!ui.reverse_enzyme.trim().is_empty()).then_some(ui.reverse_enzyme.trim()),
+                Some(forward_enzyme),
+                Some(reverse_enzyme.as_str()),
                 (!ui.forward_leader_5prime.trim().is_empty())
                     .then_some(ui.forward_leader_5prime.trim()),
                 (!ui.reverse_leader_5prime.trim().is_empty())
@@ -39550,7 +39802,7 @@ impl MainAreaDna {
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group from three angles:\n- annotation-derived transcript and exon structure\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group from four angles:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {

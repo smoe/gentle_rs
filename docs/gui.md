@@ -500,6 +500,15 @@ Feature tree grouping:
 - Splicing support frequencies are shown explicitly:
   - hovering exon glyphs in the lane canvas shows transcript/exon coordinates,
     support, `len%3`, and CDS flank phase details (when available)
+  - hovering splice-site boundary markers now shows donor/acceptor motif,
+    paired intron signature, motif class, and a short interpretation note
+  - splice-site motifs are now summarized explicitly:
+    - a `Splice-site motifs` table lists donor/acceptor positions and dinucleotide
+      motifs, the paired intron signature (`GT-AG`, `GC-AG`, `AT-AC`, ...), and
+      the best current high-level annotation GENtle can provide
+    - canonical major-spliceosome `GT-AG` sites stay green/teal, known
+      non-canonical classes such as `GC-AG` and `AT-AC` use distinct colors,
+      and other non-canonical signatures remain red
   - exon columns include support as `n/N (%)` (plus `const` for constitutive
     exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon

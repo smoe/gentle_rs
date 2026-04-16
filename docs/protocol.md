@@ -3734,6 +3734,15 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - DNA window (`..._dna`)
     - one mRNA sequence per transcript lane (`..._mrna_*`, transcript orientation, `T->U`)
     - exon-consecutive artificial reference sequence (`..._exon_reference`)
+  - shared splicing expert payloads now also carry splice-boundary motif
+    annotations per intron boundary:
+    - donor/acceptor dinucleotide (`motif_2bp`)
+    - paired intron signature (`paired_motif_signature`, for example `GT-AG`)
+    - paired boundary position (`partner_position_1based`)
+    - high-level motif class / annotation
+      (`gt_ag_major_canonical`, `gc_ag_major_noncanonical`,
+      `at_ac_minor_u12_like`, `at_ag_minor_u12_like`,
+      `other_noncanonical`)
   - if `seed_feature_id` is omitted, engine selects one overlapping mRNA feature deterministically from the requested span
   - default `scope`: `target_group_target_strand`
 - Pairwise alignment operation:

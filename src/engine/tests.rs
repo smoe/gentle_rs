@@ -7298,6 +7298,19 @@ fn test_inspect_splicing_feature_expert_view() {
                     .iter()
                     .any(|m| m.side.eq_ignore_ascii_case("acceptor") && m.canonical)
             );
+            assert!(
+                splicing
+                    .boundaries
+                    .iter()
+                    .all(|m| !m.paired_motif_signature.is_empty())
+            );
+            assert!(
+                splicing
+                    .boundaries
+                    .iter()
+                    .all(|m| !m.motif_class.is_empty())
+            );
+            assert!(splicing.boundaries.iter().all(|m| !m.annotation.is_empty()));
             assert_eq!(splicing.instruction, SPLICING_EXPERT_INSTRUCTION);
         }
         other => panic!("expected splicing expert view, got {other:?}"),
@@ -7347,6 +7360,54 @@ fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
     assert_eq!(lane.exon_cds_phases[1].right_cds_phase, Some(2));
     assert_eq!(lane.exon_cds_phases[2].left_cds_phase, Some(0));
     assert_eq!(lane.exon_cds_phases[2].right_cds_phase, Some(2));
+}
+
+#[test]
+fn test_splice_boundary_markers_classify_known_motif_pairs() {
+    let canonical = DNAsequence::from_sequence("AAAAGTCCCCCCAGAAAA").expect("canonical sequence");
+    let canonical_markers = GentleEngine::splice_boundary_markers_for_introns(
+        &canonical,
+        7,
+        "tx_canonical",
+        false,
+        &[(4, 14)],
+    );
+    let canonical_donor = canonical_markers
+        .iter()
+        .find(|marker| marker.side.eq_ignore_ascii_case("donor"))
+        .expect("canonical donor");
+    assert_eq!(canonical_donor.motif_2bp, "GT");
+    assert_eq!(canonical_donor.paired_motif_signature, "GT-AG");
+    assert_eq!(canonical_donor.partner_position_1based, 14);
+    assert!(canonical_donor.canonical);
+    assert!(canonical_donor.canonical_pair);
+    assert_eq!(canonical_donor.motif_class, "gt_ag_major_canonical");
+    assert!(canonical_donor.annotation.contains("major/U2-type"));
+
+    let gc_ag = DNAsequence::from_sequence("AAAAGCCCCCCCAGAAAA").expect("gc-ag sequence");
+    let gc_ag_markers =
+        GentleEngine::splice_boundary_markers_for_introns(&gc_ag, 8, "tx_gc_ag", false, &[(4, 14)]);
+    let gc_ag_donor = gc_ag_markers
+        .iter()
+        .find(|marker| marker.side.eq_ignore_ascii_case("donor"))
+        .expect("gc-ag donor");
+    assert_eq!(gc_ag_donor.motif_2bp, "GC");
+    assert_eq!(gc_ag_donor.paired_motif_signature, "GC-AG");
+    assert!(!gc_ag_donor.canonical);
+    assert!(!gc_ag_donor.canonical_pair);
+    assert_eq!(gc_ag_donor.motif_class, "gc_ag_major_noncanonical");
+    assert!(gc_ag_donor.annotation.contains("non-canonical"));
+
+    let at_ac = DNAsequence::from_sequence("AAAAATCCCCCCACAAAA").expect("at-ac sequence");
+    let at_ac_markers =
+        GentleEngine::splice_boundary_markers_for_introns(&at_ac, 9, "tx_at_ac", false, &[(4, 14)]);
+    let at_ac_donor = at_ac_markers
+        .iter()
+        .find(|marker| marker.side.eq_ignore_ascii_case("donor"))
+        .expect("at-ac donor");
+    assert_eq!(at_ac_donor.paired_motif_signature, "AT-AC");
+    assert_eq!(at_ac_donor.motif_class, "at_ac_minor_u12_like");
+    assert!(at_ac_donor.annotation.contains("minor/U12"));
 }
 
 #[test]

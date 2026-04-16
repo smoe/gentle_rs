@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-15
+Last updated: 2026-04-16
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -11,10 +11,10 @@ order. Durable architecture constraints and decisions remain in
 ### Engine and adapter baseline in place
 
 - Shared engine core in `src/engine.rs` with operation/workflow execution.
-- Repository build-tooling baseline now includes a shared Cargo target
-  directory (`.cargo/config.toml` -> `../../.gentle_target_shared`) so sibling
-  worktrees reuse dependency build artifacts instead of duplicating large
-  per-worktree `target/` trees.
+- Repository build-tooling now defaults back to a per-worktree Cargo target
+  directory (`.cargo/config.toml` -> `target`) so parallel worktrees, rebases,
+  and long-running test/GUI builds no longer contend over one shared mutable
+  target tree.
 - Reference/helper genome caches can now also be shared deliberately across
   sibling worktrees without editing catalog JSON:
   - `GENTLE_REFERENCE_CACHE_DIR`
@@ -46,8 +46,7 @@ order. Durable architecture constraints and decisions remain in
   directory on tag/manual release builds:
   - the workflow also pins `CARGO_TARGET_DIR=target` for those release jobs so
     macOS/Windows installer collection stays inside the checked-out workspace
-    instead of inheriting the shared worktree target directory from
-    `.cargo/config.toml`
+    even if developers temporarily override `CARGO_TARGET_DIR` locally
   - the workflow now triggers automatically from GitHub `release.published`
     events (while keeping manual `workflow_dispatch` reruns), so publishing a
     release for an existing tag still builds and attaches the macOS/Windows
@@ -1581,7 +1580,7 @@ order. Durable architecture constraints and decisions remain in
     - `GENTLE_REFERENCE_CACHE_DIR=$GENTLE_REPO_ROOT/data/genomes`
     - `GENTLE_HELPER_CACHE_DIR=$GENTLE_REPO_ROOT/data/helper_genomes`
     so first-run remote preparation can stay inside the local GENtle checkout
-    rather than depending on Codex's shared worktree target layout
+    rather than depending on any external/shared build-tree layout
   - the copied scaffold now also includes an
     `gentle_apptainer_cli.sh` launcher so ClawBio/OpenClaw on Linux can point
     `GENTLE_CLI_CMD` at an Apptainer/Singularity-backed `gentle_cli` route
@@ -2697,6 +2696,12 @@ Status:
   - Splicing Expert now shows seed-confirmed exon-exon transition support
     tables with per-transition read counts/percentages and indexed
     junction-crossing seed-bit diagnostics.
+  - Splicing Expert now also makes annotated splice-site motifs explicit:
+    donor/acceptor boundary markers carry paired intron signatures
+    (`GT-AG`, `GC-AG`, `AT-AC`, ...) plus high-level motif-class annotations,
+    the lane canvas shows them with distinct colors/hover detail, and a
+    dedicated `Splice-site motifs` table summarizes the known classes for the
+    current locus.
   - RNA-read reports persist exon-support and exon-exon junction-support
     frequency schema fields; phase-1 seed-only runs populate placeholders until
     the explicit phase-2 alignment step is run.

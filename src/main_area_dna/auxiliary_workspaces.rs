@@ -5032,6 +5032,100 @@ impl MainAreaDna {
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
+        if !view.boundaries.is_empty() {
+            let motif_rows = Self::splicing_boundary_motif_rows(view);
+            let mut motif_class_counts = std::collections::BTreeMap::<String, usize>::new();
+            for row in &motif_rows {
+                *motif_class_counts.entry(row.motif_class.clone()).or_default() += 1;
+            }
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Splice-site motifs")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Known donor/acceptor motif classes are highlighted on the lane canvas and annotated here:",
+                    )
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                for (class, count) in motif_class_counts {
+                    let color = Self::splicing_boundary_motif_class_color(class.as_str());
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} x{}",
+                            Self::splicing_boundary_motif_class_label(class.as_str()),
+                            count
+                        ))
+                        .size(8.5)
+                        .color(color),
+                    );
+                }
+            });
+            egui::Grid::new("splicing_boundary_motif_grid")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("transcript").monospace().strong());
+                    ui.label(egui::RichText::new("donor").monospace().strong());
+                    ui.label(egui::RichText::new("acceptor").monospace().strong());
+                    ui.label(egui::RichText::new("pair").monospace().strong());
+                    ui.label(egui::RichText::new("class").monospace().strong());
+                    ui.label(egui::RichText::new("note").strong());
+                    ui.end_row();
+                    for row in &motif_rows {
+                        let class_color =
+                            Self::splicing_boundary_motif_class_color(row.motif_class.as_str());
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "n-{} {}",
+                                row.transcript_feature_id, row.transcript_id
+                            ))
+                            .monospace()
+                            .size(9.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {}",
+                                row.donor_position_1based, row.donor_motif_2bp
+                            ))
+                            .monospace()
+                            .size(9.0)
+                            .color(class_color),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {}",
+                                row.acceptor_position_1based, row.acceptor_motif_2bp
+                            ))
+                            .monospace()
+                            .size(9.0)
+                            .color(class_color),
+                        );
+                        ui.label(
+                            egui::RichText::new(row.paired_motif_signature.as_str())
+                                .monospace()
+                                .size(9.0)
+                                .color(class_color),
+                        );
+                        ui.label(
+                            egui::RichText::new(Self::splicing_boundary_motif_class_label(
+                                row.motif_class.as_str(),
+                            ))
+                            .size(9.0)
+                            .color(class_color),
+                        );
+                        ui.label(
+                            egui::RichText::new(row.annotation.as_str())
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(71, 85, 105)),
+                        );
+                        ui.end_row();
+                    }
+                });
+        }
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
             let row_count = view.matrix_rows.len();

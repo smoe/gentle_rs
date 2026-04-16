@@ -65,9 +65,8 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     events, so publishing a release for an already-pushed tag still produces
     the desktop installers without needing a second tag push.
   - Forces `CARGO_TARGET_DIR=target` for the release job so installer artifact
-    discovery stays inside the checked-out workspace even though normal local
-    development builds default to the shared worktree target directory from
-    `.cargo/config.toml`.
+    discovery stays inside the checked-out workspace even if a developer or CI
+    wrapper has overridden the default local target directory.
   - Caches the Cargo registry, but intentionally builds installer artifacts
     from a fresh per-run local `target/` tree rather than restoring a cached
     `target/` directory, so stale tag-build outputs cannot masquerade as a

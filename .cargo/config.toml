@@ -1,11 +1,7 @@
 [build]
-# Share Rust build artifacts across sibling worktrees to avoid duplicating
-# dependency compilation output in each branch checkout.
+# Keep build artifacts local to each checkout so parallel worktrees and rebases
+# do not contend over one shared mutable target tree.
 #
-# For the Codex worktree layout this resolves to:
-#   <worktrees_root>/.gentle_target_shared
-# which is shared by all worktrees under the same root.
-#
-# Contributors can still override with CARGO_TARGET_DIR if needed.
-target-dir = "../../.gentle_target_shared"
-
+# Contributors can still override with CARGO_TARGET_DIR if they need a custom
+# location for one-off runs.
+target-dir = "target"

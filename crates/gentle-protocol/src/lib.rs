@@ -1052,6 +1052,16 @@ pub struct SplicingBoundaryMarker {
     pub position_1based: usize,
     pub motif_2bp: String,
     pub canonical: bool,
+    #[serde(default)]
+    pub canonical_pair: bool,
+    #[serde(default)]
+    pub partner_position_1based: usize,
+    #[serde(default)]
+    pub paired_motif_signature: String,
+    #[serde(default)]
+    pub motif_class: String,
+    #[serde(default)]
+    pub annotation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

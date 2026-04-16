@@ -5036,6 +5036,8 @@ impl GentleEngine {
                 let acceptor_rc = Self::reverse_complement_bytes(acceptor_raw.as_bytes());
                 let donor_motif = String::from_utf8_lossy(&donor_rc).to_ascii_uppercase();
                 let acceptor_motif = String::from_utf8_lossy(&acceptor_rc).to_ascii_uppercase();
+                let (canonical_pair, paired_motif_signature, motif_class, annotation) =
+                    Self::classify_splice_boundary_pair(&donor_motif, &acceptor_motif);
                 out.push(SplicingBoundaryMarker {
                     transcript_feature_id,
                     transcript_id: transcript_id.to_string(),
@@ -5043,6 +5045,11 @@ impl GentleEngine {
                     position_1based: *end,
                     canonical: donor_motif == "GT",
                     motif_2bp: donor_motif,
+                    canonical_pair,
+                    partner_position_1based: start + 1,
+                    paired_motif_signature: paired_motif_signature.clone(),
+                    motif_class: motif_class.to_string(),
+                    annotation: annotation.to_string(),
                 });
                 out.push(SplicingBoundaryMarker {
                     transcript_feature_id,
@@ -5051,10 +5058,17 @@ impl GentleEngine {
                     position_1based: start + 1,
                     canonical: acceptor_motif == "AG",
                     motif_2bp: acceptor_motif,
+                    canonical_pair,
+                    partner_position_1based: *end,
+                    paired_motif_signature,
+                    motif_class: motif_class.to_string(),
+                    annotation: annotation.to_string(),
                 });
             } else {
                 let donor_motif = Self::sequence_slice_upper(dna, *start, (start + 2).min(*end));
                 let acceptor_motif = Self::sequence_slice_upper(dna, end.saturating_sub(2), *end);
+                let (canonical_pair, paired_motif_signature, motif_class, annotation) =
+                    Self::classify_splice_boundary_pair(&donor_motif, &acceptor_motif);
                 out.push(SplicingBoundaryMarker {
                     transcript_feature_id,
                     transcript_id: transcript_id.to_string(),
@@ -5062,6 +5076,11 @@ impl GentleEngine {
                     position_1based: start + 1,
                     canonical: donor_motif == "GT",
                     motif_2bp: donor_motif,
+                    canonical_pair,
+                    partner_position_1based: *end,
+                    paired_motif_signature: paired_motif_signature.clone(),
+                    motif_class: motif_class.to_string(),
+                    annotation: annotation.to_string(),
                 });
                 out.push(SplicingBoundaryMarker {
                     transcript_feature_id,
@@ -5070,10 +5089,56 @@ impl GentleEngine {
                     position_1based: *end,
                     canonical: acceptor_motif == "AG",
                     motif_2bp: acceptor_motif,
+                    canonical_pair,
+                    partner_position_1based: start + 1,
+                    paired_motif_signature,
+                    motif_class: motif_class.to_string(),
+                    annotation: annotation.to_string(),
                 });
             }
         }
         out
+    }
+
+    pub(super) fn classify_splice_boundary_pair(
+        donor_motif: &str,
+        acceptor_motif: &str,
+    ) -> (bool, String, &'static str, &'static str) {
+        let donor = donor_motif.trim().to_ascii_uppercase();
+        let acceptor = acceptor_motif.trim().to_ascii_uppercase();
+        let signature = format!("{donor}-{acceptor}");
+        match (donor.as_str(), acceptor.as_str()) {
+            ("GT", "AG") => (
+                true,
+                signature,
+                "gt_ag_major_canonical",
+                "Canonical GT-AG intron; the dominant major/U2-type splice-site motif class.",
+            ),
+            ("GC", "AG") => (
+                false,
+                signature,
+                "gc_ag_major_noncanonical",
+                "GC-AG intron; a known non-canonical major/U2-type splice-site motif class.",
+            ),
+            ("AT", "AC") => (
+                false,
+                signature,
+                "at_ac_minor_u12_like",
+                "AT-AC intron; the classic minor/U12-type splice-site motif class.",
+            ),
+            ("AT", "AG") => (
+                false,
+                signature,
+                "at_ag_minor_u12_like",
+                "AT-AG intron; a known minor/U12-like splice-site motif class.",
+            ),
+            _ => (
+                false,
+                signature,
+                "other_noncanonical",
+                "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
+            ),
+        }
     }
 
     pub(super) fn range_intersection_0based(
