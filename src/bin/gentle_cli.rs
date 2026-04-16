@@ -5,9 +5,9 @@ use gentle::{
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayAnchorExonRef,
         DotplotOverlayXAxisMode, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
-        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress, ProjectState,
-        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
+        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
+        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
+        RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,

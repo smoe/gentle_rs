@@ -1840,6 +1840,8 @@ pub struct RestrictionCloningPcrDigestCompatibility {
 #[serde(default)]
 pub struct RestrictionCloningPcrWorkflowHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_workflow: Option<Workflow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pcr_advanced_operation: Option<Operation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insert_digest_operation: Option<Operation>,

@@ -60,18 +60,19 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, ConstructReasoningGraph, ConstructRole,
-        DecisionMethod, DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
-        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
-        EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
-        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
-        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
-        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
-        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, ProtocolCartoonPreviewTelemetry, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        DecisionMethod, DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget,
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
+        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
+        FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide,
+        GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
+        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
+        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
         RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
-        RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1081,16 +1082,15 @@ mod tests {
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef,
-            DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
-            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
-            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
-            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
-            ProtocolCartoonPreviewTelemetry, RestrictionCloningPcrHandoffMode,
-            RestrictionEnzymeDisplayMode,
-            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode,
+            DotplotView, EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
+            GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
+            PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+            PrimerDesignSideConstraint, ProjectState, ProtocolCartoonPreviewTelemetry,
+            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequenceAlignmentReport, SequencingConfirmationReadResult,
@@ -3310,7 +3310,10 @@ mod tests {
                 .selected_saved_report_id
                 .is_empty()
         );
-        assert!(area.op_status.contains("single-site recommendation 'EcoRI'"));
+        assert!(
+            area.op_status
+                .contains("single-site recommendation 'EcoRI'")
+        );
         assert!(area.op_status.contains("vec1"));
     }
 
@@ -4750,8 +4753,7 @@ mod tests {
             )
             .expect("sequence"),
         );
-        let mut vector =
-            DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
+        let mut vector = DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTT").expect("vector");
         *vector.restriction_enzymes_mut() = active_restriction_enzymes();
         let vector_len_i64 = vector.len().try_into().unwrap();
         vector.features_mut().push(gb_io::seq::Feature {
@@ -4759,7 +4761,10 @@ mod tests {
             location: gb_io::seq::Location::simple_range(0, vector_len_i64),
             qualifiers: vec![
                 ("label".into(), Some("MCS".to_string())),
-                ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+                (
+                    "mcs_expected_sites".into(),
+                    Some("EcoRI,HindIII".to_string()),
+                ),
             ],
         });
         vector.update_computed_features();
@@ -4862,6 +4867,216 @@ mod tests {
             handoff_id
         );
         assert!(area.op_status.contains("Restriction-cloning handoff"));
+    }
+
+    #[test]
+    fn seed_restriction_cloning_handoff_ui_uses_engine_recommendation_when_enzymes_blank() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+            )
+            .expect("sequence"),
+        );
+        let mut vector =
+            DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTTGCGGCCGCTTTT").expect("vector");
+        *vector.restriction_enzymes_mut() = active_restriction_enzymes();
+        let vector_len_i64 = vector.len().try_into().unwrap();
+        vector.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, vector_len_i64),
+            qualifiers: vec![
+                ("label".into(), Some("MCS".to_string())),
+                (
+                    "mcs_expected_sites".into(),
+                    Some("EcoRI,HindIII".to_string()),
+                ),
+            ],
+        });
+        vector.update_computed_features();
+        state.sequences.insert("vec".to_string(), vector);
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(90),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_seed".to_string()),
+            })
+            .expect("design primer pairs");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.primer_design_ui.report_id = "primer_ui_seed".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_pair_rank_1based = "1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec".to_string();
+        area.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::SingleSite;
+        area.primer_design_ui
+            .restriction_cloning
+            .forward_enzyme
+            .clear();
+        area.primer_design_ui
+            .restriction_cloning
+            .reverse_enzyme
+            .clear();
+
+        let seeded = area
+            .seed_restriction_cloning_pcr_handoff_request()
+            .expect("seed restriction-cloning request");
+
+        assert_eq!(seeded.selection_source, "recommended_single_site");
+        assert_eq!(seeded.forward_enzyme, "EcoRI");
+        assert_eq!(seeded.reverse_enzyme, "EcoRI");
+        match seeded.operation {
+            Operation::PrepareRestrictionCloningPcrHandoff {
+                forward_enzyme,
+                reverse_enzyme,
+                ..
+            } => {
+                assert_eq!(forward_enzyme, "EcoRI");
+                assert_eq!(reverse_enzyme.as_deref(), Some("EcoRI"));
+            }
+            other => panic!("unexpected seeded operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn seed_restriction_cloning_handoff_ui_surfaces_engine_order_validation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+            )
+            .expect("sequence"),
+        );
+        let mut vector =
+            DNAsequence::from_sequence("AAAAGAATTCGGGGGAAGCTTTTTTGCGGCCGCTTTT").expect("vector");
+        *vector.restriction_enzymes_mut() = active_restriction_enzymes();
+        let vector_len_i64 = vector.len().try_into().unwrap();
+        vector.features_mut().push(gb_io::seq::Feature {
+            kind: "misc_feature".into(),
+            location: gb_io::seq::Location::simple_range(0, vector_len_i64),
+            qualifiers: vec![
+                ("label".into(), Some("MCS".to_string())),
+                (
+                    "mcs_expected_sites".into(),
+                    Some("EcoRI,HindIII".to_string()),
+                ),
+            ],
+        });
+        vector.update_computed_features();
+        state.sequences.insert("vec".to_string(), vector);
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(90),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 0.0,
+                    max_tm_c: 100.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 1000,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_seed_bad_order".to_string()),
+            })
+            .expect("design primer pairs");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.primer_design_ui.report_id = "primer_ui_seed_bad_order".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_pair_rank_1based = "1".to_string();
+        area.primer_design_ui
+            .restriction_cloning
+            .destination_vector_seq_id = "vec".to_string();
+        area.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::DirectedPair;
+        area.primer_design_ui.restriction_cloning.forward_enzyme = "HindIII".to_string();
+        area.primer_design_ui.restriction_cloning.reverse_enzyme = "EcoRI".to_string();
+
+        let err = area
+            .seed_restriction_cloning_pcr_handoff_request()
+            .expect_err("reverse order should be rejected by engine seed helper");
+
+        assert!(err.contains("does not match the valid order"));
+        assert!(err.contains("HindIII -> EcoRI"));
     }
 
     #[test]
@@ -27266,8 +27481,7 @@ impl MainAreaDna {
             && overlay_x_axis_mode == DotplotOverlayXAxisMode::SharedExonAnchor
             && let Some(exon) = overlay_anchor_exon
         {
-            let exon_token =
-                Self::sanitize_export_name_component(&exon.token(), "anchor");
+            let exon_token = Self::sanitize_export_name_component(&exon.token(), "anchor");
             stem.push_str(&format!("_anchor-{exon_token}"));
         } else if overlay_mode
             && overlay_x_axis_mode == DotplotOverlayXAxisMode::QueryAnchorBp
@@ -29337,10 +29551,12 @@ impl MainAreaDna {
             .selected_saved_report_id = report.report_id.clone();
         let warning_count = report.compatibility.warnings.len();
         let blocking_count = report.compatibility.blocking_errors.len();
-        let workflow_hint_count = usize::from(report.workflow_hints.pcr_advanced_operation.is_some())
-            + usize::from(report.workflow_hints.insert_digest_operation.is_some())
-            + usize::from(report.workflow_hints.vector_digest_operation.is_some())
-            + usize::from(report.workflow_hints.ligation_operation_snippet.is_some());
+        let workflow_hint_count =
+            usize::from(report.workflow_hints.pcr_advanced_operation.is_some())
+                + usize::from(report.workflow_hints.staged_workflow.is_some())
+                + usize::from(report.workflow_hints.insert_digest_operation.is_some())
+                + usize::from(report.workflow_hints.vector_digest_operation.is_some())
+                + usize::from(report.workflow_hints.ligation_operation_snippet.is_some());
         self.op_status = format!(
             "Restriction-cloning handoff '{}' template='{}' pair=#{} vector='{}' mode={} enzymes={}/{} status={} warnings={} blocking={} workflow_hints={}",
             report.report_id,
@@ -29410,7 +29626,10 @@ impl MainAreaDna {
         ids.sort_by(|left, right| {
             let left_active = left == active;
             let right_active = right == active;
-            left_active.cmp(&right_active).reverse().then(left.cmp(right))
+            left_active
+                .cmp(&right_active)
+                .reverse()
+                .then(left.cmp(right))
         });
         ids
     }
@@ -29438,7 +29657,8 @@ impl MainAreaDna {
         if enzyme.is_empty() {
             return;
         }
-        self.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::SingleSite;
+        self.primer_design_ui.restriction_cloning.mode =
+            RestrictionCloningPcrHandoffMode::SingleSite;
         self.primer_design_ui.restriction_cloning.forward_enzyme = enzyme.to_string();
         self.primer_design_ui.restriction_cloning.reverse_enzyme = enzyme.to_string();
         self.primer_design_ui
@@ -29477,10 +29697,8 @@ impl MainAreaDna {
         }
         self.primer_design_ui.restriction_cloning.mode =
             RestrictionCloningPcrHandoffMode::DirectedPair;
-        self.primer_design_ui.restriction_cloning.forward_enzyme =
-            forward_enzyme.to_string();
-        self.primer_design_ui.restriction_cloning.reverse_enzyme =
-            reverse_enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.forward_enzyme = forward_enzyme.to_string();
+        self.primer_design_ui.restriction_cloning.reverse_enzyme = reverse_enzyme.to_string();
         self.primer_design_ui
             .restriction_cloning
             .selected_saved_report_id
@@ -29569,9 +29787,12 @@ impl MainAreaDna {
                     .filter(|summary| {
                         summary.template == self.seq_id.clone().unwrap_or_default()
                             && summary.primer_report_id == self.primer_design_ui.report_id
-                            && selected_rank.is_none_or(|pair_index| summary.pair_index == pair_index)
+                            && selected_rank
+                                .is_none_or(|pair_index| summary.pair_index == pair_index)
                             && (vector.is_empty()
-                                || summary.destination_vector_seq_id.eq_ignore_ascii_case(&vector))
+                                || summary
+                                    .destination_vector_seq_id
+                                    .eq_ignore_ascii_case(&vector))
                             && (forward.is_empty()
                                 || summary.forward_enzyme.eq_ignore_ascii_case(&forward))
                             && (reverse.is_empty()
@@ -29588,54 +29809,49 @@ impl MainAreaDna {
             .flatten()
     }
 
-    fn build_prepare_restriction_cloning_pcr_handoff_operation(
+    fn seed_restriction_cloning_pcr_handoff_request(
         &self,
-        template: &str,
-    ) -> Result<Operation, String> {
+    ) -> Result<RestrictionCloningPcrHandoffSeedRequest, String> {
         let ui = &self.primer_design_ui.restriction_cloning;
         let pair_rank = Self::parse_positive_usize_text(
             &ui.selected_pair_rank_1based,
             "restriction_cloning.selected_pair_rank_1based",
         )?;
-        let pair_index = pair_rank
-            .checked_sub(1)
-            .ok_or_else(|| "Restriction-cloning selected pair rank must be >= 1".to_string())?;
         let vector_seq_id = ui.destination_vector_seq_id.trim();
         if vector_seq_id.is_empty() {
-            return Err("Choose a destination vector sequence before creating a restriction-tail handoff".to_string());
+            return Err(
+                "Choose a destination vector sequence before creating a restriction-tail handoff"
+                    .to_string(),
+            );
         }
         let primer_report_id = self.primer_design_ui.report_id.trim();
         if primer_report_id.is_empty() {
-            return Err("Primer report_id is empty; create or select a saved primer report first".to_string());
+            return Err(
+                "Primer report_id is empty; create or select a saved primer report first"
+                    .to_string(),
+            );
         }
-        let forward_enzyme = ui.forward_enzyme.trim();
-        if forward_enzyme.is_empty() {
-            return Err("Choose a forward restriction enzyme before creating a handoff".to_string());
-        }
-        let reverse_enzyme = if ui.mode == RestrictionCloningPcrHandoffMode::SingleSite {
-            if ui.reverse_enzyme.trim().is_empty() {
-                forward_enzyme.to_string()
-            } else {
-                ui.reverse_enzyme.trim().to_string()
-            }
-        } else if ui.reverse_enzyme.trim().is_empty() {
-            return Err("Choose a reverse restriction enzyme for directed_pair handoff".to_string());
-        } else {
-            ui.reverse_enzyme.trim().to_string()
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
         };
-        Ok(Operation::PrepareRestrictionCloningPcrHandoff {
-            template: template.to_string(),
-            primer_report_id: primer_report_id.to_string(),
-            pair_index,
-            destination_vector_seq_id: vector_seq_id.to_string(),
-            mode: ui.mode,
-            forward_enzyme: forward_enzyme.to_string(),
-            reverse_enzyme: Some(reverse_enzyme),
-            forward_leader_5prime: (!ui.forward_leader_5prime.trim().is_empty())
-                .then(|| ui.forward_leader_5prime.trim().to_string()),
-            reverse_leader_5prime: (!ui.reverse_leader_5prime.trim().is_empty())
-                .then(|| ui.reverse_leader_5prime.trim().to_string()),
-        })
+        engine
+            .read()
+            .map_err(|_| {
+                "Engine lock poisoned while seeding restriction-cloning handoff".to_string()
+            })?
+            .seed_restriction_cloning_pcr_handoff_request(
+                primer_report_id,
+                vector_seq_id,
+                Some(pair_rank),
+                ui.mode,
+                (!ui.forward_enzyme.trim().is_empty()).then_some(ui.forward_enzyme.trim()),
+                (!ui.reverse_enzyme.trim().is_empty()).then_some(ui.reverse_enzyme.trim()),
+                (!ui.forward_leader_5prime.trim().is_empty())
+                    .then_some(ui.forward_leader_5prime.trim()),
+                (!ui.reverse_leader_5prime.trim().is_empty())
+                    .then_some(ui.reverse_leader_5prime.trim()),
+            )
+            .map_err(|err| err.message)
     }
 
     pub fn focus_restriction_cloning_handoff_report(&mut self, report_id: &str) {
@@ -29823,12 +30039,14 @@ impl MainAreaDna {
         {
             None
         } else {
-            Some(self.restriction_cloning_vector_enzyme_suggestions(
-                &self
-                    .primer_design_ui
-                    .restriction_cloning
-                    .destination_vector_seq_id,
-            ))
+            Some(
+                self.restriction_cloning_vector_enzyme_suggestions(
+                    &self
+                        .primer_design_ui
+                        .restriction_cloning
+                        .destination_vector_seq_id,
+                ),
+            )
         };
         let mut suggested_enzymes = vec![];
         let mut suggestion_note = None::<String>;
@@ -30213,22 +30431,22 @@ impl MainAreaDna {
                     )
                     .clicked()
                 {
-                    match self.build_prepare_restriction_cloning_pcr_handoff_operation(template) {
-                        Ok(op) => {
+                    match self.seed_restriction_cloning_pcr_handoff_request() {
+                        Ok(seed_request) => {
                             let started = Instant::now();
-                            let apply_result = self
-                                .engine
-                                .clone()
-                                .ok_or_else(|| "No engine attached".to_string())
-                                .and_then(|engine| {
-                                    engine
-                                        .write()
-                                        .map_err(|_| {
-                                            "Engine lock poisoned while preparing restriction-cloning handoff".to_string()
-                                        })?
-                                        .apply(op)
-                                        .map_err(|err| err.message)
-                                });
+                            let apply_result =
+                                self.engine
+                                    .clone()
+                                    .ok_or_else(|| "No engine attached".to_string())
+                                    .and_then(|engine| {
+                                        engine
+                                            .write()
+                                            .map_err(|_| {
+                                                "Engine lock poisoned while preparing restriction-cloning handoff".to_string()
+                                            })?
+                                            .apply(seed_request.operation.clone())
+                                            .map_err(|err| err.message)
+                                    });
                             match apply_result {
                                 Ok(result) => {
                                     self.handle_operation_success(result, started);
@@ -30351,7 +30569,8 @@ impl MainAreaDna {
                     );
                 }
                 ui.small(format!(
-                    "Suggested next steps: PCR advanced={} insert digest={} vector digest={} ligation snippet={}",
+                    "Suggested next steps: staged workflow={} PCR advanced={} insert digest={} vector digest={} ligation snippet={}",
+                    saved.workflow_hints.staged_workflow.is_some(),
                     saved.workflow_hints.pcr_advanced_operation.is_some(),
                     saved.workflow_hints.insert_digest_operation.is_some(),
                     saved.workflow_hints.vector_digest_operation.is_some(),

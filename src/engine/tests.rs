@@ -41,10 +41,7 @@ fn restriction_cloning_vector(sequence: &str, mcs_expected_sites: Option<&str>) 
             ),
             qualifiers: vec![
                 ("label".into(), Some("MCS".to_string())),
-                (
-                    "note".into(),
-                    Some("Multiple cloning site".to_string()),
-                ),
+                ("note".into(), Some("Multiple cloning site".to_string())),
                 (
                     "mcs_expected_sites".into(),
                     Some(mcs_expected_sites.to_string()),
@@ -1628,7 +1625,7 @@ fn test_design_primer_pairs_persists_report() {
 
 #[test]
 fn test_prepare_restriction_cloning_pcr_handoff_creates_extended_artifacts_and_preserves_anneal_len()
-{
+ {
     let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
     let mut state = ProjectState::default();
     state.sequences.insert("tpl".to_string(), seq(template_seq));
@@ -1728,8 +1725,7 @@ fn test_prepare_restriction_cloning_pcr_handoff_creates_extended_artifacts_and_p
             .ends_with(&source_pair.reverse.sequence)
     );
     assert_eq!(
-        report.extended_forward.tm_c,
-        source_pair.forward.tm_c,
+        report.extended_forward.tm_c, source_pair.forward.tm_c,
         "binding Tm should stay anchored to the annealing segment"
     );
     let hinted_pcr = report
@@ -1737,6 +1733,24 @@ fn test_prepare_restriction_cloning_pcr_handoff_creates_extended_artifacts_and_p
         .pcr_advanced_operation
         .as_ref()
         .expect("pcr advanced hint");
+    let staged_workflow = report
+        .workflow_hints
+        .staged_workflow
+        .as_ref()
+        .expect("staged workflow hint");
+    assert_eq!(staged_workflow.ops.len(), 3);
+    assert!(matches!(
+        staged_workflow.ops.first(),
+        Some(Operation::PcrAdvanced { .. })
+    ));
+    assert!(matches!(
+        staged_workflow.ops.get(1),
+        Some(Operation::Digest { .. })
+    ));
+    assert!(matches!(
+        staged_workflow.ops.get(2),
+        Some(Operation::Digest { .. })
+    ));
     match hinted_pcr {
         Operation::PcrAdvanced {
             forward_primer,
@@ -1856,6 +1870,75 @@ fn test_prepare_restriction_cloning_pcr_handoff_directed_pair_respects_mcs_order
             .copied(),
         Some(16)
     );
+}
+
+#[test]
+fn test_prepare_restriction_cloning_pcr_handoff_blocks_reversed_directed_pair_order() {
+    let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+    let mut state = ProjectState::default();
+    state.sequences.insert("tpl".to_string(), seq(template_seq));
+    state.sequences.insert(
+        "vec".to_string(),
+        restriction_cloning_vector("AAAAGAATTCGGGGGAAGCTTTTTT", Some("EcoRI,HindIII")),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+        .apply(Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            reverse: PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(90),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 0.0,
+                max_tm_c: 100.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 1000,
+                ..Default::default()
+            },
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("restriction_bad_order".to_string()),
+        })
+        .expect("design primer pairs");
+
+    let err = engine
+        .apply(Operation::PrepareRestrictionCloningPcrHandoff {
+            template: "tpl".to_string(),
+            primer_report_id: "restriction_bad_order".to_string(),
+            pair_index: 0,
+            destination_vector_seq_id: "vec".to_string(),
+            mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: "HindIII".to_string(),
+            reverse_enzyme: Some("EcoRI".to_string()),
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        })
+        .expect_err("reversed vector order should block restriction-cloning handoff");
+    assert!(err.message.contains(
+        "Directed insertion requires destination-vector site order 'HindIII' then 'EcoRI'"
+    ));
 }
 
 #[test]
@@ -1989,7 +2072,10 @@ fn test_prepare_restriction_cloning_pcr_handoff_blocks_non_unique_vector_cutter(
             reverse_leader_5prime: None,
         })
         .expect_err("non-unique vector cutter should block handoff");
-    assert!(err.message.contains("must contain exactly one usable 'EcoRI' site"));
+    assert!(
+        err.message
+            .contains("must contain exactly one usable 'EcoRI' site")
+    );
 }
 
 #[test]
@@ -17137,20 +17223,22 @@ fn test_compute_dotplot_overlay_stores_shared_exon_anchor_metadata() {
     assert_eq!(view.query_series[1].transcript_feature_id, Some(1));
     assert_eq!(view.query_series[2].transcript_feature_id, None);
     assert_eq!(view.overlay_anchor_exons.len(), 2);
-    assert!(view
-        .overlay_anchor_exons
-        .iter()
-        .any(|anchor| anchor.exon.start_1based == 3
-            && anchor.exon.end_1based == 8
-            && anchor.support_series_count == 2
-            && anchor.max_query_start_0based == 0));
-    assert!(view
-        .overlay_anchor_exons
-        .iter()
-        .any(|anchor| anchor.exon.start_1based == 27
-            && anchor.exon.end_1based == 34
-            && anchor.support_series_count == 2
-            && anchor.max_query_start_0based == 14));
+    assert!(
+        view.overlay_anchor_exons
+            .iter()
+            .any(|anchor| anchor.exon.start_1based == 3
+                && anchor.exon.end_1based == 8
+                && anchor.support_series_count == 2
+                && anchor.max_query_start_0based == 0)
+    );
+    assert!(
+        view.overlay_anchor_exons
+            .iter()
+            .any(|anchor| anchor.exon.start_1based == 27
+                && anchor.exon.end_1based == 34
+                && anchor.support_series_count == 2
+                && anchor.max_query_start_0based == 14)
+    );
 }
 
 #[test]

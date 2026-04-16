@@ -34539,9 +34539,7 @@ Error: `{err}`"
         {
             return Some(LineageAnalysisKind::QpcrDesign);
         }
-        if row
-            .node_id
-            .starts_with("analysis:restriction_cloning_pcr:")
+        if row.node_id.starts_with("analysis:restriction_cloning_pcr:")
             || row
                 .origin
                 .eq_ignore_ascii_case("restrictioncloningpcrhandoff")
@@ -38535,7 +38533,8 @@ Error: `{err}`"
     fn reset_configuration_graphics_to_defaults(&mut self) {
         let defaults = DisplaySettings::default();
         self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
-        self.configuration_graphics.show_linear_sequence_panel = defaults.show_linear_sequence_panel;
+        self.configuration_graphics.show_linear_sequence_panel =
+            defaults.show_linear_sequence_panel;
         self.configuration_graphics
             .sequence_panel_max_text_length_bp = defaults.sequence_panel_max_text_length_bp;
         self.configuration_graphics
@@ -42589,12 +42588,11 @@ mod tests {
             PairwiseAlignmentMode, PlanningEstimate, PlanningObjective, PrimerDesignPairConstraint,
             PrimerDesignSideConstraint, ProjectState, ProteinToDnaHandoffRankingGoal,
             ProteinToDnaHandoffStrategy, Rack, RackAuthoringTemplate, RackFillDirection,
-            RackProfileKind, RackProfileSnapshot, RenderSvgMode,
-            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode,
-            ReverseTranslationReport, RoutineDecisionTraceDisambiguationAnswer,
-            RoutineDecisionTraceDisambiguationQuestion, RoutineDecisionTracePreflightSnapshot,
-            RoutineDecisionTraceStore, SequenceOrigin, TranslationSpeedMark,
-            TranslationSpeedProfile, TranslationSpeedProfileSource,
+            RackProfileKind, RackProfileSnapshot, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+            RestrictionEnzymeDisplayMode, ReverseTranslationReport,
+            RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
+            RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore, SequenceOrigin,
+            TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
             UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
         },
         ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
@@ -51377,7 +51375,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 location: gb_io::seq::Location::simple_range(0, vector_len_i64),
                 qualifiers: vec![
                     ("label".into(), Some("MCS".to_string())),
-                    ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+                    (
+                        "mcs_expected_sites".into(),
+                        Some("EcoRI,HindIII".to_string()),
+                    ),
                 ],
             });
             vector.update_computed_features();
@@ -51456,14 +51457,19 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             handoff_row.analysis_kind,
             Some(LineageAnalysisKind::RestrictionCloningPcrHandoff)
         );
-        assert_eq!(handoff_row.analysis_reference_seq_id.as_deref(), Some("vec"));
+        assert_eq!(
+            handoff_row.analysis_reference_seq_id.as_deref(),
+            Some("vec")
+        );
         assert_eq!(handoff_row.analysis_mode.as_deref(), Some("directed_pair"));
         assert_eq!(handoff_row.analysis_status.as_deref(), Some("compatible"));
         assert_eq!(handoff_row.created_by_op, handoff_op_id);
         assert!(
-            app.lineage_edges.iter().any(|(from, to, op_id)| from == "n_tpl"
-                && to == &handoff_row.node_id
-                && op_id == &handoff_op_id)
+            app.lineage_edges
+                .iter()
+                .any(|(from, to, op_id)| from == "n_tpl"
+                    && to == &handoff_row.node_id
+                    && op_id == &handoff_op_id)
         );
     }
 

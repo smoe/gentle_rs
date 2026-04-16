@@ -4425,21 +4425,21 @@ impl GentleEngine {
                 extended_reverse_sequence.as_bytes(),
             )
             .max_3prime_complementary_run_bp;
-        tailed_pair.rule_flags.forward_secondary_structure_ok =
-            extended_forward.longest_homopolymer_run_bp
-                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                && extended_forward.self_complementary_run_bp
-                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
-        tailed_pair.rule_flags.reverse_secondary_structure_ok =
-            extended_reverse.longest_homopolymer_run_bp
-                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                && extended_reverse.self_complementary_run_bp
-                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
-        tailed_pair.rule_flags.primer_pair_dimer_risk_low =
-            tailed_pair.primer_pair_complementary_run_bp
-                <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
-                && tailed_pair.primer_pair_3prime_complementary_run_bp
-                    <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP;
+        tailed_pair.rule_flags.forward_secondary_structure_ok = extended_forward
+            .longest_homopolymer_run_bp
+            <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+            && extended_forward.self_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        tailed_pair.rule_flags.reverse_secondary_structure_ok = extended_reverse
+            .longest_homopolymer_run_bp
+            <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+            && extended_reverse.self_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        tailed_pair.rule_flags.primer_pair_dimer_risk_low = tailed_pair
+            .primer_pair_complementary_run_bp
+            <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+            && tailed_pair.primer_pair_3prime_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP;
 
         let tailed_amplicon_sequence =
             Self::build_tailed_amplicon_sequence_from_primer_pair(&template_seq, &tailed_pair)?;
@@ -4456,7 +4456,8 @@ impl GentleEngine {
         Self::prepare_sequence(&mut tailed_amplicon_dna);
 
         let vector_cut_positions = Self::restriction_cloning_cut_positions_0based(&vector);
-        let insert_cut_positions = Self::restriction_cloning_cut_positions_0based(&tailed_amplicon_dna);
+        let insert_cut_positions =
+            Self::restriction_cloning_cut_positions_0based(&tailed_amplicon_dna);
         let expected_insert_forward = if mode == RestrictionCloningPcrHandoffMode::SingleSite {
             2usize
         } else {
@@ -4499,24 +4500,20 @@ impl GentleEngine {
         compatibility
             .vector_site_count_by_enzyme
             .insert(reverse_enzyme.clone(), reverse_vector_count);
-        compatibility
-            .insert_site_count_by_enzyme
-            .insert(
-                forward_enzyme.clone(),
-                insert_cut_positions
-                    .get(&forward_enzyme)
-                    .map(|cuts| cuts.len())
-                    .unwrap_or(0),
-            );
-        compatibility
-            .insert_site_count_by_enzyme
-            .insert(
-                reverse_enzyme.clone(),
-                insert_cut_positions
-                    .get(&reverse_enzyme)
-                    .map(|cuts| cuts.len())
-                    .unwrap_or(0),
-            );
+        compatibility.insert_site_count_by_enzyme.insert(
+            forward_enzyme.clone(),
+            insert_cut_positions
+                .get(&forward_enzyme)
+                .map(|cuts| cuts.len())
+                .unwrap_or(0),
+        );
+        compatibility.insert_site_count_by_enzyme.insert(
+            reverse_enzyme.clone(),
+            insert_cut_positions
+                .get(&reverse_enzyme)
+                .map(|cuts| cuts.len())
+                .unwrap_or(0),
+        );
         compatibility
             .expected_insert_site_count_by_enzyme
             .insert(forward_enzyme.clone(), expected_insert_forward);
@@ -4707,6 +4704,14 @@ impl GentleEngine {
             },
             output_prefix: Some(format!("{report_token}_vector_digest")),
         };
+        let staged_workflow = Workflow {
+            run_id: format!("{report_token}_workflow"),
+            ops: vec![
+                pcr_advanced_operation.clone(),
+                insert_digest_operation.clone(),
+                vector_digest_operation.clone(),
+            ],
+        };
         let ligation_operation_snippet = serde_json::json!({
             "Ligation": {
                 "inputs": [
@@ -4762,6 +4767,7 @@ impl GentleEngine {
                 .primer_pair_3prime_complementary_run_bp,
             compatibility,
             workflow_hints: RestrictionCloningPcrWorkflowHints {
+                staged_workflow: Some(staged_workflow),
                 pcr_advanced_operation: Some(pcr_advanced_operation),
                 insert_digest_operation: Some(insert_digest_operation),
                 vector_digest_operation: Some(vector_digest_operation),

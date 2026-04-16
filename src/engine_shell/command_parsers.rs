@@ -2058,9 +2058,9 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             "--pair-rank",
                             "primers seed-restriction-cloning-handoff",
                         )?;
-                        pair_rank_1based = raw.parse::<usize>().map_err(|e| {
-                            format!("Invalid --pair-rank value '{raw}': {e}")
-                        })?;
+                        pair_rank_1based = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --pair-rank value '{raw}': {e}"))?;
                         if pair_rank_1based == 0 {
                             return Err("--pair-rank must be >= 1".to_string());
                         }
@@ -2127,8 +2127,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "restriction-cloning-vector-suggestions" => {
             if tokens.len() != 3 {
                 return Err(
-                    "primers restriction-cloning-vector-suggestions requires SEQ_ID"
-                        .to_string(),
+                    "primers restriction-cloning-vector-suggestions requires SEQ_ID".to_string(),
                 );
             }
             Ok(ShellCommand::PrimersRestrictionCloningVectorSuggestions {
@@ -2989,8 +2988,7 @@ pub(super) fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, S
                             "--overlay-anchor-exon",
                             "dotplot render-svg",
                         )?;
-                        overlay_anchor_exon =
-                            Some(DotplotOverlayAnchorExonRef::parse(&raw)?);
+                        overlay_anchor_exon = Some(DotplotOverlayAnchorExonRef::parse(&raw)?);
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for dotplot render-svg"));

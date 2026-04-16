@@ -3363,6 +3363,8 @@ Operation progress/cancellation semantics:
     - one predicted tailed amplicon sequence
     - one per-handoff pool container
   - successful runs also persist structured downstream hints:
+    - one staged `Workflow` containing the runnable `PcrAdvanced` + insert
+      digest + vector digest steps
     - one `PcrAdvanced` operation payload using the full tailed oligos with
       preserved `anneal_len`
     - one insert `Digest` payload
@@ -3380,7 +3382,8 @@ Operation progress/cancellation semantics:
     - extended pair dimer diagnostics
     - `compatibility` summary with vector-site counts, insert-site counts,
       cut positions, blocking errors, and warnings
-    - `workflow_hints` with suggested downstream operation payloads
+    - `workflow_hints` with suggested downstream operation payloads, including
+      one staged pre-ligation workflow and the remaining ligation placeholder
 
 `PcrOverlapExtensionMutagenesis` contract (implemented baseline):
 

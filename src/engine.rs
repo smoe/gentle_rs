@@ -6769,9 +6769,7 @@ impl GentleEngine {
         Self::text_mentions_mcs(&text)
     }
 
-    fn restriction_cloning_cut_positions_0based(
-        dna: &DNAsequence,
-    ) -> BTreeMap<String, Vec<usize>> {
+    fn restriction_cloning_cut_positions_0based(dna: &DNAsequence) -> BTreeMap<String, Vec<usize>> {
         let seq_len = dna.len();
         let mut by_enzyme: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for site in dna
@@ -6794,9 +6792,17 @@ impl GentleEngine {
         let lookup = Self::rebase_name_lookup_by_normalized();
         let mut ordered = vec![];
         let mut seen = HashSet::new();
-        for feature in dna.features().iter().filter(|feature| Self::feature_looks_like_mcs(feature)) {
+        for feature in dna
+            .features()
+            .iter()
+            .filter(|feature| Self::feature_looks_like_mcs(feature))
+        {
             for raw in feature.qualifier_values("mcs_expected_sites") {
-                for token in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+                for token in raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
                     if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
                         if seen.insert(name.clone()) {
                             ordered.push(name);
@@ -6812,10 +6818,14 @@ impl GentleEngine {
         &self,
         seq_id: &str,
     ) -> Result<RestrictionCloningVectorEnzymeSuggestions, EngineError> {
-        let dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!("Sequence '{}' not found", seq_id),
-        })?;
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
         let cut_positions = Self::restriction_cloning_cut_positions_0based(dna);
         let unique_cutters = cut_positions
             .iter()
@@ -6826,10 +6836,18 @@ impl GentleEngine {
         let mut missing_mcs = vec![];
         let mut seen_selected = HashSet::new();
         let mut seen_missing = HashSet::new();
-        for feature in dna.features().iter().filter(|feature| Self::feature_looks_like_mcs(feature)) {
+        for feature in dna
+            .features()
+            .iter()
+            .filter(|feature| Self::feature_looks_like_mcs(feature))
+        {
             let mut candidates = vec![];
             for raw in feature.qualifier_values("mcs_expected_sites") {
-                for token in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+                for token in raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
                     if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
                         candidates.push(name);
                     } else {
@@ -6876,10 +6894,12 @@ impl GentleEngine {
                 cut_positions
                     .get(name)
                     .and_then(|cuts| cuts.first().copied())
-                    .map(|cut_position_0based| RestrictionCloningSingleSiteSuggestion {
-                        enzyme: name.clone(),
-                        cut_position_0based,
-                    })
+                    .map(
+                        |cut_position_0based| RestrictionCloningSingleSiteSuggestion {
+                            enzyme: name.clone(),
+                            cut_position_0based,
+                        },
+                    )
             })
             .collect::<Vec<_>>();
         let recommended_directed_pairs = if selected_mcs.len() >= 2 {
@@ -7027,11 +7047,10 @@ impl GentleEngine {
             self.restriction_cloning_vector_enzyme_suggestions(destination_vector_seq_id)?;
         let enzyme_lookup = Self::restriction_cloning_suggested_enzyme_lookup(&suggestions);
         let available_names = Self::restriction_cloning_available_enzyme_names(&suggestions);
-        let canonicalize_enzyme =
-            |raw: &str, side_label: &str| -> Result<String, EngineError> {
-                let trimmed = raw.trim();
-                let normalized = Self::normalize_enzyme_match_token(trimmed);
-                enzyme_lookup
+        let canonicalize_enzyme = |raw: &str, side_label: &str| -> Result<String, EngineError> {
+            let trimmed = raw.trim();
+            let normalized = Self::normalize_enzyme_match_token(trimmed);
+            enzyme_lookup
                     .get(&normalized)
                     .cloned()
                     .ok_or_else(|| EngineError {
@@ -7051,7 +7070,7 @@ impl GentleEngine {
                             )
                         },
                     })
-            };
+        };
         let explicit_forward = forward_enzyme
             .map(str::trim)
             .filter(|value| !value.is_empty());
@@ -7119,10 +7138,7 @@ impl GentleEngine {
                                 .recommended_directed_pairs
                                 .iter()
                                 .map(|pair| {
-                                    format!(
-                                        "{} -> {}",
-                                        pair.forward_enzyme, pair.reverse_enzyme
-                                    )
+                                    format!("{} -> {}", pair.forward_enzyme, pair.reverse_enzyme)
                                 })
                                 .collect::<Vec<_>>();
                             return Err(EngineError {
@@ -7130,7 +7146,9 @@ impl GentleEngine {
                                 message: if recommended.is_empty() {
                                     format!(
                                         "Restriction-cloning directed pair '{} -> {}' is not available on vector '{}'",
-                                        canonical_forward, canonical_reverse, destination_vector_seq_id
+                                        canonical_forward,
+                                        canonical_reverse,
+                                        destination_vector_seq_id
                                     )
                                 } else {
                                     format!(

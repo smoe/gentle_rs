@@ -2759,6 +2759,11 @@ Restriction-site cloning handoff:
   - `Suggested enzymes` fallback pickers
   - `Create restriction-tail handoff`
 - behavior:
+  - handoff creation now uses the same engine-owned seeded request helper as
+    the CLI/shared shell, so GUI validation and auto-selection follow the
+    exact same rules
+  - if enzyme fields are left blank, the top recommended single-site or
+    directed-pair choice is applied automatically during handoff creation
   - creates new extended forward/reverse primer artifacts plus one predicted
     tailed amplicon artifact and one per-handoff pool container
   - keeps annealing Tm semantics tied to the original annealing segment while
@@ -2774,7 +2779,8 @@ Restriction-site cloning handoff:
   - extended primer sequences
   - predicted tailed amplicon ends/length
   - vector cut positions and compatibility verdict
-  - suggested downstream `PcrAdvanced` / `Digest` payload hints
+  - a staged pre-ligation workflow for the runnable `PcrAdvanced` + `Digest`
+    steps, plus the remaining ligation placeholder hint
 - vector enzyme suggestions prefer `mcs_expected_sites` from MCS-like features
   and fall back to unique cutters by cut position when no explicit MCS order is
   available

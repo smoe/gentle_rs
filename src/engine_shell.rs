@@ -33,26 +33,25 @@ use crate::{
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, Engine, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
+        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
+        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
+        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
+        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
+        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
+        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
+        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
         ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal, RackAuthoringTemplate,
         RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, ReverseTranslationReport,
-        ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        RestrictionCloningPcrHandoffMode,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
@@ -17899,7 +17898,9 @@ fn execute_primers_command(
                     *pair_index,
                     mode.as_str().to_string(),
                     forward_enzyme.clone(),
-                    reverse_enzyme.clone().unwrap_or_else(|| forward_enzyme.clone()),
+                    reverse_enzyme
+                        .clone()
+                        .unwrap_or_else(|| forward_enzyme.clone()),
                 ),
                 _ => {
                     return Err(
@@ -17970,9 +17971,7 @@ fn execute_primers_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: serde_json::to_value(seed).map_err(|e| {
-                    format!(
-                        "Could not serialize restriction-cloning handoff seed request: {e}"
-                    )
+                    format!("Could not serialize restriction-cloning handoff seed request: {e}")
                 })?,
             })
         }

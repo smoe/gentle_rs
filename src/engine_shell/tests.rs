@@ -3872,10 +3872,9 @@ fn parse_primers_restriction_cloning_handoff_report_commands() {
         ShellCommand::PrimersShowRestrictionCloningHandoff { report_id } if report_id == "handoff_1"
     ));
 
-    let export = parse_shell_line(
-        "primers export-restriction-cloning-handoff handoff_1 handoff_1.json",
-    )
-    .expect("parse restriction-cloning handoff export");
+    let export =
+        parse_shell_line("primers export-restriction-cloning-handoff handoff_1 handoff_1.json")
+            .expect("parse restriction-cloning handoff export");
     assert!(matches!(
         export,
         ShellCommand::PrimersExportRestrictionCloningHandoff { report_id, path }
@@ -8189,7 +8188,10 @@ fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
         location: Location::simple_range(0, vector_len_i64),
         qualifiers: vec![
             ("label".into(), Some("MCS".to_string())),
-            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+            (
+                "mcs_expected_sites".into(),
+                Some("EcoRI,HindIII".to_string()),
+            ),
         ],
     });
     vector.update_computed_features();
@@ -8244,19 +8246,17 @@ fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
     )
     .expect("design primer pairs");
 
-    let handoff_request = serde_json::to_string(
-        &Operation::PrepareRestrictionCloningPcrHandoff {
-            template: "tpl".to_string(),
-            primer_report_id: "shell_handoff_pairs".to_string(),
-            pair_index: 0,
-            destination_vector_seq_id: "vec".to_string(),
-            mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
-            forward_enzyme: "EcoRI".to_string(),
-            reverse_enzyme: Some("HindIII".to_string()),
-            forward_leader_5prime: Some("GC".to_string()),
-            reverse_leader_5prime: Some("AT".to_string()),
-        },
-    )
+    let handoff_request = serde_json::to_string(&Operation::PrepareRestrictionCloningPcrHandoff {
+        template: "tpl".to_string(),
+        primer_report_id: "shell_handoff_pairs".to_string(),
+        pair_index: 0,
+        destination_vector_seq_id: "vec".to_string(),
+        mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
+        forward_enzyme: "EcoRI".to_string(),
+        reverse_enzyme: Some("HindIII".to_string()),
+        forward_leader_5prime: Some("GC".to_string()),
+        reverse_leader_5prime: Some("AT".to_string()),
+    })
     .expect("serialize handoff request");
     let run = execute_shell_command(
         &mut engine,
@@ -8275,10 +8275,7 @@ fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
         run.output["report"]["destination_vector_seq_id"].as_str(),
         Some("vec")
     );
-    assert_eq!(
-        run.output["report"]["mode"].as_str(),
-        Some("directed_pair")
-    );
+    assert_eq!(run.output["report"]["mode"].as_str(), Some("directed_pair"));
     assert_eq!(
         run.output["report"]["compatibility"]["status"].as_str(),
         Some("compatible")
@@ -8301,7 +8298,10 @@ fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_uniqu
         location: Location::simple_range(0, vector_len_i64),
         qualifiers: vec![
             ("label".into(), Some("MCS".to_string())),
-            ("mcs_expected_sites".into(), Some("EcoRI,HindIII,BamHI".to_string())),
+            (
+                "mcs_expected_sites".into(),
+                Some("EcoRI,HindIII,BamHI".to_string()),
+            ),
         ],
     });
     vector.update_computed_features();
@@ -8321,10 +8321,7 @@ fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_uniqu
         run.output["schema"].as_str(),
         Some("gentle.restriction_cloning_vector_enzyme_suggestions.v1")
     );
-    assert_eq!(
-        run.output["suggestions"]["seq_id"].as_str(),
-        Some("vec")
-    );
+    assert_eq!(run.output["suggestions"]["seq_id"].as_str(), Some("vec"));
     assert_eq!(
         run.output["suggestions"]["selected_mcs"][0].as_str(),
         Some("EcoRI")
@@ -8352,13 +8349,11 @@ fn execute_primers_restriction_cloning_vector_suggestions_prefers_mcs_then_uniqu
         Some("EcoRI")
     );
     assert_eq!(
-        run.output["suggestions"]["recommended_directed_pairs"][0]["forward_enzyme"]
-            .as_str(),
+        run.output["suggestions"]["recommended_directed_pairs"][0]["forward_enzyme"].as_str(),
         Some("EcoRI")
     );
     assert_eq!(
-        run.output["suggestions"]["recommended_directed_pairs"][0]["reverse_enzyme"]
-            .as_str(),
+        run.output["suggestions"]["recommended_directed_pairs"][0]["reverse_enzyme"].as_str(),
         Some("HindIII")
     );
 }
@@ -8382,7 +8377,10 @@ fn execute_primers_seed_restriction_cloning_handoff_uses_recommendations_or_vali
         location: Location::simple_range(0, vector_len_i64),
         qualifiers: vec![
             ("label".into(), Some("MCS".to_string())),
-            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+            (
+                "mcs_expected_sites".into(),
+                Some("EcoRI,HindIII".to_string()),
+            ),
         ],
     });
     vector.update_computed_features();
@@ -8496,6 +8494,39 @@ fn execute_primers_seed_restriction_cloning_handoff_uses_recommendations_or_vali
             .as_str(),
         Some("GC")
     );
+
+    let reversed_err = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id: "primer_seed_handoff".to_string(),
+            destination_vector_seq_id: "vec".to_string(),
+            pair_rank_1based: 1,
+            mode: RestrictionCloningPcrHandoffMode::DirectedPair,
+            forward_enzyme: Some("HindIII".to_string()),
+            reverse_enzyme: Some("EcoRI".to_string()),
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        },
+    )
+    .expect_err("reversed directed-pair order should fail");
+    assert!(reversed_err.contains("does not match the valid order"));
+    assert!(reversed_err.contains("HindIII -> EcoRI"));
+
+    let unavailable_err = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedRestrictionCloningHandoff {
+            primer_report_id: "primer_seed_handoff".to_string(),
+            destination_vector_seq_id: "vec".to_string(),
+            pair_rank_1based: 1,
+            mode: RestrictionCloningPcrHandoffMode::SingleSite,
+            forward_enzyme: Some("BamHI".to_string()),
+            reverse_enzyme: None,
+            forward_leader_5prime: None,
+            reverse_leader_5prime: None,
+        },
+    )
+    .expect_err("unavailable cutter should fail");
+    assert!(unavailable_err.contains("is not a unique usable cutter on vector 'vec'"));
 }
 
 #[test]
@@ -8516,7 +8547,10 @@ fn execute_primers_restriction_cloning_handoff_report_commands() {
         location: Location::simple_range(0, vector_len_i64),
         qualifiers: vec![
             ("label".into(), Some("MCS".to_string())),
-            ("mcs_expected_sites".into(), Some("EcoRI,HindIII".to_string())),
+            (
+                "mcs_expected_sites".into(),
+                Some("EcoRI,HindIII".to_string()),
+            ),
         ],
     });
     vector.update_computed_features();
@@ -8571,19 +8605,17 @@ fn execute_primers_restriction_cloning_handoff_report_commands() {
     )
     .expect("design primer pairs");
 
-    let handoff_request = serde_json::to_string(
-        &Operation::PrepareRestrictionCloningPcrHandoff {
-            template: "tpl".to_string(),
-            primer_report_id: "shell_handoff_list".to_string(),
-            pair_index: 0,
-            destination_vector_seq_id: "vec".to_string(),
-            mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
-            forward_enzyme: "EcoRI".to_string(),
-            reverse_enzyme: Some("HindIII".to_string()),
-            forward_leader_5prime: Some("GC".to_string()),
-            reverse_leader_5prime: Some("AT".to_string()),
-        },
-    )
+    let handoff_request = serde_json::to_string(&Operation::PrepareRestrictionCloningPcrHandoff {
+        template: "tpl".to_string(),
+        primer_report_id: "shell_handoff_list".to_string(),
+        pair_index: 0,
+        destination_vector_seq_id: "vec".to_string(),
+        mode: crate::engine::RestrictionCloningPcrHandoffMode::DirectedPair,
+        forward_enzyme: "EcoRI".to_string(),
+        reverse_enzyme: Some("HindIII".to_string()),
+        forward_leader_5prime: Some("GC".to_string()),
+        reverse_leader_5prime: Some("AT".to_string()),
+    })
     .expect("serialize handoff request");
     let create = execute_shell_command(
         &mut engine,
@@ -13299,7 +13331,10 @@ fn parse_dotplot_and_flex_commands() {
             assert_eq!(flex_track_id.as_deref(), Some("flex_1"));
             assert_eq!(display_density_threshold, Some(0.2));
             assert_eq!(display_intensity_gain, Some(1.7));
-            assert_eq!(overlay_x_axis_mode, DotplotOverlayXAxisMode::SharedExonAnchor);
+            assert_eq!(
+                overlay_x_axis_mode,
+                DotplotOverlayXAxisMode::SharedExonAnchor
+            );
             assert_eq!(
                 overlay_anchor_exon,
                 Some(DotplotOverlayAnchorExonRef {

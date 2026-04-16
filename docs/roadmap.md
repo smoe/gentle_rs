@@ -1025,6 +1025,12 @@ order. Durable architecture constraints and decisions remain in
     - returns a validated ready-to-run
       `PrepareRestrictionCloningPcrHandoff` payload plus the recommendation
       context used to choose/validate enzymes
+    - PCR Designer now routes handoff creation through that same engine-owned
+      seed helper instead of shaping a separate GUI-local request
+  - restriction-cloning handoff reports now also carry one staged workflow for
+    the runnable pre-ligation steps (`PcrAdvanced` + insert/vector digests),
+    while keeping ligation as an explicit later-stage placeholder until digest
+    fragment ids exist
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged
