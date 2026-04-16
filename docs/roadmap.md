@@ -976,6 +976,9 @@ order. Durable architecture constraints and decisions remain in
         - it now also exports a portable handoff bundle directly from the GUI:
           promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
           SVG previews, `report.md`, `result.json`, and replay `commands.sh`
+        - it now has a short dedicated GUI tutorial for the current
+          ClawBio-facing story:
+          `docs/tutorial/vkorc1_variant_followup_expert_gui.md`
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo

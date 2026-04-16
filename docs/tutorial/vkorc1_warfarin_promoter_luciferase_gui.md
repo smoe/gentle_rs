@@ -6,6 +6,10 @@
 > biologically sensible, reproducible promoter-reporter design handoff in
 > GENtle.
 
+If you want the shortest GUI path first, use:
+
+- [docs/tutorial/vkorc1_variant_followup_expert_gui.md](./vkorc1_variant_followup_expert_gui.md)
+
 This tutorial is intentionally modest.
 
 It does **not** claim wet-lab validation, direct drug-response proof, or a
