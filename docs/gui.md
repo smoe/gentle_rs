@@ -517,6 +517,10 @@ Feature tree grouping:
     - an `Acceptor-proximal intron signals` table summarizes those heuristics
       explicitly and labels them as heuristic evidence rather than a splice
       predictor
+    - rows in that intron-signal table are clickable:
+      selecting one keeps the corresponding intron highlighted in the lane view
+      and shows a small description block with the current branchpoint-like and
+      polypyrimidine-tract interpretation
   - exon columns include support as `n/N (%)` (plus `const` for constitutive
     exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon

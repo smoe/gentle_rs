@@ -4969,7 +4969,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_splicing_expert_view_ui(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
         id_namespace: &str,
@@ -5128,6 +5128,7 @@ impl MainAreaDna {
         }
         if !view.intron_signals.is_empty() {
             let signal_rows = Self::splicing_intron_signal_rows(view);
+            let mut selected_signal_key = self.splicing_selected_intron_signal_key(view);
             ui.separator();
             ui.label(
                 egui::RichText::new("Acceptor-proximal intron signals")
@@ -5151,34 +5152,60 @@ impl MainAreaDna {
                     ui.label(egui::RichText::new("note").strong());
                     ui.end_row();
                     for row in &signal_rows {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "n-{} {}",
-                                row.transcript_feature_id, row.transcript_id
-                            ))
-                            .monospace()
-                            .size(9.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{}..{} ({} bp)",
-                                row.donor_position_1based,
-                                row.acceptor_position_1based,
-                                row.intron_length_bp
-                            ))
-                            .monospace()
-                            .size(9.0),
-                        );
+                        let row_key = Self::splicing_intron_signal_key_for_row(row);
+                        let is_selected = selected_signal_key
+                            .as_ref()
+                            .map(|selected| *selected == row_key)
+                            .unwrap_or(false);
+                        if ui
+                            .selectable_label(
+                                is_selected,
+                                egui::RichText::new(format!(
+                                    "n-{} {}",
+                                    row.transcript_feature_id, row.transcript_id
+                                ))
+                                .monospace()
+                                .size(9.0),
+                            )
+                            .on_hover_text(
+                                "Click to focus this intron signal and highlight the intron in the lane view.",
+                            )
+                            .clicked()
+                        {
+                            selected_signal_key = Some(row_key.clone());
+                        }
+                        if ui
+                            .selectable_label(
+                                is_selected,
+                                egui::RichText::new(format!(
+                                    "{}..{} ({} bp)",
+                                    row.donor_position_1based,
+                                    row.acceptor_position_1based,
+                                    row.intron_length_bp
+                                ))
+                                .monospace()
+                                .size(9.0),
+                            )
+                            .clicked()
+                        {
+                            selected_signal_key = Some(row_key.clone());
+                        }
                         let branchpoint_text = row
                             .branchpoint_position_1based
                             .map(|position| format!("{position} {}", row.branchpoint_motif))
                             .unwrap_or_else(|| "none".to_string());
-                        ui.label(
-                            egui::RichText::new(branchpoint_text)
-                                .monospace()
-                                .size(9.0)
-                                .color(egui::Color32::from_rgb(124, 58, 237)),
-                        );
+                        if ui
+                            .selectable_label(
+                                is_selected,
+                                egui::RichText::new(branchpoint_text)
+                                    .monospace()
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(124, 58, 237)),
+                            )
+                            .clicked()
+                        {
+                            selected_signal_key = Some(row_key.clone());
+                        }
                         let tract_text = match (
                             row.polypyrimidine_start_1based,
                             row.polypyrimidine_end_1based,
@@ -5188,12 +5215,18 @@ impl MainAreaDna {
                             }
                             _ => "none".to_string(),
                         };
-                        ui.label(
-                            egui::RichText::new(tract_text)
-                                .monospace()
-                                .size(9.0)
-                                .color(egui::Color32::from_rgb(37, 99, 235)),
-                        );
+                        if ui
+                            .selectable_label(
+                                is_selected,
+                                egui::RichText::new(tract_text)
+                                    .monospace()
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(37, 99, 235)),
+                            )
+                            .clicked()
+                        {
+                            selected_signal_key = Some(row_key.clone());
+                        }
                         ui.vertical(|ui| {
                             ui.label(
                                 egui::RichText::new(row.branchpoint_annotation.as_str())
@@ -5209,6 +5242,43 @@ impl MainAreaDna {
                         ui.end_row();
                     }
                 });
+            self.splicing_expert_selected_intron_signal_key = selected_signal_key.clone();
+            if let Some(selected_row) = self.splicing_selected_intron_signal_row(view) {
+                ui.add_space(4.0);
+                egui::Frame::group(ui.style())
+                    .fill(egui::Color32::from_rgba_premultiplied(248, 250, 252, 220))
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Selected intron signal: n-{} {}  {}..{}",
+                                selected_row.transcript_feature_id,
+                                selected_row.transcript_id,
+                                selected_row.donor_position_1based,
+                                selected_row.acceptor_position_1based
+                            ))
+                            .monospace()
+                            .strong()
+                            .size(9.5),
+                        );
+                        ui.label(
+                            egui::RichText::new(
+                                Self::splicing_intron_signal_description_text(&selected_row),
+                            )
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(51, 65, 85)),
+                        );
+                        ui.label(
+                            egui::RichText::new(selected_row.branchpoint_annotation.as_str())
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(109, 40, 217)),
+                        );
+                        ui.label(
+                            egui::RichText::new(selected_row.polypyrimidine_annotation.as_str())
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(29, 78, 216)),
+                        );
+                    });
+            }
         }
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
@@ -5918,7 +5988,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_feature_expert_view_ui(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         view: &FeatureExpertView,
     ) {

@@ -1076,7 +1076,8 @@ mod tests {
     use super::{
         DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTask,
         RnaReadTaskMessage, RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
-        SequencingConfirmationReviewFocusKind, ViewSvgExportProfile,
+        SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
+        ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -1975,6 +1976,184 @@ mod tests {
         assert_eq!(rows[0].polypyrimidine_start_1based, Some(28));
         assert_eq!(rows[0].polypyrimidine_end_1based, Some(37));
         assert_eq!(rows[0].polypyrimidine_fraction_percent, 90);
+    }
+
+    #[test]
+    fn splicing_selected_intron_signal_key_falls_back_and_preserves_valid_selection() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("seq".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq".to_string(),
+            target_feature_id: 1,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 80,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![
+                SplicingIntronSignal {
+                    transcript_feature_id: 11,
+                    transcript_id: "tx1".to_string(),
+                    donor_position_1based: 10,
+                    acceptor_position_1based: 40,
+                    intron_length_bp: 31,
+                    branchpoint_position_1based: Some(18),
+                    branchpoint_motif: "CTAAC".to_string(),
+                    branchpoint_score: 4.1,
+                    branchpoint_annotation: "branchpoint note".to_string(),
+                    polypyrimidine_start_1based: Some(28),
+                    polypyrimidine_end_1based: Some(37),
+                    polypyrimidine_fraction: 0.9,
+                    polypyrimidine_annotation: "polyY note".to_string(),
+                },
+                SplicingIntronSignal {
+                    transcript_feature_id: 12,
+                    transcript_id: "tx2".to_string(),
+                    donor_position_1based: 20,
+                    acceptor_position_1based: 60,
+                    intron_length_bp: 41,
+                    branchpoint_position_1based: None,
+                    branchpoint_motif: String::new(),
+                    branchpoint_score: 0.0,
+                    branchpoint_annotation: "none".to_string(),
+                    polypyrimidine_start_1based: None,
+                    polypyrimidine_end_1based: None,
+                    polypyrimidine_fraction: 0.0,
+                    polypyrimidine_annotation: "none".to_string(),
+                },
+            ],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let fallback = area
+            .splicing_selected_intron_signal_key(&view)
+            .expect("fallback signal");
+        assert_eq!(fallback.transcript_feature_id, 11);
+        assert_eq!(fallback.donor_position_1based, 10);
+        assert_eq!(fallback.acceptor_position_1based, 40);
+
+        area.splicing_expert_selected_intron_signal_key = Some(SplicingIntronSignalKey {
+            transcript_feature_id: 12,
+            donor_position_1based: 20,
+            acceptor_position_1based: 60,
+        });
+        let preserved = area
+            .splicing_selected_intron_signal_key(&view)
+            .expect("preserved selection");
+        assert_eq!(preserved.transcript_feature_id, 12);
+        assert_eq!(preserved.donor_position_1based, 20);
+        assert_eq!(preserved.acceptor_position_1based, 60);
+    }
+
+    #[test]
+    fn splicing_selected_intron_signal_row_recovers_when_previous_selection_is_missing() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("seq".to_string()), None);
+        area.splicing_expert_selected_intron_signal_key = Some(SplicingIntronSignalKey {
+            transcript_feature_id: 99,
+            donor_position_1based: 1,
+            acceptor_position_1based: 2,
+        });
+        let view = SplicingExpertView {
+            seq_id: "seq".to_string(),
+            target_feature_id: 1,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 80,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![SplicingIntronSignal {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                donor_position_1based: 10,
+                acceptor_position_1based: 40,
+                intron_length_bp: 31,
+                branchpoint_position_1based: Some(18),
+                branchpoint_motif: "CTAAC".to_string(),
+                branchpoint_score: 4.1,
+                branchpoint_annotation: "branchpoint note".to_string(),
+                polypyrimidine_start_1based: Some(28),
+                polypyrimidine_end_1based: Some(37),
+                polypyrimidine_fraction: 0.9,
+                polypyrimidine_annotation: "polyY note".to_string(),
+            }],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let selected = area
+            .splicing_selected_intron_signal_row(&view)
+            .expect("selected row");
+        assert_eq!(selected.transcript_feature_id, 11);
+        assert_eq!(selected.branchpoint_motif, "CTAAC");
+        assert_eq!(
+            area.splicing_expert_selected_intron_signal_key,
+            Some(SplicingIntronSignalKey {
+                transcript_feature_id: 11,
+                donor_position_1based: 10,
+                acceptor_position_1based: 40,
+            })
+        );
+    }
+
+    #[test]
+    fn splicing_intron_signal_description_reports_detected_sites_and_fallbacks() {
+        let detected = SplicingIntronSignalRow {
+            transcript_feature_id: 11,
+            transcript_id: "tx1".to_string(),
+            donor_position_1based: 10,
+            acceptor_position_1based: 40,
+            intron_length_bp: 31,
+            branchpoint_position_1based: Some(18),
+            branchpoint_motif: "CTAAC".to_string(),
+            branchpoint_annotation: "branchpoint note".to_string(),
+            polypyrimidine_start_1based: Some(28),
+            polypyrimidine_end_1based: Some(37),
+            polypyrimidine_fraction_percent: 90,
+            polypyrimidine_annotation: "polyY note".to_string(),
+        };
+        assert_eq!(
+            MainAreaDna::splicing_intron_signal_branchpoint_summary(&detected),
+            "18 (CTAAC)"
+        );
+        assert_eq!(
+            MainAreaDna::splicing_intron_signal_polypyrimidine_summary(&detected),
+            "28..37 (90% pyrimidines)"
+        );
+        let detected_description = MainAreaDna::splicing_intron_signal_description_text(&detected);
+        assert!(detected_description.contains("31 bp intron is now highlighted"));
+        assert!(detected_description.contains("18 (CTAAC)"));
+        assert!(detected_description.contains("28..37 (90% pyrimidines)"));
+
+        let missing = SplicingIntronSignalRow {
+            branchpoint_position_1based: None,
+            polypyrimidine_start_1based: None,
+            polypyrimidine_end_1based: None,
+            ..detected
+        };
+        assert_eq!(
+            MainAreaDna::splicing_intron_signal_branchpoint_summary(&missing),
+            "not detected above the current heuristic"
+        );
+        assert_eq!(
+            MainAreaDna::splicing_intron_signal_polypyrimidine_summary(&missing),
+            "not detected above the current heuristic"
+        );
+        let missing_description = MainAreaDna::splicing_intron_signal_description_text(&missing);
+        assert!(missing_description.contains("not detected above the current heuristic"));
     }
 
     #[test]
@@ -9209,6 +9388,13 @@ struct SplicingIntronSignalRow {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct SplicingIntronSignalKey {
+    transcript_feature_id: usize,
+    donor_position_1based: usize,
+    acceptor_position_1based: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct RegulatoryFeatureGrouping {
     primary_key: String,
     primary_label: String,
@@ -9695,6 +9881,7 @@ pub struct MainAreaDna {
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
+    splicing_expert_selected_intron_signal_key: Option<SplicingIntronSignalKey>,
     show_rna_read_mapping_window: bool,
     rna_read_mapping_window_feature_id: Option<usize>,
     rna_read_mapping_window_view: Option<Arc<SplicingExpertView>>,
@@ -10154,6 +10341,7 @@ impl MainAreaDna {
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             splicing_expert_selected_transcript_feature_id: None,
+            splicing_expert_selected_intron_signal_key: None,
             show_rna_read_mapping_window: false,
             rna_read_mapping_window_feature_id: None,
             rna_read_mapping_window_view: None,
@@ -18205,6 +18393,26 @@ impl MainAreaDna {
         rows
     }
 
+    fn splicing_intron_signal_key_for_row(
+        row: &SplicingIntronSignalRow,
+    ) -> SplicingIntronSignalKey {
+        SplicingIntronSignalKey {
+            transcript_feature_id: row.transcript_feature_id,
+            donor_position_1based: row.donor_position_1based,
+            acceptor_position_1based: row.acceptor_position_1based,
+        }
+    }
+
+    fn splicing_intron_signal_key_for_signal(
+        signal: &SplicingIntronSignal,
+    ) -> SplicingIntronSignalKey {
+        SplicingIntronSignalKey {
+            transcript_feature_id: signal.transcript_feature_id,
+            donor_position_1based: signal.donor_position_1based,
+            acceptor_position_1based: signal.acceptor_position_1based,
+        }
+    }
+
     fn splicing_boundary_motif_class_label(class: &str) -> &'static str {
         match class {
             "gt_ag_major_canonical" => "canonical major (GT-AG)",
@@ -18255,8 +18463,70 @@ impl MainAreaDna {
             .collect()
     }
 
+    fn splicing_selected_intron_signal_key(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Option<SplicingIntronSignalKey> {
+        let exists = self
+            .splicing_expert_selected_intron_signal_key
+            .clone()
+            .and_then(|key| {
+                view.intron_signals
+                    .iter()
+                    .any(|signal| Self::splicing_intron_signal_key_for_signal(signal) == key)
+                    .then_some(key)
+            });
+        if let Some(key) = exists {
+            return Some(key);
+        }
+        let fallback = view
+            .intron_signals
+            .first()
+            .map(Self::splicing_intron_signal_key_for_signal);
+        self.splicing_expert_selected_intron_signal_key = fallback.clone();
+        fallback
+    }
+
+    fn splicing_selected_intron_signal_row(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Option<SplicingIntronSignalRow> {
+        let selected = self.splicing_selected_intron_signal_key(view)?;
+        Self::splicing_intron_signal_rows(view)
+            .into_iter()
+            .find(|row| Self::splicing_intron_signal_key_for_row(row) == selected)
+    }
+
+    fn splicing_intron_signal_branchpoint_summary(row: &SplicingIntronSignalRow) -> String {
+        row.branchpoint_position_1based
+            .map(|position| format!("{position} ({})", row.branchpoint_motif))
+            .unwrap_or_else(|| "not detected above the current heuristic".to_string())
+    }
+
+    fn splicing_intron_signal_polypyrimidine_summary(row: &SplicingIntronSignalRow) -> String {
+        match (
+            row.polypyrimidine_start_1based,
+            row.polypyrimidine_end_1based,
+        ) {
+            (Some(start), Some(end)) => format!(
+                "{start}..{end} ({}% pyrimidines)",
+                row.polypyrimidine_fraction_percent
+            ),
+            _ => "not detected above the current heuristic".to_string(),
+        }
+    }
+
+    fn splicing_intron_signal_description_text(row: &SplicingIntronSignalRow) -> String {
+        format!(
+            "This {} bp intron is now highlighted in the lane view. The branchpoint-like site is {} and the best detected pyrimidine-rich tract is {}.",
+            row.intron_length_bp,
+            Self::splicing_intron_signal_branchpoint_summary(row),
+            Self::splicing_intron_signal_polypyrimidine_summary(row),
+        )
+    }
+
     fn render_splicing_lane_canvas_ui(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
         style: SplicingLaneCanvasStyle,
@@ -18290,6 +18560,7 @@ impl MainAreaDna {
             + 36.0;
         let desired_width = ui.available_width().max(style.min_plot_width_px);
         let mut clicked_feature_id: Option<usize> = None;
+        let selected_intron_signal_key = self.splicing_selected_intron_signal_key(view);
 
         egui::ScrollArea::horizontal()
             .id_salt((
@@ -18447,10 +18718,6 @@ impl MainAreaDna {
                     for intron in &transcript.introns {
                         let x1 = to_x(intron.start_1based);
                         let x2 = to_x(intron.end_1based);
-                        painter.line_segment(
-                            [egui::pos2(x1, y), egui::pos2(x2, y)],
-                            egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
-                        );
                         let signal_key = if transcript.strand.trim() == "-" {
                             (
                                 transcript.transcript_feature_id,
@@ -18464,6 +18731,25 @@ impl MainAreaDna {
                                 intron.end_1based,
                             )
                         };
+                        let is_selected_signal = selected_intron_signal_key
+                            .as_ref()
+                            .map(|selected| {
+                                selected.transcript_feature_id == signal_key.0
+                                    && selected.donor_position_1based == signal_key.1
+                                    && selected.acceptor_position_1based == signal_key.2
+                            })
+                            .unwrap_or(false);
+                        painter.line_segment(
+                            [egui::pos2(x1, y), egui::pos2(x2, y)],
+                            egui::Stroke::new(
+                                if is_selected_signal { 2.4 } else { 1.0 },
+                                if is_selected_signal {
+                                    egui::Color32::from_rgb(14, 116, 144)
+                                } else {
+                                    egui::Color32::from_gray(110)
+                                },
+                            ),
+                        );
                         if let Some(signal) = intron_signal_lookup.get(&signal_key).copied() {
                             if let (Some(tract_start), Some(tract_end)) = (
                                 signal.polypyrimidine_start_1based,
@@ -18476,14 +18762,22 @@ impl MainAreaDna {
                                 painter.rect_filled(
                                     tract_rect,
                                     0.0,
-                                    egui::Color32::from_rgba_premultiplied(59, 130, 246, 110),
+                                    if is_selected_signal {
+                                        egui::Color32::from_rgba_premultiplied(37, 99, 235, 170)
+                                    } else {
+                                        egui::Color32::from_rgba_premultiplied(59, 130, 246, 110)
+                                    },
                                 );
                             }
                             if let Some(branchpoint_position) = signal.branchpoint_position_1based {
                                 painter.circle_filled(
                                     egui::pos2(to_x(branchpoint_position), y),
-                                    3.1,
-                                    egui::Color32::from_rgb(124, 58, 237),
+                                    if is_selected_signal { 4.1 } else { 3.1 },
+                                    if is_selected_signal {
+                                        egui::Color32::from_rgb(109, 40, 217)
+                                    } else {
+                                        egui::Color32::from_rgb(124, 58, 237)
+                                    },
                                 );
                             }
                         }

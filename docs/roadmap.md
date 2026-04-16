@@ -2732,6 +2732,9 @@ Status:
     - best detected polypyrimidine-rich tracts near the acceptor
     - the lane canvas and expert tables label these explicitly as heuristic
       evidence rather than a splice predictor
+    - intron-signal rows are now clickable so the corresponding intron stays
+      highlighted in the lane view and the expert shows a short, selected-signal
+      description instead of leaving the heuristics as passive rows
   - RNA-read reports persist exon-support and exon-exon junction-support
     frequency schema fields; phase-1 seed-only runs populate placeholders until
     the explicit phase-2 alignment step is run.
