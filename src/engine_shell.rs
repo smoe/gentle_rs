@@ -37,12 +37,13 @@ use crate::{
         GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
         GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
-        PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
-        PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, PromoterWindowCollapseMode,
+        LineageMacroPortBinding, MacroInstanceStatus, Operation, OperationProgress,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, ProjectState, PromoterWindowCollapseMode,
         ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
@@ -131,6 +132,8 @@ const BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT: usize = 256;
 const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> bool + Send>>>;
 
 #[derive(Debug)]
 enum BlastAsyncWorkerMessage {
@@ -1737,10 +1740,11 @@ pub struct ShellRunResult {
 
 /// Adapter policy switches that gate optional shell capabilities at execution
 /// time.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct ShellExecutionOptions {
     pub allow_screenshots: bool,
     pub allow_agent_commands: bool,
+    pub progress_callback: Option<ShellProgressCallback>,
 }
 
 impl Default for ShellExecutionOptions {
@@ -1748,6 +1752,7 @@ impl Default for ShellExecutionOptions {
         Self {
             allow_screenshots: false,
             allow_agent_commands: true,
+            progress_callback: None,
         }
     }
 }
@@ -1764,6 +1769,7 @@ impl ShellExecutionOptions {
         Self {
             allow_screenshots,
             allow_agent_commands: true,
+            progress_callback: None,
         }
     }
 }
@@ -14354,6 +14360,7 @@ fn execute_agent_suggested_commands(
     let nested_options = ShellExecutionOptions {
         allow_screenshots: options.allow_screenshots,
         allow_agent_commands: false,
+        progress_callback: options.progress_callback.clone(),
     };
     for (idx, suggestion) in suggestions.iter().enumerate() {
         let index_1based = idx + 1;
@@ -18194,9 +18201,23 @@ fn primer_design_simple_pcr_pairs_json(report: &PrimerDesignReport) -> Vec<Value
 }
 
 #[inline(never)]
+fn forward_shell_progress(
+    options: &ShellExecutionOptions,
+    progress: OperationProgress,
+) -> Result<bool, String> {
+    let Some(callback) = options.progress_callback.as_ref() else {
+        return Ok(true);
+    };
+    let mut guard = callback
+        .lock()
+        .map_err(|_| "Shell progress callback mutex poisoned".to_string())?;
+    Ok((guard)(progress))
+}
+
 fn execute_primers_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     match command {
         ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
@@ -18331,7 +18352,15 @@ fn execute_primers_command(
             {
                 engine.state_mut().parameters.primer3_executable = override_exec.to_string();
             }
-            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            let op_result = if options.progress_callback.is_some() {
+                engine
+                    .apply_with_progress(op, |progress| {
+                        forward_shell_progress(options, progress).unwrap_or(false)
+                    })
+                    .map_err(|e| e.to_string())
+            } else {
+                engine.apply(op).map_err(|e| e.to_string())
+            };
             engine.state_mut().parameters.primer_design_backend = previous_backend;
             engine.state_mut().parameters.primer3_executable = previous_executable;
             let op_result = op_result?;
@@ -18409,7 +18438,15 @@ fn execute_primers_command(
             {
                 engine.state_mut().parameters.primer3_executable = override_exec.to_string();
             }
-            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            let op_result = if options.progress_callback.is_some() {
+                engine
+                    .apply_with_progress(op, |progress| {
+                        forward_shell_progress(options, progress).unwrap_or(false)
+                    })
+                    .map_err(|e| e.to_string())
+            } else {
+                engine.apply(op).map_err(|e| e.to_string())
+            };
             engine.state_mut().parameters.primer_design_backend = previous_backend;
             engine.state_mut().parameters.primer3_executable = previous_executable;
             let op_result = op_result?;
@@ -20967,7 +21004,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersShowQpcrReport { .. }
             | ShellCommand::PrimersExportQpcrReport { .. }
     ) {
-        return execute_primers_command(engine, command);
+        return execute_primers_command(engine, command, options);
     }
     if matches!(
         command,
@@ -22976,7 +23013,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersExportReport { .. }
         | ShellCommand::PrimersListQpcrReports
         | ShellCommand::PrimersShowQpcrReport { .. }
-        | ShellCommand::PrimersExportQpcrReport { .. } => execute_primers_command(engine, command)?,
+        | ShellCommand::PrimersExportQpcrReport { .. } => {
+            execute_primers_command(engine, command, options)?
+        }
         ShellCommand::SeqTraceImport { .. }
         | ShellCommand::SeqTraceList { .. }
         | ShellCommand::SeqTraceShow { .. }

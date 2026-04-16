@@ -2284,69 +2284,50 @@ fn test_design_qpcr_assays_internal_reports_pair_evaluation_budget_truncation() 
 }
 
 #[test]
-fn test_design_primer_pairs_internal_emits_progress_events() {
+fn test_design_primer_pairs_internal_emits_progress_snapshots() {
     let mut state = ProjectState::default();
-    state.sequences.insert(
-        "tpl".to_string(),
-        seq(
-            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
-        ),
-    );
+    state
+        .sequences
+        .insert("tpl".to_string(), seq(&"ACGT".repeat(180)));
     let mut engine = GentleEngine::from_state(state);
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
-    let mut progress_events: Vec<PrimerDesignProgress> = vec![];
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 22,
+        location_0based: None,
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+    let mut progress_events = Vec::<PrimerDesignProgress>::new();
     engine
         .apply_with_progress(
             Operation::DesignPrimerPairs {
                 template: "tpl".to_string(),
-                roi_start_0based: 40,
-                roi_end_0based: 80,
-                forward: PrimerDesignSideConstraint {
-                    min_length: 20,
-                    max_length: 20,
-                    location_0based: Some(5),
-                    start_0based: None,
-                    end_0based: None,
-                    min_tm_c: 0.0,
-                    max_tm_c: 100.0,
-                    min_gc_fraction: 0.0,
-                    max_gc_fraction: 1.0,
-                    max_anneal_hits: 1000,
-                    non_annealing_5prime_tail: None,
-                    fixed_5prime: None,
-                    fixed_3prime: None,
-                    required_motifs: vec![],
-                    forbidden_motifs: vec![],
-                    locked_positions: vec![],
-                },
-                reverse: PrimerDesignSideConstraint {
-                    min_length: 20,
-                    max_length: 20,
-                    location_0based: Some(90),
-                    start_0based: None,
-                    end_0based: None,
-                    min_tm_c: 0.0,
-                    max_tm_c: 100.0,
-                    min_gc_fraction: 0.0,
-                    max_gc_fraction: 1.0,
-                    max_anneal_hits: 1000,
-                    non_annealing_5prime_tail: None,
-                    fixed_5prime: None,
-                    fixed_3prime: None,
-                    required_motifs: vec![],
-                    forbidden_motifs: vec![],
-                    locked_positions: vec![],
-                },
+                roi_start_0based: 220,
+                roi_end_0based: 320,
+                forward: side.clone(),
+                reverse: side,
                 pair_constraints: PrimerDesignPairConstraint::default(),
-                min_amplicon_bp: 40,
-                max_amplicon_bp: 150,
+                min_amplicon_bp: 80,
+                max_amplicon_bp: 360,
                 max_tm_delta_c: Some(100.0),
-                max_pairs: Some(10),
-                report_id: Some("tp73_roi_progress".to_string()),
+                max_pairs: Some(5),
+                report_id: Some("progress_pairs".to_string()),
             },
             |progress| {
-                if let OperationProgress::PrimerDesign(progress) = progress {
-                    progress_events.push(progress);
+                if let OperationProgress::PrimerDesign(p) = progress {
+                    progress_events.push(p);
                 }
                 true
             },
@@ -2354,19 +2335,96 @@ fn test_design_primer_pairs_internal_emits_progress_events() {
         .expect("design primer pairs with progress");
 
     assert!(!progress_events.is_empty());
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::PrimerPairs
-            && progress.stage == PrimerDesignProgressStage::CandidateEnumeration
-    }));
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::PrimerPairs
-            && progress.stage == PrimerDesignProgressStage::PairEvaluation
-    }));
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::PrimerPairs
-            && progress.stage == PrimerDesignProgressStage::Complete
-            && progress.done
-    }));
+    assert!(
+        progress_events
+            .iter()
+            .any(|p| p.stage == "forward_candidates")
+    );
+    assert!(
+        progress_events
+            .iter()
+            .any(|p| p.stage == "reverse_candidates")
+    );
+    assert!(progress_events.iter().any(|p| p.stage == "pair_search"));
+    let final_progress = progress_events.last().expect("final progress");
+    assert_eq!(final_progress.design_kind, "primer_pairs");
+    assert_eq!(final_progress.backend_used, "internal");
+    assert_eq!(final_progress.stage, "pair_search_complete");
+    assert!(final_progress.done);
+    assert!(final_progress.accepted_pair_count.unwrap_or(0) > 0);
+}
+
+#[test]
+fn test_design_qpcr_assays_internal_emits_progress_snapshots() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tpl".to_string(), seq(&"ACGT".repeat(180)));
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 22,
+        location_0based: None,
+        start_0based: None,
+        end_0based: None,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        non_annealing_5prime_tail: None,
+        fixed_5prime: None,
+        fixed_3prime: None,
+        required_motifs: vec![],
+        forbidden_motifs: vec![],
+        locked_positions: vec![],
+    };
+    let probe = PrimerDesignSideConstraint {
+        location_0based: Some(260),
+        ..side.clone()
+    };
+    let mut progress_events = Vec::<PrimerDesignProgress>::new();
+    engine
+        .apply_with_progress(
+            Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 220,
+                roi_end_0based: 320,
+                forward: side.clone(),
+                reverse: side,
+                probe,
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 80,
+                max_amplicon_bp: 360,
+                max_tm_delta_c: Some(100.0),
+                max_probe_tm_delta_c: Some(100.0),
+                max_assays: Some(5),
+                report_id: Some("progress_qpcr".to_string()),
+            },
+            |progress| {
+                if let OperationProgress::PrimerDesign(p) = progress {
+                    progress_events.push(p);
+                }
+                true
+            },
+        )
+        .expect("design qpcr assays with progress");
+
+    assert!(!progress_events.is_empty());
+    assert!(progress_events.iter().any(|p| p.stage == "pair_search"));
+    assert!(
+        progress_events
+            .iter()
+            .any(|p| p.stage == "probe_candidates")
+    );
+    assert!(progress_events.iter().any(|p| p.stage == "assay_search"));
+    let final_progress = progress_events.last().expect("final progress");
+    assert_eq!(final_progress.design_kind, "qpcr_assays");
+    assert_eq!(final_progress.backend_used, "internal");
+    assert_eq!(final_progress.stage, "assay_search_complete");
+    assert!(final_progress.done);
+    assert!(final_progress.accepted_assay_count.unwrap_or(0) > 0);
 }
 
 #[test]
@@ -2484,23 +2542,26 @@ fn test_design_qpcr_assays_internal_emits_progress_events() {
         .expect("design qpcr assays with progress");
 
     assert!(!progress_events.is_empty());
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::QpcrAssays
-            && progress.stage == PrimerDesignProgressStage::CandidateEnumeration
-    }));
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::QpcrAssays
-            && progress.stage == PrimerDesignProgressStage::PairEvaluation
-    }));
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::QpcrAssays
-            && progress.stage == PrimerDesignProgressStage::ProbeEvaluation
-    }));
-    assert!(progress_events.iter().any(|progress| {
-        progress.kind == PrimerDesignProgressKind::QpcrAssays
-            && progress.stage == PrimerDesignProgressStage::Complete
-            && progress.done
-    }));
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "pair_search")
+    );
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "probe_candidates")
+    );
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "assay_search")
+    );
+    let final_progress = progress_events.last().expect("final progress");
+    assert_eq!(final_progress.design_kind, "qpcr_assays");
+    assert_eq!(final_progress.backend_used, "internal");
+    assert_eq!(final_progress.stage, "assay_search_complete");
+    assert!(final_progress.done);
 }
 
 #[cfg(unix)]

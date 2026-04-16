@@ -3141,6 +3141,7 @@ Operation progress/cancellation semantics:
   - `GenomePrepare`
   - `GenomeTrackImport`
   - `DbSnpFetch`
+  - `PrimerDesign`
   - `RnaReadInterpret`
 - Current cancellation support:
   - internal pair-PCR/qPCR design now emits staged `PrimerDesign` snapshots
@@ -3156,6 +3157,20 @@ Operation progress/cancellation semantics:
     `inspect_prepared_genome`, `contact_server`, `wait_response`,
     `parse_response`, `resolve_placement`, `extract_region`,
     `attach_variant_marker`) but does not yet expose cooperative cancellation.
+  - primer/qPCR design now emits machine-readable progress snapshots for
+    candidate-generation and search stages:
+    - `forward_candidates`
+    - `reverse_candidates`
+    - `pair_search`
+    - `pair_search_complete`
+    - qPCR-only: `probe_candidates`, `assay_search`,
+      `assay_search_complete`
+    - Primer3-backed routes emit coarse backend stages:
+      `primer3_run` and optional `fallback_to_internal`
+    Each `PrimerDesignProgress` row carries backend request/use,
+    ROI bounds, candidate counts, pair-evaluation limits, accepted
+    pair/assay counts, and a `done` flag so agent/CLI consumers can detect
+    stalled or overly broad searches without parsing GUI state.
   - RNA-read interpretation uses cooperative callback checks while emitting
     periodic progress snapshots (including seed-confirmation histogram bins).
 

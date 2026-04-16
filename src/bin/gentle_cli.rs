@@ -10,8 +10,9 @@ use gentle::{
         RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
-        parse_shell_tokens, parse_workflow_json_payload, shell_help_text,
+        ShellCommand, ShellExecutionOptions, ShellProgressCallback,
+        execute_shell_command_with_options, parse_shell_line, parse_shell_tokens,
+        parse_workflow_json_payload, shell_help_text,
     },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
@@ -26,6 +27,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     env, fs,
     path::Path,
+    sync::{Arc, Mutex},
 };
 
 #[cfg(test)]
@@ -1069,46 +1071,76 @@ impl ProgressPrinter {
     }
 
     fn on_primer_design_progress(&mut self, p: PrimerDesignProgress) {
-        let detail = match p.stage.as_str() {
-            "candidate_enumeration" => format!(
-                "forward_candidates={} reverse_candidates={}",
-                p.forward_candidate_count, p.reverse_candidate_count
-            ),
-            "probe_evaluation" => format!(
-                "evaluated_probe_pairs={} total_probe_pairs={} accepted_assays={}",
-                p.evaluated_probe_pairs.unwrap_or(0),
-                p.total_probe_pairs.unwrap_or(0),
-                p.accepted_assays.unwrap_or(0)
-            ),
-            _ => format!(
-                "evaluated_pairs={} pair_limit={} accepted_pairs={}",
-                p.evaluated_pairs, p.pair_evaluation_limit, p.accepted_pairs
-            ),
-        };
-        self.print_line(&format!(
-            "progress primer-design kind={} stage={} template={} backend={} roi={}..{} max_results={} {} done={}",
-            p.kind.as_str(),
-            p.stage.as_str(),
-            p.template,
-            p.backend,
-            p.roi_start_0based,
-            p.roi_end_0based,
-            p.max_results,
-            detail,
-            p.done
-        ));
+        let mut parts = vec![
+            format!("progress primers seq={}", p.seq_id),
+            format!("kind={}", p.design_kind),
+            format!("stage={}", p.stage),
+            format!("backend={}", p.backend_used),
+        ];
+        if let Some(count) = p.forward_candidate_count {
+            parts.push(format!("forward={count}"));
+        }
+        if let Some(count) = p.reverse_candidate_count {
+            parts.push(format!("reverse={count}"));
+        }
+        if let Some(count) = p.probe_candidate_count {
+            parts.push(format!("probe={count}"));
+        }
+        if let Some(count) = p.pair_candidate_combinations {
+            parts.push(format!("pair_combos={count}"));
+        }
+        if let Some(count) = p.pair_evaluated {
+            parts.push(format!("pair_eval={count}"));
+        }
+        if let Some(count) = p.pair_evaluation_limit {
+            parts.push(format!("pair_limit={count}"));
+        }
+        if let Some(limited) = p.pair_evaluation_limited {
+            parts.push(format!("pair_limited={limited}"));
+        }
+        if let Some(count) = p.accepted_pair_count {
+            parts.push(format!("accepted_pairs={count}"));
+        }
+        if let Some(count) = p.assay_candidate_combinations {
+            parts.push(format!("assay_combos={count}"));
+        }
+        if let Some(count) = p.assays_evaluated {
+            parts.push(format!("assays_eval={count}"));
+        }
+        if let Some(count) = p.accepted_assay_count {
+            parts.push(format!("accepted_assays={count}"));
+        }
+        parts.push(format!("max_output={}", p.max_output));
+        parts.push(format!("done={}", p.done));
+        parts.push(format!("detail={}", p.detail));
+        self.print_line(&parts.join(" "));
     }
 
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
-            OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
             OperationProgress::DbSnpFetch(p) => self.on_dbsnp_fetch_progress(p),
+            OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
         }
     }
+}
+
+fn make_shell_progress_callback(sink: Option<ProgressSink>) -> Option<ShellProgressCallback> {
+    sink.map(|sink| {
+        let printer = Arc::new(Mutex::new(ProgressPrinter::new(sink)));
+        let callback_printer = Arc::clone(&printer);
+        Arc::new(Mutex::new(Box::new(move |progress: OperationProgress| {
+            let mut guard = callback_printer
+                .lock()
+                .expect("progress printer mutex poisoned");
+            guard.on_progress(progress);
+            true
+        })
+            as Box<dyn FnMut(OperationProgress) -> bool + Send>))
+    })
 }
 
 fn summarize_state(engine: &GentleEngine) -> EngineStateSummary {
@@ -1241,9 +1273,11 @@ fn run() -> Result<(), String> {
     let global = parse_global_args(&args)?;
     let state_path = global.state_path.clone();
     let cmd_idx = global.cmd_idx;
+    let shell_progress_callback = make_shell_progress_callback(global.progress_sink);
     let shell_options = ShellExecutionOptions {
         allow_screenshots: global.allow_screenshots,
         allow_agent_commands: true,
+        progress_callback: shell_progress_callback,
     };
     if args.len() <= cmd_idx {
         usage();
@@ -3401,6 +3435,7 @@ mod tests {
             &ShellExecutionOptions {
                 allow_screenshots: false,
                 allow_agent_commands: true,
+                progress_callback: None,
             },
         )
         .expect("execute forwarded command");
@@ -3419,6 +3454,7 @@ mod tests {
             &ShellExecutionOptions {
                 allow_screenshots: false,
                 allow_agent_commands: true,
+                progress_callback: None,
             },
         )
         .expect("execute shared shell command");

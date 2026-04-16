@@ -2102,6 +2102,9 @@ Notes:
      - adapter-equivalence coverage is still incomplete:
        - shared-shell parity baseline exists for internal-vs-Primer3 report
          normalization/provenance
+       - shared progress parity now exists for `DesignPrimerPairs` and
+         `DesignQpcrAssays` across engine `apply_with_progress`, forwarded
+         shell/CLI `primers ...`, and direct CLI `--progress` output
        - CLI forwarded-route parity now covers `primers preflight`
        - wider matrix coverage is still pending across additional primer routes
          and adapters

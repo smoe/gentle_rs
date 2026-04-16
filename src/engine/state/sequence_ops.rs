@@ -11,6 +11,16 @@
 
 use super::*;
 
+pub(crate) struct PrimerDesignProgressContext<'a> {
+    pub(crate) seq_id: &'a str,
+    pub(crate) design_kind: &'static str,
+    pub(crate) backend_requested: &'a str,
+    pub(crate) backend_used: &'a str,
+    pub(crate) roi_start_0based: usize,
+    pub(crate) roi_end_0based_exclusive: usize,
+    pub(crate) max_output: usize,
+}
+
 impl GentleEngine {
     pub(crate) fn summarize_process_run_bundle_construct_reasoning_graph(
         graph: &ConstructReasoningGraph,
@@ -3731,8 +3741,65 @@ impl GentleEngine {
         issues
     }
 
-    pub(super) fn design_primer_pairs_internal(
-        template: &str,
+    fn primer_design_cancelled_error(context: &str) -> EngineError {
+        EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Primer design cancelled during {context}"),
+        }
+    }
+
+    fn emit_primer_design_progress(
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+        stage: &str,
+        detail: impl Into<String>,
+        done: bool,
+        forward_candidate_count: Option<usize>,
+        reverse_candidate_count: Option<usize>,
+        probe_candidate_count: Option<usize>,
+        pair_candidate_combinations: Option<usize>,
+        pair_evaluated: Option<usize>,
+        pair_evaluation_limit: Option<usize>,
+        pair_evaluation_limited: Option<bool>,
+        accepted_pair_count: Option<usize>,
+        assay_candidate_combinations: Option<usize>,
+        assays_evaluated: Option<usize>,
+        accepted_assay_count: Option<usize>,
+    ) -> Result<(), EngineError> {
+        let Some(progress_context) = progress_context else {
+            return Ok(());
+        };
+        let progress = PrimerDesignProgress {
+            seq_id: progress_context.seq_id.to_string(),
+            design_kind: progress_context.design_kind.to_string(),
+            backend_requested: progress_context.backend_requested.to_string(),
+            backend_used: progress_context.backend_used.to_string(),
+            stage: stage.to_string(),
+            detail: detail.into(),
+            roi_start_0based: progress_context.roi_start_0based,
+            roi_end_0based_exclusive: progress_context.roi_end_0based_exclusive,
+            forward_candidate_count,
+            reverse_candidate_count,
+            probe_candidate_count,
+            pair_candidate_combinations,
+            pair_evaluated,
+            pair_evaluation_limit,
+            pair_evaluation_limited,
+            accepted_pair_count,
+            assay_candidate_combinations,
+            assays_evaluated,
+            accepted_assay_count,
+            max_output: progress_context.max_output,
+            done,
+        };
+        if on_progress(progress) {
+            Ok(())
+        } else {
+            Err(Self::primer_design_cancelled_error(stage))
+        }
+    }
+
+    pub(super) fn design_primer_pairs_internal_core(
         template_bytes: &[u8],
         roi_start_0based: usize,
         roi_end_0based: usize,
@@ -3745,11 +3812,9 @@ impl GentleEngine {
         max_amplicon_bp: usize,
         max_tm_delta_c: f64,
         max_pairs: usize,
-        backend: &str,
-        kind: PrimerDesignProgressKind,
-        emit_complete: bool,
-        mut on_progress: impl FnMut(PrimerDesignProgress) -> bool,
-    ) -> (Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary) {
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary), EngineError> {
         let mut rejection_summary = PrimerDesignRejectionSummary::default();
         let forward_candidates = Self::generate_primer_side_candidates(
             template_bytes,
@@ -3758,6 +3823,27 @@ impl GentleEngine {
             false,
             &mut rejection_summary,
         );
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "forward_candidates",
+            format!(
+                "Generated {} forward candidate primer(s)",
+                forward_candidates.len()
+            ),
+            false,
+            Some(forward_candidates.len()),
+            None,
+            None,
+            None,
+            Some(0),
+            None,
+            None,
+            Some(0),
+            None,
+            None,
+            None,
+        )?;
         let reverse_candidates = Self::generate_primer_side_candidates(
             template_bytes,
             reverse,
@@ -3765,36 +3851,59 @@ impl GentleEngine {
             true,
             &mut rejection_summary,
         );
-        let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
-        let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
-        let pair_evaluation_limit = max_pairs
-            .saturating_mul(1_000)
-            .clamp(max_pairs, PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS);
-        let _ = on_progress(PrimerDesignProgress {
-            kind,
-            stage: PrimerDesignProgressStage::CandidateEnumeration,
-            template: template.to_string(),
-            backend: backend.to_string(),
-            roi_start_0based,
-            roi_end_0based,
-            max_results: max_pairs,
-            forward_candidate_count: forward_candidates.len(),
-            reverse_candidate_count: reverse_candidates.len(),
-            evaluated_pairs: 0,
-            pair_evaluation_limit,
-            accepted_pairs: 0,
-            probe_candidate_count: None,
-            evaluated_probe_pairs: None,
-            total_probe_pairs: None,
-            accepted_assays: None,
-            done: false,
-        });
-        let mut pair_evaluations = 0usize;
-        let mut pair_evaluation_limited = false;
         let total_candidate_combinations = forward_candidates
             .len()
             .saturating_mul(reverse_candidates.len());
+        let pair_evaluation_limit = max_pairs
+            .saturating_mul(1_000)
+            .clamp(max_pairs, PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS);
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "reverse_candidates",
+            format!(
+                "Generated {} reverse candidate primer(s)",
+                reverse_candidates.len()
+            ),
+            false,
+            Some(forward_candidates.len()),
+            Some(reverse_candidates.len()),
+            None,
+            Some(total_candidate_combinations),
+            Some(0),
+            Some(pair_evaluation_limit),
+            Some(false),
+            Some(0),
+            None,
+            None,
+            None,
+        )?;
+        let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
+        let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
         let pair_progress_stride = (pair_evaluation_limit / 100).max(1);
+        let mut pair_evaluations = 0usize;
+        let mut pair_evaluation_limited = false;
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "pair_search",
+            format!(
+                "Scanning up to {} candidate primer-pair combination(s)",
+                pair_evaluation_limit
+            ),
+            false,
+            Some(forward_candidates.len()),
+            Some(reverse_candidates.len()),
+            None,
+            Some(total_candidate_combinations),
+            Some(0),
+            Some(pair_evaluation_limit),
+            Some(false),
+            Some(0),
+            None,
+            None,
+            None,
+        )?;
         'pair_search: for fwd in &forward_candidates {
             for rev in &reverse_candidates {
                 if pair_evaluations >= pair_evaluation_limit {
@@ -3830,6 +3939,29 @@ impl GentleEngine {
                 ) else {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if pair_evaluations % pair_progress_stride == 0 {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "pair_search",
+                            format!(
+                                "Evaluated {} pair candidate combination(s)",
+                                pair_evaluations
+                            ),
+                            false,
+                            Some(forward_candidates.len()),
+                            Some(reverse_candidates.len()),
+                            None,
+                            Some(total_candidate_combinations),
+                            Some(pair_evaluations),
+                            Some(pair_evaluation_limit),
+                            Some(false),
+                            Some(pairs.len()),
+                            None,
+                            None,
+                            None,
+                        )?;
+                    }
                     continue;
                 };
                 if !(pair.rule_flags.amplicon_size_in_range
@@ -3838,6 +3970,29 @@ impl GentleEngine {
                 {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    if pair_evaluations % pair_progress_stride == 0 {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "pair_search",
+                            format!(
+                                "Evaluated {} pair candidate combination(s)",
+                                pair_evaluations
+                            ),
+                            false,
+                            Some(forward_candidates.len()),
+                            Some(reverse_candidates.len()),
+                            None,
+                            Some(total_candidate_combinations),
+                            Some(pair_evaluations),
+                            Some(pair_evaluation_limit),
+                            Some(false),
+                            Some(pairs.len()),
+                            None,
+                            None,
+                            None,
+                        )?;
+                    }
                     continue;
                 }
                 if !Self::primer_pair_matches_constraints(
@@ -3849,32 +4004,54 @@ impl GentleEngine {
                 ) {
                     rejection_summary.pair_constraint_failure =
                         rejection_summary.pair_constraint_failure.saturating_add(1);
+                    if pair_evaluations % pair_progress_stride == 0 {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "pair_search",
+                            format!(
+                                "Evaluated {} pair candidate combination(s)",
+                                pair_evaluations
+                            ),
+                            false,
+                            Some(forward_candidates.len()),
+                            Some(reverse_candidates.len()),
+                            None,
+                            Some(total_candidate_combinations),
+                            Some(pair_evaluations),
+                            Some(pair_evaluation_limit),
+                            Some(false),
+                            Some(pairs.len()),
+                            None,
+                            None,
+                            None,
+                        )?;
+                    }
                     continue;
                 }
                 pairs.push(pair);
-                if pair_evaluations % pair_progress_stride == 0
-                    || pair_evaluations == total_candidate_combinations
-                    || pairs.len() >= max_pairs
-                {
-                    let _ = on_progress(PrimerDesignProgress {
-                        kind,
-                        stage: PrimerDesignProgressStage::PairEvaluation,
-                        template: template.to_string(),
-                        backend: backend.to_string(),
-                        roi_start_0based,
-                        roi_end_0based,
-                        max_results: max_pairs,
-                        forward_candidate_count: forward_candidates.len(),
-                        reverse_candidate_count: reverse_candidates.len(),
-                        evaluated_pairs: pair_evaluations,
-                        pair_evaluation_limit,
-                        accepted_pairs: pairs.len(),
-                        probe_candidate_count: None,
-                        evaluated_probe_pairs: None,
-                        total_probe_pairs: None,
-                        accepted_assays: None,
-                        done: false,
-                    });
+                if pair_evaluations % pair_progress_stride == 0 {
+                    Self::emit_primer_design_progress(
+                        progress_context,
+                        on_progress,
+                        "pair_search",
+                        format!(
+                            "Evaluated {} pair candidate combination(s)",
+                            pair_evaluations
+                        ),
+                        false,
+                        Some(forward_candidates.len()),
+                        Some(reverse_candidates.len()),
+                        None,
+                        Some(total_candidate_combinations),
+                        Some(pair_evaluations),
+                        Some(pair_evaluation_limit),
+                        Some(false),
+                        Some(pairs.len()),
+                        None,
+                        None,
+                        None,
+                    )?;
                 }
             }
         }
@@ -3882,50 +4059,72 @@ impl GentleEngine {
             rejection_summary.pair_evaluation_limit_skipped =
                 total_candidate_combinations.saturating_sub(pair_evaluations);
         }
-        if pair_evaluations > 0 {
-            let _ = on_progress(PrimerDesignProgress {
-                kind,
-                stage: PrimerDesignProgressStage::PairEvaluation,
-                template: template.to_string(),
-                backend: backend.to_string(),
-                roi_start_0based,
-                roi_end_0based,
-                max_results: max_pairs,
-                forward_candidate_count: forward_candidates.len(),
-                reverse_candidate_count: reverse_candidates.len(),
-                evaluated_pairs: pair_evaluations,
-                pair_evaluation_limit,
-                accepted_pairs: pairs.len(),
-                probe_candidate_count: None,
-                evaluated_probe_pairs: None,
-                total_probe_pairs: None,
-                accepted_assays: None,
-                done: false,
-            });
-        }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
-        if emit_complete {
-            let _ = on_progress(PrimerDesignProgress {
-                kind,
-                stage: PrimerDesignProgressStage::Complete,
-                template: template.to_string(),
-                backend: backend.to_string(),
-                roi_start_0based,
-                roi_end_0based,
-                max_results: max_pairs,
-                forward_candidate_count: forward_candidates.len(),
-                reverse_candidate_count: reverse_candidates.len(),
-                evaluated_pairs: pair_evaluations,
-                pair_evaluation_limit,
-                accepted_pairs: pairs.len(),
-                probe_candidate_count: None,
-                evaluated_probe_pairs: None,
-                total_probe_pairs: None,
-                accepted_assays: None,
-                done: true,
-            });
-        }
-        (pairs, rejection_summary)
+        let operation_done = progress_context
+            .map(|context| context.design_kind == "primer_pairs")
+            .unwrap_or(true);
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "pair_search_complete",
+            if pair_evaluation_limited {
+                format!(
+                    "Ranked {} primer pair(s) after reaching the evaluation limit of {}",
+                    pairs.len(),
+                    pair_evaluation_limit
+                )
+            } else {
+                format!("Ranked {} primer pair(s)", pairs.len())
+            },
+            operation_done,
+            Some(forward_candidates.len()),
+            Some(reverse_candidates.len()),
+            None,
+            Some(total_candidate_combinations),
+            Some(pair_evaluations),
+            Some(pair_evaluation_limit),
+            Some(pair_evaluation_limited),
+            Some(pairs.len()),
+            None,
+            None,
+            None,
+        )?;
+        Ok((pairs, rejection_summary))
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn design_primer_pairs_internal(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+    ) -> (Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary) {
+        let mut noop = |_progress: PrimerDesignProgress| true;
+        Self::design_primer_pairs_internal_core(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            forward_sequence_constraints,
+            reverse,
+            reverse_sequence_constraints,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_pairs,
+            None,
+            &mut noop,
+        )
+        .expect("noop primer progress callback cannot cancel")
     }
 
     pub(super) fn sort_and_rank_qpcr_assays(assays: &mut Vec<QpcrAssayRecord>, max_assays: usize) {
@@ -3950,8 +4149,8 @@ impl GentleEngine {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn design_qpcr_assays_from_pairs(
-        template: &str,
         template_bytes: &[u8],
         roi_start_0based: usize,
         roi_end_0based: usize,
@@ -3961,9 +4160,37 @@ impl GentleEngine {
         max_assays: usize,
         pairs: Vec<PrimerDesignPairRecord>,
         pair_rejections: PrimerDesignRejectionSummary,
-        backend: &str,
-        mut on_progress: impl FnMut(PrimerDesignProgress) -> bool,
     ) -> (Vec<QpcrAssayRecord>, QpcrDesignRejectionSummary) {
+        let mut noop = |_progress: PrimerDesignProgress| true;
+        Self::design_qpcr_assays_from_pairs_core(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            probe,
+            probe_sequence_constraints,
+            max_probe_tm_delta_c,
+            max_assays,
+            pairs,
+            pair_rejections,
+            None,
+            &mut noop,
+        )
+        .expect("noop primer progress callback cannot cancel")
+    }
+
+    pub(super) fn design_qpcr_assays_from_pairs_core(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        pairs: Vec<PrimerDesignPairRecord>,
+        pair_rejections: PrimerDesignRejectionSummary,
+        progress_context: Option<&PrimerDesignProgressContext<'_>>,
+        on_progress: &mut dyn FnMut(PrimerDesignProgress) -> bool,
+    ) -> Result<(Vec<QpcrAssayRecord>, QpcrDesignRejectionSummary), EngineError> {
         let mut rejection = QpcrDesignRejectionSummary {
             primer_pair: pair_rejections,
             ..QpcrDesignRejectionSummary::default()
@@ -3979,36 +4206,58 @@ impl GentleEngine {
         rejection.probe_out_of_window = probe_candidate_rejections.out_of_window;
         rejection.probe_gc_or_tm_out_of_bounds = probe_candidate_rejections.gc_or_tm_out_of_bounds;
         rejection.probe_non_unique_anneal = probe_candidate_rejections.non_unique_anneal;
+        let assay_candidate_combinations = pairs.len().saturating_mul(probe_candidates.len());
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "probe_candidates",
+            format!(
+                "Generated {} probe candidate oligo(s)",
+                probe_candidates.len()
+            ),
+            false,
+            None,
+            None,
+            Some(probe_candidates.len()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(assay_candidate_combinations),
+            Some(0),
+            Some(0),
+        )?;
 
-        let pair_count = pairs.len();
-        let total_probe_pairs = pair_count.saturating_mul(probe_candidates.len());
-        let probe_progress_stride = (total_probe_pairs / 100).max(1);
         let mut assays: Vec<QpcrAssayRecord> = vec![];
-        let mut evaluated_probe_pairs = 0usize;
-        let _ = on_progress(PrimerDesignProgress {
-            kind: PrimerDesignProgressKind::QpcrAssays,
-            stage: PrimerDesignProgressStage::ProbeEvaluation,
-            template: template.to_string(),
-            backend: backend.to_string(),
-            roi_start_0based,
-            roi_end_0based,
-            max_results: max_assays,
-            forward_candidate_count: pair_count,
-            reverse_candidate_count: probe_candidates.len(),
-            evaluated_pairs: pair_count,
-            pair_evaluation_limit: pair_count,
-            accepted_pairs: pair_count,
-            probe_candidate_count: Some(probe_candidates.len()),
-            evaluated_probe_pairs: Some(0),
-            total_probe_pairs: Some(total_probe_pairs),
-            accepted_assays: Some(0),
-            done: false,
-        });
+        let assay_progress_stride = (assay_candidate_combinations / 100).max(1);
+        let mut assays_evaluated = 0usize;
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "assay_search",
+            format!(
+                "Scanning {} pair/probe assay combination(s)",
+                assay_candidate_combinations
+            ),
+            false,
+            None,
+            None,
+            Some(probe_candidates.len()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(assay_candidate_combinations),
+            Some(0),
+            Some(0),
+        )?;
         for pair in pairs {
             let amplicon_mid =
                 (pair.amplicon_start_0based + pair.amplicon_end_0based_exclusive) / 2;
             for probe_candidate in &probe_candidates {
-                evaluated_probe_pairs = evaluated_probe_pairs.saturating_add(1);
+                assays_evaluated = assays_evaluated.saturating_add(1);
                 let probe_start = probe_candidate.start_0based;
                 let probe_end = probe_candidate.end_0based_exclusive;
                 let probe_inside_amplicon = probe_start >= pair.forward.end_0based_exclusive
@@ -4016,6 +4265,26 @@ impl GentleEngine {
                 if !probe_inside_amplicon {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
+                    if assays_evaluated % assay_progress_stride == 0 {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "assay_search",
+                            format!("Evaluated {} assay combination(s)", assays_evaluated),
+                            false,
+                            None,
+                            None,
+                            Some(probe_candidates.len()),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(assay_candidate_combinations),
+                            Some(assays_evaluated),
+                            Some(assays.len()),
+                        )?;
+                    }
                     continue;
                 }
                 let probe_tm_delta_c =
@@ -4024,6 +4293,26 @@ impl GentleEngine {
                 if !probe_tm_ok {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
+                    if assays_evaluated % assay_progress_stride == 0 {
+                        Self::emit_primer_design_progress(
+                            progress_context,
+                            on_progress,
+                            "assay_search",
+                            format!("Evaluated {} assay combination(s)", assays_evaluated),
+                            false,
+                            None,
+                            None,
+                            Some(probe_candidates.len()),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(assay_candidate_combinations),
+                            Some(assays_evaluated),
+                            Some(assays.len()),
+                        )?;
+                    }
                     continue;
                 }
                 let probe_mid = (probe_start + probe_end) / 2;
@@ -4060,54 +4349,49 @@ impl GentleEngine {
                         probe_tm_delta_in_range: probe_tm_ok,
                     },
                 });
-                if evaluated_probe_pairs % probe_progress_stride == 0
-                    || evaluated_probe_pairs == total_probe_pairs
-                    || assays.len() >= max_assays
-                {
-                    let _ = on_progress(PrimerDesignProgress {
-                        kind: PrimerDesignProgressKind::QpcrAssays,
-                        stage: PrimerDesignProgressStage::ProbeEvaluation,
-                        template: template.to_string(),
-                        backend: backend.to_string(),
-                        roi_start_0based,
-                        roi_end_0based,
-                        max_results: max_assays,
-                        forward_candidate_count: pair_count,
-                        reverse_candidate_count: probe_candidates.len(),
-                        evaluated_pairs: pair_count,
-                        pair_evaluation_limit: pair_count,
-                        accepted_pairs: pair_count,
-                        probe_candidate_count: Some(probe_candidates.len()),
-                        evaluated_probe_pairs: Some(evaluated_probe_pairs),
-                        total_probe_pairs: Some(total_probe_pairs),
-                        accepted_assays: Some(assays.len()),
-                        done: false,
-                    });
+                if assays_evaluated % assay_progress_stride == 0 {
+                    Self::emit_primer_design_progress(
+                        progress_context,
+                        on_progress,
+                        "assay_search",
+                        format!("Evaluated {} assay combination(s)", assays_evaluated),
+                        false,
+                        None,
+                        None,
+                        Some(probe_candidates.len()),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(assay_candidate_combinations),
+                        Some(assays_evaluated),
+                        Some(assays.len()),
+                    )?;
                 }
             }
         }
         let _ = (roi_start_0based, roi_end_0based); // reserved for future qPCR ROI/probe rules
         Self::sort_and_rank_qpcr_assays(&mut assays, max_assays);
-        let _ = on_progress(PrimerDesignProgress {
-            kind: PrimerDesignProgressKind::QpcrAssays,
-            stage: PrimerDesignProgressStage::Complete,
-            template: template.to_string(),
-            backend: backend.to_string(),
-            roi_start_0based,
-            roi_end_0based,
-            max_results: max_assays,
-            forward_candidate_count: pair_count,
-            reverse_candidate_count: probe_candidates.len(),
-            evaluated_pairs: pair_count,
-            pair_evaluation_limit: pair_count,
-            accepted_pairs: pair_count,
-            probe_candidate_count: Some(probe_candidates.len()),
-            evaluated_probe_pairs: Some(evaluated_probe_pairs),
-            total_probe_pairs: Some(total_probe_pairs),
-            accepted_assays: Some(assays.len()),
-            done: true,
-        });
-        (assays, rejection)
+        Self::emit_primer_design_progress(
+            progress_context,
+            on_progress,
+            "assay_search_complete",
+            format!("Ranked {} qPCR assay candidate(s)", assays.len()),
+            true,
+            None,
+            None,
+            Some(probe_candidates.len()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(assay_candidate_combinations),
+            Some(assays_evaluated),
+            Some(assays.len()),
+        )?;
+        Ok((assays, rejection))
     }
 
     pub(super) fn parse_primer3_coord_pair(

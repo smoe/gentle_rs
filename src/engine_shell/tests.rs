@@ -13,10 +13,11 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, ConstructObjective, Container, ContainerKind, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
+    ArrangementMode, ConstructObjective, Container, ContainerKind, PrimerDesignProgress,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    RestrictionCloningPcrHandoffMode,
 };
 use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
 use crate::test_support::{
@@ -9477,6 +9478,106 @@ fn execute_primers_seed_from_feature_and_splicing() {
 }
 
 #[test]
+fn execute_primers_design_with_options_emits_primer_progress() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(&"ACGT".repeat(180)).unwrap(),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let request = serde_json::to_string(&Operation::DesignPrimerPairs {
+        template: "tpl".to_string(),
+        roi_start_0based: 220,
+        roi_end_0based: 320,
+        forward: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 22,
+            location_0based: None,
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10_000,
+            non_annealing_5prime_tail: None,
+            fixed_5prime: None,
+            fixed_3prime: None,
+            required_motifs: vec![],
+            forbidden_motifs: vec![],
+            locked_positions: vec![],
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 22,
+            location_0based: None,
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10_000,
+            non_annealing_5prime_tail: None,
+            fixed_5prime: None,
+            fixed_3prime: None,
+            required_motifs: vec![],
+            forbidden_motifs: vec![],
+            locked_positions: vec![],
+        },
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: 80,
+        max_amplicon_bp: 360,
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(5),
+        report_id: Some("shell_progress_pairs".to_string()),
+    })
+    .expect("serialize request");
+    let progress_events = Arc::new(Mutex::new(Vec::<PrimerDesignProgress>::new()));
+    let callback_events = Arc::clone(&progress_events);
+    let progress_callback: ShellProgressCallback =
+        Arc::new(Mutex::new(Box::new(move |progress: OperationProgress| {
+            if let OperationProgress::PrimerDesign(p) = progress {
+                callback_events
+                    .lock()
+                    .expect("progress events lock")
+                    .push(p);
+            }
+            true
+        })));
+
+    let out = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::PrimersDesign {
+            request_json: request,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+        &ShellExecutionOptions {
+            allow_screenshots: false,
+            allow_agent_commands: true,
+            progress_callback: Some(progress_callback),
+        },
+    )
+    .expect("execute primers design with progress");
+
+    assert!(out.state_changed);
+    let progress_events = progress_events.lock().expect("progress events lock");
+    assert!(!progress_events.is_empty());
+    assert!(
+        progress_events
+            .iter()
+            .any(|progress| progress.stage == "forward_candidates")
+    );
+    assert_eq!(
+        progress_events
+            .last()
+            .map(|progress| progress.stage.as_str()),
+        Some("pair_search_complete")
+    );
+}
+
+#[test]
 fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     let _guard = BLAST_ASYNC_TEST_MUTEX.lock().expect("blast mutex");
     clear_blast_async_jobs_for_test();
@@ -10356,6 +10457,7 @@ fn execute_agents_ask_rejected_when_context_disallows_agent_commands() {
         &ShellExecutionOptions {
             allow_screenshots: false,
             allow_agent_commands: false,
+            progress_callback: None,
         },
     )
     .expect_err("agents ask should be blocked in this execution context");

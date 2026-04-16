@@ -370,7 +370,7 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports. `--progress` now also streams `progress primers ...` lines for shared-shell primer/qPCR design commands, not only raw `op` / `workflow` JSON execution.
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 
@@ -1394,7 +1394,11 @@ Global CLI options:
 - `--allow-screenshots`: currently rejected (screenshot bridge disabled by security policy)
 
 Current progress events include TFBS annotation updates, genome-prepare
-updates (download/index phases), and genome-track import updates.
+updates (download/index phases), genome-track import updates, RNA-read
+interpretation/alignment updates, and primer/qPCR design updates.
+Primer/qPCR progress lines expose backend choice/fallback plus candidate and
+search counts, for example `progress primers ... stage=pair_search ...` and
+`progress primers ... stage=assay_search_complete ...`.
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
 
 `state-summary` output includes:

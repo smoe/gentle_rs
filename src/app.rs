@@ -12586,6 +12586,7 @@ Error: `{err}`"
         let options = ShellExecutionOptions {
             allow_screenshots: false,
             allow_agent_commands: false,
+            progress_callback: None,
         };
         let run = {
             let mut guard = self.engine.write().unwrap();

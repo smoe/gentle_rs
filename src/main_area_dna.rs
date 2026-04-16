@@ -72,13 +72,13 @@ use crate::{
         GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignProgressKind,
-        PrimerDesignProgressStage, PrimerDesignReport, PrimerDesignSideConstraint,
-        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
-        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
-        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
-        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
+        PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
+        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
+        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
+        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1093,24 +1093,23 @@ mod tests {
             DotplotView, EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
             GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
-            PrimerDesignProgress, PrimerDesignProgressKind, PrimerDesignProgressStage,
-            PrimerDesignSideConstraint, ProjectState, PromoterReporterCandidateSet,
-            ProtocolCartoonPreviewTelemetry, RestrictionCloningPcrHandoffMode,
-            RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-            RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
-            RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-            RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
-            RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
-            SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
-            SequencingConfirmationReport, SequencingConfirmationStatus,
-            SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
-            SequencingConfirmationVariantRow, SequencingPrimerOrientation,
-            SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-            SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
-            SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
-            SplicingScopePreset, VariantPromoterContextReport,
-            parse_required_usize_or_formula_text_on_sequence,
+            PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
+            PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
+            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
+            RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+            RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
+            SequencingConfirmationReadResult, SequencingConfirmationReport,
+            SequencingConfirmationStatus, SequencingConfirmationTargetKind,
+            SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
+            SequencingPrimerOrientation, SequencingPrimerOverlayReport,
+            SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
+            SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
+            SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
+            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -8752,22 +8751,26 @@ mod tests {
     #[test]
     fn primer_design_progress_summary_mentions_pair_evaluation_counts() {
         let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
-            kind: PrimerDesignProgressKind::PrimerPairs,
-            stage: PrimerDesignProgressStage::PairEvaluation,
-            template: "tpl".to_string(),
-            backend: "internal".to_string(),
+            seq_id: "tpl".to_string(),
+            design_kind: "primer_pairs".to_string(),
+            backend_requested: "internal".to_string(),
+            backend_used: "internal".to_string(),
+            stage: "pair_search".to_string(),
+            detail: "Evaluated 42 pair candidate combination(s)".to_string(),
             roi_start_0based: 40,
-            roi_end_0based: 80,
-            max_results: 10,
-            forward_candidate_count: 8,
-            reverse_candidate_count: 7,
-            evaluated_pairs: 42,
-            pair_evaluation_limit: 100,
-            accepted_pairs: 3,
+            roi_end_0based_exclusive: 80,
+            forward_candidate_count: Some(8),
+            reverse_candidate_count: Some(7),
             probe_candidate_count: None,
-            evaluated_probe_pairs: None,
-            total_probe_pairs: None,
-            accepted_assays: None,
+            pair_candidate_combinations: Some(56),
+            pair_evaluated: Some(42),
+            pair_evaluation_limit: Some(100),
+            pair_evaluation_limited: Some(false),
+            accepted_pair_count: Some(3),
+            assay_candidate_combinations: None,
+            assays_evaluated: None,
+            accepted_assay_count: None,
+            max_output: 10,
             done: false,
         });
 
@@ -8778,22 +8781,26 @@ mod tests {
     #[test]
     fn primer_design_progress_summary_mentions_qpcr_probe_evaluation_counts() {
         let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
-            kind: PrimerDesignProgressKind::QpcrAssays,
-            stage: PrimerDesignProgressStage::ProbeEvaluation,
-            template: "tpl".to_string(),
-            backend: "internal".to_string(),
+            seq_id: "tpl".to_string(),
+            design_kind: "qpcr_assays".to_string(),
+            backend_requested: "internal".to_string(),
+            backend_used: "internal".to_string(),
+            stage: "assay_search".to_string(),
+            detail: "Evaluated 12 assay combination(s)".to_string(),
             roi_start_0based: 40,
-            roi_end_0based: 120,
-            max_results: 5,
-            forward_candidate_count: 6,
-            reverse_candidate_count: 4,
-            evaluated_pairs: 6,
-            pair_evaluation_limit: 40,
-            accepted_pairs: 6,
+            roi_end_0based_exclusive: 120,
+            forward_candidate_count: Some(6),
+            reverse_candidate_count: Some(4),
             probe_candidate_count: Some(4),
-            evaluated_probe_pairs: Some(12),
-            total_probe_pairs: Some(24),
-            accepted_assays: Some(2),
+            pair_candidate_combinations: Some(24),
+            pair_evaluated: Some(6),
+            pair_evaluation_limit: Some(40),
+            pair_evaluation_limited: Some(false),
+            accepted_pair_count: Some(6),
+            assay_candidate_combinations: Some(24),
+            assays_evaluated: Some(12),
+            accepted_assay_count: Some(2),
+            max_output: 5,
             done: false,
         });
 
@@ -28428,92 +28435,98 @@ impl MainAreaDna {
     }
 
     fn primer_design_progress_summary(progress: &PrimerDesignProgress) -> String {
-        let backend = progress.backend.trim();
+        let backend = progress.backend_used.trim();
         let backend_prefix = if backend.is_empty() {
             String::new()
         } else {
             format!("{backend} ")
         };
-        match (progress.kind, progress.stage) {
-            (
-                PrimerDesignProgressKind::PrimerPairs,
-                PrimerDesignProgressStage::CandidateEnumeration,
-            ) => format!(
-                "{}pair-PCR: enumerated {} forward and {} reverse primer candidates",
-                backend_prefix, progress.forward_candidate_count, progress.reverse_candidate_count
+        match (progress.design_kind.as_str(), progress.stage.as_str()) {
+            ("primer_pairs", "forward_candidates") => format!(
+                "{}pair-PCR: enumerated {} forward primer candidates",
+                backend_prefix,
+                progress.forward_candidate_count.unwrap_or(0)
             ),
-            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::PairEvaluation) => {
+            ("primer_pairs", "reverse_candidates") => format!(
+                "{}pair-PCR: enumerated {} forward and {} reverse primer candidates",
+                backend_prefix,
+                progress.forward_candidate_count.unwrap_or(0),
+                progress.reverse_candidate_count.unwrap_or(0)
+            ),
+            ("primer_pairs", "pair_search") => {
                 format!(
                     "{}pair-PCR: checked {}/{} pair combinations, accepted {} candidate pairs",
                     backend_prefix,
-                    progress.evaluated_pairs,
-                    progress.pair_evaluation_limit,
-                    progress.accepted_pairs
+                    progress.pair_evaluated.unwrap_or(0),
+                    progress.pair_evaluation_limit.unwrap_or(0),
+                    progress.accepted_pair_count.unwrap_or(0)
                 )
             }
-            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::ProbeEvaluation) => {
-                format!(
-                    "{}pair-PCR: checked {}/{} pair combinations, accepted {} candidate pairs",
-                    backend_prefix,
-                    progress.evaluated_pairs,
-                    progress.pair_evaluation_limit,
-                    progress.accepted_pairs
-                )
-            }
-            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::Complete) => {
+            ("primer_pairs", "pair_search_complete") | ("primer_pairs", "complete") => {
                 format!(
                     "{}pair-PCR complete: accepted {} primer pairs after checking {}/{} combinations",
                     backend_prefix,
-                    progress.accepted_pairs,
-                    progress.evaluated_pairs,
-                    progress.pair_evaluation_limit
+                    progress.accepted_pair_count.unwrap_or(0),
+                    progress.pair_evaluated.unwrap_or(0),
+                    progress.pair_evaluation_limit.unwrap_or(0)
                 )
             }
-            (
-                PrimerDesignProgressKind::QpcrAssays,
-                PrimerDesignProgressStage::CandidateEnumeration,
-            ) => format!(
-                "{}qPCR: enumerated {} forward and {} reverse primer candidates",
-                backend_prefix, progress.forward_candidate_count, progress.reverse_candidate_count
+            ("qpcr_assays", "forward_candidates") => format!(
+                "{}qPCR: enumerated {} forward primer candidates",
+                backend_prefix,
+                progress.forward_candidate_count.unwrap_or(0)
             ),
-            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::PairEvaluation) => {
-                format!(
-                    "{}qPCR: checked {}/{} primer-pair combinations, retained {} primer pairs",
-                    backend_prefix,
-                    progress.evaluated_pairs,
-                    progress.pair_evaluation_limit,
-                    progress.accepted_pairs
-                )
-            }
-            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::ProbeEvaluation) => {
+            ("qpcr_assays", "reverse_candidates") => format!(
+                "{}qPCR: enumerated {} forward and {} reverse primer candidates",
+                backend_prefix,
+                progress.forward_candidate_count.unwrap_or(0),
+                progress.reverse_candidate_count.unwrap_or(0)
+            ),
+            ("qpcr_assays", "pair_search") | ("qpcr_assays", "pair_search_complete") => format!(
+                "{}qPCR: checked {}/{} primer-pair combinations, retained {} primer pairs",
+                backend_prefix,
+                progress.pair_evaluated.unwrap_or(0),
+                progress.pair_evaluation_limit.unwrap_or(0),
+                progress.accepted_pair_count.unwrap_or(0)
+            ),
+            ("qpcr_assays", "probe_candidates") => format!(
+                "{}qPCR: generated {} probe candidates across {} retained primer pairs",
+                backend_prefix,
+                progress.probe_candidate_count.unwrap_or(0),
+                progress.accepted_pair_count.unwrap_or(0)
+            ),
+            ("qpcr_assays", "assay_search") => {
                 format!(
                     "{}qPCR: screened {}/{} probe placements across {} retained primer pairs, accepted {} assays",
                     backend_prefix,
-                    progress.evaluated_probe_pairs.unwrap_or(0),
-                    progress.total_probe_pairs.unwrap_or(0),
-                    progress.accepted_pairs,
-                    progress.accepted_assays.unwrap_or(0)
+                    progress.assays_evaluated.unwrap_or(0),
+                    progress.assay_candidate_combinations.unwrap_or(0),
+                    progress.accepted_pair_count.unwrap_or(0),
+                    progress.accepted_assay_count.unwrap_or(0)
                 )
             }
-            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::Complete) => format!(
+            ("qpcr_assays", "assay_search_complete") | ("qpcr_assays", "complete") => format!(
                 "{}qPCR complete: accepted {} assays after screening {}/{} probe placements",
                 backend_prefix,
-                progress.accepted_assays.unwrap_or(0),
-                progress.evaluated_probe_pairs.unwrap_or(0),
-                progress.total_probe_pairs.unwrap_or(0)
+                progress.accepted_assay_count.unwrap_or(0),
+                progress.assays_evaluated.unwrap_or(0),
+                progress.assay_candidate_combinations.unwrap_or(0)
+            ),
+            _ => format!(
+                "{}{}: {}",
+                backend_prefix,
+                progress.design_kind.replace('_', "-"),
+                progress.detail
             ),
         }
     }
 
-    fn active_primer_design_progress_summary_for_kind(
-        &self,
-        kind: PrimerDesignProgressKind,
-    ) -> Option<String> {
+    fn active_primer_design_progress_summary_for_kind(&self, kind: &str) -> Option<String> {
         self.primer_design_task
             .as_ref()?
             .progress
             .as_ref()
-            .filter(|progress| progress.kind == kind)
+            .filter(|progress| progress.design_kind == kind)
             .map(Self::primer_design_progress_summary)
     }
 
@@ -34233,9 +34246,7 @@ impl MainAreaDna {
                     }
                 }
                 if let Some(summary) = self
-                    .active_primer_design_progress_summary_for_kind(
-                        PrimerDesignProgressKind::PrimerPairs,
-                    )
+                    .active_primer_design_progress_summary_for_kind("primer_pairs")
                 {
                     ui.small(format!("Progress: {summary}"));
                 }
@@ -34409,9 +34420,7 @@ impl MainAreaDna {
                     }
                 }
                 if let Some(summary) = self
-                    .active_primer_design_progress_summary_for_kind(
-                        PrimerDesignProgressKind::QpcrAssays,
-                    )
+                    .active_primer_design_progress_summary_for_kind("qpcr_assays")
                 {
                     ui.small(format!("Progress: {summary}"));
                 }

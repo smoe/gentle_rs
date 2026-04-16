@@ -10,6 +10,7 @@
 //! - cross-cutting operation glue that does not belong in adapter code
 
 use super::*;
+use crate::engine::sequence_ops::PrimerDesignProgressContext;
 use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
@@ -3755,6 +3756,20 @@ impl GentleEngine {
         }
     }
 
+    fn emit_operation_primer_design_progress(
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        progress: PrimerDesignProgress,
+    ) -> Result<(), EngineError> {
+        if on_progress(OperationProgress::PrimerDesign(progress)) {
+            Ok(())
+        } else {
+            Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Primer design cancelled during progress reporting".to_string(),
+            })
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_primer_pairs(
         &mut self,
@@ -3920,8 +3935,19 @@ impl GentleEngine {
         let (pairs, rejection_summary) = match requested_backend {
             PrimerDesignBackend::Internal => {
                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                Self::design_primer_pairs_internal(
-                    &template,
+                let progress_context = PrimerDesignProgressContext {
+                    seq_id: &template,
+                    design_kind: "primer_pairs",
+                    backend_requested: requested_backend.as_str(),
+                    backend_used: PrimerDesignBackend::Internal.as_str(),
+                    roi_start_0based,
+                    roi_end_0based_exclusive: roi_end_0based,
+                    max_output: max_pairs,
+                };
+                let mut emit_internal = |progress: PrimerDesignProgress| {
+                    on_progress(OperationProgress::PrimerDesign(progress))
+                };
+                Self::design_primer_pairs_internal_core(
                     template_bytes,
                     roi_start_0based,
                     roi_end_0based,
@@ -3934,13 +3960,40 @@ impl GentleEngine {
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
-                    backend.used.as_str(),
-                    PrimerDesignProgressKind::PrimerPairs,
-                    true,
-                    |progress| on_progress(OperationProgress::PrimerDesign(progress)),
-                )
+                    Some(&progress_context),
+                    &mut emit_internal,
+                )?
             }
             PrimerDesignBackend::Primer3 => {
+                Self::emit_operation_primer_design_progress(
+                    on_progress,
+                    PrimerDesignProgress {
+                        seq_id: template.clone(),
+                        design_kind: "primer_pairs".to_string(),
+                        backend_requested: requested_backend.as_str().to_string(),
+                        backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                        stage: "primer3_run".to_string(),
+                        detail: format!(
+                            "Running Primer3 backend with executable '{}'",
+                            primer3_executable
+                        ),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        forward_candidate_count: None,
+                        reverse_candidate_count: None,
+                        probe_candidate_count: None,
+                        pair_candidate_combinations: None,
+                        pair_evaluated: None,
+                        pair_evaluation_limit: None,
+                        pair_evaluation_limited: None,
+                        accepted_pair_count: None,
+                        assay_candidate_combinations: None,
+                        assays_evaluated: None,
+                        accepted_assay_count: None,
+                        max_output: max_pairs,
+                        done: false,
+                    },
+                )?;
                 let (pairs, rejection_summary, version, explain, request_boulder_io) =
                     Self::design_primer_pairs_primer3(
                         &template_seq,
@@ -3962,9 +4015,64 @@ impl GentleEngine {
                 backend.primer3_version = version;
                 backend.primer3_explain = explain;
                 backend.primer3_request_boulder_io = Some(request_boulder_io);
+                Self::emit_operation_primer_design_progress(
+                    on_progress,
+                    PrimerDesignProgress {
+                        seq_id: template.clone(),
+                        design_kind: "primer_pairs".to_string(),
+                        backend_requested: requested_backend.as_str().to_string(),
+                        backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                        stage: "complete".to_string(),
+                        detail: format!("Primer3 returned {} primer pair(s)", pairs.len()),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        forward_candidate_count: None,
+                        reverse_candidate_count: None,
+                        probe_candidate_count: None,
+                        pair_candidate_combinations: None,
+                        pair_evaluated: None,
+                        pair_evaluation_limit: None,
+                        pair_evaluation_limited: None,
+                        accepted_pair_count: Some(pairs.len()),
+                        assay_candidate_combinations: None,
+                        assays_evaluated: None,
+                        accepted_assay_count: None,
+                        max_output: max_pairs,
+                        done: true,
+                    },
+                )?;
                 (pairs, rejection_summary)
             }
             PrimerDesignBackend::Auto => {
+                Self::emit_operation_primer_design_progress(
+                    on_progress,
+                    PrimerDesignProgress {
+                        seq_id: template.clone(),
+                        design_kind: "primer_pairs".to_string(),
+                        backend_requested: requested_backend.as_str().to_string(),
+                        backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                        stage: "primer3_run".to_string(),
+                        detail: format!(
+                            "Auto mode trying Primer3 backend with executable '{}'",
+                            primer3_executable
+                        ),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        forward_candidate_count: None,
+                        reverse_candidate_count: None,
+                        probe_candidate_count: None,
+                        pair_candidate_combinations: None,
+                        pair_evaluated: None,
+                        pair_evaluation_limit: None,
+                        pair_evaluation_limited: None,
+                        accepted_pair_count: None,
+                        assay_candidate_combinations: None,
+                        assays_evaluated: None,
+                        accepted_assay_count: None,
+                        max_output: max_pairs,
+                        done: false,
+                    },
+                )?;
                 match Self::design_primer_pairs_primer3(
                     &template_seq,
                     roi_start_0based,
@@ -3986,6 +4094,32 @@ impl GentleEngine {
                         backend.primer3_version = version;
                         backend.primer3_explain = explain;
                         backend.primer3_request_boulder_io = Some(request_boulder_io);
+                        Self::emit_operation_primer_design_progress(
+                            on_progress,
+                            PrimerDesignProgress {
+                                seq_id: template.clone(),
+                                design_kind: "primer_pairs".to_string(),
+                                backend_requested: requested_backend.as_str().to_string(),
+                                backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                                stage: "complete".to_string(),
+                                detail: format!("Primer3 returned {} primer pair(s)", pairs.len()),
+                                roi_start_0based,
+                                roi_end_0based_exclusive: roi_end_0based,
+                                forward_candidate_count: None,
+                                reverse_candidate_count: None,
+                                probe_candidate_count: None,
+                                pair_candidate_combinations: None,
+                                pair_evaluated: None,
+                                pair_evaluation_limit: None,
+                                pair_evaluation_limited: None,
+                                accepted_pair_count: Some(pairs.len()),
+                                assay_candidate_combinations: None,
+                                assays_evaluated: None,
+                                accepted_assay_count: None,
+                                max_output: max_pairs,
+                                done: true,
+                            },
+                        )?;
                         (pairs, rejection_summary)
                     }
                     Err(err) => {
@@ -3996,8 +4130,45 @@ impl GentleEngine {
                             "Primer3 backend unavailable in auto mode: {}. Falling back to internal primer design backend.",
                             err.message
                         ));
-                        Self::design_primer_pairs_internal(
-                            &template,
+                        Self::emit_operation_primer_design_progress(
+                            on_progress,
+                            PrimerDesignProgress {
+                                seq_id: template.clone(),
+                                design_kind: "primer_pairs".to_string(),
+                                backend_requested: requested_backend.as_str().to_string(),
+                                backend_used: PrimerDesignBackend::Internal.as_str().to_string(),
+                                stage: "fallback_to_internal".to_string(),
+                                detail: err.message.clone(),
+                                roi_start_0based,
+                                roi_end_0based_exclusive: roi_end_0based,
+                                forward_candidate_count: None,
+                                reverse_candidate_count: None,
+                                probe_candidate_count: None,
+                                pair_candidate_combinations: None,
+                                pair_evaluated: None,
+                                pair_evaluation_limit: None,
+                                pair_evaluation_limited: None,
+                                accepted_pair_count: None,
+                                assay_candidate_combinations: None,
+                                assays_evaluated: None,
+                                accepted_assay_count: None,
+                                max_output: max_pairs,
+                                done: false,
+                            },
+                        )?;
+                        let progress_context = PrimerDesignProgressContext {
+                            seq_id: &template,
+                            design_kind: "primer_pairs",
+                            backend_requested: requested_backend.as_str(),
+                            backend_used: PrimerDesignBackend::Internal.as_str(),
+                            roi_start_0based,
+                            roi_end_0based_exclusive: roi_end_0based,
+                            max_output: max_pairs,
+                        };
+                        let mut emit_internal = |progress: PrimerDesignProgress| {
+                            on_progress(OperationProgress::PrimerDesign(progress))
+                        };
+                        Self::design_primer_pairs_internal_core(
                             template_bytes,
                             roi_start_0based,
                             roi_end_0based,
@@ -4010,11 +4181,9 @@ impl GentleEngine {
                             max_amplicon_bp,
                             max_tm_delta_c,
                             max_pairs,
-                            backend.used.as_str(),
-                            PrimerDesignProgressKind::PrimerPairs,
-                            true,
-                            |progress| on_progress(OperationProgress::PrimerDesign(progress)),
-                        )
+                            Some(&progress_context),
+                            &mut emit_internal,
+                        )?
                     }
                 }
             }
@@ -9535,8 +9704,19 @@ impl GentleEngine {
                 let (pair_candidates, pair_rejections) = match requested_backend {
                     PrimerDesignBackend::Internal => {
                         backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                        Self::design_primer_pairs_internal(
-                            &template,
+                        let progress_context = PrimerDesignProgressContext {
+                            seq_id: &template,
+                            design_kind: "qpcr_assays",
+                            backend_requested: requested_backend.as_str(),
+                            backend_used: PrimerDesignBackend::Internal.as_str(),
+                            roi_start_0based,
+                            roi_end_0based_exclusive: roi_end_0based,
+                            max_output: max_assays,
+                        };
+                        let mut emit_internal = |progress: PrimerDesignProgress| {
+                            on_progress(OperationProgress::PrimerDesign(progress))
+                        };
+                        Self::design_primer_pairs_internal_core(
                             template_bytes,
                             roi_start_0based,
                             roi_end_0based,
@@ -9549,13 +9729,40 @@ impl GentleEngine {
                             max_amplicon_bp,
                             max_tm_delta_c,
                             pair_generation_limit,
-                            backend.used.as_str(),
-                            PrimerDesignProgressKind::QpcrAssays,
-                            false,
-                            |progress| on_progress(OperationProgress::PrimerDesign(progress)),
-                        )
+                            Some(&progress_context),
+                            &mut emit_internal,
+                        )?
                     }
                     PrimerDesignBackend::Primer3 => {
+                        Self::emit_operation_primer_design_progress(
+                            on_progress,
+                            PrimerDesignProgress {
+                                seq_id: template.clone(),
+                                design_kind: "qpcr_assays".to_string(),
+                                backend_requested: requested_backend.as_str().to_string(),
+                                backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                                stage: "primer3_run".to_string(),
+                                detail: format!(
+                                    "Running Primer3 backend with executable '{}'",
+                                    primer3_executable
+                                ),
+                                roi_start_0based,
+                                roi_end_0based_exclusive: roi_end_0based,
+                                forward_candidate_count: None,
+                                reverse_candidate_count: None,
+                                probe_candidate_count: None,
+                                pair_candidate_combinations: None,
+                                pair_evaluated: None,
+                                pair_evaluation_limit: None,
+                                pair_evaluation_limited: None,
+                                accepted_pair_count: None,
+                                assay_candidate_combinations: None,
+                                assays_evaluated: None,
+                                accepted_assay_count: None,
+                                max_output: max_assays,
+                                done: false,
+                            },
+                        )?;
                         let (pairs, rejection_summary, version, explain, request_boulder_io) =
                             Self::design_primer_pairs_primer3(
                                 &template_seq,
@@ -9580,6 +9787,35 @@ impl GentleEngine {
                         (pairs, rejection_summary)
                     }
                     PrimerDesignBackend::Auto => {
+                        Self::emit_operation_primer_design_progress(
+                            on_progress,
+                            PrimerDesignProgress {
+                                seq_id: template.clone(),
+                                design_kind: "qpcr_assays".to_string(),
+                                backend_requested: requested_backend.as_str().to_string(),
+                                backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                                stage: "primer3_run".to_string(),
+                                detail: format!(
+                                    "Auto mode trying Primer3 backend with executable '{}'",
+                                    primer3_executable
+                                ),
+                                roi_start_0based,
+                                roi_end_0based_exclusive: roi_end_0based,
+                                forward_candidate_count: None,
+                                reverse_candidate_count: None,
+                                probe_candidate_count: None,
+                                pair_candidate_combinations: None,
+                                pair_evaluated: None,
+                                pair_evaluation_limit: None,
+                                pair_evaluation_limited: None,
+                                accepted_pair_count: None,
+                                assay_candidate_combinations: None,
+                                assays_evaluated: None,
+                                accepted_assay_count: None,
+                                max_output: max_assays,
+                                done: false,
+                            },
+                        )?;
                         match Self::design_primer_pairs_primer3(
                             &template_seq,
                             roi_start_0based,
@@ -9617,8 +9853,47 @@ impl GentleEngine {
                                     "Primer3 backend unavailable in auto mode: {}. Falling back to internal qPCR design backend.",
                                     err.message
                                 ));
-                                Self::design_primer_pairs_internal(
-                                    &template,
+                                Self::emit_operation_primer_design_progress(
+                                    on_progress,
+                                    PrimerDesignProgress {
+                                        seq_id: template.clone(),
+                                        design_kind: "qpcr_assays".to_string(),
+                                        backend_requested: requested_backend.as_str().to_string(),
+                                        backend_used: PrimerDesignBackend::Internal
+                                            .as_str()
+                                            .to_string(),
+                                        stage: "fallback_to_internal".to_string(),
+                                        detail: err.message.clone(),
+                                        roi_start_0based,
+                                        roi_end_0based_exclusive: roi_end_0based,
+                                        forward_candidate_count: None,
+                                        reverse_candidate_count: None,
+                                        probe_candidate_count: None,
+                                        pair_candidate_combinations: None,
+                                        pair_evaluated: None,
+                                        pair_evaluation_limit: None,
+                                        pair_evaluation_limited: None,
+                                        accepted_pair_count: None,
+                                        assay_candidate_combinations: None,
+                                        assays_evaluated: None,
+                                        accepted_assay_count: None,
+                                        max_output: max_assays,
+                                        done: false,
+                                    },
+                                )?;
+                                let progress_context = PrimerDesignProgressContext {
+                                    seq_id: &template,
+                                    design_kind: "qpcr_assays",
+                                    backend_requested: requested_backend.as_str(),
+                                    backend_used: PrimerDesignBackend::Internal.as_str(),
+                                    roi_start_0based,
+                                    roi_end_0based_exclusive: roi_end_0based,
+                                    max_output: max_assays,
+                                };
+                                let mut emit_internal = |progress: PrimerDesignProgress| {
+                                    on_progress(OperationProgress::PrimerDesign(progress))
+                                };
+                                Self::design_primer_pairs_internal_core(
                                     template_bytes,
                                     roi_start_0based,
                                     roi_end_0based,
@@ -9631,20 +9906,27 @@ impl GentleEngine {
                                     max_amplicon_bp,
                                     max_tm_delta_c,
                                     pair_generation_limit,
-                                    backend.used.as_str(),
-                                    PrimerDesignProgressKind::QpcrAssays,
-                                    false,
-                                    |progress| {
-                                        on_progress(OperationProgress::PrimerDesign(progress))
-                                    },
-                                )
+                                    Some(&progress_context),
+                                    &mut emit_internal,
+                                )?
                             }
                         }
                     }
                 };
 
-                let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs(
-                    &template,
+                let qpcr_progress_context = PrimerDesignProgressContext {
+                    seq_id: &template,
+                    design_kind: "qpcr_assays",
+                    backend_requested: requested_backend.as_str(),
+                    backend_used: backend.used.as_str(),
+                    roi_start_0based,
+                    roi_end_0based_exclusive: roi_end_0based,
+                    max_output: max_assays,
+                };
+                let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
+                    on_progress(OperationProgress::PrimerDesign(progress))
+                };
+                let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
                     template_bytes,
                     roi_start_0based,
                     roi_end_0based,
@@ -9654,9 +9936,9 @@ impl GentleEngine {
                     max_assays,
                     pair_candidates,
                     pair_rejections,
-                    backend.used.as_str(),
-                    |progress| on_progress(OperationProgress::PrimerDesign(progress)),
-                );
+                    Some(&qpcr_progress_context),
+                    &mut emit_qpcr_progress,
+                )?;
 
                 let report_id = Self::render_primer_design_report_id(report_id, &template);
                 let report = QpcrDesignReport {
