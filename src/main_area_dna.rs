@@ -1586,6 +1586,8 @@ mod tests {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
         });
 
         assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -3831,6 +3833,8 @@ mod tests {
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                variant_promoter_context: None,
+                promoter_reporter_candidates: None,
             },
             Instant::now(),
         );

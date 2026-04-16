@@ -3563,8 +3563,9 @@ Tutorial projects:
 - Additional GUI-first manual tutorial:
   - `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
   - includes a stepwise GUI workflow for `VKORC1` / `rs9923231`
-    promoter-luciferase planning using the dbSNP fetch path plus Promega
-    AY738222 input, with per-step GUI/CLI parity mapping.
+    promoter-luciferase planning using the dbSNP fetch path, derived
+    promoter-window / promoter-context reasoning, and one pinned local
+    mammalian luciferase backbone, with per-step GUI/CLI parity mapping.
   - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
     keeps `rs9923231` inside the cloned insert instead of on its edge.
   - the preferred community-facing opener for that story is the
@@ -3572,7 +3573,8 @@ Tutorial projects:
     `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`.
   - canonical workflow skeleton:
     `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
-    (`test_mode: skip`, online GenBank retrieval involved by design).
+    (`test_mode: skip`, offline local backbone import plus shared promoter
+    reasoning ops).
   - `docs/tutorial/gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking

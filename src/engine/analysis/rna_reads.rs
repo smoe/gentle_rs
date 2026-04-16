@@ -7782,6 +7782,8 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -7832,6 +7834,8 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());

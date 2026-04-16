@@ -433,11 +433,44 @@ const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_expo
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
+const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
+const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
+const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
+const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
+const DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP: usize = 100;
+const DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP: usize = 200;
+const DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP: usize = 500;
+const DEFAULT_PROMOTER_REPORTER_MAX_CANDIDATES: usize = 5;
+const ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG: &str = "annotate_promoter_windows";
 
 fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
     1
+}
+
+fn default_promoter_window_upstream_bp() -> usize {
+    DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP
+}
+
+fn default_promoter_window_downstream_bp() -> usize {
+    DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP
+}
+
+fn default_variant_promoter_tfbs_focus_half_window_bp() -> usize {
+    DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP
+}
+
+fn default_promoter_reporter_retain_downstream_from_tss_bp() -> usize {
+    DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP
+}
+
+fn default_promoter_reporter_retain_upstream_beyond_variant_bp() -> usize {
+    DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP
+}
+
+fn default_promoter_reporter_max_candidates() -> usize {
+    DEFAULT_PROMOTER_REPORTER_MAX_CANDIDATES
 }
 
 // Private decomposition slices of the engine implementation. Shared public
@@ -470,6 +503,8 @@ mod sequence_ops;
 mod sequencing_confirmation;
 #[path = "engine/io/sequencing_traces.rs"]
 mod sequencing_traces;
+#[path = "engine/analysis/variant_promoter.rs"]
+mod variant_promoter;
 
 #[path = "engine/protocol.rs"]
 pub mod protocol;
@@ -3229,6 +3264,62 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    AnnotatePromoterWindows {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default)]
+        collapse_mode: PromoterWindowCollapseMode,
+    },
+    SummarizeVariantPromoterContext {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        variant_label_or_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default = "default_variant_promoter_tfbs_focus_half_window_bp")]
+        tfbs_focus_half_window_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SuggestPromoterReporterFragments {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        variant_label_or_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_reporter_retain_downstream_from_tss_bp")]
+        retain_downstream_from_tss_bp: usize,
+        #[serde(default = "default_promoter_reporter_retain_upstream_beyond_variant_bp")]
+        retain_upstream_beyond_variant_bp: usize,
+        #[serde(default = "default_promoter_reporter_max_candidates")]
+        max_candidates: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeVariantAllele {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        variant_label_or_id: Option<String>,
+        #[serde(default)]
+        allele: VariantAlleleChoice,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_id: Option<SeqId>,
+    },
     ExportRnaReadReport {
         report_id: String,
         path: String,
@@ -4430,6 +4521,10 @@ impl GentleEngine {
                 "SummarizeRnaReadGeneSupport".to_string(),
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
+                "AnnotatePromoterWindows".to_string(),
+                "SummarizeVariantPromoterContext".to_string(),
+                "SuggestPromoterReporterFragments".to_string(),
+                "MaterializeVariantAllele".to_string(),
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
                 "ExportRnaReadSampleSheet".to_string(),
@@ -6278,6 +6373,8 @@ impl GentleEngine {
                 | Operation::SummarizeRnaReadGeneSupport { .. }
                 | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::SummarizeTfbsRegion { .. }
+                | Operation::SummarizeVariantPromoterContext { .. }
+                | Operation::SuggestPromoterReporterFragments { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
@@ -12956,10 +13053,12 @@ impl GentleEngine {
         evidence
     }
 
-    fn build_construct_reasoning_sequence_evidence(
+    fn build_construct_reasoning_sequence_evidence_with_promoter_params(
         &self,
         seq_id: &str,
         dna: &DNAsequence,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
     ) -> Vec<DesignEvidence> {
         let seq_len = dna.len();
         let mut evidence: Vec<DesignEvidence> = vec![];
@@ -13083,7 +13182,26 @@ impl GentleEngine {
             }
         }
 
+        evidence.extend(self.build_construct_reasoning_generated_promoter_evidence(
+            seq_id,
+            dna,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+        ));
         evidence
+    }
+
+    fn build_construct_reasoning_sequence_evidence(
+        &self,
+        seq_id: &str,
+        dna: &DNAsequence,
+    ) -> Vec<DesignEvidence> {
+        self.build_construct_reasoning_sequence_evidence_with_promoter_params(
+            seq_id,
+            dna,
+            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+        )
     }
 
     fn construct_reasoning_ranges_for_feature(

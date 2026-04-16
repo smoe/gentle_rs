@@ -373,6 +373,192 @@ pub struct TfbsRegionSummary {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// How transcript-derived promoter windows are collapsed before annotation or
+/// downstream reporting.
+pub enum PromoterWindowCollapseMode {
+    #[default]
+    Transcript,
+    Gene,
+}
+
+impl PromoterWindowCollapseMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Transcript => "transcript",
+            Self::Gene => "gene",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which allele should be materialized from one single-nucleotide variant.
+pub enum VariantAlleleChoice {
+    #[default]
+    Reference,
+    Alternate,
+}
+
+impl VariantAlleleChoice {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Reference => "reference",
+            Self::Alternate => "alternate",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter window derived from transcript TSS geometry.
+pub struct PromoterWindowRecord {
+    pub gene_label: Option<String>,
+    pub gene_id: Option<String>,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub transcript_feature_id: Option<usize>,
+    pub strand: String,
+    pub tss_local_0based: usize,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One overlapping annotation/evidence row surfaced in a variant-promoter
+/// context report.
+pub struct VariantPromoterContextEvidenceRow {
+    pub role: String,
+    pub kind: String,
+    pub label: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable promoter-context summary for one variant on one sequence.
+pub struct VariantPromoterContextReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub variant_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_feature_id: Option<usize>,
+    pub variant_start_0based: usize,
+    pub variant_end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_alt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_transcript_label: Option<String>,
+    pub transcript_ambiguity_status: String,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub promoter_overlap: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_tss_distance_bp: Option<isize>,
+    #[serde(default)]
+    pub overlapping_gene_labels: Vec<String>,
+    #[serde(default)]
+    pub overlapping_transcript_labels: Vec<String>,
+    #[serde(default)]
+    pub overlapping_promoter_labels: Vec<String>,
+    #[serde(default)]
+    pub overlapping_tfbs_labels: Vec<String>,
+    #[serde(default)]
+    pub overlapping_evidence: Vec<VariantPromoterContextEvidenceRow>,
+    #[serde(default)]
+    pub promoter_windows_considered: Vec<PromoterWindowRecord>,
+    #[serde(default)]
+    pub effect_tags: Vec<String>,
+    #[serde(default)]
+    pub suggested_assay_ids: Vec<String>,
+    pub tfbs_focus_half_window_bp: usize,
+    pub tfbs_near_variant_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfbs_region_summary: Option<TfbsRegionSummary>,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One deterministic promoter-reporter fragment candidate derived from one
+/// transcript/TSS and one variant.
+pub struct PromoterReporterFragmentCandidate {
+    pub candidate_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub tss_local_0based: usize,
+    pub variant_start_0based: usize,
+    pub variant_end_0based_exclusive: usize,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub retain_downstream_from_tss_bp: usize,
+    pub retain_upstream_beyond_variant_bp: usize,
+    pub promoter_overlap: bool,
+    pub signed_tss_distance_bp: isize,
+    pub rank: usize,
+    pub recommended: bool,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable candidate set for promoter-fragment suggestions that can be turned
+/// into luciferase reporter inserts.
+pub struct PromoterReporterCandidateSet {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub variant_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen_transcript_label: Option<String>,
+    pub transcript_ambiguity_status: String,
+    pub retain_downstream_from_tss_bp: usize,
+    pub retain_upstream_beyond_variant_bp: usize,
+    pub max_candidates: usize,
+    pub recommended_candidate_id: String,
+    #[serde(default)]
+    pub suggested_assay_ids: Vec<String>,
+    #[serde(default)]
+    pub candidates: Vec<PromoterReporterFragmentCandidate>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum SequencingConfirmationStatus {
     Confirmed,
     Contradicted,
@@ -1130,6 +1316,10 @@ pub struct OpResult {
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_promoter_context: Option<VariantPromoterContextReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

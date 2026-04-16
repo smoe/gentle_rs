@@ -5550,6 +5550,8 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
         };
 
         match op {
@@ -11668,6 +11670,131 @@ impl GentleEngine {
                     summary.context_end_0based_exclusive,
                 ));
                 result.tfbs_region_summary = Some(summary);
+            }
+            Operation::AnnotatePromoterWindows {
+                input,
+                gene_label,
+                transcript_id,
+                upstream_bp,
+                downstream_bp,
+                collapse_mode,
+            } => {
+                parent_seq_ids.push(input.clone());
+                let records = self.annotate_promoter_windows_for_sequence(
+                    &input,
+                    gene_label.as_deref(),
+                    transcript_id.as_deref(),
+                    upstream_bp,
+                    downstream_bp,
+                    collapse_mode,
+                )?;
+                result.changed_seq_ids.push(input.clone());
+                result.messages.push(format!(
+                    "Annotated {} transcript-derived promoter window(s) on '{}' (collapse_mode={}, upstream_bp={}, downstream_bp={})",
+                    records.len(),
+                    input,
+                    collapse_mode.as_str(),
+                    upstream_bp,
+                    downstream_bp
+                ));
+            }
+            Operation::SummarizeVariantPromoterContext {
+                input,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                tfbs_focus_half_window_bp,
+                path,
+            } => {
+                let mut report = self.summarize_variant_promoter_context(
+                    &input,
+                    variant_label_or_id.as_deref(),
+                    gene_label.as_deref(),
+                    transcript_id.as_deref(),
+                    promoter_upstream_bp,
+                    promoter_downstream_bp,
+                    tfbs_focus_half_window_bp,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_variant_promoter_context_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote variant-promoter context report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "Variant-promoter context for '{}' selected variant '{}' with promoter_overlap={} and transcript_status={}",
+                    report.seq_id,
+                    report.variant_label,
+                    report.promoter_overlap,
+                    report.transcript_ambiguity_status
+                ));
+                result.variant_promoter_context = Some(report);
+            }
+            Operation::SuggestPromoterReporterFragments {
+                input,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                max_candidates,
+                path,
+            } => {
+                let mut report = self.suggest_promoter_reporter_fragments(
+                    &input,
+                    variant_label_or_id.as_deref(),
+                    gene_label.as_deref(),
+                    transcript_id.as_deref(),
+                    retain_downstream_from_tss_bp,
+                    retain_upstream_beyond_variant_bp,
+                    max_candidates,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_promoter_reporter_candidates_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote promoter-reporter candidate report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "Suggested {} promoter-reporter candidate(s) on '{}' with recommended candidate '{}'",
+                    report.candidates.len(),
+                    report.seq_id,
+                    report.recommended_candidate_id
+                ));
+                result.promoter_reporter_candidates = Some(report);
+            }
+            Operation::MaterializeVariantAllele {
+                input,
+                variant_label_or_id,
+                allele,
+                output_id,
+            } => {
+                parent_seq_ids.push(input.clone());
+                let (base, mut dna) = self.materialize_variant_allele_sequence(
+                    &input,
+                    variant_label_or_id.as_deref(),
+                    allele,
+                    output_id.as_deref(),
+                )?;
+                let seq_id = self.unique_seq_id(&base);
+                Self::prepare_sequence(&mut dna);
+                self.state.sequences.insert(seq_id.clone(), dna);
+                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                result.created_seq_ids.push(seq_id.clone());
+                result.messages.push(format!(
+                    "Materialized {} allele from '{}' into '{}'",
+                    allele.as_str(),
+                    input,
+                    seq_id
+                ));
             }
             Operation::ExportRnaReadReport { report_id, path } => {
                 let report = self.export_rna_read_report(&report_id, &path)?;

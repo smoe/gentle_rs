@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.clawbio_handoff.v1",
+  "schema": "gentle.clawbio_handoff.v2",
   "id": "vkorc1_rs9923231_promoter_reporter_handoff",
   "source_alert": {
     "drug": "warfarin",
@@ -13,56 +13,75 @@
   },
   "separation_of_concerns": {
     "clawbio": "Interpret the pharmacogenomic alert and motivate a regulatory follow-up around VKORC1/rs9923231.",
-    "gentle": "Deterministically retrieve the locus, extract a promoter fragment, import a mammalian luciferase reporter backbone, preview the construct, and export documentation artifacts."
+    "gentle": "Deterministically retrieve the locus, derive promoter context, suggest a reporter fragment, materialize matched alleles, load a mammalian reporter backbone, preview the constructs, and export reviewable artifacts."
   },
   "design": {
     "prepared_genome": "Human GRCh38 Ensembl 116",
     "context_sequence_id": "vkorc1_rs9923231_context",
     "context_flank_bp": 3000,
+    "promoter_window_defaults": {
+      "upstream_bp": 1000,
+      "downstream_bp": 200,
+      "collapse_mode": "transcript"
+    },
+    "promoter_context_record": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json",
+    "promoter_candidate_record": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json",
     "fragment": {
-      "sequence_id": "vkorc1_rs9923231_promoter_ref",
-      "genomic_interval": "chr16:31095780..31096868",
-      "parent_local_gui_selection": "=2413 .. 3501",
-      "parent_local_engine_interval": {
+      "sequence_id": "vkorc1_rs9923231_promoter_fragment",
+      "engine_interval": {
         "from": 2412,
         "to": 3501
       },
       "notes": [
-        "Keeps rs9923231 inside the insert rather than at the border.",
-        "Retains about 200 bp past the annotated VKORC1 TSS.",
-        "Adds about 500 bp beyond the SNP on the biologically upstream side."
+        "Selected from the top-ranked promoter-reporter candidate for the current VKORC1 / rs9923231 baseline.",
+        "Keeps rs9923231 inside the insert rather than at the edge.",
+        "Retains 200 bp downstream of the selected TSS and 500 bp beyond the SNP on the biologically upstream side."
       ]
+    },
+    "allele_specific_inserts": {
+      "reference": "vkorc1_rs9923231_promoter_reference",
+      "alternate": "vkorc1_rs9923231_promoter_alternate"
     },
     "backbone": {
-      "sequence_id": "promega_luciferase_ay738222",
-      "accession": "AY738222",
-      "assay_role": "Primary mammalian luciferase reporter backbone for transient transfection planning.",
+      "sequence_id": "gentle_mammalian_luciferase_backbone_v1",
+      "path": "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb",
+      "assay_role": "Pinned local promoterless mammalian luciferase reporter backbone for transient-transfection planning.",
       "why_it_fits": [
         "Keeps the assay focused on promoter output in human cells.",
-        "Supports a promoter-fragment-upstream-of-luciferase design.",
-        "Avoids escalating immediately to viral delivery."
+        "Supports matched upstream-of-luciferase promoter insert comparison.",
+        "Avoids making live GenBank retrieval part of the canonical tutorial path."
       ]
     },
-    "construct_preview": {
-      "sequence_id": "vkorc1_rs9923231_luc_construct_preview",
-      "svg_path": "docs/figures/vkorc1_rs9923231_tutorial_construct_preview.svg"
-    }
+    "construct_previews": {
+      "status": "expected_from_full_workflow_replay",
+      "reference": {
+        "sequence_id": "vkorc1_rs9923231_reporter_reference",
+        "expected_svg_path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg"
+      },
+      "alternate": {
+        "sequence_id": "vkorc1_rs9923231_reporter_alternate",
+        "expected_svg_path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg"
+      }
+    },
+    "promoter_context_svg": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+    "suggested_assay_family": "allele_paired_promoter_luciferase_reporter"
   },
+  "explicit_assumptions": [
+    "This is a human-cell regulatory assay planning story, not a bacterial-expression story.",
+    "The tutorial ends at a reproducible construct-design handoff point.",
+    "Drug treatment is a later assay condition, not the first claim of this workflow.",
+    "Adenoviral delivery is reserved as a later escalation only if transfection efficiency becomes the bottleneck."
+  ],
   "artifacts": {
     "tutorial_markdown": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
     "workflow_json": "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json",
     "report_md": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/report.md",
     "commands_sh": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh"
   },
-  "explicit_assumptions": [
-    "This is a human-cell regulatory assay planning story, not a bacterial-expression story.",
-    "The tutorial ends at a reproducible construct-design handoff point.",
-    "Drug treatment is a later assay condition, not the first claim of this workflow."
-  ],
   "next_actions": [
-    "Build the reference promoter-reporter construct as documented.",
-    "Create an alternate-allele construct with identical fragment boundaries.",
-    "Compare promoter output without changing the fragment geometry between alleles."
+    "Build the reference and alternate promoter fragments with identical boundaries.",
+    "Keep the mammalian reporter backbone constant between the two constructs.",
+    "Verify insert orientation and junction integrity before comparing reporter output.",
+    "Choose one human cell model and normalization strategy for the later assay."
   ]
 }
-

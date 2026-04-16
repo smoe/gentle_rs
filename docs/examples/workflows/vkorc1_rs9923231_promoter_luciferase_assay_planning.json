@@ -1,11 +1,12 @@
 {
   "schema": "gentle.workflow_example.v1",
   "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
-  "title": "VKORC1 rs9923231 PGx-alert-to-mammalian-luciferase reporter planning (GUI-first parity skeleton)",
-  "summary": "Plans a VKORC1 / rs9923231 pharmacogenomic handoff from dbSNP-driven locus retrieval through TSS-centered promoter-fragment extraction, mammalian luciferase backbone import, construct preview, circular construct-map export, and junction-PCR planning.",
+  "title": "VKORC1 rs9923231 promoter-SNP-to-luciferase handoff (offline, promoter-aware baseline)",
+  "summary": "Starts from dbSNP-guided VKORC1 locus retrieval, derives promoter windows and variant-promoter context, suggests the reporter fragment deterministically, materializes matched reference/alternate inserts, loads a pinned local mammalian luciferase backbone, and exports promoter-context plus paired construct maps for a human-cell reporter-design handoff.",
   "test_mode": "skip",
   "required_files": [
-    "assets/genomes.json"
+    "assets/genomes.json",
+    "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb"
   ],
   "tags": [
     "tutorial",
@@ -16,7 +17,7 @@
     "luciferase",
     "gui",
     "parity",
-    "online",
+    "offline",
     "clawbio"
   ],
   "workflow": {
@@ -41,35 +42,34 @@
         }
       },
       {
-        "ExtractRegion": {
+        "AnnotatePromoterWindows": {
           "input": "vkorc1_rs9923231_context",
-          "from": 2412,
-          "to": 3501,
-          "output_id": "vkorc1_rs9923231_promoter_ref"
+          "gene_label": "VKORC1",
+          "upstream_bp": 1000,
+          "downstream_bp": 200,
+          "collapse_mode": "transcript"
         }
       },
       {
-        "FetchGenBankAccession": {
-          "accession": "AY738222",
-          "as_id": "promega_luciferase_ay738222"
+        "SummarizeVariantPromoterContext": {
+          "input": "vkorc1_rs9923231_context",
+          "variant_label_or_id": "rs9923231",
+          "gene_label": "VKORC1",
+          "promoter_upstream_bp": 1000,
+          "promoter_downstream_bp": 200,
+          "tfbs_focus_half_window_bp": 100,
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json"
         }
       },
       {
-        "Ligation": {
-          "inputs": [
-            "vkorc1_rs9923231_promoter_ref",
-            "promega_luciferase_ay738222"
-          ],
-          "circularize_if_possible": false,
-          "protocol": "Blunt",
-          "output_prefix": "vkorc1_rs9923231_luc_assembly",
-          "unique": false
-        }
-      },
-      {
-        "Branch": {
-          "input": "vkorc1_rs9923231_luc_assembly_1",
-          "output_id": "vkorc1_rs9923231_luc_construct_preview"
+        "SuggestPromoterReporterFragments": {
+          "input": "vkorc1_rs9923231_context",
+          "variant_label_or_id": "rs9923231",
+          "gene_label": "VKORC1",
+          "retain_downstream_from_tss_bp": 200,
+          "retain_upstream_beyond_variant_bp": 500,
+          "max_candidates": 5,
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json"
         }
       },
       {
@@ -93,19 +93,19 @@
       {
         "SetDisplayVisibility": {
           "target": "GeneFeatures",
-          "visible": false
+          "visible": true
         }
       },
       {
         "SetDisplayVisibility": {
           "target": "MrnaFeatures",
-          "visible": false
+          "visible": true
         }
       },
       {
         "SetDisplayVisibility": {
           "target": "Tfbs",
-          "visible": false
+          "visible": true
         }
       },
       {
@@ -133,28 +133,114 @@
         }
       },
       {
+        "SetLinearViewport": {
+          "start_bp": 2113,
+          "span_bp": 1388
+        }
+      },
+      {
         "RenderSequenceSvg": {
-          "seq_id": "vkorc1_rs9923231_luc_construct_preview",
+          "seq_id": "vkorc1_rs9923231_context",
+          "mode": "Linear",
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "vkorc1_rs9923231_context",
+          "from": 2412,
+          "to": 3501,
+          "output_id": "vkorc1_rs9923231_promoter_fragment"
+        }
+      },
+      {
+        "MaterializeVariantAllele": {
+          "input": "vkorc1_rs9923231_promoter_fragment",
+          "variant_label_or_id": "rs9923231",
+          "allele": "reference",
+          "output_id": "vkorc1_rs9923231_promoter_reference"
+        }
+      },
+      {
+        "MaterializeVariantAllele": {
+          "input": "vkorc1_rs9923231_promoter_fragment",
+          "variant_label_or_id": "rs9923231",
+          "allele": "alternate",
+          "output_id": "vkorc1_rs9923231_promoter_alternate"
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb",
+          "as_id": "gentle_mammalian_luciferase_backbone_v1"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "vkorc1_rs9923231_promoter_reference",
+            "gentle_mammalian_luciferase_backbone_v1"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "vkorc1_rs9923231_reporter_reference_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "vkorc1_rs9923231_reporter_reference_assembly_1",
+          "output_id": "vkorc1_rs9923231_reporter_reference"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "vkorc1_rs9923231_promoter_alternate",
+            "gentle_mammalian_luciferase_backbone_v1"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "vkorc1_rs9923231_reporter_alternate_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "vkorc1_rs9923231_reporter_alternate_assembly_1",
+          "output_id": "vkorc1_rs9923231_reporter_alternate"
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GeneFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MrnaFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Tfbs",
+          "visible": false
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_reporter_reference",
           "mode": "Circular",
-          "path": "docs/figures/vkorc1_rs9923231_tutorial_construct_preview.svg"
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg"
         }
       },
       {
-        "SetParameter": {
-          "name": "primer_design_backend",
-          "value": "internal"
-        }
-      },
-      {
-        "DesignPrimerPairs": {
-          "template": "vkorc1_rs9923231_luc_construct_preview",
-          "roi_start_0based": 900,
-          "roi_end_0based": 1300,
-          "min_amplicon_bp": 120,
-          "max_amplicon_bp": 700,
-          "max_tm_delta_c": 2.0,
-          "max_pairs": 48,
-          "report_id": "vkorc1_rs9923231_luc_junction_primers_v1"
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_reporter_alternate",
+          "mode": "Circular",
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg"
         }
       }
     ]

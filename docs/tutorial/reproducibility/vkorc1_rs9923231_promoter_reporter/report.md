@@ -1,66 +1,101 @@
 # VKORC1 / rs9923231 promoter-reporter handoff
 
-## Starting point from ClawBio
+## Interpretation coming from ClawBio
 
-ClawBio interprets a pharmacogenomic alert around warfarin sensitivity and
-`VKORC1 rs9923231`. The follow-up question taken into GENtle is regulatory:
-does a `VKORC1` promoter fragment containing `rs9923231` justify allele-matched
-reporter constructs for a human-cell assay?
+ClawBio interprets a pharmacogenomic alert around warfarin and `VKORC1
+rs9923231` and proposes a regulatory follow-up.
 
-## What GENtle is responsible for
+The narrow question handed to GENtle is:
 
-GENtle is used here for deterministic build/render work:
+> Is `rs9923231` promoter-proximal enough that it is worth building matched
+> promoter-reporter constructs for follow-up in human cells?
 
-- retrieve the `VKORC1` locus from a prepared GRCh38 reference,
-- make the reverse-strand promoter geometry explicit,
-- extract one reproducible promoter fragment with the SNP inside the insert,
-- import one mammalian luciferase reporter backbone,
-- preview one construct,
-- export one readable construct map.
+ClawBio is therefore responsible for:
 
-## Chosen design
+- the pharmacogenomic interpretation
+- the motivation for a regulatory assay
+- the choice to follow up in a human-cell luciferase reporter format
 
-- assembly: `GRCh38`
+## Deterministic build/render work done in GENtle
+
+GENtle is responsible for:
+
+- retrieving the prepared GRCh38 locus
+- deriving transcript-TSS-centered promoter windows
+- classifying the SNP as promoter-overlapping context
+- suggesting the reporter fragment
+- materializing matched reference and alternate inserts
+- loading a pinned local mammalian luciferase backbone
+- previewing reference and alternate reporter constructs
+- exporting reviewable artifacts
+
+## Chosen baseline design
+
 - prepared genome: `Human GRCh38 Ensembl 116`
+- context sequence id: `vkorc1_rs9923231_context`
 - variant: `rs9923231`
-- fetched context: `vkorc1_rs9923231_context` (`+/- 3000 bp`)
-- default promoter fragment: `chr16:31095780..31096868`
-- extracted insert id: `vkorc1_rs9923231_promoter_ref`
-- reporter backbone id: `promega_luciferase_ay738222`
-- construct preview id: `vkorc1_rs9923231_luc_construct_preview`
+- chosen gene: `VKORC1`
+- promoter window defaults:
+  - upstream = `1000 bp`
+  - downstream = `200 bp`
+- recommended promoter fragment interval:
+  - local `2412..3501`
+  - extracted id = `vkorc1_rs9923231_promoter_fragment`
+- matched inserts:
+  - `vkorc1_rs9923231_promoter_reference`
+  - `vkorc1_rs9923231_promoter_alternate`
+- pinned local backbone:
+  - `gentle_mammalian_luciferase_backbone_v1`
+- construct previews:
+  - `vkorc1_rs9923231_reporter_reference`
+  - `vkorc1_rs9923231_reporter_alternate`
+  - SVG export targets are defined by the workflow, but a clean live replay is
+    still required before those SVGs can be committed into this bundle
 
-## Biological assumptions
+## Why this backbone is appropriate for human-cell work
 
-- this is a human-cell regulatory assay story,
-- the baseline reporter is a promoterless mammalian luciferase backbone,
-- the promoter fragment keeps `rs9923231` inside the insert rather than at the
-  edge,
-- retaining about `200 bp` past the TSS is intentional and is meant to avoid a
-  cut exactly at the annotated TSS,
-- adenoviral delivery is not the baseline and would only be considered later if
-  transfection efficiency becomes the bottleneck.
+- it is a promoterless mammalian luciferase reporter architecture
+- it keeps the readout focused on promoter output rather than bacterial
+  protein-expression logic
+- it matches transient transfection planning in human cells
+- it gives the tutorial one pinned local backbone so the canonical handoff does
+  not depend on live GenBank retrieval
 
-## Non-goals
+## Important assumptions
 
-- no claim of wet-lab validation,
-- no direct claim that the construct alone proves warfarin response,
-- no bacterial-expression framing.
+- this is a human-cell regulatory assay story
+- this bundle stops at a reproducible design/handoff point
+- it does **not** claim wet-lab validation
+- it does **not** claim that the construct alone proves warfarin response
+- adenoviral delivery is deferred as a later escalation only if transfection
+  efficiency becomes the bottleneck
 
-## Deterministic replay material
+## Artifacts
 
-- tutorial page:
-  `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
-- workflow skeleton:
-  `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
+- tutorial:
+  [docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md)
+- workflow:
+  [docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json)
+- promoter-context JSON:
+  [variant_promoter_context.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json)
+- promoter-candidate JSON:
+  [promoter_reporter_candidates.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json)
+- promoter-context SVG:
+  [vkorc1_rs9923231_promoter_context.svg](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg)
+- expected reference construct SVG path after full replay:
+  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg`
+- expected alternate construct SVG path after full replay:
+  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg`
 - commands:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh`
+  [commands.sh](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh)
 - structured summary:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/result.json`
+  [result.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/result.json)
 
-## Bench-facing handoff
+## Bench-facing next actions
 
-The immediate next practical step is to build the reference construct exactly as
-documented here, then branch an alternate-allele construct with the same
-fragment geometry so promoter output can be compared without changing the
-insert boundaries.
-
+1. Build the reference and alternate inserts with identical boundaries.
+2. Keep the mammalian reporter backbone constant between alleles.
+3. Verify insert orientation and junction integrity.
+4. Choose one human cell model and a normalization control for the later assay.
+5. Treat warfarin exposure as a later experimental condition layered on top of
+   the finished promoter-reporter pair.

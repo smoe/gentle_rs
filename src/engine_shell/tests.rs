@@ -4006,6 +4006,58 @@ fn parse_features_tfbs_summary_with_context_filters() {
 }
 
 #[test]
+fn parse_variant_reporter_fragments_with_context_options() {
+    let cmd = parse_shell_line(
+        "variant reporter-fragments seq_a --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500 --max-candidates 3 --path out.json",
+    )
+    .expect("parse variant reporter-fragments");
+    match cmd {
+        ShellCommand::VariantReporterFragments {
+            seq_id,
+            variant_label_or_id,
+            gene_label,
+            transcript_id,
+            retain_downstream_from_tss_bp,
+            retain_upstream_beyond_variant_bp,
+            max_candidates,
+            path,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(variant_label_or_id.as_deref(), Some("rs9923231"));
+            assert_eq!(gene_label.as_deref(), Some("VKORC1"));
+            assert!(transcript_id.is_none());
+            assert_eq!(retain_downstream_from_tss_bp, 200);
+            assert_eq!(retain_upstream_beyond_variant_bp, 500);
+            assert_eq!(max_candidates, 3);
+            assert_eq!(path.as_deref(), Some("out.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_variant_materialize_allele_command() {
+    let cmd = parse_shell_line(
+        "variant materialize-allele seq_a --allele alternate --variant rs9923231 --output-id seq_alt",
+    )
+    .expect("parse variant materialize-allele");
+    match cmd {
+        ShellCommand::VariantMaterializeAllele {
+            seq_id,
+            variant_label_or_id,
+            allele,
+            output_id,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(variant_label_or_id.as_deref(), Some("rs9923231"));
+            assert_eq!(allele, VariantAlleleChoice::Alternate);
+            assert_eq!(output_id.as_deref(), Some("seq_alt"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_tracks_import_bed() {
     let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -8849,6 +8901,106 @@ fn execute_features_tfbs_summary_returns_grouped_counts_and_densities() {
     assert_eq!(
         run.output["rows"][0]["outside_focus_occurrences"].as_u64(),
         Some(1)
+    );
+}
+
+#[test]
+fn execute_variant_promoter_context_shell_command_returns_report_payload() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Complement(Box::new(Location::simple_range(2000, 2613))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(3000, 3001),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".to_string())),
+            ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("vkorc1_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::VariantPromoterContext {
+            seq_id: "vkorc1_demo".to_string(),
+            variant_label_or_id: Some("rs9923231".to_string()),
+            gene_label: Some("VKORC1".to_string()),
+            transcript_id: None,
+            promoter_upstream_bp: 1000,
+            promoter_downstream_bp: 200,
+            tfbs_focus_half_window_bp: 100,
+            path: None,
+        },
+    )
+    .expect("variant promoter-context");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.variant_promoter_context.v1")
+    );
+    assert_eq!(
+        run.output["report"]["promoter_overlap"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        run.output["report"]["chosen_gene_label"].as_str(),
+        Some("VKORC1")
+    );
+}
+
+#[test]
+fn execute_variant_materialize_allele_shell_command_creates_sequence() {
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsDemo".to_string())),
+            ("db_xref".into(), Some("dbSNP:rsDemo".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::VariantMaterializeAllele {
+            seq_id: "demo".to_string(),
+            variant_label_or_id: Some("rsDemo".to_string()),
+            allele: VariantAlleleChoice::Alternate,
+            output_id: Some("demo_alt".to_string()),
+        },
+    )
+    .expect("variant materialize-allele");
+
+    assert!(run.state_changed);
+    assert_eq!(
+        engine
+            .state()
+            .sequences
+            .get("demo_alt")
+            .expect("materialized sequence")
+            .get_forward_string(),
+        "ACAGT"
+    );
+    assert_eq!(
+        run.output["result"]["created_seq_ids"][0].as_str(),
+        Some("demo_alt")
     );
 }
 

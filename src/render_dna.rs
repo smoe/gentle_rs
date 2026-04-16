@@ -337,6 +337,17 @@ impl RenderDna {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
             "MRNA" => Color32::from_rgb(180, 100, 10),
+            "PROMOTER" => {
+                if feature.qualifier_values("gentle_generated").any(|value| {
+                    value
+                        .trim()
+                        .eq_ignore_ascii_case("annotate_promoter_windows")
+                }) {
+                    Color32::from_rgb(0, 146, 170)
+                } else {
+                    Color32::from_rgb(55, 132, 86)
+                }
+            }
             "VARIATION" => Color32::from_rgb(225, 127, 15),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
             "TRACK" => Color32::from_rgb(85, 85, 85),

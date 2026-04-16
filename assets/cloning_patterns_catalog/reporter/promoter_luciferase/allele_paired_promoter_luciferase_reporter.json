@@ -1,0 +1,77 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "allele_paired_promoter_luciferase_reporter",
+  "description": "Preview paired reference/alternate promoter-luciferase reporter constructs from matched promoter fragments and one promoterless mammalian luciferase backbone.",
+  "details_url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4288686/",
+  "parameters": [
+    {
+      "name": "reference_fragment_seq_id",
+      "required": true
+    },
+    {
+      "name": "alternate_fragment_seq_id",
+      "required": true
+    },
+    {
+      "name": "reporter_backbone_seq_id",
+      "required": true
+    },
+    {
+      "name": "overlap_bp",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "output_prefix",
+      "default_value": "promoter_reporter_pair",
+      "required": false
+    }
+  ],
+  "input_ports": [
+    {
+      "port_id": "reference_fragment_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Reference-allele promoter fragment."
+    },
+    {
+      "port_id": "alternate_fragment_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Alternate-allele promoter fragment with identical boundaries."
+    },
+    {
+      "port_id": "reporter_backbone_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Promoterless mammalian luciferase reporter backbone."
+    },
+    {
+      "port_id": "overlap_bp",
+      "kind": "number",
+      "required": true,
+      "cardinality": "one",
+      "description": "Reserved overlap-planning parameter kept stable for later assembly-method escalation."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "reference_construct_seq_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Reference promoter reporter preview sequence (${output_prefix}_reference_construct)."
+    },
+    {
+      "port_id": "alternate_construct_seq_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Alternate promoter reporter preview sequence (${output_prefix}_alternate_construct)."
+    }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${reference_fragment_seq_id}\",\"${reporter_backbone_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${output_prefix}_reference_assembly\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${output_prefix}_reference_assembly_1\",\"output_id\":\"${output_prefix}_reference_construct\"}}\nop {\"Ligation\":{\"inputs\":[\"${alternate_fragment_seq_id}\",\"${reporter_backbone_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${output_prefix}_alternate_assembly\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${output_prefix}_alternate_assembly_1\",\"output_id\":\"${output_prefix}_alternate_construct\"}}"
+}

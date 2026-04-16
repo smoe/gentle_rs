@@ -25224,6 +25224,346 @@ fn build_construct_reasoning_graph_derives_regulatory_variant_effect_and_assay_c
 }
 
 #[test]
+fn derive_promoter_window_records_support_reverse_and_forward_tss_geometry() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(5000)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(500, 900),
+        qualifiers: vec![
+            ("gene".into(), Some("TP53".to_string())),
+            ("transcript_id".into(), Some("ENSTTP53".to_string())),
+            ("label".into(), Some("TP53-201".to_string())),
+        ],
+    });
+    let engine = GentleEngine::from_state(ProjectState {
+        sequences: HashMap::from([("demo".to_string(), dna.clone())]),
+        ..ProjectState::default()
+    });
+
+    let reverse = engine.derive_promoter_window_records(
+        &dna,
+        Some("VKORC1"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::Transcript,
+    );
+    assert_eq!(reverse.len(), 1);
+    assert_eq!(reverse[0].strand, "-");
+    assert_eq!(reverse[0].tss_local_0based, 2612);
+    assert_eq!(reverse[0].start_0based, 2412);
+    assert_eq!(reverse[0].end_0based_exclusive, 3613);
+
+    let forward = engine.derive_promoter_window_records(
+        &dna,
+        Some("TP53"),
+        None,
+        1000,
+        200,
+        PromoterWindowCollapseMode::Transcript,
+    );
+    assert_eq!(forward.len(), 1);
+    assert_eq!(forward[0].strand, "+");
+    assert_eq!(forward[0].tss_local_0based, 500);
+    assert_eq!(forward[0].start_0based, 0);
+    assert_eq!(forward[0].end_0based_exclusive, 701);
+}
+
+#[test]
+fn summarize_variant_promoter_context_derives_promoter_candidate_from_transcript_tss() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![("label".into(), Some("VKORC1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(2995, 3004),
+        qualifiers: vec![("bound_moiety".into(), Some("SP1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3000, 3001),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".to_string())),
+            ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("T".to_string())),
+            ("vcf_variant_class".into(), Some("snv".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("vkorc1_demo".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_variant_promoter_context(
+            "vkorc1_demo",
+            Some("rs9923231"),
+            Some("VKORC1"),
+            None,
+            1000,
+            200,
+            100,
+        )
+        .expect("report");
+
+    assert_eq!(report.schema, VARIANT_PROMOTER_CONTEXT_SCHEMA);
+    assert!(report.promoter_overlap);
+    assert_eq!(report.signed_tss_distance_bp, Some(-388));
+    assert_eq!(report.chosen_gene_label.as_deref(), Some("VKORC1"));
+    assert_eq!(report.chosen_transcript_id.as_deref(), Some("ENSTVKORC1"));
+    assert!(
+        report
+            .effect_tags
+            .iter()
+            .any(|tag| tag == "promoter_variant_candidate")
+    );
+    assert!(
+        report
+            .suggested_assay_ids
+            .iter()
+            .any(|row| row == "allele_paired_promoter_luciferase_reporter")
+    );
+    assert_eq!(
+        report.tfbs_near_variant_status,
+        "tfbs_annotations_near_variant"
+    );
+    assert!(
+        report
+            .tfbs_region_summary
+            .as_ref()
+            .map(|summary| summary.rows.iter().any(|row| row.tf_name == "SP1"))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3000, 3001),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".to_string())),
+            ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("vkorc1_graph".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("vkorc1_graph", None, None)
+        .expect("graph");
+
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::Promoter
+            && row.evidence_class == EvidenceClass::ContextEvidence
+            && row
+                .context_tags
+                .iter()
+                .any(|tag| tag == ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG)
+    }));
+    let variant_effect = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_effect_context")
+        .expect("variant effect fact");
+    assert!(
+        variant_effect
+            .value_json
+            .get("effect_tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| row.as_str() == Some("promoter_variant_candidate")))
+            .unwrap_or(false)
+    );
+    let variant_assay = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "variant_assay_context")
+        .expect("variant assay fact");
+    assert!(
+        variant_assay
+            .value_json
+            .get("suggested_assay_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows
+                .iter()
+                .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn suggest_promoter_reporter_fragments_keeps_tss_context_and_sequence_beyond_variant() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(3000, 3001),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".to_string())),
+            ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
+            ),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("vkorc1_demo".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .suggest_promoter_reporter_fragments(
+            "vkorc1_demo",
+            Some("rs9923231"),
+            Some("VKORC1"),
+            None,
+            200,
+            500,
+            5,
+        )
+        .expect("candidate set");
+
+    assert_eq!(report.schema, PROMOTER_REPORTER_CANDIDATES_SCHEMA);
+    assert_eq!(
+        report.recommended_candidate_id,
+        report.candidates[0].candidate_id
+    );
+    assert_eq!(report.candidates[0].start_0based, 2412);
+    assert_eq!(report.candidates[0].end_0based_exclusive, 3501);
+    assert!(report.candidates[0].recommended);
+    assert!(report.candidates[0].promoter_overlap);
+}
+
+#[test]
+fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt() {
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsDemo".to_string())),
+            ("db_xref".into(), Some("dbSNP:rsDemo".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("variant_demo".to_string(), dna.clone());
+    let engine = GentleEngine::from_state(state);
+
+    let (_ref_id, reference) = engine
+        .materialize_variant_allele_sequence(
+            "variant_demo",
+            Some("rsDemo"),
+            VariantAlleleChoice::Reference,
+            Some("variant_demo_ref"),
+        )
+        .expect("reference allele");
+    assert_eq!(reference.get_forward_string(), "ACCGT");
+
+    let (_alt_id, alternate) = engine
+        .materialize_variant_allele_sequence(
+            "variant_demo",
+            Some("rsDemo"),
+            VariantAlleleChoice::Alternate,
+            Some("variant_demo_alt"),
+        )
+        .expect("alternate allele");
+    assert_eq!(alternate.get_forward_string(), "ACAGT");
+    assert!(
+        alternate.features()[0]
+            .qualifier_values("materialized_allele")
+            .any(|value| value == "alternate")
+    );
+
+    let mut multi = dna;
+    multi.features_mut()[0]
+        .qualifiers
+        .retain(|(key, _)| key != "vcf_alt");
+    multi.features_mut()[0]
+        .qualifiers
+        .push(("vcf_alt".into(), Some("A,G".to_string())));
+    let mut multi_state = ProjectState::default();
+    multi_state
+        .sequences
+        .insert("variant_multi".to_string(), multi);
+    let multi_engine = GentleEngine::from_state(multi_state);
+    let err = multi_engine
+        .materialize_variant_allele_sequence(
+            "variant_multi",
+            Some("rsDemo"),
+            VariantAlleleChoice::Alternate,
+            None,
+        )
+        .expect_err("multi-allelic alternate should fail");
+    assert!(err.message.contains("single alternate alleles"));
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_coding_variant_consequence_and_expression_assay() {
     let mut dna = DNAsequence::from_sequence("ATGGAATTT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

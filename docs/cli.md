@@ -1508,6 +1508,10 @@ Shared shell command:
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
+    - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
+    - `variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]`
+    - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
+    - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -2890,6 +2894,40 @@ The same summary is also available as a first-class JSON operation:
 ```json
 {"SummarizeTfbsRegion":{"seq_id":"vkorc1_rs9923231_context","focus_start_0based":2900,"focus_end_0based_exclusive":3100,"context_start_0based":0,"context_end_0based_exclusive":6001,"min_focus_occurrences":1,"min_context_occurrences":0,"limit":25}}
 ```
+
+Promoter-SNP follow-up commands for the VKORC1 / `rs9923231` handoff:
+
+```bash
+cargo run --quiet --bin gentle_cli -- \
+  variant annotate-promoters vkorc1_rs9923231_context \
+  --gene-label VKORC1 \
+  --upstream-bp 1000 \
+  --downstream-bp 200
+
+cargo run --quiet --bin gentle_cli -- \
+  variant promoter-context vkorc1_rs9923231_context \
+  --variant rs9923231 \
+  --gene-label VKORC1 \
+  --path docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json
+
+cargo run --quiet --bin gentle_cli -- \
+  variant reporter-fragments vkorc1_rs9923231_context \
+  --variant rs9923231 \
+  --gene-label VKORC1 \
+  --retain-downstream-from-tss-bp 200 \
+  --retain-upstream-beyond-variant-bp 500 \
+  --path docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json
+
+cargo run --quiet --bin gentle_cli -- \
+  variant materialize-allele vkorc1_rs9923231_promoter_fragment \
+  --variant rs9923231 \
+  --allele alternate \
+  --output-id vkorc1_rs9923231_promoter_alternate
+```
+
+These direct shell/CLI routes keep the promoter classification, fragment
+suggestion, and allele materialization on the same shared engine contracts used
+by operation JSON, workflows, and the updated tutorial path.
 
 Select one candidate in-silico (explicit provenance step):
 

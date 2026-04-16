@@ -42,10 +42,11 @@ use crate::{
         PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode,
         PlanningEstimate, PlanningObjective, PlanningProfile, PlanningProfileScope,
         PlanningSuggestionStatus, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, ProteinExternalOpinionSource,
-        ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal, RackAuthoringTemplate,
-        RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        PrimerDesignReport, PrimerDesignSideConstraint, ProjectState, PromoterWindowCollapseMode,
+        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
+        RestrictionCloningPcrHandoffMode,
         ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
@@ -57,8 +58,8 @@ use crate::{
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
         TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
-        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
+        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -1339,6 +1340,40 @@ pub enum ShellCommand {
     },
     FeaturesTfbsSummary {
         request: TfbsRegionSummaryRequest,
+    },
+    VariantAnnotatePromoterWindows {
+        seq_id: String,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        collapse_mode: PromoterWindowCollapseMode,
+    },
+    VariantPromoterContext {
+        seq_id: String,
+        variant_label_or_id: Option<String>,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        tfbs_focus_half_window_bp: usize,
+        path: Option<String>,
+    },
+    VariantReporterFragments {
+        seq_id: String,
+        variant_label_or_id: Option<String>,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        retain_downstream_from_tss_bp: usize,
+        retain_upstream_beyond_variant_bp: usize,
+        max_candidates: usize,
+        path: Option<String>,
+    },
+    VariantMaterializeAllele {
+        seq_id: String,
+        variant_label_or_id: Option<String>,
+        allele: VariantAlleleChoice,
+        output_id: Option<String>,
     },
     PrimersDesign {
         request_json: String,
@@ -6646,6 +6681,74 @@ impl ShellCommand {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "default".to_string()),
             ),
+            Self::VariantAnnotatePromoterWindows {
+                seq_id,
+                gene_label,
+                transcript_id,
+                upstream_bp,
+                downstream_bp,
+                collapse_mode,
+            } => format!(
+                "annotate promoter windows on '{}' (gene='{}', transcript='{}', upstream_bp={}, downstream_bp={}, collapse={})",
+                seq_id,
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                upstream_bp,
+                downstream_bp,
+                collapse_mode.as_str(),
+            ),
+            Self::VariantPromoterContext {
+                seq_id,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                tfbs_focus_half_window_bp,
+                path,
+            } => format!(
+                "summarize variant promoter context on '{}' (variant='{}', gene='{}', transcript='{}', promoter={}up/{}down, tfbs_focus_half_window_bp={}, path='{}')",
+                seq_id,
+                variant_label_or_id.as_deref().unwrap_or("auto"),
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                tfbs_focus_half_window_bp,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::VariantReporterFragments {
+                seq_id,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                max_candidates,
+                path,
+            } => format!(
+                "suggest promoter reporter fragments on '{}' (variant='{}', gene='{}', transcript='{}', retain_downstream_from_tss_bp={}, retain_upstream_beyond_variant_bp={}, max_candidates={}, path='{}')",
+                seq_id,
+                variant_label_or_id.as_deref().unwrap_or("auto"),
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                max_candidates,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::VariantMaterializeAllele {
+                seq_id,
+                variant_label_or_id,
+                allele,
+                output_id,
+            } => format!(
+                "materialize {} allele on '{}' (variant='{}', output_id='{}')",
+                allele.as_str(),
+                seq_id,
+                variant_label_or_id.as_deref().unwrap_or("auto"),
+                output_id.as_deref().unwrap_or("auto"),
+            ),
             Self::PrimersDesign {
                 request_json,
                 backend,
@@ -7578,6 +7681,8 @@ impl ShellCommand {
                 | Self::GuidesOligosGenerate { .. }
                 | Self::GuidesOligosExport { .. }
                 | Self::GuidesProtocolExport { .. }
+                | Self::VariantAnnotatePromoterWindows { .. }
+                | Self::VariantMaterializeAllele { .. }
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
@@ -10565,6 +10670,393 @@ fn parse_dbsnp_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_promoter_window_collapse_mode(raw: &str) -> Result<PromoterWindowCollapseMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "transcript" => Ok(PromoterWindowCollapseMode::Transcript),
+        "gene" => Ok(PromoterWindowCollapseMode::Gene),
+        other => Err(format!(
+            "Invalid promoter collapse mode '{other}' (expected transcript or gene)"
+        )),
+    }
+}
+
+fn parse_variant_allele_choice(raw: &str) -> Result<VariantAlleleChoice, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "reference" | "ref" => Ok(VariantAlleleChoice::Reference),
+        "alternate" | "alt" => Ok(VariantAlleleChoice::Alternate),
+        other => Err(format!(
+            "Invalid allele '{other}' (expected reference/ref or alternate/alt)"
+        )),
+    }
+}
+
+fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "variant requires a subcommand: annotate-promoters, promoter-context, reporter-fragments, materialize-allele"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "annotate-promoters" | "annotate-promoter-windows" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "variant annotate-promoters requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("variant annotate-promoters SEQ_ID must not be empty".to_string());
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut upstream_bp: usize = 1000;
+            let mut downstream_bp: usize = 200;
+            let mut collapse_mode = PromoterWindowCollapseMode::Transcript;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" => {
+                        gene_label = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene-label",
+                            "variant annotate-promoters",
+                        )?);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "variant annotate-promoters",
+                        )?);
+                    }
+                    "--upstream-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--upstream-bp",
+                            "variant annotate-promoters",
+                        )?;
+                        upstream_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --upstream-bp value '{raw}': {e}"))?;
+                    }
+                    "--downstream-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--downstream-bp",
+                            "variant annotate-promoters",
+                        )?;
+                        downstream_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --downstream-bp value '{raw}': {e}"))?;
+                    }
+                    "--collapse" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--collapse",
+                            "variant annotate-promoters",
+                        )?;
+                        collapse_mode = parse_promoter_window_collapse_mode(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for variant annotate-promoters"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::VariantAnnotatePromoterWindows {
+                seq_id,
+                gene_label,
+                transcript_id,
+                upstream_bp,
+                downstream_bp,
+                collapse_mode,
+            })
+        }
+        "promoter-context" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "variant promoter-context requires SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("variant promoter-context SEQ_ID must not be empty".to_string());
+            }
+            let mut variant_label_or_id: Option<String> = None;
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp: usize = 1000;
+            let mut promoter_downstream_bp: usize = 200;
+            let mut tfbs_focus_half_window_bp: usize = 100;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--variant" => {
+                        variant_label_or_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant",
+                            "variant promoter-context",
+                        )?);
+                    }
+                    "--gene-label" => {
+                        gene_label = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene-label",
+                            "variant promoter-context",
+                        )?);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "variant promoter-context",
+                        )?);
+                    }
+                    "--promoter-upstream-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--promoter-upstream-bp",
+                            "variant promoter-context",
+                        )?;
+                        promoter_upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --promoter-upstream-bp value '{raw}': {e}")
+                        })?;
+                    }
+                    "--promoter-downstream-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--promoter-downstream-bp",
+                            "variant promoter-context",
+                        )?;
+                        promoter_downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --promoter-downstream-bp value '{raw}': {e}")
+                        })?;
+                    }
+                    "--tfbs-focus-half-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tfbs-focus-half-window-bp",
+                            "variant promoter-context",
+                        )?;
+                        tfbs_focus_half_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --tfbs-focus-half-window-bp value '{raw}': {e}")
+                        })?;
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "variant promoter-context",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for variant promoter-context"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::VariantPromoterContext {
+                seq_id,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                tfbs_focus_half_window_bp,
+                path,
+            })
+        }
+        "reporter-fragments" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "variant reporter-fragments requires SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("variant reporter-fragments SEQ_ID must not be empty".to_string());
+            }
+            let mut variant_label_or_id: Option<String> = None;
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut retain_downstream_from_tss_bp: usize = 200;
+            let mut retain_upstream_beyond_variant_bp: usize = 500;
+            let mut max_candidates: usize = 5;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--variant" => {
+                        variant_label_or_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant",
+                            "variant reporter-fragments",
+                        )?);
+                    }
+                    "--gene-label" => {
+                        gene_label = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene-label",
+                            "variant reporter-fragments",
+                        )?);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "variant reporter-fragments",
+                        )?);
+                    }
+                    "--retain-downstream-from-tss-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--retain-downstream-from-tss-bp",
+                            "variant reporter-fragments",
+                        )?;
+                        retain_downstream_from_tss_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --retain-downstream-from-tss-bp value '{raw}': {e}")
+                        })?;
+                    }
+                    "--retain-upstream-beyond-variant-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--retain-upstream-beyond-variant-bp",
+                            "variant reporter-fragments",
+                        )?;
+                        retain_upstream_beyond_variant_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --retain-upstream-beyond-variant-bp value '{raw}': {e}"
+                            )
+                        })?;
+                    }
+                    "--max-candidates" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-candidates",
+                            "variant reporter-fragments",
+                        )?;
+                        max_candidates = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-candidates value '{raw}': {e}"))?;
+                        if max_candidates == 0 {
+                            return Err("--max-candidates must be >= 1".to_string());
+                        }
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "variant reporter-fragments",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for variant reporter-fragments"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::VariantReporterFragments {
+                seq_id,
+                variant_label_or_id,
+                gene_label,
+                transcript_id,
+                retain_downstream_from_tss_bp,
+                retain_upstream_beyond_variant_bp,
+                max_candidates,
+                path,
+            })
+        }
+        "materialize-allele" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "variant materialize-allele requires SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("variant materialize-allele SEQ_ID must not be empty".to_string());
+            }
+            let mut variant_label_or_id: Option<String> = None;
+            let mut allele: Option<VariantAlleleChoice> = None;
+            let mut output_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--variant" => {
+                        variant_label_or_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--variant",
+                            "variant materialize-allele",
+                        )?);
+                    }
+                    "--allele" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--allele",
+                            "variant materialize-allele",
+                        )?;
+                        allele = Some(parse_variant_allele_choice(&raw)?);
+                    }
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            "variant materialize-allele",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for variant materialize-allele"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::VariantMaterializeAllele {
+                seq_id,
+                variant_label_or_id,
+                allele: allele.ok_or_else(|| {
+                    "variant materialize-allele requires --allele reference|alternate".to_string()
+                })?,
+                output_id,
+            })
+        }
+        other => Err(format!(
+            "Unknown variant subcommand '{other}' (expected annotate-promoters, promoter-context, reporter-fragments, or materialize-allele)"
+        )),
+    }
+}
+
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -13290,6 +13782,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "panels" => parse_panels_command(tokens),
         "genbank" => parse_genbank_command(tokens),
         "dbsnp" => parse_dbsnp_command(tokens),
+        "variant" => parse_variant_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
         "ensembl-protein" | "ensembl_protein" => parse_ensembl_protein_command(tokens),
         "macros" => parse_macros_command(tokens),
@@ -18198,6 +18691,108 @@ fn execute_sequence_analysis_command(
                     .map_err(|e| format!("Could not serialize TFBS region summary: {e}"))?,
             })
         }
+        ShellCommand::VariantAnnotatePromoterWindows {
+            seq_id,
+            gene_label,
+            transcript_id,
+            upstream_bp,
+            downstream_bp,
+            collapse_mode,
+        } => {
+            let op_result = engine
+                .apply(Operation::AnnotatePromoterWindows {
+                    input: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    collapse_mode: *collapse_mode,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::VariantPromoterContext {
+            seq_id,
+            variant_label_or_id,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            tfbs_focus_half_window_bp,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeVariantPromoterContext {
+                    input: seq_id.clone(),
+                    variant_label_or_id: variant_label_or_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    promoter_upstream_bp: *promoter_upstream_bp,
+                    promoter_downstream_bp: *promoter_downstream_bp,
+                    tfbs_focus_half_window_bp: *tfbs_focus_half_window_bp,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": op_result.variant_promoter_context,
+                }),
+            })
+        }
+        ShellCommand::VariantReporterFragments {
+            seq_id,
+            variant_label_or_id,
+            gene_label,
+            transcript_id,
+            retain_downstream_from_tss_bp,
+            retain_upstream_beyond_variant_bp,
+            max_candidates,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SuggestPromoterReporterFragments {
+                    input: seq_id.clone(),
+                    variant_label_or_id: variant_label_or_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    retain_downstream_from_tss_bp: *retain_downstream_from_tss_bp,
+                    retain_upstream_beyond_variant_bp: *retain_upstream_beyond_variant_bp,
+                    max_candidates: *max_candidates,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "candidates": op_result.promoter_reporter_candidates,
+                }),
+            })
+        }
+        ShellCommand::VariantMaterializeAllele {
+            seq_id,
+            variant_label_or_id,
+            allele,
+            output_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeVariantAllele {
+                    input: seq_id.clone(),
+                    variant_label_or_id: variant_label_or_id.clone(),
+                    allele: *allele,
+                    output_id: output_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::DotplotCompute {
             seq_id,
             reference_seq_id,
@@ -19887,6 +20482,10 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
+            | ShellCommand::VariantAnnotatePromoterWindows { .. }
+            | ShellCommand::VariantPromoterContext { .. }
+            | ShellCommand::VariantReporterFragments { .. }
+            | ShellCommand::VariantMaterializeAllele { .. }
             | ShellCommand::DotplotCompute { .. }
             | ShellCommand::DotplotOverlayCompute { .. }
             | ShellCommand::DotplotList { .. }
@@ -22128,6 +22727,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
+        | ShellCommand::VariantAnnotatePromoterWindows { .. }
+        | ShellCommand::VariantPromoterContext { .. }
+        | ShellCommand::VariantReporterFragments { .. }
+        | ShellCommand::VariantMaterializeAllele { .. }
         | ShellCommand::DotplotCompute { .. }
         | ShellCommand::DotplotOverlayCompute { .. }
         | ShellCommand::DotplotList { .. }

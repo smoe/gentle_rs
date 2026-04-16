@@ -1061,6 +1061,30 @@ Sequencing-trace evidence notes:
 - `Branch { input, output_id? }`
 - `SetDisplayVisibility { target, visible }`
 - `SetLinearViewport { start_bp, span_bp }`
+- `AnnotatePromoterWindows { input, gene_label?, transcript_id?, upstream_bp=1000, downstream_bp=200, collapse_mode=transcript|gene }`
+  - derives strand-aware promoter windows from transcript TSS geometry
+  - writes them back as ordinary `promoter` features with explicit generated
+    qualifiers (`generated_by`, `promoter_source`, `gene`, `transcript_id`,
+    `upstream_bp`, `downstream_bp`)
+  - generated promoter windows render distinctly from imported promoter
+    features
+- `SummarizeVariantPromoterContext { input, variant_label_or_id?, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, tfbs_focus_half_window_bp=100, path? }`
+  - emits portable record schema `gentle.variant_promoter_context.v1`
+  - reports chosen gene/transcript, promoter overlap, signed TSS distance,
+    transcript ambiguity status, overlapping evidence rows, effect tags, and
+    suggested assay ids
+  - reuses TFBS summary logic for the `variant ± half_window` neighborhood when
+    TFBS features are already present
+- `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, path? }`
+  - emits portable record schema `gentle.promoter_reporter_candidates.v1`
+  - ranks transcript-aware, strand-aware promoter fragment candidates and marks
+    one deterministic default recommendation
+- `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`
+  - phase-1 scope is single-nucleotide variants only
+  - rejects indels, multi-allelic variants, or variants without explicit
+    ref/alt qualifiers
+  - preserves the variant feature on the derived output while marking the
+    materialized allele
 - `SetTopology { seq_id, circular }`
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)

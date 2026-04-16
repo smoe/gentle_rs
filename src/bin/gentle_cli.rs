@@ -645,6 +645,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
   gentle_cli [--state PATH|--project PATH] features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
   gentle_cli [--state PATH|--project PATH] features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]\n\n  \
+  gentle_cli [--state PATH|--project PATH] variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]\n  \
+  gentle_cli [--state PATH|--project PATH] variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]\n  \
+  gentle_cli [--state PATH|--project PATH] variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]\n  \
+  gentle_cli [--state PATH|--project PATH] variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]\n\n  \
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
@@ -732,6 +736,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "tracks",
     "genbank",
     "dbsnp",
+    "variant",
     "uniprot",
     "screenshot-window",
     "inspect-feature-expert",
@@ -3309,6 +3314,7 @@ fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gentle::dna_sequence::DNAsequence;
     use gentle::test_support::{
         demo_jaspar_pfm_text, demo_rebase_withrefm_text, write_demo_jaspar_pfm,
         write_demo_pool_json, write_demo_rebase_withrefm, write_demo_workflow_json,
@@ -3675,6 +3681,21 @@ mod tests {
         assert!(matches!(
             features_export_bed,
             ShellCommand::FeaturesExportBed { .. }
+        ));
+
+        let variant_promoter_context = parse_shell_tokens(&[
+            "variant".to_string(),
+            "promoter-context".to_string(),
+            "seq_a".to_string(),
+            "--variant".to_string(),
+            "rs9923231".to_string(),
+            "--gene-label".to_string(),
+            "VKORC1".to_string(),
+        ])
+        .expect("parse variant promoter-context");
+        assert!(matches!(
+            variant_promoter_context,
+            ShellCommand::VariantPromoterContext { .. }
         ));
 
         let ui_open = parse_shell_tokens(&[
@@ -4304,6 +4325,57 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>()
         );
         assert!(forwarded_state.sequences.contains_key("rs123_fetch"));
+    }
+
+    #[test]
+    fn test_forwarded_variant_materialize_allele_dispatch_matches_shared_shell_execution() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(2, 3),
+            qualifiers: vec![
+                ("label".into(), Some("rsDemo".to_string())),
+                ("db_xref".into(), Some("dbSNP:rsDemo".to_string())),
+                ("vcf_ref".into(), Some("C".to_string())),
+                ("vcf_alt".into(), Some("A".to_string())),
+            ],
+        });
+        state.sequences.insert("demo".to_string(), dna);
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "variant".to_string(),
+            "materialize-allele".to_string(),
+            "demo".to_string(),
+            "--allele".to_string(),
+            "alternate".to_string(),
+            "--variant".to_string(),
+            "rsDemo".to_string(),
+            "--output-id".to_string(),
+            "demo_alt".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(state.clone(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(state, shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .get("demo_alt")
+                .expect("forwarded demo_alt")
+                .get_forward_string(),
+            shared_state
+                .sequences
+                .get("demo_alt")
+                .expect("shared demo_alt")
+                .get_forward_string()
+        );
     }
 
     #[test]

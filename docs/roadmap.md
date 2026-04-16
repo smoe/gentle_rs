@@ -905,6 +905,23 @@ order. Durable architecture constraints and decisions remain in
         `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/`
         (`report.md`, `result.json`, `commands.sh`) so the handoff can be
         shown, replayed, and discussed without re-reading the full page
+      - phase-1 promoter-SNP-to-luciferase engine baseline is now in place:
+        - `AnnotatePromoterWindows`
+        - `SummarizeVariantPromoterContext`
+        - `SuggestPromoterReporterFragments`
+        - `MaterializeVariantAllele`
+      - these now support the shared `variant ...` shell/CLI family:
+        - `variant annotate-promoters`
+        - `variant promoter-context`
+        - `variant reporter-fragments`
+        - `variant materialize-allele`
+      - the canonical VKORC1 tutorial/workflow now uses a pinned local
+        mammalian luciferase backbone
+        (`data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb`)
+        instead of requiring live `AY738222` retrieval on the main path
+      - a shared workflow macro template now exists for paired reporter
+        previews:
+        `assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json`
       - a second, separate ClawBio-motivated tutorial is now reserved as a
         follow-on planning track:
         `docs/tutorial/vkorc1_warfarin_factorx_followup_planning.md`
@@ -922,6 +939,15 @@ order. Durable architecture constraints and decisions remain in
         accession-only transcript labels are demoted in favor of gene-style
         names when possible, and nearby duplicate labels are compacted for
         cleaner figure output
+      - remaining gap on this track:
+        - a dedicated GUI `Variant Follow-up Expert` still needs to be added so
+          the promoter-context summary, transcript choice, recommended fragment,
+          and allele-paired reporter preview can be driven from a variation
+          feature without dropping into generic `Engine Ops`
+        - the promoter-context JSON/SVG side of the reproducibility bundle is
+          now live and replay-verified, but the final paired reporter SVGs still
+          need one clean end-to-end workflow smoke test before they can be
+          committed as in-tree artifacts
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

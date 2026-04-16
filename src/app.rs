@@ -14915,6 +14915,8 @@ Error: `{err}`"
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                variant_promoter_context: None,
+                promoter_reporter_candidates: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -50188,6 +50190,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                variant_promoter_context: None,
+                promoter_reporter_candidates: None,
             }),
         })
         .expect("send prepare done");
@@ -50250,6 +50254,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                variant_promoter_context: None,
+                promoter_reporter_candidates: None,
             }),
         })
         .expect("send track import done");
@@ -50297,6 +50303,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                variant_promoter_context: None,
+                promoter_reporter_candidates: None,
             }),
         })
         .expect("send track import done");
@@ -50349,6 +50357,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

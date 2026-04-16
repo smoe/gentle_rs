@@ -1,0 +1,98 @@
+LOCUS       GENTLE_MAMMALIAN_LUCIFERASE_V1 3301 bp    DNA     circular SYN 16-APR-2026
+DEFINITION  Synthetic promoterless mammalian luciferase reporter backbone
+            for deterministic VKORC1/rs9923231 tutorial handoff.
+ACCESSION   GENTLE_MAMMALIAN_LUCIFERASE_V1
+VERSION     GENTLE_MAMMALIAN_LUCIFERASE_V1.1
+KEYWORDS    synthetic construct; mammalian reporter; luciferase; tutorial.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+COMMENT     Pinned local tutorial backbone for offline ClawBio->GENtle
+            promoter-reporter planning. This is a synthetic, tutorial-owned
+            promoterless mammalian luciferase reporter architecture chosen
+            so the canonical rs9923231 demo does not depend on live GenBank
+            retrieval. It is intended for deterministic construct building,
+            rendering, and documentation rather than as an exact deposited
+            plasmid sequence. The intended assay class is transient
+            transfection in human cells.
+FEATURES             Location/Qualifiers
+     source          1..3301
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     misc_feature    1..160
+                     /label="promoterless_insertion_site"
+                     /note="Synthetic promoterless insertion site for the offline VKORC1 luciferase tutorial backbone. Insert promoter fragments upstream of luc2 for mammalian transient-transfection reporter planning."
+     CDS             161..1816
+                     /gene="luc2"
+                     /product="luciferase 2"
+                     /label="luc2"
+                     /note="Synthetic luciferase reporter CDS placeholder for deterministic map rendering; backbone architecture is tutorial-focused rather than sequence-exact to a deposited plasmid."
+     misc_feature    1840..1948
+                     /label="SV40 polyA"
+                     /note="Synthetic polyadenylation feature placeholder for mammalian reporter planning."
+     CDS             complement(2020..2880)
+                     /gene="bla"
+                     /product="beta-lactamase"
+                     /label="bla"
+                     /note="Synthetic bacterial selection marker retained only as a plasmid maintenance feature."
+     rep_origin      2960..3301
+                     /label="ColE1 ori"
+                     /note="Synthetic plasmid origin placeholder for deterministic circular map export."
+ORIGIN
+        1 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+       61 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+      121 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+      181 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+      241 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+      301 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+      361 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+      421 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+      481 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+      541 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+      601 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+      661 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+      721 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+      781 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+      841 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+      901 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+      961 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     1021 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     1081 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     1141 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     1201 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     1261 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     1321 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     1381 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     1441 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     1501 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     1561 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     1621 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     1681 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     1741 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     1801 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     1861 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     1921 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     1981 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     2041 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     2101 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     2161 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     2221 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     2281 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     2341 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     2401 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     2461 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     2521 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     2581 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     2641 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     2701 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     2761 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     2821 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     2881 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     2941 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     3001 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     3061 tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc ctgaacgttg caatgcctga
+     3121 acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca atgcctgaac gttgcaatgc
+     3181 ctgaacgttg caatgcctga acgttgcaat gcctgaacgt tgcaatgcct gaacgttgca
+     3241 atgcctgaac gttgcaatgc ctgaacgttg caatgcctga acgttgcaat gcctgaacgt
+     3301 t
+//

@@ -822,6 +822,64 @@
          "usage": "dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]"
       },
       {
+         "aliases": [
+            "variant annotate-promoter-windows"
+         ],
+         "engine_operations": [
+            "AnnotatePromoterWindows"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant annotate-promoters",
+         "summary": "Derive transcript-TSS-centered promoter windows and write them back as generated promoter features.",
+         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeVariantPromoterContext"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant promoter-context",
+         "summary": "Summarize whether one variant lies in promoter context, including chosen gene/transcript, signed TSS distance, and suggested assay family.",
+         "usage": "variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SuggestPromoterReporterFragments"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant reporter-fragments",
+         "summary": "Rank deterministic promoter-reporter fragment candidates around one promoter-proximal variant.",
+         "usage": "variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeVariantAllele"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant materialize-allele",
+         "summary": "Create one reference or alternate single-allele sequence from a promoter fragment carrying a single-nucleotide variant.",
+         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "FetchUniprotSwissProt"

@@ -28,3 +28,4 @@ Current family examples in this hierarchical catalog:
 - `pcr/.../pcr_site_insertion_then_digest.json`
 - `crispr/...` guide candidate/oligo workflows
 - `sequence/.../branch_reverse_complement.json`
+- `reporter/.../allele_paired_promoter_luciferase_reporter.json`
