@@ -1092,21 +1092,23 @@ mod tests {
             DotplotView, EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
             GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
-            PrimerDesignSideConstraint, ProjectState, ProtocolCartoonPreviewTelemetry,
-            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-            RnaReadInterpretationProfile, RnaReadInterpretationReport,
-            RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
-            RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-            RnaReadSeedFilterConfig, SequenceAlignmentReport, SequencingConfirmationReadResult,
+            PrimerDesignSideConstraint, ProjectState, PromoterReporterCandidateSet,
+            ProtocolCartoonPreviewTelemetry, RestrictionCloningPcrHandoffMode,
+            RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+            RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
+            RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
+            RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
+            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
+            RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
+            SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
             SequencingConfirmationReport, SequencingConfirmationStatus,
             SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
             SequencingConfirmationVariantRow, SequencingPrimerOrientation,
             SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
             SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
             SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
-            SplicingScopePreset, parse_required_usize_or_formula_text_on_sequence,
+            SplicingScopePreset, VariantPromoterContextReport,
+            parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -7033,6 +7035,133 @@ mod tests {
 
         assert!(area.feature_supports_variant_followup(0));
         assert!(!area.feature_supports_variant_followup(1));
+    }
+
+    #[test]
+    fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
+        let dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
+        area.variant_followup_ui.source_seq_id = "vkorc1_context".to_string();
+        area.variant_followup_ui.variant_label_or_id = "rs9923231".to_string();
+        area.variant_followup_ui.gene_label = "VKORC1".to_string();
+        area.variant_followup_ui.fragment_output_id = "vkorc1_fragment".to_string();
+        area.variant_followup_ui.reference_output_id = "vkorc1_reference".to_string();
+        area.variant_followup_ui.alternate_output_id = "vkorc1_alternate".to_string();
+        area.variant_followup_ui.reporter_backbone_seq_id =
+            "gentle_mammalian_luciferase_backbone_v1".to_string();
+        area.variant_followup_ui.reporter_backbone_path =
+            "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string();
+        let artifacts = area.variant_followup_bundle_artifacts(
+            "vkorc1_reporter_reference",
+            "vkorc1_reporter_alternate",
+        );
+        let report = VariantPromoterContextReport {
+            schema: "gentle.variant_promoter_context.v1".to_string(),
+            seq_id: "vkorc1_context".to_string(),
+            sequence_length_bp: 6001,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            variant_label: "rs9923231".to_string(),
+            variant_feature_id: Some(0),
+            variant_start_0based: 3000,
+            variant_end_0based_exclusive: 3001,
+            variant_class: Some("snv".to_string()),
+            genomic_ref: Some("C".to_string()),
+            genomic_alt: Some("T".to_string()),
+            genome_anchor: Some(SequenceGenomeAnchorSummary {
+                seq_id: "vkorc1_context".to_string(),
+                genome_id: "Human GRCh38 Ensembl 116".to_string(),
+                chromosome: "16".to_string(),
+                start_1based: 31093368,
+                end_1based: 31099368,
+                strand: Some('+'),
+                anchor_verified: Some(true),
+            }),
+            chosen_gene_label: Some("VKORC1".to_string()),
+            chosen_transcript_id: Some("ENST_TEST".to_string()),
+            chosen_transcript_label: Some("VKORC1-201".to_string()),
+            transcript_ambiguity_status: "resolved".to_string(),
+            promoter_upstream_bp: 1000,
+            promoter_downstream_bp: 200,
+            promoter_overlap: true,
+            signed_tss_distance_bp: Some(-88),
+            overlapping_gene_labels: vec!["VKORC1".to_string()],
+            overlapping_transcript_labels: vec!["VKORC1-201".to_string()],
+            overlapping_promoter_labels: vec!["VKORC1 promoter".to_string()],
+            overlapping_tfbs_labels: vec!["SP1".to_string()],
+            overlapping_evidence: vec![],
+            promoter_windows_considered: vec![],
+            effect_tags: vec!["promoter_variant_candidate".to_string()],
+            suggested_assay_ids: vec!["allele_paired_promoter_luciferase_reporter".to_string()],
+            tfbs_focus_half_window_bp: 100,
+            tfbs_near_variant_status: "annotations_present".to_string(),
+            tfbs_region_summary: None,
+            rationale: "Variant falls into the derived promoter window.".to_string(),
+        };
+        let candidates = PromoterReporterCandidateSet {
+            schema: "gentle.promoter_reporter_candidates.v1".to_string(),
+            seq_id: "vkorc1_context".to_string(),
+            sequence_length_bp: 6001,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            variant_label: "rs9923231".to_string(),
+            chosen_gene_label: Some("VKORC1".to_string()),
+            chosen_transcript_id: Some("ENST_TEST".to_string()),
+            chosen_transcript_label: Some("VKORC1-201".to_string()),
+            transcript_ambiguity_status: "resolved".to_string(),
+            retain_downstream_from_tss_bp: 200,
+            retain_upstream_beyond_variant_bp: 500,
+            max_candidates: 5,
+            recommended_candidate_id: "cand-1".to_string(),
+            suggested_assay_ids: vec!["allele_paired_promoter_luciferase_reporter".to_string()],
+            candidates: vec![],
+        };
+        let recommended = crate::engine::PromoterReporterFragmentCandidate {
+            candidate_id: "cand-1".to_string(),
+            gene_label: Some("VKORC1".to_string()),
+            transcript_id: "ENST_TEST".to_string(),
+            transcript_label: "VKORC1-201".to_string(),
+            strand: "-".to_string(),
+            tss_local_0based: 2412,
+            variant_start_0based: 3000,
+            variant_end_0based_exclusive: 3001,
+            start_0based: 2412,
+            end_0based_exclusive: 3501,
+            length_bp: 1089,
+            retain_downstream_from_tss_bp: 200,
+            retain_upstream_beyond_variant_bp: 500,
+            promoter_overlap: true,
+            signed_tss_distance_bp: -88,
+            rank: 1,
+            recommended: true,
+            rationale: "Top-ranked reverse-strand promoter fragment".to_string(),
+        };
+
+        let result = area.build_variant_followup_handoff_result_json(
+            &artifacts,
+            &report,
+            &candidates,
+            &recommended,
+            "vkorc1_reporter_reference",
+            "vkorc1_reporter_alternate",
+        );
+
+        assert_eq!(result["schema"].as_str(), Some("gentle.clawbio_handoff.v2"));
+        assert_eq!(
+            result["artifacts"]["promoter_context_svg"].as_str(),
+            Some(artifacts.promoter_context_svg.as_str())
+        );
+        assert_eq!(
+            result["design"]["construct_previews"]["reference"]["svg_path"].as_str(),
+            Some(artifacts.reference_reporter_svg.as_str())
+        );
+        assert_eq!(
+            result["design"]["construct_previews"]["alternate"]["svg_path"].as_str(),
+            Some(artifacts.alternate_reporter_svg.as_str())
+        );
     }
 
     #[test]

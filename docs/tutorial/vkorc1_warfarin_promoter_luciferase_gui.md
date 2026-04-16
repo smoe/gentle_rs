@@ -342,13 +342,28 @@ cargo run --quiet --bin gentle_cli -- \
 
 ## Step 7: Export Reviewable Artifacts
 
-The current baseline bundle contains:
+GUI:
+
+1. stay in `Variant Follow-up`
+2. click `Export handoff bundle`
+3. choose a parent folder
+4. GENtle creates one bundle directory containing:
+   - promoter-context JSON
+   - promoter-candidate JSON
+   - promoter-context SVG
+   - reference construct SVG
+   - alternate construct SVG
+   - `report.md`
+   - `result.json`
+   - `commands.sh`
+
+The current baseline bundle format contains:
 
 - promoter-context JSON
 - promoter-reporter candidate JSON
 - one promoter-context SVG
-- planned reference construct SVG target
-- planned alternate construct SVG target
+- one reference construct SVG
+- one alternate construct SVG
 - report + result + commands
 
 Workflow replay:
@@ -362,15 +377,13 @@ Key output files:
 
 - promoter-context SVG:
   [vkorc1_rs9923231_promoter_context.svg](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg)
-- expected reference construct SVG path after full replay:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg`
-- expected alternate construct SVG path after full replay:
-  `docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg`
+- reference construct SVG path:
+  `vkorc1_rs9923231_reporter_reference.svg`
+- alternate construct SVG path:
+  `vkorc1_rs9923231_reporter_alternate.svg`
 
-At the moment, the promoter-context half of the workflow is committed and
-replay-verified in-tree. The paired construct SVG targets are still owned by
-the same shared workflow, but they need one clean end-to-end smoke run before
-they can be committed alongside the rest of the bundle.
+The GUI expert now writes this bundle directly. The offline workflow remains
+useful as the parity/replay path for the same story.
 
 ## Reproducibility Bundle
 

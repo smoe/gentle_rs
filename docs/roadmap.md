@@ -973,13 +973,13 @@ order. Durable architecture constraints and decisions remain in
           operations without dropping into generic `Engine Ops`
         - it keeps the source context sequence pinned even if the active DNA
           window later switches to derived fragment or reporter products
+        - it now also exports a portable handoff bundle directly from the GUI:
+          promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
+          SVG previews, `report.md`, `result.json`, and replay `commands.sh`
       - remaining gap on this track:
-        - the GUI expert still stops at preview/build actions; one explicit
-          `Export handoff bundle` path would complete the planned surface
-        - the promoter-context JSON/SVG side of the reproducibility bundle is
-          now live and replay-verified, but the final paired reporter SVGs still
-          need one clean end-to-end workflow smoke test before they can be
-          committed as in-tree artifacts
+        - do one clean manual GUI smoke run through the new export path so the
+          paired reporter SVGs are click-verified in the intended ClawBio demo
+          flow, not only code/controller verified
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

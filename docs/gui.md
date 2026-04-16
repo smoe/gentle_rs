@@ -3594,6 +3594,15 @@ Tutorial projects:
     `SuggestPromoterReporterFragments`, `ExtractRegion`,
     `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and `Branch`
     operations without dropping into generic `Engine Ops`.
+  - the same expert now also exposes `Export handoff bundle`, which writes a
+    portable ClawBio-facing bundle containing:
+    - promoter-context JSON
+    - promoter-candidate JSON
+    - promoter-context SVG
+    - paired reporter SVG previews
+    - `report.md`
+    - `result.json`
+    - `commands.sh`
   - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
     keeps `rs9923231` inside the cloned insert instead of on its edge.
   - the preferred community-facing opener for that story is the

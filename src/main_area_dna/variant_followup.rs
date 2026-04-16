@@ -6,6 +6,19 @@
 
 use super::*;
 
+#[derive(Clone, Debug)]
+pub(super) struct VariantFollowupBundleArtifacts {
+    pub(super) bundle_id: String,
+    pub(super) variant_promoter_context_json: String,
+    pub(super) promoter_reporter_candidates_json: String,
+    pub(super) promoter_context_svg: String,
+    pub(super) reference_reporter_svg: String,
+    pub(super) alternate_reporter_svg: String,
+    pub(super) report_md: String,
+    pub(super) result_json: String,
+    pub(super) commands_sh: String,
+}
+
 impl MainAreaDna {
     pub(super) fn feature_kind_supports_variant_followup(kind_upper: &str) -> bool {
         kind_upper == "VARIATION"
@@ -221,6 +234,75 @@ impl MainAreaDna {
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     }
 
+    fn variant_followup_bundle_stem(&self) -> String {
+        let gene = Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label)
+            .map(|value| Self::sanitize_export_name_component(&value, "gene"))
+            .unwrap_or_else(|| "gene".to_string());
+        let variant = Self::sanitize_export_name_component(
+            &self.variant_followup_ui.variant_label_or_id,
+            "variant",
+        );
+        format!("{gene}_{variant}")
+    }
+
+    pub(super) fn variant_followup_bundle_artifacts(
+        &self,
+        reference_reporter_seq_id: &str,
+        alternate_reporter_seq_id: &str,
+    ) -> VariantFollowupBundleArtifacts {
+        let stem = self.variant_followup_bundle_stem();
+        VariantFollowupBundleArtifacts {
+            bundle_id: format!("{stem}_promoter_reporter_handoff"),
+            variant_promoter_context_json: "variant_promoter_context.json".to_string(),
+            promoter_reporter_candidates_json: "promoter_reporter_candidates.json".to_string(),
+            promoter_context_svg: format!("{stem}_promoter_context.svg"),
+            reference_reporter_svg: format!(
+                "{}.svg",
+                Self::sanitize_export_name_component(
+                    reference_reporter_seq_id,
+                    "reporter_reference"
+                )
+            ),
+            alternate_reporter_svg: format!(
+                "{}.svg",
+                Self::sanitize_export_name_component(
+                    alternate_reporter_seq_id,
+                    "reporter_alternate"
+                )
+            ),
+            report_md: "report.md".to_string(),
+            result_json: "result.json".to_string(),
+            commands_sh: "commands.sh".to_string(),
+        }
+    }
+
+    fn variant_followup_context_viewport(
+        &self,
+        sequence_length_bp: usize,
+    ) -> Option<(usize, usize)> {
+        if sequence_length_bp == 0 {
+            return None;
+        }
+        if let Ok(candidate) = self.variant_followup_recommended_candidate() {
+            return Some((candidate.start_0based, candidate.length_bp.max(1)));
+        }
+        self.variant_followup_ui
+            .cached_report
+            .as_ref()
+            .map(|report| {
+                let flank = report.tfbs_focus_half_window_bp.max(200);
+                let start = report.variant_start_0based.saturating_sub(flank);
+                let end = report
+                    .variant_end_0based_exclusive
+                    .saturating_add(flank)
+                    .min(sequence_length_bp);
+                (
+                    start.min(sequence_length_bp.saturating_sub(1)),
+                    end.saturating_sub(start).max(1),
+                )
+            })
+    }
+
     fn variant_followup_apply_report_defaults(&mut self, report: &VariantPromoterContextReport) {
         if self.variant_followup_ui.gene_label.trim().is_empty() {
             if let Some(gene_label) = report.chosen_gene_label.as_deref() {
@@ -292,12 +374,15 @@ impl MainAreaDna {
         });
     }
 
-    fn summarize_variant_followup_promoter_context(&mut self) {
+    fn run_variant_followup_promoter_context(
+        &mut self,
+        path: Option<String>,
+    ) -> Option<VariantPromoterContextReport> {
         let input = match self.variant_followup_input_seq_id() {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let promoter_upstream_bp = match Self::parse_positive_usize_text(
@@ -307,7 +392,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let promoter_downstream_bp = match Self::parse_positive_usize_text(
@@ -317,7 +402,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let tfbs_focus_half_window_bp = match Self::parse_positive_usize_text(
@@ -327,7 +412,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let result = self.apply_operation_with_feedback_and_result(
@@ -345,21 +430,31 @@ impl MainAreaDna {
                 promoter_upstream_bp,
                 promoter_downstream_bp,
                 tfbs_focus_half_window_bp,
-                path: None,
+                path,
             },
         );
         if let Some(report) = result.and_then(|row| row.variant_promoter_context) {
             self.variant_followup_apply_report_defaults(&report);
-            self.variant_followup_ui.cached_report = Some(report);
+            self.variant_followup_ui.cached_report = Some(report.clone());
+            Some(report)
+        } else {
+            None
         }
     }
 
-    fn suggest_variant_followup_reporter_fragments(&mut self) {
+    fn summarize_variant_followup_promoter_context(&mut self) {
+        let _ = self.run_variant_followup_promoter_context(None);
+    }
+
+    fn run_variant_followup_reporter_fragment_suggestion(
+        &mut self,
+        path: Option<String>,
+    ) -> Option<PromoterReporterCandidateSet> {
         let input = match self.variant_followup_input_seq_id() {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let retain_downstream_from_tss_bp = match Self::parse_positive_usize_text(
@@ -369,7 +464,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let retain_upstream_beyond_variant_bp = match Self::parse_positive_usize_text(
@@ -379,7 +474,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let max_candidates = match Self::parse_positive_usize_text(
@@ -389,7 +484,7 @@ impl MainAreaDna {
             Ok(value) => value,
             Err(err) => {
                 self.op_status = err;
-                return;
+                return None;
             }
         };
         let result = self.apply_operation_with_feedback_and_result(
@@ -407,13 +502,20 @@ impl MainAreaDna {
                 retain_downstream_from_tss_bp,
                 retain_upstream_beyond_variant_bp,
                 max_candidates,
-                path: None,
+                path,
             },
         );
         if let Some(candidates) = result.and_then(|row| row.promoter_reporter_candidates) {
             self.variant_followup_apply_candidate_defaults(&candidates);
-            self.variant_followup_ui.cached_candidates = Some(candidates);
+            self.variant_followup_ui.cached_candidates = Some(candidates.clone());
+            Some(candidates)
+        } else {
+            None
         }
+    }
+
+    fn suggest_variant_followup_reporter_fragments(&mut self) {
+        let _ = self.run_variant_followup_reporter_fragment_suggestion(None);
     }
 
     fn variant_followup_recommended_candidate(
@@ -574,7 +676,9 @@ impl MainAreaDna {
         Ok(())
     }
 
-    fn preview_variant_followup_reporter_pair(&mut self) {
+    fn ensure_variant_followup_reporter_pair_preview_ids(
+        &mut self,
+    ) -> Result<(String, String), String> {
         let reference_fragment_seq_id = self
             .variant_followup_ui
             .reference_output_id
@@ -607,12 +711,13 @@ impl MainAreaDna {
             || !self.variant_followup_sequence_exists(&reference_fragment_seq_id)
             || !self.variant_followup_sequence_exists(&alternate_fragment_seq_id)
         {
-            return;
+            return Err(
+                "Matched promoter alleles are not available yet; extract and materialize them first"
+                    .to_string(),
+            );
         }
         if let Err(err) = self.ensure_variant_followup_reporter_backbone_loaded() {
-            self.op_status = err.clone();
-            self.op_error_popup = Some(err);
-            return;
+            return Err(err);
         }
         let backbone_seq_id = self
             .variant_followup_ui
@@ -630,10 +735,15 @@ impl MainAreaDna {
             }
         };
         self.variant_followup_ui.reporter_output_prefix = prefix.clone();
-        let reference_assembly_prefix = format!("{prefix}_reference_assembly");
-        let alternate_assembly_prefix = format!("{prefix}_alternate_assembly");
         let reference_reporter_id = format!("{prefix}_reference");
         let alternate_reporter_id = format!("{prefix}_alternate");
+        if self.variant_followup_sequence_exists(&reference_reporter_id)
+            && self.variant_followup_sequence_exists(&alternate_reporter_id)
+        {
+            return Ok((reference_reporter_id, alternate_reporter_id));
+        }
+        let reference_assembly_prefix = format!("{prefix}_reference_assembly");
+        let alternate_assembly_prefix = format!("{prefix}_alternate_assembly");
 
         let reference_ligation =
             self.apply_operation_with_feedback_and_result(Operation::Ligation {
@@ -649,7 +759,9 @@ impl MainAreaDna {
             .and_then(|row| row.created_seq_ids.first())
             .cloned()
         else {
-            return;
+            return Err(
+                "Reporter preview assembly did not yield a reference assembly id".to_string(),
+            );
         };
         let reference_branch = self.apply_operation_with_feedback_and_result(Operation::Branch {
             input: reference_assembly_id,
@@ -660,7 +772,9 @@ impl MainAreaDna {
             .and_then(|row| row.created_seq_ids.first())
             .cloned()
         else {
-            return;
+            return Err(
+                "Reporter preview assembly did not yield a reference reporter id".to_string(),
+            );
         };
 
         let alternate_ligation =
@@ -677,7 +791,9 @@ impl MainAreaDna {
             .and_then(|row| row.created_seq_ids.first())
             .cloned()
         else {
-            return;
+            return Err(
+                "Reporter preview assembly did not yield an alternate assembly id".to_string(),
+            );
         };
         let alternate_branch = self.apply_operation_with_feedback_and_result(Operation::Branch {
             input: alternate_assembly_id,
@@ -688,14 +804,517 @@ impl MainAreaDna {
             .and_then(|row| row.created_seq_ids.first())
             .cloned()
         else {
-            return;
+            return Err(
+                "Reporter preview assembly did not yield an alternate reporter id".to_string(),
+            );
         };
+        Ok((reference_preview_id, alternate_preview_id))
+    }
+
+    fn preview_variant_followup_reporter_pair(&mut self) {
+        let (reference_preview_id, alternate_preview_id) =
+            match self.ensure_variant_followup_reporter_pair_preview_ids() {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err.clone();
+                    self.op_error_popup = Some(err);
+                    return;
+                }
+            };
         self.last_created_seq_ids =
             vec![reference_preview_id.clone(), alternate_preview_id.clone()];
         self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
         self.op_status = format!(
             "Previewed luciferase reporter pair: '{}', '{}'",
             reference_preview_id, alternate_preview_id
+        );
+        self.op_error_popup = None;
+    }
+
+    fn variant_followup_sequence_clone(&self, seq_id: &str) -> Result<DNAsequence, String> {
+        if self.seq_id.as_deref() == Some(seq_id) {
+            return Ok(self
+                .dna
+                .read()
+                .map_err(|_| format!("Could not read active sequence '{seq_id}'"))?
+                .clone());
+        }
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "No engine attached".to_string())?;
+        engine
+            .read()
+            .map_err(|_| "Engine lock poisoned".to_string())?
+            .state()
+            .sequences
+            .get(seq_id)
+            .cloned()
+            .ok_or_else(|| format!("Sequence '{seq_id}' not found in engine state"))
+    }
+
+    fn variant_followup_export_display_settings(&self) -> DisplaySettings {
+        let mut display = self
+            .engine
+            .as_ref()
+            .and_then(|engine| {
+                engine
+                    .read()
+                    .ok()
+                    .map(|guard| guard.state().display.clone())
+            })
+            .unwrap_or_default();
+        display.show_construct_reasoning_overlay = false;
+        display.show_restriction_enzymes = false;
+        display.show_gc_contents = false;
+        display.show_open_reading_frames = false;
+        display.show_methylation_sites = false;
+        display
+    }
+
+    fn write_variant_followup_promoter_context_svg(
+        &self,
+        seq_id: &str,
+        path: &Path,
+    ) -> Result<(), String> {
+        let dna = self.variant_followup_sequence_clone(seq_id)?;
+        let mut display = self.variant_followup_export_display_settings();
+        display.show_cds_features = false;
+        display.show_gene_features = true;
+        display.show_mrna_features = true;
+        display.show_tfbs = true;
+        if let Some((start_bp, span_bp)) = self.variant_followup_context_viewport(dna.len()) {
+            display.linear_view_start_bp = start_bp;
+            display.linear_view_span_bp = span_bp;
+        }
+        let svg = export_linear_svg(&dna, &display);
+        fs::write(path, svg).map_err(|e| {
+            format!(
+                "Could not write promoter-context SVG '{}': {e}",
+                path.display()
+            )
+        })
+    }
+
+    fn write_variant_followup_circular_svg(&self, seq_id: &str, path: &Path) -> Result<(), String> {
+        let dna = self.variant_followup_sequence_clone(seq_id)?;
+        let mut display = self.variant_followup_export_display_settings();
+        display.show_tfbs = false;
+        let svg = export_circular_svg(&dna, &display);
+        fs::write(path, svg)
+            .map_err(|e| format!("Could not write reporter SVG '{}': {e}", path.display()))
+    }
+
+    pub(super) fn build_variant_followup_handoff_result_json(
+        &self,
+        artifacts: &VariantFollowupBundleArtifacts,
+        report: &VariantPromoterContextReport,
+        candidates: &PromoterReporterCandidateSet,
+        recommended_candidate: &crate::engine::PromoterReporterFragmentCandidate,
+        reference_reporter_seq_id: &str,
+        alternate_reporter_seq_id: &str,
+    ) -> serde_json::Value {
+        let genome_anchor = report.genome_anchor.as_ref();
+        let variant_position_1based = genome_anchor.map(|anchor| {
+            anchor
+                .start_1based
+                .saturating_add(report.variant_start_0based)
+        });
+        let variant_assembly = genome_anchor
+            .map(|anchor| anchor.genome_id.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+        serde_json::json!({
+            "schema": "gentle.clawbio_handoff.v2",
+            "id": artifacts.bundle_id.as_str(),
+            "source_alert": {
+                "drug": "warfarin",
+                "gene": report.chosen_gene_label.clone().unwrap_or_else(|| "VKORC1".to_string()),
+                "variant": {
+                    "rs_id": report.variant_label.clone(),
+                    "assembly": variant_assembly,
+                    "chromosome": genome_anchor.map(|anchor| anchor.chromosome.clone()),
+                    "position_1based": variant_position_1based
+                }
+            },
+            "separation_of_concerns": {
+                "clawbio": "Interpret the pharmacogenomic alert and motivate a regulatory follow-up around VKORC1/rs9923231.",
+                "gentle": "Deterministically retrieve the locus, derive promoter context, suggest a reporter fragment, materialize matched alleles, load a mammalian reporter backbone, preview the constructs, and export reviewable artifacts."
+            },
+            "design": {
+                "prepared_genome": genome_anchor.map(|anchor| anchor.genome_id.clone()),
+                "context_sequence_id": report.seq_id.clone(),
+                "promoter_window_defaults": {
+                    "upstream_bp": report.promoter_upstream_bp,
+                    "downstream_bp": report.promoter_downstream_bp,
+                    "collapse_mode": "transcript"
+                },
+                "promoter_context_record": artifacts.variant_promoter_context_json.as_str(),
+                "promoter_candidate_record": artifacts.promoter_reporter_candidates_json.as_str(),
+                "fragment": {
+                    "sequence_id": self.variant_followup_ui.fragment_output_id.trim(),
+                    "engine_interval": {
+                        "from": recommended_candidate.start_0based,
+                        "to": recommended_candidate.end_0based_exclusive
+                    },
+                    "notes": [
+                        format!(
+                            "Selected from the recommended promoter-reporter candidate '{}'.",
+                            recommended_candidate.candidate_id
+                        ),
+                        "Keeps the variant inside the insert rather than at the edge.",
+                        format!(
+                            "Retains {} bp downstream of the selected TSS and {} bp beyond the SNP on the biologically upstream side.",
+                            recommended_candidate.retain_downstream_from_tss_bp,
+                            recommended_candidate.retain_upstream_beyond_variant_bp
+                        )
+                    ]
+                },
+                "allele_specific_inserts": {
+                    "reference": self.variant_followup_ui.reference_output_id.trim(),
+                    "alternate": self.variant_followup_ui.alternate_output_id.trim()
+                },
+                "backbone": {
+                    "sequence_id": self.variant_followup_ui.reporter_backbone_seq_id.trim(),
+                    "path": self.variant_followup_ui.reporter_backbone_path.trim(),
+                    "assay_role": "Pinned local promoterless mammalian luciferase reporter backbone for transient-transfection planning.",
+                    "why_it_fits": [
+                        "Keeps the assay focused on promoter output in human cells.",
+                        "Supports matched upstream-of-luciferase promoter insert comparison.",
+                        "Avoids making live GenBank retrieval part of the canonical tutorial path."
+                    ]
+                },
+                "construct_previews": {
+                    "status": "exported_from_variant_followup_expert",
+                    "reference": {
+                        "sequence_id": reference_reporter_seq_id,
+                        "svg_path": artifacts.reference_reporter_svg.as_str()
+                    },
+                    "alternate": {
+                        "sequence_id": alternate_reporter_seq_id,
+                        "svg_path": artifacts.alternate_reporter_svg.as_str()
+                    }
+                },
+                "promoter_context_svg": artifacts.promoter_context_svg.as_str(),
+                "suggested_assay_family": if report.suggested_assay_ids.is_empty() {
+                    candidates.suggested_assay_ids.first().cloned()
+                } else {
+                    report.suggested_assay_ids.first().cloned()
+                }
+            },
+            "explicit_assumptions": [
+                "This is a human-cell regulatory assay planning story, not a bacterial-expression story.",
+                "The handoff ends at a reproducible construct-design point.",
+                "Drug treatment is a later assay condition, not the first claim of this workflow.",
+                "Adenoviral delivery is reserved as a later escalation only if transfection efficiency becomes the bottleneck."
+            ],
+            "artifacts": {
+                "report_md": artifacts.report_md.as_str(),
+                "result_json": artifacts.result_json.as_str(),
+                "commands_sh": artifacts.commands_sh.as_str(),
+                "promoter_context_svg": artifacts.promoter_context_svg.as_str(),
+                "reference_reporter_svg": artifacts.reference_reporter_svg.as_str(),
+                "alternate_reporter_svg": artifacts.alternate_reporter_svg.as_str()
+            },
+            "next_actions": [
+                "Build the reference and alternate promoter fragments with identical boundaries.",
+                "Keep the mammalian reporter backbone constant between the two constructs.",
+                "Verify insert orientation and junction integrity before comparing reporter output.",
+                "Choose one human cell model and normalization strategy for the later assay."
+            ]
+        })
+    }
+
+    fn build_variant_followup_handoff_report(
+        &self,
+        artifacts: &VariantFollowupBundleArtifacts,
+        report: &VariantPromoterContextReport,
+        candidates: &PromoterReporterCandidateSet,
+        recommended_candidate: &crate::engine::PromoterReporterFragmentCandidate,
+        reference_reporter_seq_id: &str,
+        alternate_reporter_seq_id: &str,
+    ) -> String {
+        let chosen_gene = report
+            .chosen_gene_label
+            .clone()
+            .or_else(|| candidates.chosen_gene_label.clone())
+            .unwrap_or_else(|| "VKORC1".to_string());
+        let chosen_transcript = report
+            .chosen_transcript_label
+            .clone()
+            .or_else(|| report.chosen_transcript_id.clone())
+            .or_else(|| candidates.chosen_transcript_label.clone())
+            .or_else(|| candidates.chosen_transcript_id.clone())
+            .unwrap_or_else(|| "<auto>".to_string());
+        format!(
+            "# Variant Follow-up handoff\n\n## Interpretation coming from ClawBio\n\nClawBio interprets a pharmacogenomic alert around warfarin and `{variant}` and proposes a regulatory follow-up.\n\nThe narrow question handed to GENtle is:\n\n> Is `{variant}` promoter-proximal enough around `{gene}` that it is worth building matched promoter-reporter constructs for follow-up in human cells?\n\nClawBio is therefore responsible for:\n\n- the pharmacogenomic interpretation\n- the motivation for a regulatory assay\n- the choice to follow up in a human-cell luciferase reporter format\n\n## Deterministic build/render work done in GENtle\n\nGENtle is responsible for:\n\n- deriving transcript-TSS-centered promoter windows\n- summarizing promoter overlap and TSS distance\n- ranking transcript-aware reporter fragments\n- materializing matched reference and alternate inserts\n- loading a pinned mammalian promoterless luciferase backbone\n- previewing reference and alternate reporter constructs\n- exporting reviewable artifacts\n\n## Chosen baseline design\n\n- source context sequence id: `{source_seq}`\n- variant: `{variant}`\n- chosen gene: `{gene}`\n- chosen transcript: `{transcript}`\n- promoter overlap: `{promoter_overlap}`\n- signed TSS distance: `{signed_distance}`\n- promoter window defaults:\n  - upstream = `{promoter_upstream} bp`\n  - downstream = `{promoter_downstream} bp`\n- recommended promoter fragment interval:\n  - local `{fragment_start}..{fragment_end}`\n  - extracted id = `{fragment_id}`\n- matched inserts:\n  - `{reference_insert}`\n  - `{alternate_insert}`\n- pinned local backbone:\n  - `{backbone_id}`\n- construct previews:\n  - `{reference_reporter}`\n  - `{alternate_reporter}`\n\n## Why this backbone is appropriate for human-cell work\n\n- it is a promoterless mammalian luciferase reporter architecture\n- it keeps the readout focused on promoter output rather than bacterial protein-expression logic\n- it matches transient transfection planning in human cells\n- it gives the handoff one pinned local backbone so the canonical path does not depend on live GenBank retrieval\n\n## Important assumptions\n\n- this is a human-cell regulatory assay story\n- this bundle stops at a reproducible design/handoff point\n- it does **not** claim wet-lab validation\n- it does **not** claim that the construct alone proves warfarin response\n- adenoviral delivery is deferred as a later escalation only if transfection efficiency becomes the bottleneck\n\n## Artifacts\n\n- promoter-context JSON: `{promoter_context_json}`\n- promoter-candidate JSON: `{promoter_candidates_json}`\n- promoter-context SVG: `{promoter_context_svg}`\n- reference construct SVG: `{reference_svg}`\n- alternate construct SVG: `{alternate_svg}`\n- commands: `{commands_sh}`\n- structured summary: `{result_json}`\n\n## Bench-facing next actions\n\n1. Build the reference and alternate inserts with identical boundaries.\n2. Keep the mammalian reporter backbone constant between alleles.\n3. Verify insert orientation and junction integrity.\n4. Choose one human cell model and a normalization strategy for the later assay.\n5. Treat warfarin exposure as a later experimental condition layered on top of the finished promoter-reporter pair.\n",
+            variant = report.variant_label.as_str(),
+            gene = chosen_gene,
+            source_seq = report.seq_id.as_str(),
+            transcript = chosen_transcript,
+            promoter_overlap = if report.promoter_overlap { "yes" } else { "no" },
+            signed_distance = report
+                .signed_tss_distance_bp
+                .map(|value| format!("{value} bp"))
+                .unwrap_or_else(|| "n/a".to_string()),
+            promoter_upstream = report.promoter_upstream_bp,
+            promoter_downstream = report.promoter_downstream_bp,
+            fragment_start = recommended_candidate.start_0based,
+            fragment_end = recommended_candidate.end_0based_exclusive,
+            fragment_id = self.variant_followup_ui.fragment_output_id.trim(),
+            reference_insert = self.variant_followup_ui.reference_output_id.trim(),
+            alternate_insert = self.variant_followup_ui.alternate_output_id.trim(),
+            backbone_id = self.variant_followup_ui.reporter_backbone_seq_id.trim(),
+            reference_reporter = reference_reporter_seq_id,
+            alternate_reporter = alternate_reporter_seq_id,
+            promoter_context_json = artifacts.variant_promoter_context_json.as_str(),
+            promoter_candidates_json = artifacts.promoter_reporter_candidates_json.as_str(),
+            promoter_context_svg = artifacts.promoter_context_svg.as_str(),
+            reference_svg = artifacts.reference_reporter_svg.as_str(),
+            alternate_svg = artifacts.alternate_reporter_svg.as_str(),
+            commands_sh = artifacts.commands_sh.as_str(),
+            result_json = artifacts.result_json.as_str(),
+        )
+    }
+
+    fn build_variant_followup_handoff_commands(
+        &self,
+        artifacts: &VariantFollowupBundleArtifacts,
+        report: &VariantPromoterContextReport,
+        recommended_candidate: &crate::engine::PromoterReporterFragmentCandidate,
+    ) -> String {
+        let variant = report.variant_label.as_str();
+        let source_seq_id = report.seq_id.as_str();
+        let prepared_genome = report
+            .genome_anchor
+            .as_ref()
+            .map(|anchor| anchor.genome_id.as_str())
+            .unwrap_or("Human GRCh38 Ensembl 116");
+        let flank_bp = report.variant_start_0based.max(
+            report
+                .sequence_length_bp
+                .saturating_sub(report.variant_end_0based_exclusive),
+        );
+        let prefix = self.variant_followup_ui.reporter_output_prefix.trim();
+        let prefix = if prefix.is_empty() {
+            Self::variant_followup_suggested_token(variant)
+        } else {
+            Self::sanitize_export_name_component(prefix, "reporter_pair")
+        };
+        let reference_reporter_id = format!("{prefix}_reference");
+        let alternate_reporter_id = format!("{prefix}_alternate");
+        let reference_assembly_id = format!("{prefix}_reference_assembly_1");
+        let alternate_assembly_id = format!("{prefix}_alternate_assembly_1");
+        format!(
+            "#!/usr/bin/env bash\nset -euo pipefail\n\nSTATE=\"${{STATE:-/tmp/{bundle_id}.state.json}}\"\nBUNDLE_DIR=\"${{BUNDLE_DIR:-$(pwd)}}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  genomes status \"{prepared_genome}\" \\\n  --catalog assets/genomes.json \\\n  --cache-dir data/genomes\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"FetchDbSnpRegion\":{{\"rs_id\":\"{variant}\",\"genome_id\":\"{prepared_genome}\",\"flank_bp\":{flank_bp},\"output_id\":\"{source_seq_id}\",\"annotation_scope\":\"full\",\"catalog_path\":\"assets/genomes.json\",\"cache_dir\":\"data/genomes\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant annotate-promoters {source_seq_id} \\\n  --gene-label {gene_label} \\\n  --upstream-bp {promoter_upstream_bp} \\\n  --downstream-bp {promoter_downstream_bp}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant promoter-context {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --path \"$BUNDLE_DIR/{promoter_context_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant reporter-fragments {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --retain-downstream-from-tss-bp {retain_downstream_from_tss_bp} \\\n  --retain-upstream-beyond-variant-bp {retain_upstream_beyond_variant_bp} \\\n  --path \"$BUNDLE_DIR/{promoter_candidates_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"ExtractRegion\":{{\"input\":\"{source_seq_id}\",\"from\":{fragment_start},\"to\":{fragment_end},\"output_id\":\"{fragment_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele reference \\\n  --output-id {reference_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele alternate \\\n  --output-id {alternate_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"LoadFile\":{{\"path\":\"{backbone_path}\",\"as_id\":\"{backbone_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{reference_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_reference_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{reference_assembly_id}\",\"output_id\":\"{reference_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{alternate_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_alternate_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{alternate_assembly_id}\",\"output_id\":\"{alternate_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"SetLinearViewport\":{{\"start_bp\":{viewport_start},\"span_bp\":{viewport_span}}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"RenderSequenceSvg\":{{\"seq_id\":\"{source_seq_id}\",\"mode\":\"Linear\",\"path\":\"$BUNDLE_DIR/{promoter_context_svg}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"RenderSequenceSvg\":{{\"seq_id\":\"{reference_reporter_id}\",\"mode\":\"Circular\",\"path\":\"$BUNDLE_DIR/{reference_svg}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"RenderSequenceSvg\":{{\"seq_id\":\"{alternate_reporter_id}\",\"mode\":\"Circular\",\"path\":\"$BUNDLE_DIR/{alternate_svg}\"}}}}' \\\n  --confirm\n",
+            bundle_id = artifacts.bundle_id.as_str(),
+            prepared_genome = prepared_genome,
+            variant = variant,
+            flank_bp = flank_bp,
+            source_seq_id = source_seq_id,
+            gene_label = Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label)
+                .unwrap_or_else(|| "VKORC1".to_string()),
+            promoter_upstream_bp = report.promoter_upstream_bp,
+            promoter_downstream_bp = report.promoter_downstream_bp,
+            promoter_context_json = artifacts.variant_promoter_context_json.as_str(),
+            retain_downstream_from_tss_bp = recommended_candidate.retain_downstream_from_tss_bp,
+            retain_upstream_beyond_variant_bp =
+                recommended_candidate.retain_upstream_beyond_variant_bp,
+            promoter_candidates_json = artifacts.promoter_reporter_candidates_json.as_str(),
+            fragment_start = recommended_candidate.start_0based,
+            fragment_end = recommended_candidate.end_0based_exclusive,
+            fragment_id = self.variant_followup_ui.fragment_output_id.trim(),
+            reference_insert = self.variant_followup_ui.reference_output_id.trim(),
+            alternate_insert = self.variant_followup_ui.alternate_output_id.trim(),
+            backbone_path = self.variant_followup_ui.reporter_backbone_path.trim(),
+            backbone_id = self.variant_followup_ui.reporter_backbone_seq_id.trim(),
+            prefix = prefix,
+            reference_assembly_id = reference_assembly_id,
+            reference_reporter_id = reference_reporter_id,
+            alternate_assembly_id = alternate_assembly_id,
+            alternate_reporter_id = alternate_reporter_id,
+            viewport_start = self
+                .variant_followup_context_viewport(report.sequence_length_bp)
+                .map(|(start, _)| start)
+                .unwrap_or(recommended_candidate.start_0based),
+            viewport_span = self
+                .variant_followup_context_viewport(report.sequence_length_bp)
+                .map(|(_, span)| span)
+                .unwrap_or(recommended_candidate.length_bp.max(1)),
+            promoter_context_svg = artifacts.promoter_context_svg.as_str(),
+            reference_svg = artifacts.reference_reporter_svg.as_str(),
+            alternate_svg = artifacts.alternate_reporter_svg.as_str(),
+        )
+    }
+
+    fn export_variant_followup_handoff_bundle(&mut self) {
+        let Some(parent_dir) = rfd::FileDialog::new().pick_folder() else {
+            self.op_status = "Variant Follow-up bundle export canceled".to_string();
+            return;
+        };
+        let report = match self.run_variant_followup_promoter_context(None) {
+            Some(value) => value,
+            None => {
+                if self.op_status.is_empty() {
+                    self.op_status =
+                        "Could not export handoff bundle because promoter context failed"
+                            .to_string();
+                }
+                return;
+            }
+        };
+        let candidates = match self.run_variant_followup_reporter_fragment_suggestion(None) {
+            Some(value) => value,
+            None => {
+                if self.op_status.is_empty() {
+                    self.op_status =
+                        "Could not export handoff bundle because reporter-fragment suggestion failed"
+                            .to_string();
+                }
+                return;
+            }
+        };
+        let recommended_candidate = match self.variant_followup_recommended_candidate() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err.clone();
+                self.op_error_popup = Some(err);
+                return;
+            }
+        };
+        self.extract_variant_followup_recommended_fragment();
+        if self
+            .variant_followup_ui
+            .fragment_output_id
+            .trim()
+            .is_empty()
+            || !self.variant_followup_sequence_exists(
+                self.variant_followup_ui.fragment_output_id.trim(),
+            )
+        {
+            return;
+        }
+        self.materialize_variant_followup_alleles();
+        let (reference_reporter_seq_id, alternate_reporter_seq_id) =
+            match self.ensure_variant_followup_reporter_pair_preview_ids() {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err.clone();
+                    self.op_error_popup = Some(err);
+                    return;
+                }
+            };
+        let artifacts = self.variant_followup_bundle_artifacts(
+            &reference_reporter_seq_id,
+            &alternate_reporter_seq_id,
+        );
+        let bundle_dir = parent_dir.join(&artifacts.bundle_id);
+        if let Err(err) = fs::create_dir_all(&bundle_dir) {
+            self.op_status = format!(
+                "Could not create Variant Follow-up bundle directory '{}': {err}",
+                bundle_dir.display()
+            );
+            return;
+        }
+
+        let promoter_context_json_path = bundle_dir.join(&artifacts.variant_promoter_context_json);
+        if self
+            .run_variant_followup_promoter_context(Some(
+                promoter_context_json_path.display().to_string(),
+            ))
+            .is_none()
+        {
+            return;
+        }
+        let promoter_candidates_json_path =
+            bundle_dir.join(&artifacts.promoter_reporter_candidates_json);
+        if self
+            .run_variant_followup_reporter_fragment_suggestion(Some(
+                promoter_candidates_json_path.display().to_string(),
+            ))
+            .is_none()
+        {
+            return;
+        }
+
+        let promoter_context_svg_path = bundle_dir.join(&artifacts.promoter_context_svg);
+        if let Err(err) = self
+            .write_variant_followup_promoter_context_svg(&report.seq_id, &promoter_context_svg_path)
+        {
+            self.op_status = err.clone();
+            self.op_error_popup = Some(err);
+            return;
+        }
+        let reference_svg_path = bundle_dir.join(&artifacts.reference_reporter_svg);
+        if let Err(err) = self
+            .write_variant_followup_circular_svg(&reference_reporter_seq_id, &reference_svg_path)
+        {
+            self.op_status = err.clone();
+            self.op_error_popup = Some(err);
+            return;
+        }
+        let alternate_svg_path = bundle_dir.join(&artifacts.alternate_reporter_svg);
+        if let Err(err) = self
+            .write_variant_followup_circular_svg(&alternate_reporter_seq_id, &alternate_svg_path)
+        {
+            self.op_status = err.clone();
+            self.op_error_popup = Some(err);
+            return;
+        }
+
+        let result_json = self.build_variant_followup_handoff_result_json(
+            &artifacts,
+            &report,
+            &candidates,
+            &recommended_candidate,
+            &reference_reporter_seq_id,
+            &alternate_reporter_seq_id,
+        );
+        let report_md = self.build_variant_followup_handoff_report(
+            &artifacts,
+            &report,
+            &candidates,
+            &recommended_candidate,
+            &reference_reporter_seq_id,
+            &alternate_reporter_seq_id,
+        );
+        let commands_sh = self.build_variant_followup_handoff_commands(
+            &artifacts,
+            &report,
+            &recommended_candidate,
+        );
+        let result_json_path = bundle_dir.join(&artifacts.result_json);
+        let report_md_path = bundle_dir.join(&artifacts.report_md);
+        let commands_sh_path = bundle_dir.join(&artifacts.commands_sh);
+        let result_json_text = match serde_json::to_string_pretty(&result_json) {
+            Ok(text) => text,
+            Err(err) => {
+                self.op_status =
+                    format!("Could not serialize Variant Follow-up result.json: {err}");
+                return;
+            }
+        };
+        for (path, text, label) in [
+            (&result_json_path, result_json_text.as_str(), "result.json"),
+            (&report_md_path, report_md.as_str(), "report.md"),
+            (&commands_sh_path, commands_sh.as_str(), "commands.sh"),
+        ] {
+            if let Err(err) = fs::write(path, text) {
+                self.op_status = format!(
+                    "Could not write Variant Follow-up {label} '{}': {err}",
+                    path.display()
+                );
+                return;
+            }
+        }
+
+        self.last_created_seq_ids = vec![
+            reference_reporter_seq_id.clone(),
+            alternate_reporter_seq_id.clone(),
+        ];
+        self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
+        self.op_status = format!(
+            "Exported Variant Follow-up bundle to '{}'",
+            bundle_dir.display()
         );
         self.op_error_popup = None;
     }
@@ -1107,6 +1726,18 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.preview_variant_followup_reporter_pair();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Export handoff bundle"),
+                )
+                .on_hover_text(
+                    "Write a portable ClawBio-facing bundle with promoter-context JSON, reporter-candidate JSON, SVG artifacts, report.md, result.json, and replay commands.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_handoff_bundle();
             }
         });
 
