@@ -2702,6 +2702,12 @@ Status:
     the lane canvas shows them with distinct colors/hover detail, and a
     dedicated `Splice-site motifs` table summarizes the known classes for the
     current locus.
+  - Splicing Expert now also surfaces conservative acceptor-proximal intron
+    heuristics:
+    - branchpoint-like adenines in the usual 18-40 nt acceptor-proximal window
+    - best detected polypyrimidine-rich tracts near the acceptor
+    - the lane canvas and expert tables label these explicitly as heuristic
+      evidence rather than a splice predictor
   - RNA-read reports persist exon-support and exon-exon junction-support
     frequency schema fields; phase-1 seed-only runs populate placeholders until
     the explicit phase-2 alignment step is run.

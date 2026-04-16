@@ -509,6 +509,14 @@ Feature tree grouping:
     - canonical major-spliceosome `GT-AG` sites stay green/teal, known
       non-canonical classes such as `GC-AG` and `AT-AC` use distinct colors,
       and other non-canonical signatures remain red
+  - acceptor-proximal intron heuristics are now surfaced conservatively:
+    - intron lines can highlight a branchpoint-like site and a pyrimidine-rich
+      tract near the acceptor when the simple heuristics find one
+    - hovering an intron line reports the current branchpoint-like motif/score
+      and the best detected polypyrimidine tract span
+    - an `Acceptor-proximal intron signals` table summarizes those heuristics
+      explicitly and labels them as heuristic evidence rather than a splice
+      predictor
   - exon columns include support as `n/N (%)` (plus `const` for constitutive
     exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon

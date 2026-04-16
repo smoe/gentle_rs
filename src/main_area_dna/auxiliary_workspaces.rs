@@ -5126,6 +5126,90 @@ impl MainAreaDna {
                     }
                 });
         }
+        if !view.intron_signals.is_empty() {
+            let signal_rows = Self::splicing_intron_signal_rows(view);
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Acceptor-proximal intron signals")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "These are conservative heuristics, not a splice predictor: branchpoint-like adenines are searched in the usual 18-40 nt acceptor-proximal window and pyrimidine-rich tracts are summarized near the acceptor.",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            egui::Grid::new("splicing_intron_signal_grid")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("transcript").monospace().strong());
+                    ui.label(egui::RichText::new("intron").monospace().strong());
+                    ui.label(egui::RichText::new("branchpoint-like").monospace().strong());
+                    ui.label(egui::RichText::new("polyY tract").monospace().strong());
+                    ui.label(egui::RichText::new("note").strong());
+                    ui.end_row();
+                    for row in &signal_rows {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "n-{} {}",
+                                row.transcript_feature_id, row.transcript_id
+                            ))
+                            .monospace()
+                            .size(9.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{}..{} ({} bp)",
+                                row.donor_position_1based,
+                                row.acceptor_position_1based,
+                                row.intron_length_bp
+                            ))
+                            .monospace()
+                            .size(9.0),
+                        );
+                        let branchpoint_text = row
+                            .branchpoint_position_1based
+                            .map(|position| format!("{position} {}", row.branchpoint_motif))
+                            .unwrap_or_else(|| "none".to_string());
+                        ui.label(
+                            egui::RichText::new(branchpoint_text)
+                                .monospace()
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(124, 58, 237)),
+                        );
+                        let tract_text = match (
+                            row.polypyrimidine_start_1based,
+                            row.polypyrimidine_end_1based,
+                        ) {
+                            (Some(start), Some(end)) => {
+                                format!("{start}..{end} ({}%)", row.polypyrimidine_fraction_percent)
+                            }
+                            _ => "none".to_string(),
+                        };
+                        ui.label(
+                            egui::RichText::new(tract_text)
+                                .monospace()
+                                .size(9.0)
+                                .color(egui::Color32::from_rgb(37, 99, 235)),
+                        );
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(row.branchpoint_annotation.as_str())
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                            );
+                            ui.label(
+                                egui::RichText::new(row.polypyrimidine_annotation.as_str())
+                                    .size(9.0)
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                            );
+                        });
+                        ui.end_row();
+                    }
+                });
+        }
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
             let row_count = view.matrix_rows.len();

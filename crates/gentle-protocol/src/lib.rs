@@ -1065,6 +1065,31 @@ pub struct SplicingBoundaryMarker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingIntronSignal {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub donor_position_1based: usize,
+    pub acceptor_position_1based: usize,
+    pub intron_length_bp: usize,
+    #[serde(default)]
+    pub branchpoint_position_1based: Option<usize>,
+    #[serde(default)]
+    pub branchpoint_motif: String,
+    #[serde(default)]
+    pub branchpoint_score: f32,
+    #[serde(default)]
+    pub branchpoint_annotation: String,
+    #[serde(default)]
+    pub polypyrimidine_start_1based: Option<usize>,
+    #[serde(default)]
+    pub polypyrimidine_end_1based: Option<usize>,
+    #[serde(default)]
+    pub polypyrimidine_fraction: f32,
+    #[serde(default)]
+    pub polypyrimidine_annotation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingJunctionArc {
     pub donor_1based: usize,
     pub acceptor_1based: usize,
@@ -1115,6 +1140,8 @@ pub struct SplicingExpertView {
     pub unique_exons: Vec<SplicingExonSummary>,
     pub matrix_rows: Vec<SplicingMatrixRow>,
     pub boundaries: Vec<SplicingBoundaryMarker>,
+    #[serde(default)]
+    pub intron_signals: Vec<SplicingIntronSignal>,
     pub junctions: Vec<SplicingJunctionArc>,
     pub events: Vec<SplicingEventSummary>,
 }

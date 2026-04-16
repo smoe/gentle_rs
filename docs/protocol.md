@@ -3743,6 +3743,16 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       (`gt_ag_major_canonical`, `gc_ag_major_noncanonical`,
       `at_ac_minor_u12_like`, `at_ag_minor_u12_like`,
       `other_noncanonical`)
+  - shared splicing expert payloads also carry conservative intron-signal
+    heuristics per intron:
+    - donor/acceptor positions and intron length
+    - best branchpoint-like adenine in the usual 18-40 nt acceptor-proximal
+      window (`branchpoint_position_1based`, `branchpoint_motif`,
+      `branchpoint_score`, `branchpoint_annotation`)
+    - best acceptor-proximal polypyrimidine-rich tract
+      (`polypyrimidine_start_1based`, `polypyrimidine_end_1based`,
+      `polypyrimidine_fraction`, `polypyrimidine_annotation`)
+    - these are intentionally framed as heuristics, not a splice predictor
   - if `seed_feature_id` is omitted, engine selects one overlapping mRNA feature deterministically from the requested span
   - default `scope`: `target_group_target_strand`
 - Pairwise alignment operation:

@@ -102,7 +102,7 @@ use crate::{
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
         RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
-        TfbsExpertView, compute_splicing_exon_transition_matrix,
+        SplicingIntronSignal, TfbsExpertView, compute_splicing_exon_transition_matrix,
     },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
@@ -1105,8 +1105,8 @@ mod tests {
         enzymes::active_restriction_enzymes,
         feature_expert::{
             FeatureExpertView, IsoformArchitectureExpertView, SplicingBoundaryMarker,
-            SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, SplicingRange,
-            SplicingTranscriptLane,
+            SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, SplicingJunctionArc,
+            SplicingRange, SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
         protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -1913,6 +1913,7 @@ mod tests {
                             .to_string(),
                 },
             ],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -1926,6 +1927,54 @@ mod tests {
         assert_eq!(rows[0].acceptor_motif_2bp, "AG");
         assert_eq!(rows[0].paired_motif_signature, "GC-AG");
         assert_eq!(rows[0].motif_class, "gc_ag_major_noncanonical");
+    }
+
+    #[test]
+    fn splicing_intron_signal_rows_preserve_branchpoint_and_polyy_metadata() {
+        let view = SplicingExpertView {
+            seq_id: "seq".to_string(),
+            target_feature_id: 1,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 80,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![SplicingIntronSignal {
+                transcript_feature_id: 11,
+                transcript_id: "tx1".to_string(),
+                donor_position_1based: 10,
+                acceptor_position_1based: 40,
+                intron_length_bp: 31,
+                branchpoint_position_1based: Some(18),
+                branchpoint_motif: "CTAAC".to_string(),
+                branchpoint_score: 4.1,
+                branchpoint_annotation:
+                    "Strong branchpoint-like adenine in the usual 18-40 nt acceptor-proximal window (heuristic, not a splice predictor)."
+                        .to_string(),
+                polypyrimidine_start_1based: Some(28),
+                polypyrimidine_end_1based: Some(37),
+                polypyrimidine_fraction: 0.9,
+                polypyrimidine_annotation:
+                    "Strong acceptor-proximal polypyrimidine tract by simple pyrimidine-density heuristic."
+                        .to_string(),
+            }],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let rows = MainAreaDna::splicing_intron_signal_rows(&view);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].branchpoint_position_1based, Some(18));
+        assert_eq!(rows[0].branchpoint_motif, "CTAAC");
+        assert_eq!(rows[0].polypyrimidine_start_1based, Some(28));
+        assert_eq!(rows[0].polypyrimidine_end_1based, Some(37));
+        assert_eq!(rows[0].polypyrimidine_fraction_percent, 90);
     }
 
     #[test]
@@ -2894,6 +2943,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -2946,6 +2996,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -3091,6 +3142,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -4269,6 +4321,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -4403,6 +4456,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -5958,6 +6012,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -6091,6 +6146,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -6123,6 +6179,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -6495,6 +6552,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -6554,6 +6612,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -6645,6 +6704,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -6798,6 +6858,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         }));
@@ -6850,6 +6911,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -7033,6 +7095,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -7162,6 +7225,7 @@ mod tests {
             unique_exons: vec![],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![],
             events: vec![],
         };
@@ -7929,6 +7993,7 @@ mod tests {
             ],
             matrix_rows: vec![],
             boundaries: vec![],
+            intron_signals: vec![],
             junctions: vec![SplicingJunctionArc {
                 donor_1based: 10,
                 acceptor_1based: 21,
@@ -9125,6 +9190,22 @@ struct SplicingBoundaryMotifRow {
     paired_motif_signature: String,
     motif_class: String,
     annotation: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SplicingIntronSignalRow {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    donor_position_1based: usize,
+    acceptor_position_1based: usize,
+    intron_length_bp: usize,
+    branchpoint_position_1based: Option<usize>,
+    branchpoint_motif: String,
+    branchpoint_annotation: String,
+    polypyrimidine_start_1based: Option<usize>,
+    polypyrimidine_end_1based: Option<usize>,
+    polypyrimidine_fraction_percent: usize,
+    polypyrimidine_annotation: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18090,6 +18171,40 @@ impl MainAreaDna {
         rows
     }
 
+    fn splicing_intron_signal_rows(view: &SplicingExpertView) -> Vec<SplicingIntronSignalRow> {
+        let mut rows = view
+            .intron_signals
+            .iter()
+            .map(|signal| SplicingIntronSignalRow {
+                transcript_feature_id: signal.transcript_feature_id,
+                transcript_id: signal.transcript_id.clone(),
+                donor_position_1based: signal.donor_position_1based,
+                acceptor_position_1based: signal.acceptor_position_1based,
+                intron_length_bp: signal.intron_length_bp,
+                branchpoint_position_1based: signal.branchpoint_position_1based,
+                branchpoint_motif: signal.branchpoint_motif.clone(),
+                branchpoint_annotation: signal.branchpoint_annotation.clone(),
+                polypyrimidine_start_1based: signal.polypyrimidine_start_1based,
+                polypyrimidine_end_1based: signal.polypyrimidine_end_1based,
+                polypyrimidine_fraction_percent: (signal.polypyrimidine_fraction * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as usize,
+                polypyrimidine_annotation: signal.polypyrimidine_annotation.clone(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.donor_position_1based
+                .cmp(&right.donor_position_1based)
+                .then_with(|| {
+                    left.acceptor_position_1based
+                        .cmp(&right.acceptor_position_1based)
+                })
+                .then_with(|| left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        rows
+    }
+
     fn splicing_boundary_motif_class_label(class: &str) -> &'static str {
         match class {
             "gt_ag_major_canonical" => "canonical major (GT-AG)",
@@ -18120,6 +18235,24 @@ impl MainAreaDna {
         } else {
             egui::Color32::from_rgba_premultiplied(base.r(), base.g(), base.b(), 220)
         }
+    }
+
+    fn splicing_signal_lookup<'a>(
+        view: &'a SplicingExpertView,
+    ) -> std::collections::HashMap<(usize, usize, usize), &'a SplicingIntronSignal> {
+        view.intron_signals
+            .iter()
+            .map(|signal| {
+                (
+                    (
+                        signal.transcript_feature_id,
+                        signal.donor_position_1based,
+                        signal.acceptor_position_1based,
+                    ),
+                    signal,
+                )
+            })
+            .collect()
     }
 
     fn render_splicing_lane_canvas_ui(
@@ -18260,6 +18393,7 @@ impl MainAreaDna {
                     .enumerate()
                     .map(|(idx, lane)| (lane.transcript_feature_id, idx))
                     .collect();
+                let intron_signal_lookup = Self::splicing_signal_lookup(view);
 
                 for marker in &view.boundaries {
                     let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
@@ -18317,6 +18451,42 @@ impl MainAreaDna {
                             [egui::pos2(x1, y), egui::pos2(x2, y)],
                             egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
                         );
+                        let signal_key = if transcript.strand.trim() == "-" {
+                            (
+                                transcript.transcript_feature_id,
+                                intron.end_1based,
+                                intron.start_1based,
+                            )
+                        } else {
+                            (
+                                transcript.transcript_feature_id,
+                                intron.start_1based,
+                                intron.end_1based,
+                            )
+                        };
+                        if let Some(signal) = intron_signal_lookup.get(&signal_key).copied() {
+                            if let (Some(tract_start), Some(tract_end)) = (
+                                signal.polypyrimidine_start_1based,
+                                signal.polypyrimidine_end_1based,
+                            ) {
+                                let tract_rect = egui::Rect::from_min_max(
+                                    egui::pos2(to_x(tract_start), y - 2.2),
+                                    egui::pos2(to_x(tract_end.max(tract_start)), y + 2.2),
+                                );
+                                painter.rect_filled(
+                                    tract_rect,
+                                    0.0,
+                                    egui::Color32::from_rgba_premultiplied(59, 130, 246, 110),
+                                );
+                            }
+                            if let Some(branchpoint_position) = signal.branchpoint_position_1based {
+                                painter.circle_filled(
+                                    egui::pos2(to_x(branchpoint_position), y),
+                                    3.1,
+                                    egui::Color32::from_rgb(124, 58, 237),
+                                );
+                            }
+                        }
                     }
                     for (exon_idx, exon) in transcript.exons.iter().enumerate() {
                         let x1 = to_x(exon.start_1based);
@@ -18446,6 +18616,92 @@ impl MainAreaDna {
                     }
                 }
                 if let Some(pointer_pos) = response.hover_pos() {
+                    if !has_boundary_hover {
+                        let mut hovered_intron_signal = None;
+                        for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
+                            let y = lanes_top
+                                + lane_idx as f32 * style.lane_height_px
+                                + style.lane_height_px * 0.5;
+                            for intron in &transcript.introns {
+                                let x1 = to_x(intron.start_1based);
+                                let x2 = to_x(intron.end_1based);
+                                let hit_rect = egui::Rect::from_min_max(
+                                    egui::pos2(x1.min(x2), y - 5.0),
+                                    egui::pos2(x1.max(x2), y + 5.0),
+                                );
+                                if !hit_rect.expand(1.0).contains(pointer_pos) {
+                                    continue;
+                                }
+                                let signal_key = if transcript.strand.trim() == "-" {
+                                    (
+                                        transcript.transcript_feature_id,
+                                        intron.end_1based,
+                                        intron.start_1based,
+                                    )
+                                } else {
+                                    (
+                                        transcript.transcript_feature_id,
+                                        intron.start_1based,
+                                        intron.end_1based,
+                                    )
+                                };
+                                if let Some(signal) = intron_signal_lookup.get(&signal_key).copied()
+                                {
+                                    hovered_intron_signal = Some(signal);
+                                    break;
+                                }
+                            }
+                            if hovered_intron_signal.is_some() {
+                                break;
+                            }
+                        }
+                        if let Some(signal) = hovered_intron_signal {
+                            has_boundary_hover = true;
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                ui.monospace(format!(
+                                    "n-{} {}",
+                                    signal.transcript_feature_id, signal.transcript_id
+                                ));
+                                ui.monospace(format!(
+                                    "intron {}..{}  len={} bp",
+                                    signal.donor_position_1based,
+                                    signal.acceptor_position_1based,
+                                    signal.intron_length_bp
+                                ));
+                                if let Some(branchpoint_position) =
+                                    signal.branchpoint_position_1based
+                                {
+                                    ui.label(format!(
+                                        "Branchpoint-like site: {} ({})  score={:.1}",
+                                        branchpoint_position,
+                                        signal.branchpoint_motif,
+                                        signal.branchpoint_score
+                                    ));
+                                } else {
+                                    ui.label(
+                                        "Branchpoint-like site: none above the current heuristic",
+                                    );
+                                }
+                                ui.label(signal.branchpoint_annotation.as_str());
+                                if let (Some(tract_start), Some(tract_end)) = (
+                                    signal.polypyrimidine_start_1based,
+                                    signal.polypyrimidine_end_1based,
+                                ) {
+                                    ui.label(format!(
+                                        "Polypyrimidine tract: {}..{}  pyrimidines={}%",
+                                        tract_start,
+                                        tract_end,
+                                        (signal.polypyrimidine_fraction * 100.0).round() as usize
+                                    ));
+                                } else {
+                                    ui.label(
+                                        "Polypyrimidine tract: none above the current heuristic",
+                                    );
+                                }
+                                ui.label(signal.polypyrimidine_annotation.as_str());
+                            });
+                        }
+                    }
                     if !has_boundary_hover {
                         let mut hovered_exon = None;
                         for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
@@ -39802,7 +40058,7 @@ impl MainAreaDna {
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group from four angles:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group from four angles:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {

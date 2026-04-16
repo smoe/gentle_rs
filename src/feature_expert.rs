@@ -10,10 +10,10 @@ pub use gentle_protocol::{
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,
     SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
-    SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    SplicingMatrixRow, SplicingRange, SplicingScopePreset, SplicingTranscriptLane,
-    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView, TranscriptProteinComparison,
-    TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
+    SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
+    SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingScopePreset,
+    SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    TranscriptProteinComparison, TranscriptProteinComparisonStatus, TranscriptProteinDerivation,
     TranscriptProteinExternalOpinion,
 };
 pub use gentle_render::{SplicingExonTransitionMatrix, compute_splicing_exon_transition_matrix};

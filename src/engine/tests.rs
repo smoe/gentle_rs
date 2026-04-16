@@ -7311,6 +7311,19 @@ fn test_inspect_splicing_feature_expert_view() {
                     .all(|m| !m.motif_class.is_empty())
             );
             assert!(splicing.boundaries.iter().all(|m| !m.annotation.is_empty()));
+            assert!(!splicing.intron_signals.is_empty());
+            assert!(
+                splicing
+                    .intron_signals
+                    .iter()
+                    .all(|signal| !signal.branchpoint_annotation.is_empty())
+            );
+            assert!(
+                splicing
+                    .intron_signals
+                    .iter()
+                    .all(|signal| !signal.polypyrimidine_annotation.is_empty())
+            );
             assert_eq!(splicing.instruction, SPLICING_EXPERT_INSTRUCTION);
         }
         other => panic!("expected splicing expert view, got {other:?}"),
@@ -7408,6 +7421,33 @@ fn test_splice_boundary_markers_classify_known_motif_pairs() {
     assert_eq!(at_ac_donor.paired_motif_signature, "AT-AC");
     assert_eq!(at_ac_donor.motif_class, "at_ac_minor_u12_like");
     assert!(at_ac_donor.annotation.contains("minor/U12"));
+}
+
+#[test]
+fn test_splice_intron_signal_heuristics_detect_branchpoint_and_polypyrimidine_tract() {
+    let seq =
+        DNAsequence::from_sequence("GTGGGGGCTAACCCCCCCCCCTTTTTTTTTTAG").expect("signal sequence");
+    let signals =
+        GentleEngine::splice_intron_signals_for_introns(&seq, 11, "tx_signal", false, &[(0, 31)]);
+    assert_eq!(signals.len(), 1);
+    let signal = &signals[0];
+    assert_eq!(signal.donor_position_1based, 1);
+    assert_eq!(signal.acceptor_position_1based, 31);
+    assert_eq!(signal.intron_length_bp, 31);
+    assert_eq!(signal.branchpoint_position_1based, Some(10));
+    assert!(signal.branchpoint_motif.contains("CTAAC"));
+    assert!(signal.branchpoint_score >= 3.0);
+    assert!(signal.branchpoint_annotation.contains("branchpoint-like"));
+    let tract_start = signal
+        .polypyrimidine_start_1based
+        .expect("polypyrimidine tract start");
+    let tract_end = signal
+        .polypyrimidine_end_1based
+        .expect("polypyrimidine tract end");
+    assert!((20..=22).contains(&tract_start));
+    assert!((29..=31).contains(&tract_end));
+    assert!(signal.polypyrimidine_fraction >= 0.9);
+    assert!(signal.polypyrimidine_annotation.contains("polypyrimidine"));
 }
 
 #[test]
@@ -22356,6 +22396,7 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
         ],
         matrix_rows: vec![],
         boundaries: vec![],
+        intron_signals: vec![],
         junctions: vec![
             SplicingJunctionArc {
                 donor_1based: 5,

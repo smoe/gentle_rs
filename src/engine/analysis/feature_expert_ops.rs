@@ -17,6 +17,7 @@ use crate::ensembl_protein::{
 };
 use crate::uniprot::UniprotFeatureProjection;
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
+use gentle_protocol::SplicingIntronSignal;
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -5100,6 +5101,101 @@ impl GentleEngine {
         out
     }
 
+    pub(crate) fn splice_intron_signals_for_introns(
+        dna: &DNAsequence,
+        transcript_feature_id: usize,
+        transcript_id: &str,
+        is_reverse: bool,
+        introns: &[(usize, usize)],
+    ) -> Vec<SplicingIntronSignal> {
+        let mut out = Vec::new();
+        for (start, end) in introns {
+            if *end <= *start || end - start < 8 {
+                continue;
+            }
+            let oriented_intron = if is_reverse {
+                let raw = Self::sequence_slice_upper(dna, *start, *end);
+                let rc = Self::reverse_complement_bytes(raw.as_bytes());
+                String::from_utf8_lossy(&rc).to_ascii_uppercase()
+            } else {
+                Self::sequence_slice_upper(dna, *start, *end)
+            };
+            let intron_len = oriented_intron.len();
+            let donor_position_1based = if is_reverse { *end } else { start + 1 };
+            let acceptor_position_1based = if is_reverse { start + 1 } else { *end };
+            let (
+                branchpoint_position_1based,
+                branchpoint_motif,
+                branchpoint_score,
+                branchpoint_annotation,
+            ) = match Self::detect_branchpoint_like_site(&oriented_intron) {
+                Some((offset_0based, motif, score, annotation)) => (
+                    Some(Self::oriented_offset_to_genomic_1based(
+                        *start, *end, is_reverse, offset_0based,
+                    )),
+                    motif,
+                    score,
+                    annotation.to_string(),
+                ),
+                None => (
+                    None,
+                    String::new(),
+                    0.0,
+                    "No strong branchpoint-like adenine was detected in the usual acceptor-proximal heuristic window.".to_string(),
+                ),
+            };
+            let (
+                polypyrimidine_start_1based,
+                polypyrimidine_end_1based,
+                polypyrimidine_fraction,
+                polypyrimidine_annotation,
+            ) = match Self::detect_polypyrimidine_tract(&oriented_intron) {
+                Some((tract_start_0based, tract_end_0based, fraction, annotation)) => {
+                    let start_1based = Self::oriented_offset_to_genomic_1based(
+                        *start,
+                        *end,
+                        is_reverse,
+                        tract_start_0based,
+                    );
+                    let end_1based = Self::oriented_range_end_to_genomic_1based(
+                        *start,
+                        *end,
+                        is_reverse,
+                        tract_end_0based,
+                    );
+                    (
+                        Some(start_1based.min(end_1based)),
+                        Some(start_1based.max(end_1based)),
+                        fraction,
+                        annotation.to_string(),
+                    )
+                }
+                None => (
+                    None,
+                    None,
+                    0.0,
+                    "No clear acceptor-proximal polypyrimidine-rich tract was detected by the current heuristic.".to_string(),
+                ),
+            };
+            out.push(SplicingIntronSignal {
+                transcript_feature_id,
+                transcript_id: transcript_id.to_string(),
+                donor_position_1based,
+                acceptor_position_1based,
+                intron_length_bp: intron_len,
+                branchpoint_position_1based,
+                branchpoint_motif,
+                branchpoint_score,
+                branchpoint_annotation,
+                polypyrimidine_start_1based,
+                polypyrimidine_end_1based,
+                polypyrimidine_fraction,
+                polypyrimidine_annotation,
+            });
+        }
+        out
+    }
+
     pub(super) fn classify_splice_boundary_pair(
         donor_motif: &str,
         acceptor_motif: &str,
@@ -5139,6 +5235,153 @@ impl GentleEngine {
                 "Non-canonical splice-site motif pair; may reflect rarer biology, incomplete annotation, or sequence/assembly issues.",
             ),
         }
+    }
+
+    fn oriented_offset_to_genomic_1based(
+        intron_start_0based: usize,
+        intron_end_0based: usize,
+        is_reverse: bool,
+        offset_0based: usize,
+    ) -> usize {
+        if is_reverse {
+            intron_end_0based.saturating_sub(offset_0based)
+        } else {
+            intron_start_0based + offset_0based + 1
+        }
+    }
+
+    fn oriented_range_end_to_genomic_1based(
+        intron_start_0based: usize,
+        intron_end_0based: usize,
+        is_reverse: bool,
+        end_offset_exclusive_0based: usize,
+    ) -> usize {
+        if is_reverse {
+            intron_end_0based.saturating_sub(end_offset_exclusive_0based.saturating_sub(1))
+        } else {
+            intron_start_0based + end_offset_exclusive_0based
+        }
+    }
+
+    fn detect_branchpoint_like_site(
+        oriented_intron: &str,
+    ) -> Option<(usize, String, f32, &'static str)> {
+        let bases = oriented_intron.as_bytes();
+        if bases.len() < 20 {
+            return None;
+        }
+        let candidate_start = bases.len().saturating_sub(40).max(2);
+        let candidate_end_exclusive = bases.len().saturating_sub(18).min(bases.len());
+        if candidate_start >= candidate_end_exclusive {
+            return None;
+        }
+        let mut best: Option<(usize, String, f32, &'static str)> = None;
+        for idx in candidate_start..candidate_end_exclusive {
+            let base = bases[idx].to_ascii_uppercase();
+            if base != b'A' {
+                continue;
+            }
+            let mut score = 1.5_f32;
+            if idx >= 1 && Self::is_pyrimidine(bases[idx - 1]) {
+                score += 1.2;
+            }
+            if idx >= 2 && Self::is_pyrimidine(bases[idx - 2]) {
+                score += 1.0;
+            }
+            if idx >= 3 && Self::is_pyrimidine(bases[idx - 3]) {
+                score += 0.7;
+            }
+            if idx + 1 < bases.len() && Self::is_purine(bases[idx + 1]) {
+                score += 0.6;
+            }
+            if idx + 2 < bases.len() && Self::is_pyrimidine(bases[idx + 2]) {
+                score += 0.4;
+            }
+            let motif_start = idx.saturating_sub(2);
+            let motif_end = (idx + 3).min(bases.len());
+            let motif = oriented_intron[motif_start..motif_end].to_string();
+            let annotation = if score >= 4.3 {
+                "Strong branchpoint-like adenine in the usual 18-40 nt acceptor-proximal window (heuristic, not a splice predictor)."
+            } else if score >= 3.3 {
+                "Moderate branchpoint-like adenine in the usual acceptor-proximal window (heuristic only)."
+            } else {
+                "Weak branchpoint-like adenine in the usual acceptor-proximal window; inspect manually before over-interpreting."
+            };
+            let replace = best
+                .as_ref()
+                .map(|(_, _, best_score, _)| score > *best_score)
+                .unwrap_or(true);
+            if replace {
+                best = Some((idx, motif, score, annotation));
+            }
+        }
+        best
+    }
+
+    fn detect_polypyrimidine_tract(
+        oriented_intron: &str,
+    ) -> Option<(usize, usize, f32, &'static str)> {
+        let bases = oriented_intron.as_bytes();
+        if bases.len() < 12 {
+            return None;
+        }
+        let window_lengths = [14usize, 12, 10, 8];
+        let region_start = bases.len().saturating_sub(35);
+        let region_end_exclusive = bases.len().saturating_sub(2);
+        if region_end_exclusive <= region_start + 6 {
+            return None;
+        }
+        let mut best: Option<(usize, usize, f32, usize, f32)> = None;
+        for window_len in window_lengths {
+            if window_len > region_end_exclusive.saturating_sub(region_start) {
+                continue;
+            }
+            for start in region_start..=region_end_exclusive.saturating_sub(window_len) {
+                let end = start + window_len;
+                let pyrimidine_count = bases[start..end]
+                    .iter()
+                    .filter(|base| Self::is_pyrimidine(**base))
+                    .count();
+                let fraction = pyrimidine_count as f32 / window_len as f32;
+                let distance_bonus =
+                    (start.saturating_sub(region_start) as f32) / (bases.len().max(1) as f32);
+                let effective_score = fraction + distance_bonus * 0.08;
+                let replace = best
+                    .as_ref()
+                    .map(
+                        |(_, _, best_fraction, best_window_len, best_effective_score)| {
+                            effective_score > *best_effective_score
+                                || (effective_score == *best_effective_score
+                                    && (fraction > *best_fraction
+                                        || (fraction == *best_fraction
+                                            && window_len > *best_window_len)))
+                        },
+                    )
+                    .unwrap_or(true);
+                if replace {
+                    best = Some((start, end, fraction, window_len, effective_score));
+                }
+            }
+        }
+        let (start, end, fraction, _window_len, _effective_score) = best?;
+        let annotation = if fraction >= 0.85 {
+            "Strong acceptor-proximal polypyrimidine tract by simple pyrimidine-density heuristic."
+        } else if fraction >= 0.75 {
+            "Moderate acceptor-proximal polypyrimidine tract by simple pyrimidine-density heuristic."
+        } else if fraction >= 0.65 {
+            "Weak pyrimidine-rich tract near the acceptor; review manually before treating it as strong evidence."
+        } else {
+            return None;
+        };
+        Some((start, end, fraction, annotation))
+    }
+
+    fn is_pyrimidine(base: u8) -> bool {
+        matches!(base.to_ascii_uppercase(), b'C' | b'T' | b'U')
+    }
+
+    fn is_purine(base: u8) -> bool {
+        matches!(base.to_ascii_uppercase(), b'A' | b'G')
     }
 
     pub(super) fn range_intersection_0based(
@@ -5459,8 +5702,16 @@ impl GentleEngine {
             .collect();
 
         let mut boundaries = Vec::new();
+        let mut intron_signals = Vec::new();
         for transcript in &transcripts {
             boundaries.extend(Self::splice_boundary_markers_for_introns(
+                dna,
+                transcript.feature_id,
+                &transcript.transcript_id,
+                transcript.is_reverse,
+                &transcript.intron_ranges,
+            ));
+            intron_signals.extend(Self::splice_intron_signals_for_introns(
                 dna,
                 transcript.feature_id,
                 &transcript.transcript_id,
@@ -5472,6 +5723,12 @@ impl GentleEngine {
             a.position_1based
                 .cmp(&b.position_1based)
                 .then_with(|| a.side.cmp(&b.side))
+                .then_with(|| a.transcript_feature_id.cmp(&b.transcript_feature_id))
+        });
+        intron_signals.sort_by(|a, b| {
+            a.donor_position_1based
+                .cmp(&b.donor_position_1based)
+                .then_with(|| a.acceptor_position_1based.cmp(&b.acceptor_position_1based))
                 .then_with(|| a.transcript_feature_id.cmp(&b.transcript_feature_id))
         });
 
@@ -5740,6 +5997,7 @@ impl GentleEngine {
             unique_exons: unique_exon_summaries,
             matrix_rows,
             boundaries,
+            intron_signals,
             junctions,
             events,
         })
