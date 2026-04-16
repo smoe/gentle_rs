@@ -4222,9 +4222,11 @@ Post-baseline follow-ups:
     insert-methylation protection intent, and extra retrieval-site enzymes.
     The reasoning graph now derives a dedicated
     `adapter_restriction_capture_context` fact/decision from that plus the
-    actual insert sequence, keeps unresolved enzymes / internal same-site
-    conflicts / methylation-protection review explicit, surfaces the result in
-    GUI + run-bundle summaries, and lets that same reasoning bias routine
+    actual insert sequence, now checks every named adapter motif instead of
+    only the primary capture site, keeps unresolved enzymes / internal
+    same-site conflicts / “all adapter motifs already present” /
+    methylation-protection review explicit, surfaces the result in GUI +
+    run-bundle summaries, and lets that same reasoning bias routine
     preference synthesis toward restriction-family workflows.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.

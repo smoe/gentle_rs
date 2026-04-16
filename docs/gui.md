@@ -1573,9 +1573,10 @@ Controls:
      `hsdR+`, or `MDRS+`.
    - Adapter/linker restriction-capture reasoning now also appears there as a
      non-sequence fact: blunt-end capture plans, minimal vs MCS-like adapter
-     style, internal same-site conflicts on the insert, and “planned insert
-     methylation still needs enzyme-specific review” warnings stay visible
-     without pretending they are coordinate spans.
+     style, per-motif conflicts across the capture site plus extra retrieval
+     sites, the stronger “all named adapter motifs already occur on the insert”
+     case, and “planned insert methylation still needs enzyme-specific review”
+     warnings stay visible without pretending they are coordinate spans.
    - Variant-aware reasoning now also appears there as non-sequence facts:
      promoter / TFBS / CDS / UTR / splice overlaps are summarized as likely
      effect candidates, and the same shared engine rules surface first assay

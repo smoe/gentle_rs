@@ -194,6 +194,17 @@ struct ConstructRestrictionMethylationConflict {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
+struct ConstructAdapterRestrictionCaptureMotifSummary {
+    enzyme_name: String,
+    motif_role: String,
+    resolution_status: String,
+    site_geometry: Option<String>,
+    internal_site_count: usize,
+    internal_site_status: String,
+    internal_site_ranges_0based: Vec<[usize; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
 struct ConstructAdapterRestrictionCapturePlanSummary {
     capture_id: String,
     restriction_enzyme_name: String,
@@ -206,6 +217,10 @@ struct ConstructAdapterRestrictionCapturePlanSummary {
     internal_site_count: usize,
     internal_site_status: String,
     internal_site_ranges_0based: Vec<[usize; 2]>,
+    named_motif_count: usize,
+    resolved_motif_count: usize,
+    all_named_motifs_present_on_insert: bool,
+    motif_summaries: Vec<ConstructAdapterRestrictionCaptureMotifSummary>,
     notes: Vec<String>,
 }
 
@@ -14304,6 +14319,10 @@ impl GentleEngine {
             .collect()
     }
 
+    fn construct_reasoning_adapter_capture_methylation_review_note() -> &'static str {
+        "A possible rescue is methylation-based protection if a compatible methylation system blocks cleavage at that motif, but GENtle's enzyme-specific methylation knowledge base is still incomplete."
+    }
+
     fn construct_reasoning_summarize_adapter_restriction_capture_plans(
         dna: &DNAsequence,
         objective: &ConstructObjective,
@@ -14318,90 +14337,202 @@ impl GentleEngine {
 
         for plan in &objective.adapter_restriction_capture_plans {
             derived_preferred_routine_families.insert("restriction".to_string());
-            let Some(enzyme) = Self::construct_reasoning_find_restriction_enzyme_by_name(
-                &plan.restriction_enzyme_name,
-            ) else {
-                summaries.push(ConstructAdapterRestrictionCapturePlanSummary {
-                    capture_id: plan.capture_id.clone(),
-                    restriction_enzyme_name: plan.restriction_enzyme_name.clone(),
-                    enzyme_resolution_status: "not_found".to_string(),
-                    adapter_style: plan.adapter_style.as_str().to_string(),
-                    blunt_insert_required: plan.blunt_insert_required,
-                    protection_mode: plan.protection_mode.as_str().to_string(),
-                    extra_retrieval_enzyme_names: plan.extra_retrieval_enzyme_names.clone(),
-                    capture_site_geometry: None,
-                    internal_site_count: 0,
-                    internal_site_status: "enzyme_not_found".to_string(),
-                    internal_site_ranges_0based: vec![],
-                    notes: plan.notes.clone(),
+            let mut seen_named_motifs = BTreeSet::new();
+            let named_motifs =
+                std::iter::once((plan.restriction_enzyme_name.clone(), "capture".to_string()))
+                    .chain(
+                        plan.extra_retrieval_enzyme_names
+                            .iter()
+                            .cloned()
+                            .map(|enzyme_name| (enzyme_name, "retrieval".to_string())),
+                    )
+                    .filter_map(|(enzyme_name, motif_role)| {
+                        let trimmed = enzyme_name.trim();
+                        if trimmed.is_empty() {
+                            return None;
+                        }
+                        let dedupe_key = trimmed.to_ascii_lowercase();
+                        seen_named_motifs
+                            .insert(dedupe_key)
+                            .then(|| (trimmed.to_string(), motif_role))
+                    })
+                    .collect::<Vec<_>>();
+
+            let mut capture_restriction_enzyme_name = plan.restriction_enzyme_name.clone();
+            let mut capture_enzyme_resolution_status = "not_found".to_string();
+            let mut capture_site_geometry = None;
+            let mut capture_internal_site_count = 0usize;
+            let mut capture_internal_site_status = "enzyme_not_found".to_string();
+            let mut capture_internal_site_ranges_0based = vec![];
+            let mut motif_summaries = vec![];
+            let mut resolved_motif_count = 0usize;
+            let mut every_named_motif_present_on_insert = !named_motifs.is_empty();
+
+            for (enzyme_name, motif_role) in &named_motifs {
+                let Some(enzyme) =
+                    Self::construct_reasoning_find_restriction_enzyme_by_name(enzyme_name)
+                else {
+                    motif_summaries.push(ConstructAdapterRestrictionCaptureMotifSummary {
+                        enzyme_name: enzyme_name.clone(),
+                        motif_role: motif_role.clone(),
+                        resolution_status: "not_found".to_string(),
+                        site_geometry: None,
+                        internal_site_count: 0,
+                        internal_site_status: "enzyme_not_found".to_string(),
+                        internal_site_ranges_0based: vec![],
+                    });
+                    every_named_motif_present_on_insert = false;
+                    let (issue_id, label) = if motif_role == "capture" {
+                        (
+                            "capture_enzyme_not_found",
+                            "Adapter capture enzyme needs review",
+                        )
+                    } else {
+                        (
+                            "retrieval_enzyme_not_found",
+                            "Adapter retrieval enzyme needs review",
+                        )
+                    };
+                    review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                        capture_id: plan.capture_id.clone(),
+                        issue_id: issue_id.to_string(),
+                        label: label.to_string(),
+                        rationale: format!(
+                            "Adapter/linker capture plan '{}' references {} restriction enzyme '{}', but the active restriction catalog could not resolve that enzyme name.",
+                            plan.capture_id,
+                            motif_role,
+                            enzyme_name
+                        ),
+                    });
+                    continue;
+                };
+
+                resolved_motif_count = resolved_motif_count.saturating_add(1);
+                let internal_site_ranges =
+                    Self::construct_reasoning_internal_restriction_site_ranges(dna, &enzyme);
+                let internal_site_count = internal_site_ranges.len();
+                let internal_site_status = if internal_site_count == 0 {
+                    "no_internal_site_conflict"
+                } else if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
+                    "methylation_protection_requested"
+                } else {
+                    "internal_site_conflict"
+                };
+                if internal_site_count == 0 {
+                    every_named_motif_present_on_insert = false;
+                }
+
+                if motif_role == "capture" {
+                    capture_restriction_enzyme_name = enzyme.name.clone();
+                    capture_enzyme_resolution_status = "resolved".to_string();
+                    capture_site_geometry = Some(enzyme.end_geometry().kind_label().to_string());
+                    capture_internal_site_count = internal_site_count;
+                    capture_internal_site_status = internal_site_status.to_string();
+                    capture_internal_site_ranges_0based = internal_site_ranges.clone();
+                }
+
+                motif_summaries.push(ConstructAdapterRestrictionCaptureMotifSummary {
+                    enzyme_name: enzyme.name.clone(),
+                    motif_role: motif_role.clone(),
+                    resolution_status: "resolved".to_string(),
+                    site_geometry: Some(enzyme.end_geometry().kind_label().to_string()),
+                    internal_site_count,
+                    internal_site_status: internal_site_status.to_string(),
+                    internal_site_ranges_0based: internal_site_ranges.clone(),
                 });
+
+                if internal_site_count == 0 {
+                    continue;
+                }
+
+                let methylation_note =
+                    Self::construct_reasoning_adapter_capture_methylation_review_note();
+                if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
+                    let (issue_id, label) = if motif_role == "capture" {
+                        (
+                            "methylation_protection_requires_enzyme_specific_review",
+                            "Insert methylation protection requires review",
+                        )
+                    } else {
+                        (
+                            "retrieval_motif_methylation_protection_requires_review",
+                            "Adapter retrieval motif protection requires review",
+                        )
+                    };
+                    review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                        capture_id: plan.capture_id.clone(),
+                        issue_id: issue_id.to_string(),
+                        label: label.to_string(),
+                        rationale: format!(
+                            "Adapter/linker capture plan '{}' reuses {} restriction site '{}' that already occurs {} time(s) on the insert. Planned insert methylation keeps that protection strategy explicit, but enzyme-specific methylation sensitivity still needs review before assuming adapter-only cleavage. {methylation_note}",
+                            plan.capture_id,
+                            motif_role,
+                            enzyme.name,
+                            internal_site_count
+                        ),
+                    });
+                } else {
+                    let (issue_id, label) = if motif_role == "capture" {
+                        (
+                            "internal_capture_site_conflict",
+                            "Internal adapter capture site conflict",
+                        )
+                    } else {
+                        (
+                            "internal_retrieval_site_conflict",
+                            "Internal adapter retrieval site conflict",
+                        )
+                    };
+                    review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                        capture_id: plan.capture_id.clone(),
+                        issue_id: issue_id.to_string(),
+                        label: label.to_string(),
+                        rationale: format!(
+                            "Adapter/linker capture plan '{}' uses {} restriction site '{}', and that site already occurs {} time(s) on the insert without an explicit protection mode. {methylation_note}",
+                            plan.capture_id,
+                            motif_role,
+                            enzyme.name,
+                            internal_site_count
+                        ),
+                    });
+                }
+            }
+
+            let all_named_motifs_present_on_insert = named_motifs.len() > 1
+                && resolved_motif_count == named_motifs.len()
+                && every_named_motif_present_on_insert;
+            if all_named_motifs_present_on_insert {
                 review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
                     capture_id: plan.capture_id.clone(),
-                    issue_id: "capture_enzyme_not_found".to_string(),
-                    label: "Adapter capture enzyme needs review".to_string(),
+                    issue_id: "all_adapter_motifs_already_present_on_insert".to_string(),
+                    label: "All adapter motifs already occur on the insert".to_string(),
                     rationale: format!(
-                        "Adapter/linker capture plan '{}' references restriction enzyme '{}', but the active restriction catalog could not resolve that enzyme name.",
-                        plan.capture_id, plan.restriction_enzyme_name
+                        "Adapter/linker capture plan '{}' names {} motif(s), and every resolved adapter motif already occurs internally on the insert. That means the adapter may contribute little retrieval discrimination after ligation/digest. {}",
+                        plan.capture_id,
+                        named_motifs.len(),
+                        Self::construct_reasoning_adapter_capture_methylation_review_note()
                     ),
                 });
-                continue;
-            };
-
-            let internal_site_ranges =
-                Self::construct_reasoning_internal_restriction_site_ranges(dna, &enzyme);
-            let internal_site_count = internal_site_ranges.len();
-            let internal_site_status = if internal_site_count == 0 {
-                "no_internal_site_conflict"
-            } else if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
-                "methylation_protection_requested"
-            } else {
-                "internal_site_conflict"
-            };
+            }
 
             summaries.push(ConstructAdapterRestrictionCapturePlanSummary {
                 capture_id: plan.capture_id.clone(),
-                restriction_enzyme_name: enzyme.name.clone(),
-                enzyme_resolution_status: "resolved".to_string(),
+                restriction_enzyme_name: capture_restriction_enzyme_name,
+                enzyme_resolution_status: capture_enzyme_resolution_status,
                 adapter_style: plan.adapter_style.as_str().to_string(),
                 blunt_insert_required: plan.blunt_insert_required,
                 protection_mode: plan.protection_mode.as_str().to_string(),
                 extra_retrieval_enzyme_names: plan.extra_retrieval_enzyme_names.clone(),
-                capture_site_geometry: Some(enzyme.end_geometry().kind_label().to_string()),
-                internal_site_count,
-                internal_site_status: internal_site_status.to_string(),
-                internal_site_ranges_0based: internal_site_ranges.clone(),
+                capture_site_geometry,
+                internal_site_count: capture_internal_site_count,
+                internal_site_status: capture_internal_site_status,
+                internal_site_ranges_0based: capture_internal_site_ranges_0based,
+                named_motif_count: named_motifs.len(),
+                resolved_motif_count,
+                all_named_motifs_present_on_insert,
+                motif_summaries,
                 notes: plan.notes.clone(),
             });
-
-            if internal_site_count == 0 {
-                continue;
-            }
-
-            if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
-                review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
-                    capture_id: plan.capture_id.clone(),
-                    issue_id: "methylation_protection_requires_enzyme_specific_review".to_string(),
-                    label: "Insert methylation protection requires review".to_string(),
-                    rationale: format!(
-                        "Adapter/linker capture plan '{}' reuses restriction site '{}' that already occurs {} time(s) on the insert. Planned insert methylation keeps the intended protection strategy explicit, but enzyme-specific methylation sensitivity still needs review before assuming only newly ligated adapter sites will cut.",
-                        plan.capture_id,
-                        enzyme.name,
-                        internal_site_count
-                    ),
-                });
-            } else {
-                review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
-                    capture_id: plan.capture_id.clone(),
-                    issue_id: "internal_capture_site_conflict".to_string(),
-                    label: "Internal adapter capture site conflict".to_string(),
-                    rationale: format!(
-                        "Adapter/linker capture plan '{}' uses restriction site '{}', and that site already occurs {} time(s) on the insert without an explicit protection mode.",
-                        plan.capture_id,
-                        enzyme.name,
-                        internal_site_count
-                    ),
-                });
-            }
         }
 
         (

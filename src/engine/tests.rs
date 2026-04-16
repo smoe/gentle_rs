@@ -26098,6 +26098,24 @@ fn build_construct_reasoning_graph_derives_adapter_restriction_capture_context()
                         .get("internal_site_count")
                         .and_then(serde_json::Value::as_u64)
                         == Some(1)
+                    && row
+                        .get("all_named_motifs_present_on_insert")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(false)
+                    && row
+                        .get("motif_summaries")
+                        .and_then(serde_json::Value::as_array)
+                        .map(|motifs| {
+                            motifs.iter().any(|entry| {
+                                entry.get("enzyme_name").and_then(serde_json::Value::as_str)
+                                    == Some("EcoRI")
+                                    && entry
+                                        .get("internal_site_count")
+                                        .and_then(serde_json::Value::as_u64)
+                                        == Some(1)
+                            })
+                        })
+                        .unwrap_or(false)
             }))
             .unwrap_or(false)
     );
@@ -26108,6 +26126,14 @@ fn build_construct_reasoning_graph_derives_adapter_restriction_capture_context()
             .map(|rows| rows.iter().any(|row| {
                 row.get("issue_id").and_then(serde_json::Value::as_str)
                     == Some("methylation_protection_requires_enzyme_specific_review")
+                    && row
+                        .get("rationale")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|text| {
+                            text.contains("possible rescue is methylation-based protection")
+                                && text.contains("knowledge base is still incomplete")
+                        })
+                        .unwrap_or(false)
             }))
             .unwrap_or(false)
     );
@@ -26172,6 +26198,159 @@ fn planning_routine_preference_context_for_sequence_includes_adapter_capture_pre
         line.contains("adapter/linker capture context")
             || line.contains("adapter/linker capture strategy-derived")
     }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_warns_when_all_adapter_motifs_are_already_present() {
+    let dna = DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("adapter_capture_all_motifs".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Adapter capture all motifs present".to_string(),
+            goal: "Warn when every adapter motif already occurs on the insert".to_string(),
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: "mcs_capture".to_string(),
+                restriction_enzyme_name: "EcoRI".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::McsLike,
+                protection_mode: AdapterCaptureProtectionMode::None,
+                extra_retrieval_enzyme_names: vec!["XbaI".to_string(), "NotI".to_string()],
+                notes: vec![],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "adapter_capture_all_motifs",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "adapter_restriction_capture_context")
+        .expect("adapter capture fact");
+    assert!(
+        fact.value_json
+            .get("capture_plans")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("capture_id").and_then(serde_json::Value::as_str) == Some("mcs_capture")
+                    && row
+                        .get("all_named_motifs_present_on_insert")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true)
+                    && row
+                        .get("named_motif_count")
+                        .and_then(serde_json::Value::as_u64)
+                        == Some(3)
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        fact.value_json
+            .get("review_items")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("issue_id").and_then(serde_json::Value::as_str)
+                    == Some("all_adapter_motifs_already_present_on_insert")
+                    && row
+                        .get("rationale")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|text| {
+                            text.contains("every resolved adapter motif already occurs internally")
+                                && text.contains("methylation-based protection")
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_deduplicates_adapter_motifs_case_insensitively() {
+    let dna = DNAsequence::from_sequence("TTTGAATTCAAA").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("adapter_capture_casefold".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Adapter capture motif dedupe".to_string(),
+            goal: "Treat differently cased adapter motif names as the same motif".to_string(),
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: "casefold_capture".to_string(),
+                restriction_enzyme_name: "EcoRI".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::McsLike,
+                protection_mode: AdapterCaptureProtectionMode::None,
+                extra_retrieval_enzyme_names: vec![
+                    " ecori ".to_string(),
+                    "ECoRI".to_string(),
+                    "NotI".to_string(),
+                ],
+                notes: vec![],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "adapter_capture_casefold",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "adapter_restriction_capture_context")
+        .expect("adapter capture fact");
+    assert!(
+        fact.value_json
+            .get("capture_plans")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("capture_id").and_then(serde_json::Value::as_str)
+                    == Some("casefold_capture")
+                    && row
+                        .get("named_motif_count")
+                        .and_then(serde_json::Value::as_u64)
+                        == Some(2)
+                    && row
+                        .get("resolved_motif_count")
+                        .and_then(serde_json::Value::as_u64)
+                        == Some(2)
+                    && row
+                        .get("motif_summaries")
+                        .and_then(serde_json::Value::as_array)
+                        .map(|motifs| {
+                            motifs
+                                .iter()
+                                .filter(|entry| {
+                                    entry.get("enzyme_name").and_then(serde_json::Value::as_str)
+                                        == Some("EcoRI")
+                                })
+                                .count()
+                                == 1
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
 }
 
 #[test]

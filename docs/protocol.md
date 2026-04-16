@@ -2824,13 +2824,17 @@ Construct reasoning graph foundation (implemented first slice):
         - capture restriction enzyme
         - minimal vs MCS-like adapter style
         - whether blunt insert ends are required
-        - optional insert-methylation protection intent
-        - optional extra retrieval-site enzymes on longer adapters
-      - deterministic internal-site tallies for the chosen capture enzyme on
-        the insert sequence
+      - optional insert-methylation protection intent
+      - optional extra retrieval-site enzymes on longer adapters
+      - deterministic internal-site tallies for every named adapter motif
+        (capture site plus extra retrieval-site enzymes) on the insert
+        sequence
       - review flags when:
         - the capture enzyme cannot be resolved from the active catalog
-        - the insert already carries the same site without protection
+        - any named adapter motif already occurs on the insert without
+          protection
+        - all named adapter motifs already occur on the insert, so the adapter
+          may contribute little retrieval discrimination
         - insert methylation is requested and therefore still requires
           enzyme-specific methylation-sensitivity review before assuming only
           newly ligated adapter sites will cut

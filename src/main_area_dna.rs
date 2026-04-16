@@ -17028,7 +17028,56 @@ impl MainAreaDna {
                 if !capture_rows.is_empty() {
                     detail_lines.push(format!("capture_plans: {}", capture_rows.join(" | ")));
                 }
-                let retrieval_sites = fact
+                let motif_rows = fact
+                    .value_json
+                    .get("capture_plans")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let capture_id = row
+                                    .get("capture_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("capture");
+                                let motifs = row
+                                    .get("motif_summaries")
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|entries| {
+                                        entries
+                                            .iter()
+                                            .filter_map(|entry| {
+                                                let enzyme = entry
+                                                    .get("enzyme_name")
+                                                    .and_then(serde_json::Value::as_str)?;
+                                                let role = entry
+                                                    .get("motif_role")
+                                                    .and_then(serde_json::Value::as_str)
+                                                    .unwrap_or("motif");
+                                                let status = entry
+                                                    .get("internal_site_status")
+                                                    .and_then(serde_json::Value::as_str)
+                                                    .unwrap_or("unspecified");
+                                                let count = entry
+                                                    .get("internal_site_count")
+                                                    .and_then(serde_json::Value::as_u64)
+                                                    .unwrap_or(0);
+                                                Some(format!(
+                                                    "{role}:{enzyme} ({status}, internal_sites={count})"
+                                                ))
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    })
+                                    .unwrap_or_default();
+                                (!motifs.is_empty()).then(|| format!("{capture_id}: {motifs}"))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !motif_rows.is_empty() {
+                    detail_lines.push(format!("motifs: {}", motif_rows.join(" | ")));
+                }
+                let all_present = fact
                     .value_json
                     .get("capture_plans")
                     .and_then(serde_json::Value::as_array)
@@ -17037,25 +17086,18 @@ impl MainAreaDna {
                             .filter_map(|row| {
                                 let capture_id =
                                     row.get("capture_id").and_then(serde_json::Value::as_str)?;
-                                let retrievals = row
-                                    .get("extra_retrieval_enzyme_names")
-                                    .and_then(serde_json::Value::as_array)
-                                    .map(|entries| {
-                                        entries
-                                            .iter()
-                                            .filter_map(serde_json::Value::as_str)
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    })
-                                    .unwrap_or_default();
-                                (!retrievals.is_empty())
-                                    .then(|| format!("{capture_id}: {retrievals}"))
+                                let all_present = row
+                                    .get("all_named_motifs_present_on_insert")
+                                    .and_then(serde_json::Value::as_bool)
+                                    .unwrap_or(false);
+                                all_present
+                                    .then(|| format!("{capture_id}: all_named_motifs_present"))
                             })
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
-                if !retrieval_sites.is_empty() {
-                    detail_lines.push(format!("retrieval_sites: {}", retrieval_sites.join(" | ")));
+                if !all_present.is_empty() {
+                    detail_lines.push(format!("aggregate: {}", all_present.join(" | ")));
                 }
                 let review_items = fact
                     .value_json

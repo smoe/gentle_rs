@@ -324,11 +324,15 @@ notes:
   - `adapter_restriction_capture_context`
   - `evaluate_adapter_restriction_capture_strategy`
 - current deterministic limits:
-  - exact internal same-site reuse on the insert is a hard fact
+  - exact internal reuse of every named adapter motif on the insert is a hard
+    fact
   - requested insert methylation is explicit intent, not proof that the chosen
     enzyme is methylation-sensitive in the needed way
   - until an enzyme-specific methylation-sensitivity catalog exists, that path
     should remain a review flag rather than a guaranteed “adapter-only digest”
+  - if all named adapter motifs already occur on the insert, the graph should
+    raise an explicit “low discrimination / retrieval ambiguity” warning rather
+    than only repeating the per-motif conflicts
 
 This slice should also be allowed to synthesize restriction-family routine
 preferences so the reasoning graph can influence downstream routine ranking.
