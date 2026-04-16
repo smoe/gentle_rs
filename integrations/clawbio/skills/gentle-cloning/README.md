@@ -8,6 +8,22 @@ mechanistic follow-up and wet-lab planning. It also makes clear that prepared
 Ensembl/reference assets and BLAST-capable indices are reusable local
 infrastructure, not GENtle-only byproducts.
 
+## Logical capability split
+
+The runtime alias is still `gentle-cloning`, but the intended ClawBio-facing
+surface is now six explicit sub-capabilities:
+
+- genomic context
+- TFBS analysis
+- restriction analysis
+- splicing expert
+- isoform architecture
+- variant follow-up
+
+This is a documentation/routing split, not six separate executables. The goal
+is to make it obvious that GENtle already exposes dedicated shared command
+surfaces for those tasks instead of one vague "cloning" box.
+
 ## Files
 
 - `SKILL.md`: skill metadata + routing/instructions
@@ -58,6 +74,8 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json --output /tmp/gentle_rs9923231_context_svg
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json --output /tmp/gentle_rs9923231_context_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_grch38_tp53_gene_models.json --output /tmp/gentle_tp53_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
@@ -80,6 +98,13 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
+  follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
+  fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
+  coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
+  fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
+  artifact
 - `request_export_bed_pgex_fasta_tfbs_restriction.json` is a matching
   follow-on tabular route on that same `pgex_fasta` state; it annotates TFBS,
   exports TFBS rows, and appends selected restriction-site rows into one BED
@@ -176,6 +201,12 @@ Included follow-on analysis/planning/graphics requests:
 
 - `examples/request_genbank_fetch_pbr322.json`
 - `examples/request_dbsnp_fetch_rs9923231.json`
+- `examples/request_render_svg_rs9923231_vkorc1_linear.json`
+  - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+  - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context SVG
+- `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
+  - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+  - exports the fetched locus' gene/mRNA/variation rows with genomic coordinates
 - `examples/request_genomes_extract_gene_tp53.json`
 - `examples/request_export_bed_grch38_tp53_gene_models.json`
   - follow-on route after `examples/request_genomes_extract_gene_tp53.json`

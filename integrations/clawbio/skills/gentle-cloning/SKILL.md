@@ -113,21 +113,151 @@ Always keep the boundary explicit:
 - experimental test: the luciferase/minigene/RT-PCR/cloning or other wet-lab
   step still needed to validate that hypothesis
 
+## Capability Split Inside This One Skill
+
+`gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should
+be treated as a bundle of six explicit sub-capabilities rather than one vague
+"do anything with GENtle" wrapper.
+
+### 1. Genomic Context
+
+Use this when the user wants the DNA sequence window in headless form:
+
+- render one anchored genomic environment as SVG
+- export the displayed features with genomic coordinates
+- keep viewport and display-filter choices explicit and replayable
+
+Current shared GENtle routes behind this capability:
+
+- `RenderSequenceSvg`
+- `SetLinearViewport`
+- `SetDisplayVisibility`
+- `features export-bed ... --coordinate-mode genomic`
+- `FetchDbSnpRegion`, `ExtractRegion`, `genomes extract-gene`, and related
+  locus-loading routes
+
+Expected outputs:
+
+- one SVG map
+- one BED/tabular coordinate export
+- one reproducibility bundle from the ClawBio wrapper
+
+### 2. TFBS Analysis
+
+Use this when the user wants transcription-factor binding-site annotation,
+inspection, or figure export.
+
+Current shared GENtle routes behind this capability:
+
+- `AnnotateTfbs`
+- `features tfbs-summary ...`
+- `inspect-feature-expert SEQ_ID tfbs FEATURE_ID`
+- `render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg`
+- `features export-bed ... --kind TFBS`
+
+Expected outputs:
+
+- scored TFBS feature annotations
+- grouped focus-vs-context TFBS summaries
+- TFBS expert text
+- TFBS expert SVG or linear-sequence SVG with TFBS display enabled
+
+### 3. Restriction Analysis
+
+Use this when the user wants endonuclease cleavage inspection, map rendering,
+or coordinate export.
+
+Current shared GENtle routes behind this capability:
+
+- restriction-aware `RenderSequenceSvg`
+- `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED ...`
+- `render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED ... OUTPUT.svg`
+- `features export-bed ... --include-restriction-sites [--restriction-enzyme NAME ...]`
+
+Expected outputs:
+
+- restriction-cleavage text/expert payloads
+- restriction-cleavage SVGs
+- BED rows for deterministic REBASE-derived cut sites
+
+### 4. Splicing Expert
+
+Use this when the user wants transcript/exon/splice interpretation in the same
+shape as the GUI `Splicing Expert`.
+
+Current shared GENtle routes behind this capability:
+
+- `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
+- `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
+- `DeriveSplicingReferences`
+- RNA-read follow-on report inspection routes when the locus already has saved
+  mapping evidence
+
+Expected outputs:
+
+- splicing-expert text with transcript/exon/junction interpretation
+- splicing-expert SVG with junction support, transition matrices, and phase
+  cues
+
+### 5. Isoform Architecture
+
+Use this when the user wants transcript-family or isoform-panel review rather
+than one splice group.
+
+Current shared GENtle routes behind this capability:
+
+- `panels import-isoform ...`
+- `panels inspect-isoform ...`
+- `panels render-isoform-svg ...`
+- `inspect-feature-expert SEQ_ID isoform PANEL_ID`
+- `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
+
+Expected outputs:
+
+- isoform-panel text
+- isoform-architecture SVG
+
+### 6. Variant Follow-up
+
+Use this when ClawBio starts from a patient/cohort variant or pharmacogenomic
+alert and wants a sequence-grounded assay-planning handoff.
+
+Current shared GENtle routes behind this capability:
+
+- `FetchDbSnpRegion`
+- `AnnotatePromoterWindows`
+- `SummarizeVariantPromoterContext`
+- `SuggestPromoterReporterFragments`
+- `MaterializeVariantAllele`
+- shared reporter-preview workflow/macro paths
+
+Expected outputs:
+
+- promoter-context report
+- reporter-fragment candidates
+- paired allele inserts
+- construct previews and handoff bundle artifacts
+
 ## Core Capabilities
 
 1. **Deterministic execution bridge**: route structured ClawBio requests into
    stable `gentle_cli` invocations instead of ad hoc natural-language-only
    reasoning.
-2. **Observation-to-assay translation**: turn prioritized cohort or
+2. **Split one broad wrapper into explicit analysis surfaces**: treat the skill
+   as six named capability lanes:
+   - genomic context
+   - TFBS analysis
+   - restriction analysis
+   - splicing expert
+   - isoform architecture
+   - variant follow-up
+3. **Observation-to-assay translation**: turn prioritized cohort or
    patient-data observations into explicit sequence-grounded follow-up steps,
    while keeping the boundary between association, mechanism, and validation
    visible.
-3. **Cloning and assay workflow replay**: execute saved GENtle workflows for
-   Gibson assembly, PCR design, primer-pair reports, and related sequence
-   engineering tasks.
-4. **Genome-context operations**: run GENtle shell or operation payloads for
-   reference preparation, anchored extraction, BLAST checks, GenBank/dbSNP
-   retrieval, isoform/splicing review, and sequence inspection.
+4. **Cloning and assay workflow replay**: execute saved GENtle workflows for
+   Gibson assembly, PCR design, primer-pair reports, reporter planning, and
+   related sequence engineering tasks.
 5. **Reusable reference bootstrapping**: prepare Ensembl/reference datasets and
    BLAST-capable local assets that are useful both to GENtle and to external
    bioinformatics tooling.
@@ -155,12 +285,20 @@ task:
 
 1. **Validate**: parse the request JSON, confirm the schema is
    `gentle.clawbio_skill_request.v1`, and verify the mode-specific fields.
-2. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
+2. **Classify the request into one capability lane**:
+   - genomic context
+   - TFBS analysis
+   - restriction analysis
+   - splicing expert
+   - isoform architecture
+   - variant follow-up
+   - general cloning/workflow replay if none of the above fits better
+3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
    repository-local
    `cargo run --quiet --bin gentle_cli --` fallback.
-3. **Canonicalize the request**: convert the request into one deterministic CLI
+4. **Canonicalize the request**: convert the request into one deterministic CLI
    argument vector.
    - Relative `workflow_path` values resolve first from the current working
      directory, then from `GENTLE_REPO_ROOT`, then from the local GENtle repo
@@ -169,14 +307,14 @@ task:
      from that repo root so repo-relative assets referenced by the workflow
      keep working after the scaffold is copied into a separate ClawBio
      checkout.
-4. **Execute exactly once**: run the command with the declared timeout and no
+5. **Execute exactly once**: run the command with the declared timeout and no
    hidden retries or silent fallback behavior beyond the resolver order above.
-5. **Capture provenance**: record resolver metadata, full command, timestamps,
+6. **Capture provenance**: record resolver metadata, full command, timestamps,
    exit code, stdout, stderr, and any execution error.
-6. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
+7. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
    `reproducibility/commands.sh`, `reproducibility/environment.yml`, and
    `reproducibility/checksums.sha256`.
-7. **Summarize for the user**: explain what GENtle actually ran, what state or
+8. **Summarize for the user**: explain what GENtle actually ran, what state or
    workflow it touched, and what the next deterministic validation step should
    be.
 
@@ -226,6 +364,12 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json \
   --output /tmp/gentle_clawbio_fetch_rs9923231
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json \
+  --output /tmp/gentle_clawbio_rs9923231_context_svg
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json \
+  --output /tmp/gentle_clawbio_rs9923231_context_bed
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json \
   --output /tmp/gentle_clawbio_extract_tp53
 python clawbio.py run gentle-cloning \
@@ -264,6 +408,13 @@ Notes:
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
   route after `request_workflow_file.json`, which loads `pgex_fasta` into that
   state
+- `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
+  follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
+  fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
+  coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
+  fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
+  artifact
 - `request_genomes_blast_grch38_short.json` is a follow-on search route after
   `request_genomes_prepare_grch38.json`; it exercises the shared
   reference-genome BLAST path against the prepared GRCh38 catalog entry
@@ -387,12 +538,17 @@ Apply the following methodology:
 5. **State the evidence boundary**: when the user starts from patient or cohort
    statistics, label what is already an observation, what is only a
    mechanistic hypothesis, and what still requires wet-lab validation.
-6. **Treat prepared references as reusable infrastructure**: do not imply
+6. **Treat viewer-style outputs as paired artifacts**: when the request is
+   about a displayed genomic environment, prefer producing both a graphic
+   (`RenderSequenceSvg` / expert SVG) and a coordinate-bearing textual or
+   tabular companion (`inspect-feature-expert`, `features export-bed`, or
+   structured JSON output) rather than only one or the other.
+7. **Treat prepared references as reusable infrastructure**: do not imply
    prepared Ensembl assets or BLAST indices are only valuable inside GENtle;
    explain that they can also support external bioinformatics tooling.
-7. **Emit reproducibility artifacts every time**: the exact command and
+8. **Emit reproducibility artifacts every time**: the exact command and
    environment are part of the result, not an optional extra.
-8. **Report next validation steps**: after execution, point the user to the
+9. **Report next validation steps**: after execution, point the user to the
    immediate deterministic follow-up, such as inspecting state summary,
    exported reports, lineage, or a downstream GENtle verification command.
 
@@ -422,6 +578,14 @@ Apply the following methodology:
     - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
     - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4
       artifact
+  - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
+    - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+    - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context
+      SVG
+  - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
+    - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+    - exports the fetched locus' gene/mRNA/variation rows with genomic
+      coordinates
   - `examples/request_genomes_blast_grch38_short.json`
     - follow-on route after `examples/request_genomes_prepare_grch38.json`
     - exercises the shared `genomes blast ...` route against the prepared
@@ -477,6 +641,13 @@ Apply the following methodology:
 - "Apply this GENtle operation JSON to extract a region and show me the exact
   command that ran."
 - "Run a GENtle shell command for primer reports and save the audit trail."
+- "Render the current genomic neighborhood as a DNA-window SVG and export the
+  same displayed features with genomic coordinates."
+- "Summarize TFBS hits near this SNP and also render the chosen TFBS as an
+  expert figure."
+- "Show me the EcoRI cleavage context as both text and SVG."
+- "Open the Splicing Expert for this exon group in headless form and export the
+  matching figure."
 - "Help me validate a Gibson assembly workflow in GENtle before I trust the
   output."
 - "How does GENtle help me move from a patient-data observation to a wet-lab

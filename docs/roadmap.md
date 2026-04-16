@@ -1655,6 +1655,33 @@ order. Durable architecture constraints and decisions remain in
       - the wrapper now supports declared `expected_artifacts[]`, and the
         shipped graphics examples copy generated SVGs into the ClawBio
         output bundle instead of leaving it only in the execution cwd
+  - the ClawBio-facing `SKILL.md` and scaffold README now split the single
+    runtime alias into six logical capability lanes so users/agents do not
+    have to infer them from examples:
+    - genomic context
+    - TFBS analysis
+    - restriction analysis
+    - splicing expert
+    - isoform architecture
+    - variant follow-up
+  - current CLI reality check for that split:
+    - already present:
+      - DNA-window SVG export plus coordinate-bearing BED export
+      - TFBS annotation, grouped TFBS summary, TFBS expert text/SVG
+      - restriction-site BED export plus restriction expert text/SVG
+      - splicing expert text/SVG
+      - isoform expert text/SVG
+    - still missing as first-class engine operations:
+      - `InspectSequenceContextView { seq_id, mode?, viewport?, include_visible_classes?, coordinate_mode? }`
+        - textual/JSON summary contract for the current DNA sequence-view
+          context (viewport + visible classes + anchor/coordinate summary)
+          instead of requiring ClawBio to synthesize that from separate
+          query/export calls
+      - `ExportSequenceContextBundle { seq_id, mode?, viewport?, coordinate_mode?, include_feature_bed?, include_text_summary?, include_restriction_sites?, restriction_enzymes[]?, output_dir }`
+        - unified "sequence context bundle" export that emits the DNA-window
+          SVG plus a coordinate-bearing tabular/text companion in one
+          deterministic payload for ClawBio/OpenClaw and similar run-bundle
+          consumers
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

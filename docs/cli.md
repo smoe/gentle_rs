@@ -102,6 +102,20 @@ Purpose:
 - keep reproducibility artifacts (`report.md`, `result.json`,
   `reproducibility/*`) for each run.
 
+Logical capability split inside that one runtime alias:
+
+- genomic context
+- TFBS analysis
+- restriction analysis
+- splicing expert
+- isoform architecture
+- variant follow-up
+
+This is a ClawBio-facing routing/documentation split, not six separate
+executables. It exists so wrappers and tutorials can call out the real shared
+GENtle command surfaces already present behind the single `gentle-cloning`
+skill.
+
 Recommended OpenClaw framing for broad discovery questions:
 
 - `observation -> mechanistic hypothesis -> GENtle sequence/context analysis -> wet-lab validation plan`

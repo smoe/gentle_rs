@@ -418,6 +418,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             'dbsnp fetch rs9923231 "Human GRCh38 Ensembl 116" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core',
             900,
         ),
+        "request_render_svg_rs9923231_vkorc1_linear.json": (
+            "shell",
+            "render-svg rs9923231_vkorc1 linear artifacts/rs9923231_vkorc1.context.linear.svg",
+            180,
+        ),
+        "request_export_bed_rs9923231_vkorc1_context_features.json": (
+            "shell",
+            "features export-bed rs9923231_vkorc1 artifacts/rs9923231_vkorc1.context.features.bed --coordinate-mode genomic --kind gene --kind mRNA --kind variation --sort start --include-source --include-qualifiers",
+            180,
+        ),
         "request_genomes_extract_gene_tp53.json": (
             "shell",
             'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
@@ -460,6 +470,8 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_shell_state_summary.json",
             "request_genbank_fetch_pbr322.json",
             "request_dbsnp_fetch_rs9923231.json",
+            "request_render_svg_rs9923231_vkorc1_linear.json",
+            "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
             "request_export_bed_grch38_tp53_gene_models.json",
             "request_render_svg_pgex_fasta_circular.json",
@@ -472,6 +484,14 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_render_svg_pgex_fasta_circular.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.circular.svg"
+            ]
+        if name == "request_render_svg_rs9923231_vkorc1_linear.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/rs9923231_vkorc1.context.linear.svg"
+            ]
+        if name == "request_export_bed_rs9923231_vkorc1_context_features.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/rs9923231_vkorc1.context.features.bed"
             ]
         if name == "request_export_bed_grch38_tp53_gene_models.json":
             assert payload["expected_artifacts"] == [

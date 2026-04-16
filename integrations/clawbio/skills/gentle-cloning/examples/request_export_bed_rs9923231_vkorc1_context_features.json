@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "features export-bed rs9923231_vkorc1 artifacts/rs9923231_vkorc1.context.features.bed --coordinate-mode genomic --kind gene --kind mRNA --kind variation --sort start --include-source --include-qualifiers",
+  "expected_artifacts": [
+    "artifacts/rs9923231_vkorc1.context.features.bed"
+  ],
+  "timeout_secs": 180
+}
