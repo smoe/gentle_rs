@@ -240,6 +240,30 @@ order. Durable architecture constraints and decisions remain in
   - `GibsonPreview` and `GibsonApply` now dispatch through one dedicated
     `#[inline(never)]` helper before the inner match, with the inner branch
     delegating back to that helper for one implementation path
+- Engine-shell protein import/projection commands now use the same
+  split-helper pattern:
+  - the UniProt/Ensembl protein fetch/list/show/import/projection block still
+    lived inline inside the monolithic matcher and could overflow smaller-stack
+    test threads during Ensembl protein list/show/import/compare coverage
+  - those commands now dispatch through the existing protein helper alongside
+    reverse-translation and construct-reasoning routes, keeping one
+    implementation path while reducing matcher stack depth
+- Engine-shell feature-expert and isoform-panel commands now also use the same
+  split-helper pattern:
+  - `InspectFeatureExpert`, `RenderFeatureExpertSvg`, and the
+    `panels import/inspect/render/validate isoform` routes still lived inline
+    inside the monolithic matcher and could overflow smaller-stack test
+    threads during isoform SVG route parity coverage
+  - those expert/panel analysis routes now dispatch through the existing
+    sequence-analysis helper alongside transcript/dotplot/splicing analysis,
+    keeping one implementation path while reducing matcher stack depth
+- Engine-shell protocol-cartoon commands now also use the same split-helper
+  pattern:
+  - protocol-cartoon list/render/template/export/validate routes still lived
+    inline inside the monolithic matcher and could overflow smaller-stack test
+    threads during protocol-cartoon template export coverage
+  - those routes now dispatch through a dedicated protocol-cartoon helper,
+    keeping one implementation path while reducing matcher stack depth
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).

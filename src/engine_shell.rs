@@ -16034,6 +16034,88 @@ fn execute_gibson_command(
 }
 
 #[inline(never)]
+fn execute_protocol_cartoon_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::ProtocolCartoonList => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(protocol_cartoon_catalog_rows())
+                .map_err(|e| format!("Could not serialize protocol cartoon catalog: {e}"))?,
+        }),
+        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonSvg {
+                    protocol: protocol.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::RenderProtocolCartoonTemplateSvg {
+            template_path,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonTemplateSvg {
+                    template_path: template_path.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ValidateProtocolCartoonTemplate { template_path } => {
+            let op_result = engine
+                .apply(Operation::ValidateProtocolCartoonTemplate {
+                    template_path: template_path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
+            template_path,
+            bindings_path,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
+                    template_path: template_path.clone(),
+                    bindings_path: bindings_path.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ExportProtocolCartoonTemplateJson { protocol, output } => {
+            let op_result = engine
+                .apply(Operation::ExportProtocolCartoonTemplateJson {
+                    protocol: protocol.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        _ => unreachable!("non-protocol-cartoon command passed to protocol-cartoon helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_reference_and_track_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -18939,6 +19021,98 @@ fn execute_sequence_analysis_command(
                 }),
             })
         }
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            let view = engine
+                .inspect_feature_expert(seq_id, target)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
+            })
+        }
+        ShellCommand::RenderFeatureExpertSvg {
+            seq_id,
+            target,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderFeatureExpertSvg {
+                    seq_id: seq_id.clone(),
+                    target: target.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsImportIsoform {
+            seq_id,
+            panel_path,
+            panel_id,
+            strict,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportIsoformPanel {
+                    seq_id: seq_id.clone(),
+                    panel_path: panel_path.clone(),
+                    panel_id: panel_id.clone(),
+                    strict: *strict,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsInspectIsoform { seq_id, panel_id } => {
+            let view = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::IsoformArchitecture {
+                        panel_id: panel_id.clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize isoform architecture view: {e}"))?,
+            })
+        }
+        ShellCommand::PanelsRenderIsoformSvg {
+            seq_id,
+            panel_id,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderIsoformArchitectureSvg {
+                    seq_id: seq_id.clone(),
+                    panel_id: panel_id.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsValidateIsoform {
+            panel_path,
+            panel_id,
+        } => {
+            let report =
+                GentleEngine::validate_isoform_panel_resource(panel_path, panel_id.as_deref())
+                    .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize isoform validation report: {e}")
+                })?,
+            })
+        }
         ShellCommand::FlexCompute {
             seq_id,
             span_start_0based,
@@ -19357,6 +19531,153 @@ fn execute_protein_sequence_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::UniprotFetch { query, entry_id } => {
+            let op_result = engine
+                .apply(Operation::FetchUniprotSwissProt {
+                    query: query.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::EnsemblProteinFetch { query, entry_id } => {
+            let op_result = engine
+                .apply(Operation::FetchEnsemblProtein {
+                    query: query.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::UniprotImportSwissProt { path, entry_id } => {
+            let op_result = engine
+                .apply(Operation::ImportUniprotSwissProt {
+                    path: path.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::UniprotList => {
+            let rows = engine.list_uniprot_entries();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize UniProt entry list: {e}"))?,
+            })
+        }
+        ShellCommand::EnsemblProteinList => {
+            let rows = engine.list_ensembl_protein_entries();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize Ensembl protein entry list: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotShow { entry_id } => {
+            let entry = engine
+                .get_uniprot_entry(entry_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize UniProt entry: {e}"))?,
+            })
+        }
+        ShellCommand::EnsemblProteinShow { entry_id } => {
+            let entry = engine
+                .get_ensembl_protein_entry(entry_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize Ensembl protein entry: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotMap {
+            entry_id,
+            seq_id,
+            projection_id,
+            transcript_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectUniprotToGenome {
+                    seq_id: seq_id.clone(),
+                    entry_id: entry_id.clone(),
+                    projection_id: projection_id.clone(),
+                    transcript_id: transcript_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::EnsemblProteinImportSequence {
+            entry_id,
+            output_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportEnsemblProteinSequence {
+                    entry_id: entry_id.clone(),
+                    output_id: output_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::UniprotProjectionList { seq_id } => {
+            let rows = engine.list_uniprot_genome_projections(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize UniProt projection list: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotProjectionShow { projection_id } => {
+            let projection = engine
+                .get_uniprot_genome_projection(projection_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(projection)
+                    .map_err(|e| format!("Could not serialize UniProt projection: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotFeatureCodingDna {
+            projection_id,
+            feature_query,
+            transcript_id,
+            mode,
+            translation_speed_profile,
+        } => {
+            let report = engine
+                .query_uniprot_feature_coding_dna(
+                    projection_id,
+                    feature_query,
+                    transcript_id.as_deref(),
+                    *mode,
+                    *translation_speed_profile,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize UniProt feature coding DNA report: {e}")
+                })?,
+            })
+        }
         ShellCommand::ReverseTranslateRun {
             seq_id,
             output_id,
@@ -19509,7 +19830,7 @@ fn execute_protein_sequence_command(
                 }),
             })
         }
-        _ => unreachable!("non-protein-sequence command passed to protein helper"),
+        _ => unreachable!("non-protein/protein-sequence command passed to protein helper"),
     }
 }
 
@@ -20382,6 +20703,17 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::ProtocolCartoonList
+            | ShellCommand::RenderProtocolCartoonSvg { .. }
+            | ShellCommand::RenderProtocolCartoonTemplateSvg { .. }
+            | ShellCommand::ValidateProtocolCartoonTemplate { .. }
+            | ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg { .. }
+            | ShellCommand::ExportProtocolCartoonTemplateJson { .. }
+    ) {
+        return execute_protocol_cartoon_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
@@ -20490,6 +20822,12 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::DotplotOverlayCompute { .. }
             | ShellCommand::DotplotList { .. }
             | ShellCommand::DotplotShow { .. }
+            | ShellCommand::InspectFeatureExpert { .. }
+            | ShellCommand::RenderFeatureExpertSvg { .. }
+            | ShellCommand::PanelsImportIsoform { .. }
+            | ShellCommand::PanelsInspectIsoform { .. }
+            | ShellCommand::PanelsRenderIsoformSvg { .. }
+            | ShellCommand::PanelsValidateIsoform { .. }
             | ShellCommand::FlexCompute { .. }
             | ShellCommand::FlexList { .. }
             | ShellCommand::FlexShow { .. }
@@ -20514,7 +20852,19 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
-        ShellCommand::ReverseTranslateRun { .. }
+        ShellCommand::UniprotFetch { .. }
+            | ShellCommand::EnsemblProteinFetch { .. }
+            | ShellCommand::UniprotImportSwissProt { .. }
+            | ShellCommand::UniprotList
+            | ShellCommand::EnsemblProteinList
+            | ShellCommand::UniprotShow { .. }
+            | ShellCommand::EnsemblProteinShow { .. }
+            | ShellCommand::UniprotMap { .. }
+            | ShellCommand::EnsemblProteinImportSequence { .. }
+            | ShellCommand::UniprotProjectionList { .. }
+            | ShellCommand::UniprotProjectionShow { .. }
+            | ShellCommand::UniprotFeatureCodingDna { .. }
+            | ShellCommand::ReverseTranslateRun { .. }
             | ShellCommand::ReverseTranslateListReports { .. }
             | ShellCommand::ReverseTranslateShowReport { .. }
             | ShellCommand::ReverseTranslateExportReport { .. }
@@ -20706,97 +21056,29 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::InspectFeatureExpert { seq_id, target } => {
-            let view = engine
-                .inspect_feature_expert(seq_id, target)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(view)
-                    .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
-            }
-        }
-        ShellCommand::RenderFeatureExpertSvg {
-            seq_id,
-            target,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderFeatureExpertSvg {
-                    seq_id: seq_id.clone(),
-                    target: target.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::PanelsImportIsoform {
-            seq_id,
-            panel_path,
-            panel_id,
-            strict,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportIsoformPanel {
-                    seq_id: seq_id.clone(),
-                    panel_path: panel_path.clone(),
-                    panel_id: panel_id.clone(),
-                    strict: *strict,
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::PanelsInspectIsoform { seq_id, panel_id } => {
-            let view = engine
-                .inspect_feature_expert(
-                    seq_id,
-                    &FeatureExpertTarget::IsoformArchitecture {
-                        panel_id: panel_id.clone(),
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(view)
-                    .map_err(|e| format!("Could not serialize isoform architecture view: {e}"))?,
-            }
-        }
-        ShellCommand::PanelsRenderIsoformSvg {
-            seq_id,
-            panel_id,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderIsoformArchitectureSvg {
-                    seq_id: seq_id.clone(),
-                    panel_id: panel_id.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::PanelsValidateIsoform {
-            panel_path,
-            panel_id,
-        } => {
-            let report =
-                GentleEngine::validate_isoform_panel_resource(panel_path, panel_id.as_deref())
-                    .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report)
-                    .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
-            }
-        }
+        ShellCommand::InspectFeatureExpert { .. }
+        | ShellCommand::RenderFeatureExpertSvg { .. }
+        | ShellCommand::PanelsImportIsoform { .. }
+        | ShellCommand::PanelsInspectIsoform { .. }
+        | ShellCommand::PanelsRenderIsoformSvg { .. }
+        | ShellCommand::PanelsValidateIsoform { .. }
+        | ShellCommand::TranscriptsDerive { .. }
+        | ShellCommand::FeaturesQuery { .. }
+        | ShellCommand::FeaturesExportBed { .. }
+        | ShellCommand::FeaturesTfbsSummary { .. }
+        | ShellCommand::VariantAnnotatePromoterWindows { .. }
+        | ShellCommand::VariantPromoterContext { .. }
+        | ShellCommand::VariantReporterFragments { .. }
+        | ShellCommand::VariantMaterializeAllele { .. }
+        | ShellCommand::DotplotCompute { .. }
+        | ShellCommand::DotplotOverlayCompute { .. }
+        | ShellCommand::DotplotList { .. }
+        | ShellCommand::DotplotShow { .. }
+        | ShellCommand::FlexCompute { .. }
+        | ShellCommand::FlexList { .. }
+        | ShellCommand::FlexShow { .. }
+        | ShellCommand::SplicingRefsDerive { .. }
+        | ShellCommand::AlignCompute { .. } => execute_sequence_analysis_command(engine, command)?,
         ShellCommand::GenbankFetch { accession, as_id } => {
             let op_result = engine
                 .apply(Operation::FetchGenBankAccession {
@@ -20836,152 +21118,27 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::UniprotFetch { query, entry_id } => {
-            let op_result = engine
-                .apply(Operation::FetchUniprotSwissProt {
-                    query: query.clone(),
-                    entry_id: entry_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::EnsemblProteinFetch { query, entry_id } => {
-            let op_result = engine
-                .apply(Operation::FetchEnsemblProtein {
-                    query: query.clone(),
-                    entry_id: entry_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::UniprotImportSwissProt { path, entry_id } => {
-            let op_result = engine
-                .apply(Operation::ImportUniprotSwissProt {
-                    path: path.clone(),
-                    entry_id: entry_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::UniprotList => {
-            let rows = engine.list_uniprot_entries();
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(rows)
-                    .map_err(|e| format!("Could not serialize UniProt entry list: {e}"))?,
-            }
-        }
-        ShellCommand::EnsemblProteinList => {
-            let rows = engine.list_ensembl_protein_entries();
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(rows)
-                    .map_err(|e| format!("Could not serialize Ensembl protein entry list: {e}"))?,
-            }
-        }
-        ShellCommand::UniprotShow { entry_id } => {
-            let entry = engine
-                .get_uniprot_entry(entry_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(entry)
-                    .map_err(|e| format!("Could not serialize UniProt entry: {e}"))?,
-            }
-        }
-        ShellCommand::EnsemblProteinShow { entry_id } => {
-            let entry = engine
-                .get_ensembl_protein_entry(entry_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(entry)
-                    .map_err(|e| format!("Could not serialize Ensembl protein entry: {e}"))?,
-            }
-        }
-        ShellCommand::UniprotMap {
-            entry_id,
-            seq_id,
-            projection_id,
-            transcript_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ProjectUniprotToGenome {
-                    seq_id: seq_id.clone(),
-                    entry_id: entry_id.clone(),
-                    projection_id: projection_id.clone(),
-                    transcript_id: transcript_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::EnsemblProteinImportSequence {
-            entry_id,
-            output_id,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportEnsemblProteinSequence {
-                    entry_id: entry_id.clone(),
-                    output_id: output_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::UniprotProjectionList { seq_id } => {
-            let rows = engine.list_uniprot_genome_projections(seq_id.as_deref());
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(rows)
-                    .map_err(|e| format!("Could not serialize UniProt projection list: {e}"))?,
-            }
-        }
-        ShellCommand::UniprotProjectionShow { projection_id } => {
-            let projection = engine
-                .get_uniprot_genome_projection(projection_id)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(projection)
-                    .map_err(|e| format!("Could not serialize UniProt projection: {e}"))?,
-            }
-        }
-        ShellCommand::UniprotFeatureCodingDna {
-            projection_id,
-            feature_query,
-            transcript_id,
-            mode,
-            translation_speed_profile,
-        } => {
-            let report = engine
-                .query_uniprot_feature_coding_dna(
-                    projection_id,
-                    feature_query,
-                    transcript_id.as_deref(),
-                    *mode,
-                    *translation_speed_profile,
-                )
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report).map_err(|e| {
-                    format!("Could not serialize UniProt feature coding DNA report: {e}")
-                })?,
-            }
+        ShellCommand::UniprotFetch { .. }
+        | ShellCommand::EnsemblProteinFetch { .. }
+        | ShellCommand::UniprotImportSwissProt { .. }
+        | ShellCommand::UniprotList
+        | ShellCommand::EnsemblProteinList
+        | ShellCommand::UniprotShow { .. }
+        | ShellCommand::EnsemblProteinShow { .. }
+        | ShellCommand::UniprotMap { .. }
+        | ShellCommand::EnsemblProteinImportSequence { .. }
+        | ShellCommand::UniprotProjectionList { .. }
+        | ShellCommand::UniprotProjectionShow { .. }
+        | ShellCommand::UniprotFeatureCodingDna { .. }
+        | ShellCommand::ReverseTranslateRun { .. }
+        | ShellCommand::ReverseTranslateListReports { .. }
+        | ShellCommand::ReverseTranslateShowReport { .. }
+        | ShellCommand::ReverseTranslateExportReport { .. }
+        | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
+        | ShellCommand::ConstructReasoningListGraphs { .. }
+        | ShellCommand::ConstructReasoningShowGraph { .. }
+        | ShellCommand::ConstructReasoningExportGraph { .. } => {
+            execute_protein_sequence_command(engine, command)?
         }
         ShellCommand::RenderRnaSvg { seq_id, output } => {
             let op_result = engine
@@ -21016,77 +21173,13 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::ProtocolCartoonList => ShellRunResult {
-            state_changed: false,
-            output: serde_json::to_value(protocol_cartoon_catalog_rows())
-                .map_err(|e| format!("Could not serialize protocol cartoon catalog: {e}"))?,
-        },
-        ShellCommand::RenderProtocolCartoonSvg { protocol, output } => {
-            let op_result = engine
-                .apply(Operation::RenderProtocolCartoonSvg {
-                    protocol: protocol.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::RenderProtocolCartoonTemplateSvg {
-            template_path,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderProtocolCartoonTemplateSvg {
-                    template_path: template_path.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ValidateProtocolCartoonTemplate { template_path } => {
-            let op_result = engine
-                .apply(Operation::ValidateProtocolCartoonTemplate {
-                    template_path: template_path.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg {
-            template_path,
-            bindings_path,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
-                    template_path: template_path.clone(),
-                    bindings_path: bindings_path.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::ExportProtocolCartoonTemplateJson { protocol, output } => {
-            let op_result = engine
-                .apply(Operation::ExportProtocolCartoonTemplateJson {
-                    protocol: protocol.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            }
+        ShellCommand::ProtocolCartoonList
+        | ShellCommand::RenderProtocolCartoonSvg { .. }
+        | ShellCommand::RenderProtocolCartoonTemplateSvg { .. }
+        | ShellCommand::ValidateProtocolCartoonTemplate { .. }
+        | ShellCommand::RenderProtocolCartoonTemplateWithBindingsSvg { .. }
+        | ShellCommand::ExportProtocolCartoonTemplateJson { .. } => {
+            execute_protocol_cartoon_command(engine, command)?
         }
         ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. } => {
             execute_gibson_command(engine, command)?
@@ -22723,23 +22816,6 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersListQpcrReports
         | ShellCommand::PrimersShowQpcrReport { .. }
         | ShellCommand::PrimersExportQpcrReport { .. } => execute_primers_command(engine, command)?,
-        ShellCommand::TranscriptsDerive { .. }
-        | ShellCommand::FeaturesQuery { .. }
-        | ShellCommand::FeaturesExportBed { .. }
-        | ShellCommand::FeaturesTfbsSummary { .. }
-        | ShellCommand::VariantAnnotatePromoterWindows { .. }
-        | ShellCommand::VariantPromoterContext { .. }
-        | ShellCommand::VariantReporterFragments { .. }
-        | ShellCommand::VariantMaterializeAllele { .. }
-        | ShellCommand::DotplotCompute { .. }
-        | ShellCommand::DotplotOverlayCompute { .. }
-        | ShellCommand::DotplotList { .. }
-        | ShellCommand::DotplotShow { .. }
-        | ShellCommand::FlexCompute { .. }
-        | ShellCommand::FlexList { .. }
-        | ShellCommand::FlexShow { .. }
-        | ShellCommand::SplicingRefsDerive { .. }
-        | ShellCommand::AlignCompute { .. } => execute_sequence_analysis_command(engine, command)?,
         ShellCommand::SeqTraceImport { .. }
         | ShellCommand::SeqTraceList { .. }
         | ShellCommand::SeqTraceShow { .. }
@@ -22749,16 +22825,6 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SeqConfirmExportReport { .. }
         | ShellCommand::SeqConfirmExportSupportTsv { .. }
         | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
-        ShellCommand::ReverseTranslateRun { .. }
-        | ShellCommand::ReverseTranslateListReports { .. }
-        | ShellCommand::ReverseTranslateShowReport { .. }
-        | ShellCommand::ReverseTranslateExportReport { .. }
-        | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
-        | ShellCommand::ConstructReasoningListGraphs { .. }
-        | ShellCommand::ConstructReasoningShowGraph { .. }
-        | ShellCommand::ConstructReasoningExportGraph { .. } => {
-            execute_protein_sequence_command(engine, command)?
-        }
         ShellCommand::RnaReadsInterpret { .. }
         | ShellCommand::RnaReadsAlignReport { .. }
         | ShellCommand::RnaReadsListReports { .. }

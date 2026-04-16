@@ -30448,25 +30448,8 @@ impl MainAreaDna {
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
-        let forward_enzyme = ui.forward_enzyme.trim();
-        if forward_enzyme.is_empty() {
-            return Err(
-                "Choose a forward restriction enzyme before creating a handoff".to_string(),
-            );
-        }
-        let reverse_enzyme = if ui.mode == RestrictionCloningPcrHandoffMode::SingleSite {
-            if ui.reverse_enzyme.trim().is_empty() {
-                forward_enzyme.to_string()
-            } else {
-                ui.reverse_enzyme.trim().to_string()
-            }
-        } else if ui.reverse_enzyme.trim().is_empty() {
-            return Err(
-                "Choose a reverse restriction enzyme for directed_pair handoff".to_string(),
-            );
-        } else {
-            ui.reverse_enzyme.trim().to_string()
-        };
+        let forward_enzyme = (!ui.forward_enzyme.trim().is_empty()).then_some(ui.forward_enzyme.trim());
+        let reverse_enzyme = (!ui.reverse_enzyme.trim().is_empty()).then_some(ui.reverse_enzyme.trim());
         engine
             .read()
             .map_err(|_| {
@@ -30477,8 +30460,8 @@ impl MainAreaDna {
                 vector_seq_id,
                 Some(pair_rank),
                 ui.mode,
-                Some(forward_enzyme),
-                Some(reverse_enzyme.as_str()),
+                forward_enzyme,
+                reverse_enzyme,
                 (!ui.forward_leader_5prime.trim().is_empty())
                     .then_some(ui.forward_leader_5prime.trim()),
                 (!ui.reverse_leader_5prime.trim().is_empty())
