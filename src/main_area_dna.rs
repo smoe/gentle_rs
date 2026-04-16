@@ -7204,6 +7204,110 @@ mod tests {
     }
 
     #[test]
+    fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
+        let dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
+        area.variant_followup_ui.source_seq_id = "vkorc1_context".to_string();
+        area.variant_followup_ui.variant_label_or_id = "rs9923231".to_string();
+        area.variant_followup_ui.gene_label = "VKORC1".to_string();
+        area.variant_followup_ui.fragment_output_id = "vkorc1_fragment".to_string();
+        area.variant_followup_ui.reference_output_id = "vkorc1_reference".to_string();
+        area.variant_followup_ui.alternate_output_id = "vkorc1_alternate".to_string();
+        area.variant_followup_ui.reporter_backbone_seq_id =
+            "gentle_mammalian_luciferase_backbone_v1".to_string();
+        area.variant_followup_ui.reporter_backbone_path =
+            "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string();
+        let artifacts = area.variant_followup_bundle_artifacts(
+            "rs9923231_reference",
+            "rs9923231_alternate",
+        );
+        let report = VariantPromoterContextReport {
+            schema: "gentle.variant_promoter_context.v1".to_string(),
+            seq_id: "vkorc1_context".to_string(),
+            sequence_length_bp: 6001,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            variant_label: "rs9923231".to_string(),
+            variant_feature_id: Some(0),
+            variant_start_0based: 3000,
+            variant_end_0based_exclusive: 3001,
+            variant_class: Some("snv".to_string()),
+            genomic_ref: Some("C".to_string()),
+            genomic_alt: Some("T".to_string()),
+            genome_anchor: Some(SequenceGenomeAnchorSummary {
+                seq_id: "vkorc1_context".to_string(),
+                genome_id: "Human GRCh38 Ensembl 116".to_string(),
+                chromosome: "16".to_string(),
+                start_1based: 31093368,
+                end_1based: 31099368,
+                strand: Some('+'),
+                anchor_verified: Some(true),
+            }),
+            chosen_gene_label: Some("VKORC1".to_string()),
+            chosen_transcript_id: Some("ENST_TEST".to_string()),
+            chosen_transcript_label: Some("VKORC1-201".to_string()),
+            transcript_ambiguity_status: "resolved".to_string(),
+            promoter_upstream_bp: 1000,
+            promoter_downstream_bp: 200,
+            promoter_overlap: true,
+            signed_tss_distance_bp: Some(-88),
+            overlapping_gene_labels: vec!["VKORC1".to_string()],
+            overlapping_transcript_labels: vec!["VKORC1-201".to_string()],
+            overlapping_promoter_labels: vec!["VKORC1 promoter".to_string()],
+            overlapping_tfbs_labels: vec!["SP1".to_string()],
+            overlapping_evidence: vec![],
+            promoter_windows_considered: vec![],
+            effect_tags: vec!["promoter_variant_candidate".to_string()],
+            suggested_assay_ids: vec!["allele_paired_promoter_luciferase_reporter".to_string()],
+            tfbs_focus_half_window_bp: 100,
+            tfbs_near_variant_status: "annotations_present".to_string(),
+            tfbs_region_summary: None,
+            rationale: "Variant falls into the derived promoter window.".to_string(),
+        };
+        let recommended = crate::engine::PromoterReporterFragmentCandidate {
+            candidate_id: "cand-1".to_string(),
+            gene_label: Some("VKORC1".to_string()),
+            transcript_id: "ENST_TEST".to_string(),
+            transcript_label: "VKORC1-201".to_string(),
+            strand: "-".to_string(),
+            tss_local_0based: 2412,
+            variant_start_0based: 3000,
+            variant_end_0based_exclusive: 3001,
+            start_0based: 2412,
+            end_0based_exclusive: 3501,
+            length_bp: 1089,
+            retain_downstream_from_tss_bp: 200,
+            retain_upstream_beyond_variant_bp: 500,
+            promoter_overlap: true,
+            signed_tss_distance_bp: -88,
+            rank: 1,
+            recommended: true,
+            rationale: "Top-ranked reverse-strand promoter fragment".to_string(),
+        };
+
+        let commands = area.build_variant_followup_handoff_commands(
+            &artifacts,
+            &report,
+            &recommended,
+        );
+
+        assert!(commands.contains(
+            "render-svg vkorc1_context linear \"$BUNDLE_DIR/"
+        ));
+        assert!(commands.contains(
+            "render-svg rs9923231_reference circular \"$BUNDLE_DIR/"
+        ));
+        assert!(commands.contains(
+            "render-svg rs9923231_alternate circular \"$BUNDLE_DIR/"
+        ));
+        assert!(!commands.contains(
+            "RenderSequenceSvg\":{\"seq_id\":\"vkorc1_context\",\"mode\":\"Linear\",\"path\":\"$BUNDLE_DIR/"
+        ));
+    }
+
+    #[test]
     fn open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
