@@ -6,8 +6,8 @@ use gentle::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayAnchorExonRef,
         DotplotOverlayXAxisMode, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
         GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode,
-        RnaReadInterpretProgress, TfbsProgress,
+        GentleEngine, Operation, OperationProgress, PrimerDesignProgress, ProjectState,
+        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -1068,8 +1068,40 @@ impl ProgressPrinter {
         }
     }
 
+    fn on_primer_design_progress(&mut self, p: PrimerDesignProgress) {
+        let detail = match p.stage.as_str() {
+            "candidate_enumeration" => format!(
+                "forward_candidates={} reverse_candidates={}",
+                p.forward_candidate_count, p.reverse_candidate_count
+            ),
+            "probe_evaluation" => format!(
+                "evaluated_probe_pairs={} total_probe_pairs={} accepted_assays={}",
+                p.evaluated_probe_pairs.unwrap_or(0),
+                p.total_probe_pairs.unwrap_or(0),
+                p.accepted_assays.unwrap_or(0)
+            ),
+            _ => format!(
+                "evaluated_pairs={} pair_limit={} accepted_pairs={}",
+                p.evaluated_pairs, p.pair_evaluation_limit, p.accepted_pairs
+            ),
+        };
+        self.print_line(&format!(
+            "progress primer-design kind={} stage={} template={} backend={} roi={}..{} max_results={} {} done={}",
+            p.kind.as_str(),
+            p.stage.as_str(),
+            p.template,
+            p.backend,
+            p.roi_start_0based,
+            p.roi_end_0based,
+            p.max_results,
+            detail,
+            p.done
+        ));
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
+            OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),

@@ -3762,6 +3762,7 @@ impl GentleEngine {
         parent_seq_ids: &mut Vec<SeqId>,
         run_id: &str,
         op_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         template: SeqId,
         roi_start_0based: usize,
         roi_end_0based: usize,
@@ -3920,6 +3921,7 @@ impl GentleEngine {
             PrimerDesignBackend::Internal => {
                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                 Self::design_primer_pairs_internal(
+                    &template,
                     template_bytes,
                     roi_start_0based,
                     roi_end_0based,
@@ -3932,6 +3934,10 @@ impl GentleEngine {
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
+                    backend.used.as_str(),
+                    PrimerDesignProgressKind::PrimerPairs,
+                    true,
+                    |progress| on_progress(OperationProgress::PrimerDesign(progress)),
                 )
             }
             PrimerDesignBackend::Primer3 => {
@@ -3991,6 +3997,7 @@ impl GentleEngine {
                             err.message
                         ));
                         Self::design_primer_pairs_internal(
+                            &template,
                             template_bytes,
                             roi_start_0based,
                             roi_end_0based,
@@ -4003,6 +4010,10 @@ impl GentleEngine {
                             max_amplicon_bp,
                             max_tm_delta_c,
                             max_pairs,
+                            backend.used.as_str(),
+                            PrimerDesignProgressKind::PrimerPairs,
+                            true,
+                            |progress| on_progress(OperationProgress::PrimerDesign(progress)),
                         )
                     }
                 }
@@ -9228,6 +9239,7 @@ impl GentleEngine {
                     &mut parent_seq_ids,
                     run_id,
                     &op_id,
+                    on_progress,
                     template,
                     roi_start_0based,
                     roi_end_0based,
@@ -9283,6 +9295,7 @@ impl GentleEngine {
                     &mut parent_seq_ids,
                     run_id,
                     &op_id,
+                    on_progress,
                     template,
                     roi_start_0based,
                     roi_end_0based,
@@ -9523,6 +9536,7 @@ impl GentleEngine {
                     PrimerDesignBackend::Internal => {
                         backend.used = PrimerDesignBackend::Internal.as_str().to_string();
                         Self::design_primer_pairs_internal(
+                            &template,
                             template_bytes,
                             roi_start_0based,
                             roi_end_0based,
@@ -9535,6 +9549,10 @@ impl GentleEngine {
                             max_amplicon_bp,
                             max_tm_delta_c,
                             pair_generation_limit,
+                            backend.used.as_str(),
+                            PrimerDesignProgressKind::QpcrAssays,
+                            false,
+                            |progress| on_progress(OperationProgress::PrimerDesign(progress)),
                         )
                     }
                     PrimerDesignBackend::Primer3 => {
@@ -9600,6 +9618,7 @@ impl GentleEngine {
                                     err.message
                                 ));
                                 Self::design_primer_pairs_internal(
+                                    &template,
                                     template_bytes,
                                     roi_start_0based,
                                     roi_end_0based,
@@ -9612,6 +9631,12 @@ impl GentleEngine {
                                     max_amplicon_bp,
                                     max_tm_delta_c,
                                     pair_generation_limit,
+                                    backend.used.as_str(),
+                                    PrimerDesignProgressKind::QpcrAssays,
+                                    false,
+                                    |progress| {
+                                        on_progress(OperationProgress::PrimerDesign(progress))
+                                    },
                                 )
                             }
                         }
@@ -9619,6 +9644,7 @@ impl GentleEngine {
                 };
 
                 let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs(
+                    &template,
                     template_bytes,
                     roi_start_0based,
                     roi_end_0based,
@@ -9628,6 +9654,8 @@ impl GentleEngine {
                     max_assays,
                     pair_candidates,
                     pair_rejections,
+                    backend.used.as_str(),
+                    |progress| on_progress(OperationProgress::PrimerDesign(progress)),
                 );
 
                 let report_id = Self::render_primer_design_report_id(report_id, &template);

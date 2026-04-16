@@ -1388,9 +1388,72 @@ pub struct DbSnpFetchProgress {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrimerDesignProgressKind {
+    PrimerPairs,
+    QpcrAssays,
+}
+
+impl PrimerDesignProgressKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PrimerPairs => "primer_pairs",
+            Self::QpcrAssays => "qpcr_assays",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrimerDesignProgressStage {
+    CandidateEnumeration,
+    PairEvaluation,
+    ProbeEvaluation,
+    Complete,
+}
+
+impl PrimerDesignProgressStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandidateEnumeration => "candidate_enumeration",
+            Self::PairEvaluation => "pair_evaluation",
+            Self::ProbeEvaluation => "probe_evaluation",
+            Self::Complete => "complete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Progress snapshot for internal pair-PCR/qPCR candidate generation.
+pub struct PrimerDesignProgress {
+    pub kind: PrimerDesignProgressKind,
+    pub stage: PrimerDesignProgressStage,
+    pub template: String,
+    pub backend: String,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub max_results: usize,
+    pub forward_candidate_count: usize,
+    pub reverse_candidate_count: usize,
+    pub evaluated_pairs: usize,
+    pub pair_evaluation_limit: usize,
+    pub accepted_pairs: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_candidate_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evaluated_probe_pairs: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_probe_pairs: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_assays: Option<usize>,
+    pub done: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
+    PrimerDesign(PrimerDesignProgress),
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
     GenomeTrackImport(GenomeTrackImportProgress),

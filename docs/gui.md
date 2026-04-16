@@ -2665,6 +2665,10 @@ Primer backend/preflight controls:
 - dedicated `Primer backend and Primer3 preflight` block above the design forms
 - configurable fields:
   - `backend` (`auto` / `internal` / `primer3`)
+    - `auto` prefers Primer3 when reachable and otherwise falls back to the
+      internal backend; reports show `requested->used`
+    - `internal` never calls Primer3
+    - `primer3` requires a reachable executable and fails when it is missing
   - `primer3 executable` (path, default `primer3_core`)
 - actions:
   - `Apply Primer Backend` (persists `primer_design_backend` and
@@ -2699,6 +2703,7 @@ Primer pairs form:
       (`=left .. right` or `=left to right`)
     - `Apply ROI formula` resolves formulas into numeric coordinates
   - `min amplicon`, `max amplicon`
+    - pair-PCR now requires `min amplicon <= ROI length`
   - `max Tm delta`, `max pairs`
   - `report_id`
 - side constraints (`Forward side`, `Reverse side`):
@@ -2718,6 +2723,8 @@ Primer pairs form:
 - PCR region queue block:
   - row source + template + `start/end/len` columns
   - `Use ROI` per row to copy queued coordinates back into active ROI fields
+  - queued batch PCR also requires each queued ROI length to be at least the
+    configured `min amplicon`
   - `Remove` per row and `Clear queue`
   - batch toggle: `Also create extracted region copies`
   - batch run: `Design Primer Pairs for queued regions`
@@ -2749,6 +2756,12 @@ Buttons:
 - `Design Primer Pairs`
 - `Design Primer Pairs for queued regions`
 - `Design qPCR Assays`
+- while the internal backend is running, PCR Designer now shows a live
+  progress line for:
+  - candidate enumeration
+  - pair-combination evaluation
+  - qPCR probe-placement screening
+  - completion counts
 
 Beginner tutorial:
 

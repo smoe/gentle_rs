@@ -19108,9 +19108,8 @@ fn execute_sequence_analysis_command(
                     .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: serde_json::to_value(report).map_err(|e| {
-                    format!("Could not serialize isoform validation report: {e}")
-                })?,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
             })
         }
         ShellCommand::FlexCompute {

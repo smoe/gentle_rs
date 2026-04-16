@@ -1092,6 +1092,8 @@ order. Durable architecture constraints and decisions remain in
     the runnable pre-ligation steps (`PcrAdvanced` + insert/vector digests),
     while keeping ligation as an explicit later-stage placeholder until digest
     fragment ids exist
+  - internal pair-PCR/qPCR execution now emits staged `PrimerDesign` progress
+    snapshots and PCR Designer surfaces those counts live while jobs run
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged

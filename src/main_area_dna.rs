@@ -72,7 +72,8 @@ use crate::{
         GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignProgressKind,
+        PrimerDesignProgressStage, PrimerDesignReport, PrimerDesignSideConstraint,
         PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
         RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
@@ -1092,6 +1093,7 @@ mod tests {
             DotplotView, EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
             GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+            PrimerDesignProgress, PrimerDesignProgressKind, PrimerDesignProgressStage,
             PrimerDesignSideConstraint, ProjectState, PromoterReporterCandidateSet,
             ProtocolCartoonPreviewTelemetry, RestrictionCloningPcrHandoffMode,
             RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -3926,6 +3928,43 @@ mod tests {
         assert_eq!(queued.start_0based, 25);
         assert_eq!(queued.end_0based_exclusive, 125);
         assert!(area.op_status.contains("queue stores region specs"));
+    }
+
+    #[test]
+    fn build_design_primer_pairs_operation_rejects_min_amplicon_larger_than_roi() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.primer_design_ui.roi_start_0based = "25".to_string();
+        area.primer_design_ui.roi_end_0based = "75".to_string();
+        area.primer_design_ui.min_amplicon_bp = "60".to_string();
+        area.primer_design_ui.max_amplicon_bp = "120".to_string();
+
+        let err = area
+            .build_design_primer_pairs_operation("seq1")
+            .expect_err("min amplicon larger than ROI should be rejected");
+
+        assert!(err.contains("must be <= ROI length (50)"));
+    }
+
+    #[test]
+    fn prepare_primer_pair_design_batch_inputs_rejects_min_amplicon_larger_than_queued_roi() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.pcr_queued_regions_ui = vec![super::PcrQueuedRegionUiState {
+            template: "seq1".to_string(),
+            source_label: "short_roi".to_string(),
+            start_0based: 30,
+            end_0based_exclusive: 70,
+        }];
+        area.primer_design_ui.min_amplicon_bp = "50".to_string();
+        area.primer_design_ui.max_amplicon_bp = "120".to_string();
+
+        let err = area
+            .prepare_primer_pair_design_batch_inputs()
+            .expect_err("queued ROI shorter than min amplicon should fail");
+
+        assert!(err.contains("Queued PCR region #01 'short_roi' is 40 bp long"));
+        assert!(err.contains("must be <= ROI length"));
     }
 
     #[test]
@@ -8586,6 +8625,79 @@ mod tests {
     }
 
     #[test]
+    fn primer_backend_help_summary_explains_auto_fallback_and_primer3_requirement() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.primer_backend = PrimerDesignBackend::Auto;
+        assert!(area.primer_backend_help_summary().contains("falls back"));
+
+        area.primer_backend = PrimerDesignBackend::Internal;
+        assert!(
+            area.primer_backend_help_summary()
+                .contains("does not require Primer3")
+        );
+
+        area.primer_backend = PrimerDesignBackend::Primer3;
+        assert!(
+            area.primer_backend_help_summary()
+                .contains("design requests fail")
+        );
+    }
+
+    #[test]
+    fn primer_design_progress_summary_mentions_pair_evaluation_counts() {
+        let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
+            kind: PrimerDesignProgressKind::PrimerPairs,
+            stage: PrimerDesignProgressStage::PairEvaluation,
+            template: "tpl".to_string(),
+            backend: "internal".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            max_results: 10,
+            forward_candidate_count: 8,
+            reverse_candidate_count: 7,
+            evaluated_pairs: 42,
+            pair_evaluation_limit: 100,
+            accepted_pairs: 3,
+            probe_candidate_count: None,
+            evaluated_probe_pairs: None,
+            total_probe_pairs: None,
+            accepted_assays: None,
+            done: false,
+        });
+
+        assert!(summary.contains("checked 42/100 pair combinations"));
+        assert!(summary.contains("accepted 3 candidate pairs"));
+    }
+
+    #[test]
+    fn primer_design_progress_summary_mentions_qpcr_probe_evaluation_counts() {
+        let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
+            kind: PrimerDesignProgressKind::QpcrAssays,
+            stage: PrimerDesignProgressStage::ProbeEvaluation,
+            template: "tpl".to_string(),
+            backend: "internal".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 120,
+            max_results: 5,
+            forward_candidate_count: 6,
+            reverse_candidate_count: 4,
+            evaluated_pairs: 6,
+            pair_evaluation_limit: 40,
+            accepted_pairs: 6,
+            probe_candidate_count: Some(4),
+            evaluated_probe_pairs: Some(12),
+            total_probe_pairs: Some(24),
+            accepted_assays: Some(2),
+            done: false,
+        });
+
+        assert!(summary.contains("screened 12/24 probe placements"));
+        assert!(summary.contains("accepted 2 assays"));
+    }
+
+    #[test]
     fn bounded_center_window_keeps_requested_span_near_edges() {
         let window = MainAreaDna::bounded_center_window(80_000, 120, 500).expect("window");
         assert_eq!(window, (0, 1001));
@@ -9808,6 +9920,7 @@ enum PrimerDesignTaskCompletion {
 
 #[derive(Clone, Debug)]
 enum PrimerDesignTaskMessage {
+    Progress(PrimerDesignProgress),
     BatchProgress(PrimerDesignBatchProgress),
     Done(Result<PrimerDesignTaskCompletion, EngineError>),
 }
@@ -9818,6 +9931,7 @@ struct PrimerDesignTask {
     operation_label: String,
     template_id: Option<String>,
     report_id_hint: Option<String>,
+    progress: Option<PrimerDesignProgress>,
     batch_progress: Option<PrimerDesignBatchProgress>,
     receiver: Arc<Mutex<Receiver<PrimerDesignTaskMessage>>>,
 }
@@ -27986,6 +28100,11 @@ impl MainAreaDna {
                 report_id,
                 ..
             } => (Some(template.clone()), report_id.clone()),
+            Operation::DesignQpcrAssays {
+                template,
+                report_id,
+                ..
+            } => (Some(template.clone()), report_id.clone()),
             _ => (None, None),
         };
         let started = Instant::now();
@@ -28004,12 +28123,24 @@ impl MainAreaDna {
             operation_label: operation_label.to_string(),
             template_id,
             report_id_hint,
+            progress: None,
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
         std::thread::spawn(move || {
             let outcome = match engine.write() {
-                Ok(mut guard) => guard.apply(op).map(PrimerDesignTaskCompletion::Single),
+                Ok(mut guard) => {
+                    let tx_progress = tx.clone();
+                    guard
+                        .apply_with_progress(op, move |progress| {
+                            if let OperationProgress::PrimerDesign(progress) = progress {
+                                let _ =
+                                    tx_progress.send(PrimerDesignTaskMessage::Progress(progress));
+                            }
+                            true
+                        })
+                        .map(PrimerDesignTaskCompletion::Single)
+                }
                 Err(_) => Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "Engine lock poisoned while running primer design".to_string(),
@@ -28044,6 +28175,7 @@ impl MainAreaDna {
             operation_label: "PCR primer batch".to_string(),
             template_id: None,
             report_id_hint: None,
+            progress: None,
             batch_progress: None,
             receiver: Arc::new(Mutex::new(rx)),
         });
@@ -28083,6 +28215,9 @@ impl MainAreaDna {
             match task.receiver.lock() {
                 Ok(rx) => loop {
                     match rx.try_recv() {
+                        Ok(PrimerDesignTaskMessage::Progress(progress)) => {
+                            task.progress = Some(progress);
+                        }
                         Ok(PrimerDesignTaskMessage::BatchProgress(progress)) => {
                             task.batch_progress = Some(progress);
                         }
@@ -28100,7 +28235,14 @@ impl MainAreaDna {
                         }
                         Err(TryRecvError::Empty) => {
                             let elapsed = task.started.elapsed().as_secs_f32();
-                            if let Some(progress) = &task.batch_progress {
+                            if let Some(progress) = &task.progress {
+                                self.op_status = format!(
+                                    "{} running: {}... {:.1}s elapsed",
+                                    task.operation_label,
+                                    Self::primer_design_progress_summary(progress),
+                                    elapsed
+                                );
+                            } else if let Some(progress) = &task.batch_progress {
                                 self.op_status = format!(
                                     "{} running: region {}/{} ({}:{}..{} {})... {:.1}s elapsed",
                                     task.operation_label,
@@ -28179,6 +28321,96 @@ impl MainAreaDna {
                 Err(err) => self.handle_operation_error(err, started),
             }
         }
+    }
+
+    fn primer_design_progress_summary(progress: &PrimerDesignProgress) -> String {
+        let backend = progress.backend.trim();
+        let backend_prefix = if backend.is_empty() {
+            String::new()
+        } else {
+            format!("{backend} ")
+        };
+        match (progress.kind, progress.stage) {
+            (
+                PrimerDesignProgressKind::PrimerPairs,
+                PrimerDesignProgressStage::CandidateEnumeration,
+            ) => format!(
+                "{}pair-PCR: enumerated {} forward and {} reverse primer candidates",
+                backend_prefix, progress.forward_candidate_count, progress.reverse_candidate_count
+            ),
+            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::PairEvaluation) => {
+                format!(
+                    "{}pair-PCR: checked {}/{} pair combinations, accepted {} candidate pairs",
+                    backend_prefix,
+                    progress.evaluated_pairs,
+                    progress.pair_evaluation_limit,
+                    progress.accepted_pairs
+                )
+            }
+            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::ProbeEvaluation) => {
+                format!(
+                    "{}pair-PCR: checked {}/{} pair combinations, accepted {} candidate pairs",
+                    backend_prefix,
+                    progress.evaluated_pairs,
+                    progress.pair_evaluation_limit,
+                    progress.accepted_pairs
+                )
+            }
+            (PrimerDesignProgressKind::PrimerPairs, PrimerDesignProgressStage::Complete) => {
+                format!(
+                    "{}pair-PCR complete: accepted {} primer pairs after checking {}/{} combinations",
+                    backend_prefix,
+                    progress.accepted_pairs,
+                    progress.evaluated_pairs,
+                    progress.pair_evaluation_limit
+                )
+            }
+            (
+                PrimerDesignProgressKind::QpcrAssays,
+                PrimerDesignProgressStage::CandidateEnumeration,
+            ) => format!(
+                "{}qPCR: enumerated {} forward and {} reverse primer candidates",
+                backend_prefix, progress.forward_candidate_count, progress.reverse_candidate_count
+            ),
+            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::PairEvaluation) => {
+                format!(
+                    "{}qPCR: checked {}/{} primer-pair combinations, retained {} primer pairs",
+                    backend_prefix,
+                    progress.evaluated_pairs,
+                    progress.pair_evaluation_limit,
+                    progress.accepted_pairs
+                )
+            }
+            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::ProbeEvaluation) => {
+                format!(
+                    "{}qPCR: screened {}/{} probe placements across {} retained primer pairs, accepted {} assays",
+                    backend_prefix,
+                    progress.evaluated_probe_pairs.unwrap_or(0),
+                    progress.total_probe_pairs.unwrap_or(0),
+                    progress.accepted_pairs,
+                    progress.accepted_assays.unwrap_or(0)
+                )
+            }
+            (PrimerDesignProgressKind::QpcrAssays, PrimerDesignProgressStage::Complete) => format!(
+                "{}qPCR complete: accepted {} assays after screening {}/{} probe placements",
+                backend_prefix,
+                progress.accepted_assays.unwrap_or(0),
+                progress.evaluated_probe_pairs.unwrap_or(0),
+                progress.total_probe_pairs.unwrap_or(0)
+            ),
+        }
+    }
+
+    fn active_primer_design_progress_summary_for_kind(
+        &self,
+        kind: PrimerDesignProgressKind,
+    ) -> Option<String> {
+        self.primer_design_task
+            .as_ref()?
+            .progress
+            .as_ref()
+            .filter(|progress| progress.kind == kind)
+            .map(Self::primer_design_progress_summary)
     }
 
     fn start_tfbs_annotation(&mut self, op: Operation) {
@@ -30029,6 +30261,21 @@ impl MainAreaDna {
         })
     }
 
+    fn validate_pair_pcr_min_amplicon_against_roi(
+        min_amplicon_bp: usize,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        context: &str,
+    ) -> Result<(), String> {
+        let roi_len_bp = roi_end_0based.saturating_sub(roi_start_0based);
+        if min_amplicon_bp > roi_len_bp {
+            return Err(format!(
+                "Invalid amplicon window for {context}: min_amplicon_bp ({min_amplicon_bp}) must be <= ROI length ({roi_len_bp})"
+            ));
+        }
+        Ok(())
+    }
+
     fn prepare_primer_pair_design_batch_inputs(
         &self,
     ) -> Result<PreparedPrimerDesignBatchInputs, String> {
@@ -30036,6 +30283,20 @@ impl MainAreaDna {
             return Err("PCR region queue is empty; add at least one region first".to_string());
         }
         let spec = self.build_primer_design_batch_spec()?;
+        if let Some((idx, row)) = self
+            .pcr_queued_regions_ui
+            .iter()
+            .enumerate()
+            .find(|(_, row)| spec.min_amplicon_bp > row.span_len_bp())
+        {
+            return Err(format!(
+                "Queued PCR region #{:02} '{}' is {} bp long, so min_amplicon_bp ({}) must be <= ROI length before running batch primer design",
+                idx + 1,
+                row.source_label,
+                row.span_len_bp(),
+                spec.min_amplicon_bp
+            ));
+        }
         let fallback_template = self
             .pcr_queued_regions_ui
             .first()
@@ -30306,6 +30567,21 @@ impl MainAreaDna {
             &ui.roi_end_0based,
             "primer_design",
         )?;
+        let min_amplicon_bp =
+            Self::parse_positive_usize_text(&ui.min_amplicon_bp, "min_amplicon_bp")?;
+        Self::validate_pair_pcr_min_amplicon_against_roi(
+            min_amplicon_bp,
+            roi_start_0based,
+            roi_end_0based,
+            "pair-PCR",
+        )?;
+        let max_amplicon_bp =
+            Self::parse_positive_usize_text(&ui.max_amplicon_bp, "max_amplicon_bp")?;
+        if min_amplicon_bp > max_amplicon_bp {
+            return Err(format!(
+                "Invalid amplicon window: min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+            ));
+        }
         Ok(Operation::DesignPrimerPairs {
             template: template.to_string(),
             roi_start_0based,
@@ -30313,14 +30589,8 @@ impl MainAreaDna {
             forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
             reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
             pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
-            min_amplicon_bp: Self::parse_positive_usize_text(
-                &ui.min_amplicon_bp,
-                "min_amplicon_bp",
-            )?,
-            max_amplicon_bp: Self::parse_positive_usize_text(
-                &ui.max_amplicon_bp,
-                "max_amplicon_bp",
-            )?,
+            min_amplicon_bp,
+            max_amplicon_bp,
             max_tm_delta_c: Self::parse_optional_f64_text(&ui.max_tm_delta_c, "max_tm_delta_c")?,
             max_pairs,
             report_id: if ui.report_id.trim().is_empty() {
@@ -30386,6 +30656,20 @@ impl MainAreaDna {
         } else {
             raw.to_string()
         };
+    }
+
+    fn primer_backend_help_summary(&self) -> &'static str {
+        match self.primer_backend {
+            PrimerDesignBackend::Auto => {
+                "Auto prefers Primer3 when the executable is reachable and otherwise falls back to GENtle's built-in internal backend. Saved reports record the actual requested->used backend."
+            }
+            PrimerDesignBackend::Internal => {
+                "Internal uses GENtle's built-in primer designer only and does not require Primer3."
+            }
+            PrimerDesignBackend::Primer3 => {
+                "Primer3 requires a reachable primer3 executable. When it is unavailable, design requests fail instead of falling back automatically."
+            }
+        }
     }
 
     fn apply_primer_backend_settings(&mut self) {
@@ -30988,8 +31272,10 @@ impl MainAreaDna {
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
-        let forward_enzyme = (!ui.forward_enzyme.trim().is_empty()).then_some(ui.forward_enzyme.trim());
-        let reverse_enzyme = (!ui.reverse_enzyme.trim().is_empty()).then_some(ui.reverse_enzyme.trim());
+        let forward_enzyme =
+            (!ui.forward_enzyme.trim().is_empty()).then_some(ui.forward_enzyme.trim());
+        let reverse_enzyme =
+            (!ui.reverse_enzyme.trim().is_empty()).then_some(ui.reverse_enzyme.trim());
         engine
             .read()
             .map_err(|_| {
@@ -33375,7 +33661,9 @@ impl MainAreaDna {
         ui.group(|ui| {
             ui.label("Primer backend and Primer3 preflight");
             ui.horizontal(|ui| {
-                ui.label("backend");
+                ui.label("backend").on_hover_text(
+                    "Choose how primer designs are computed: auto prefers Primer3 when available, internal always uses GENtle's built-in backend, and primer3 requires the external executable.",
+                );
                 egui::ComboBox::from_id_salt("engine_ops_primer_backend")
                     .selected_text(self.primer_backend.as_str())
                     .show_ui(ui, |ui| {
@@ -33394,8 +33682,14 @@ impl MainAreaDna {
                             PrimerDesignBackend::Primer3,
                             "primer3",
                         );
-                    });
-                ui.label("primer3 executable");
+                    })
+                    .response
+                    .on_hover_text(
+                        "Select auto, internal, or primer3. Reports record both the requested backend and the backend actually used.",
+                    );
+                ui.label("primer3 executable").on_hover_text(
+                    "Path to the Primer3 executable used when backend=primer3 or when auto tries Primer3 first.",
+                );
                 ui.add(
                     egui::TextEdit::singleline(&mut self.primer3_executable)
                         .desired_width(260.0)
@@ -33432,8 +33726,11 @@ impl MainAreaDna {
                     self.sync_primer_backend_controls_from_engine();
                 }
             });
+            ui.small(self.primer_backend_help_summary());
             if !self.primer3_preflight_status.trim().is_empty() {
-                ui.monospace(&self.primer3_preflight_status);
+                ui.monospace(&self.primer3_preflight_status).on_hover_text(
+                    "Latest explicit Primer3 probe result. When backend=auto and Primer3 is unavailable, GENtle falls back to the internal backend and records that fallback in saved reports.",
+                );
             }
         });
 
@@ -33615,10 +33912,22 @@ impl MainAreaDna {
                                     ui.monospace(format!("{}", row.end_0based_exclusive));
                                     ui.monospace(format!("{}", row.span_len_bp()));
                                     ui.monospace(&row.template);
-                                    if ui.small_button("Use ROI").clicked() {
+                                    if ui
+                                        .small_button("Use ROI")
+                                        .on_hover_text(
+                                            "Copy this queued region back into the active PCR ROI start/end fields above",
+                                        )
+                                        .clicked()
+                                    {
                                         use_roi_idx = Some(idx);
                                     }
-                                    if ui.small_button("Remove").clicked() {
+                                    if ui
+                                        .small_button("Remove")
+                                        .on_hover_text(
+                                            "Remove this queued PCR region from the batch source table",
+                                        )
+                                        .clicked()
+                                    {
                                         remove_idx = Some(idx);
                                     }
                                     ui.end_row();
@@ -33819,6 +34128,13 @@ impl MainAreaDna {
                         Err(err) => self.op_status = err,
                     }
                 }
+                if let Some(summary) = self
+                    .active_primer_design_progress_summary_for_kind(
+                        PrimerDesignProgressKind::PrimerPairs,
+                    )
+                {
+                    ui.small(format!("Progress: {summary}"));
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button("List Primer Reports")
@@ -33987,6 +34303,13 @@ impl MainAreaDna {
                         Ok(op) => self.start_primer_design_operation(op, "qPCR design"),
                         Err(err) => self.op_status = err,
                     }
+                }
+                if let Some(summary) = self
+                    .active_primer_design_progress_summary_for_kind(
+                        PrimerDesignProgressKind::QpcrAssays,
+                    )
+                {
+                    ui.small(format!("Progress: {summary}"));
                 }
                 ui.horizontal(|ui| {
                     if ui

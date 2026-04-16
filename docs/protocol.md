@@ -3136,12 +3136,17 @@ Operation progress/cancellation semantics:
   - `true`: continue
   - `false`: request cancellation
 - Current event families:
+  - `PrimerDesign`
   - `Tfbs`
   - `GenomePrepare`
   - `GenomeTrackImport`
   - `DbSnpFetch`
   - `RnaReadInterpret`
 - Current cancellation support:
+  - internal pair-PCR/qPCR design now emits staged `PrimerDesign` snapshots
+    (`candidate_enumeration`, `pair_evaluation`, `probe_evaluation`,
+    `complete`) with candidate/evaluation counters, but does not yet expose
+    cooperative cancellation
   - genome preparation supports cooperative cancellation plus optional
     `timeout_seconds` timeboxing and reports deterministic cancellation/timeout
     outcomes.
