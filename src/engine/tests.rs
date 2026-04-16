@@ -11232,6 +11232,7 @@ fn test_export_process_run_bundle_operation() {
                     helper_resolution_status: "resolved".to_string(),
                     explicit_preferred_routine_families: vec!["golden_gate".to_string()],
                     helper_derived_preferred_routine_families: vec!["restriction".to_string()],
+                    construct_strategy_derived_preferred_routine_families: vec![],
                     variant_derived_preferred_routine_families: vec![],
                     effective_preferred_routine_families: vec![
                         "golden_gate".to_string(),
@@ -24677,6 +24678,19 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
             expression_host_profile_id: Some("  CHO Susp ".to_string()),
             helper_profile_id: Some(" pUC19 Carrier ".to_string()),
             medium_conditions: vec![" LB + Amp ".to_string(), "lb + amp".to_string()],
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: " Blunt EcoRI Rescue ".to_string(),
+                restriction_enzyme_name: " ecori ".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::McsLike,
+                protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                extra_retrieval_enzyme_names: vec![
+                    " xbaI ".to_string(),
+                    "xbai".to_string(),
+                    "NotI".to_string(),
+                ],
+                notes: vec![" keep internal ecoRI protected ".to_string()],
+            }],
             required_host_traits: vec![" EndA- ".to_string(), "enda-".to_string()],
             forbidden_host_traits: vec![" mdrs+ ".to_string(), "MDRS+".to_string()],
             host_route: vec![HostRouteStep {
@@ -24716,6 +24730,32 @@ fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store(
     );
     assert_eq!(stored.helper_profile_id.as_deref(), Some("puc19carrier"));
     assert_eq!(stored.medium_conditions, vec!["lb + amp".to_string()]);
+    assert_eq!(stored.adapter_restriction_capture_plans.len(), 1);
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].capture_id,
+        "bluntecorirescue"
+    );
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].restriction_enzyme_name,
+        "EcoRI"
+    );
+    assert!(stored.adapter_restriction_capture_plans[0].blunt_insert_required);
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].adapter_style,
+        AdapterCaptureStyle::McsLike
+    );
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].protection_mode,
+        AdapterCaptureProtectionMode::InsertMethylation
+    );
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].extra_retrieval_enzyme_names,
+        vec!["NotI".to_string(), "XbaI".to_string()]
+    );
+    assert_eq!(
+        stored.adapter_restriction_capture_plans[0].notes,
+        vec!["keep internal ecoRI protected".to_string()]
+    );
     assert_eq!(stored.required_host_traits, vec!["enda-".to_string()]);
     assert_eq!(stored.forbidden_host_traits, vec!["mdrs+".to_string()]);
     assert_eq!(stored.host_route.len(), 1);
@@ -25988,6 +26028,149 @@ fn build_construct_reasoning_graph_derives_host_restriction_methylation_route_ri
                 .output_fact_ids
                 .iter()
                 .any(|fact_id| fact_id == "fact_host_restriction_methylation_context")
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_adapter_restriction_capture_context() {
+    let dna = DNAsequence::from_sequence("GGGGAATTCCCCC").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("adapter_capture_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Adapter capture reasoning".to_string(),
+            goal: "Keep blunt-end adapter capture strategy inspectable".to_string(),
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: "ecoRI_capture".to_string(),
+                restriction_enzyme_name: "EcoRI".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::McsLike,
+                protection_mode: AdapterCaptureProtectionMode::InsertMethylation,
+                extra_retrieval_enzyme_names: vec!["NotI".to_string(), "XbaI".to_string()],
+                notes: vec!["Protect internal EcoRI before linker ligation.".to_string()],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "adapter_capture_demo",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "adapter_restriction_capture_context")
+        .expect("adapter capture fact");
+    assert_eq!(
+        fact.value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("review_needed")
+    );
+    assert_eq!(
+        fact.value_json
+            .get("derived_preferred_routine_families")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|rows| rows.first())
+            .and_then(serde_json::Value::as_str),
+        Some("restriction")
+    );
+    assert!(
+        fact.value_json
+            .get("capture_plans")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("capture_id").and_then(serde_json::Value::as_str) == Some("ecori_capture")
+                    && row
+                        .get("internal_site_status")
+                        .and_then(serde_json::Value::as_str)
+                        == Some("methylation_protection_requested")
+                    && row
+                        .get("internal_site_count")
+                        .and_then(serde_json::Value::as_u64)
+                        == Some(1)
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        fact.value_json
+            .get("review_items")
+            .and_then(serde_json::Value::as_array)
+            .map(|rows| rows.iter().any(|row| {
+                row.get("issue_id").and_then(serde_json::Value::as_str)
+                    == Some("methylation_protection_requires_enzyme_specific_review")
+            }))
+            .unwrap_or(false)
+    );
+    assert!(graph.decisions.iter().any(|node| {
+        node.decision_type == "evaluate_adapter_restriction_capture_strategy"
+            && node
+                .output_fact_ids
+                .iter()
+                .any(|fact_id| fact_id == "fact_adapter_restriction_capture_context")
+    }));
+}
+
+#[test]
+fn planning_routine_preference_context_for_sequence_includes_adapter_capture_preferences() {
+    let dna = DNAsequence::from_sequence("GGGGAATTCCCCC").expect("sequence");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("adapter_capture_plan".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .set_planning_objective(Some(PlanningObjective::default()))
+        .expect("set planning objective");
+    let objective = engine
+        .upsert_construct_objective(ConstructObjective {
+            title: "Adapter capture reasoning".to_string(),
+            goal: "Prefer restriction-style routines for blunt adapter capture".to_string(),
+            adapter_restriction_capture_plans: vec![AdapterRestrictionCapturePlan {
+                capture_id: "ecoRI_capture".to_string(),
+                restriction_enzyme_name: "EcoRI".to_string(),
+                blunt_insert_required: true,
+                adapter_style: AdapterCaptureStyle::Minimal,
+                protection_mode: AdapterCaptureProtectionMode::None,
+                extra_retrieval_enzyme_names: vec![],
+                notes: vec![],
+            }],
+            ..ConstructObjective::default()
+        })
+        .expect("objective");
+    engine
+        .build_construct_reasoning_graph(
+            "adapter_capture_plan",
+            Some(&objective.objective_id),
+            None,
+        )
+        .expect("build graph");
+
+    let context = engine
+        .planning_routine_preference_context_record_for_sequence(Some("adapter_capture_plan"));
+    assert_eq!(
+        context.construct_strategy_derived_preferred_routine_families,
+        vec!["restriction".to_string()]
+    );
+    assert!(
+        context
+            .effective_preferred_routine_families
+            .iter()
+            .any(|family| family == "restriction")
+    );
+    assert!(context.rationale.iter().any(|line| {
+        line.contains("adapter/linker capture context")
+            || line.contains("adapter/linker capture strategy-derived")
     }));
 }
 

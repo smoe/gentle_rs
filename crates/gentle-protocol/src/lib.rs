@@ -16,6 +16,7 @@ use std::{
 };
 
 pub use construct_reasoning::{
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
     CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
     CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate, ConstructObjective,
     ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
@@ -547,9 +548,7 @@ impl DotplotOverlayXAxisMode {
             Self::LeftAlignedBp
             | Self::RightAlignedBp
             | Self::SharedExonAnchor
-            | Self::QueryAnchorBp => {
-                max_query_span_bp.max(1)
-            }
+            | Self::QueryAnchorBp => max_query_span_bp.max(1),
         }
     }
 
@@ -559,9 +558,7 @@ impl DotplotOverlayXAxisMode {
             Self::LeftAlignedBp
             | Self::RightAlignedBp
             | Self::SharedExonAnchor
-            | Self::QueryAnchorBp => {
-                ("1".to_string(), max_query_span_bp.max(1).to_string())
-            }
+            | Self::QueryAnchorBp => ("1".to_string(), max_query_span_bp.max(1).to_string()),
         }
     }
 

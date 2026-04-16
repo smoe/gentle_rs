@@ -511,7 +511,9 @@ impl GentleEngine {
                 DotplotOverlayXAxisMode::SharedExonAnchor => {
                     overlay_anchor_exon.map(|exon| exon.token())
                 }
-                DotplotOverlayXAxisMode::QueryAnchorBp => view.query_anchor_label().map(str::to_string),
+                DotplotOverlayXAxisMode::QueryAnchorBp => {
+                    view.query_anchor_label().map(str::to_string)
+                }
                 _ => None,
             };
             let total_series_count = rendered_series_source.len();

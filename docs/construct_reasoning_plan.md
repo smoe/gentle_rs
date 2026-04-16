@@ -1,6 +1,6 @@
 # Construct Reasoning Graph Plan
 
-Last updated: 2026-04-11
+Last updated: 2026-04-16
 
 Purpose: define an engine-owned, sequence-linked construct-planning layer that
 captures why GENtle proposes one genomic window, transcript/CDS span, fusion
@@ -184,6 +184,18 @@ pub struct HostRouteStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct AdapterRestrictionCapturePlan {
+    pub capture_id: String,
+    pub restriction_enzyme_name: String,
+    pub blunt_insert_required: bool,
+    pub adapter_style: AdapterCaptureStyle,
+    pub protection_mode: AdapterCaptureProtectionMode,
+    pub extra_retrieval_enzyme_names: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ConstructObjective {
     pub schema: String,
     pub objective_id: String,
@@ -199,6 +211,7 @@ pub struct ConstructObjective {
     pub host_route: Vec<HostRouteStep>,
     pub medium_conditions: Vec<String>,
     pub helper_profile_id: Option<String>,
+    pub adapter_restriction_capture_plans: Vec<AdapterRestrictionCapturePlan>,
     pub required_host_traits: Vec<String>,
     pub forbidden_host_traits: Vec<String>,
     pub required_roles: Vec<ConstructRole>,
@@ -294,6 +307,31 @@ pub struct ConstructReasoningGraph {
     pub candidates: Vec<ConstructCandidate>,
 }
 ```
+
+### Additional near-term reasoning slice
+
+The next deterministic cloning-context addition should treat blunt-end
+adapter/linker ligation as first-class construct intent rather than as free
+notes:
+
+- objective records:
+  - capture restriction enzyme
+  - minimal vs MCS-like adapter style
+  - whether blunt insert ends are required
+  - whether internal same-site rescue intends insert methylation
+  - optional extra retrieval sites on longer adapters
+- derived fact/decision:
+  - `adapter_restriction_capture_context`
+  - `evaluate_adapter_restriction_capture_strategy`
+- current deterministic limits:
+  - exact internal same-site reuse on the insert is a hard fact
+  - requested insert methylation is explicit intent, not proof that the chosen
+    enzyme is methylation-sensitive in the needed way
+  - until an enzyme-specific methylation-sensitivity catalog exists, that path
+    should remain a review flag rather than a guaranteed “adapter-only digest”
+
+This slice should also be allowed to synthesize restriction-family routine
+preferences so the reasoning graph can influence downstream routine ranking.
 
 ### Companion catalog records
 

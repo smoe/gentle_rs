@@ -161,6 +161,7 @@ impl GentleEngine {
         for fact_type in [
             "host_transition_context",
             "host_restriction_methylation_context",
+            "adapter_restriction_capture_context",
             "growth_condition_context",
             "helper_context",
             "selection_context",

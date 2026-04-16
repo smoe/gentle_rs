@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
     CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
     CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities, ConstructCandidate, ConstructObjective,
     ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
@@ -2554,6 +2555,7 @@ pub struct RoutinePreferenceContextRecord {
     pub helper_resolution_status: String,
     pub explicit_preferred_routine_families: Vec<String>,
     pub helper_derived_preferred_routine_families: Vec<String>,
+    pub construct_strategy_derived_preferred_routine_families: Vec<String>,
     pub variant_derived_preferred_routine_families: Vec<String>,
     pub effective_preferred_routine_families: Vec<String>,
     pub helper_offered_functions: Vec<String>,

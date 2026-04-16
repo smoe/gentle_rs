@@ -16996,6 +16996,86 @@ impl MainAreaDna {
                     warning_lines.extend(conflicts);
                 }
             }
+            "adapter_restriction_capture_context" => {
+                let capture_rows = fact
+                    .value_json
+                    .get("capture_plans")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let capture_id =
+                                    row.get("capture_id").and_then(serde_json::Value::as_str)?;
+                                let enzyme = row
+                                    .get("restriction_enzyme_name")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("enzyme");
+                                let status = row
+                                    .get("internal_site_status")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("unspecified");
+                                let count = row
+                                    .get("internal_site_count")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .unwrap_or(0);
+                                Some(format!(
+                                    "{capture_id}: {enzyme} ({status}, internal_sites={count})"
+                                ))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !capture_rows.is_empty() {
+                    detail_lines.push(format!("capture_plans: {}", capture_rows.join(" | ")));
+                }
+                let retrieval_sites = fact
+                    .value_json
+                    .get("capture_plans")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                let capture_id =
+                                    row.get("capture_id").and_then(serde_json::Value::as_str)?;
+                                let retrievals = row
+                                    .get("extra_retrieval_enzyme_names")
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|entries| {
+                                        entries
+                                            .iter()
+                                            .filter_map(serde_json::Value::as_str)
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    })
+                                    .unwrap_or_default();
+                                (!retrievals.is_empty())
+                                    .then(|| format!("{capture_id}: {retrievals}"))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !retrieval_sites.is_empty() {
+                    detail_lines.push(format!("retrieval_sites: {}", retrieval_sites.join(" | ")));
+                }
+                let review_items = fact
+                    .value_json
+                    .get("review_items")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(|row| {
+                                row.get("label")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(|value| value.to_string())
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !review_items.is_empty() {
+                    detail_lines.push(format!("review: {}", review_items.join(", ")));
+                    warning_lines.extend(review_items);
+                }
+            }
             "selection_context" => {
                 let candidates = Self::construct_reasoning_json_string_list(
                     &fact.value_json,
@@ -27487,8 +27567,7 @@ impl MainAreaDna {
             && overlay_x_axis_mode == DotplotOverlayXAxisMode::QueryAnchorBp
             && let Some(anchor_label) = view.query_anchor_label()
         {
-            let anchor_token =
-                Self::sanitize_export_name_component(anchor_label, "anchor");
+            let anchor_token = Self::sanitize_export_name_component(anchor_label, "anchor");
             stem.push_str(&format!("_anchor-{anchor_token}"));
         }
         if stem.len() > 220 {

@@ -325,6 +325,71 @@ impl Default for HostRouteStep {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Style of blunt-end linker/adapter capture oligos chosen for one cloning intent.
+pub enum AdapterCaptureStyle {
+    #[default]
+    Minimal,
+    McsLike,
+    Custom,
+}
+
+impl AdapterCaptureStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::McsLike => "mcs_like",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Intended protection mode when the insert already contains the adapter capture site.
+pub enum AdapterCaptureProtectionMode {
+    #[default]
+    None,
+    InsertMethylation,
+}
+
+impl AdapterCaptureProtectionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::InsertMethylation => "insert_methylation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// One planned blunt-end adapter/linker ligation capture strategy.
+pub struct AdapterRestrictionCapturePlan {
+    pub capture_id: String,
+    pub restriction_enzyme_name: String,
+    pub blunt_insert_required: bool,
+    pub adapter_style: AdapterCaptureStyle,
+    pub protection_mode: AdapterCaptureProtectionMode,
+    pub extra_retrieval_enzyme_names: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+impl Default for AdapterRestrictionCapturePlan {
+    fn default() -> Self {
+        Self {
+            capture_id: String::new(),
+            restriction_enzyme_name: String::new(),
+            blunt_insert_required: false,
+            adapter_style: AdapterCaptureStyle::Minimal,
+            protection_mode: AdapterCaptureProtectionMode::None,
+            extra_retrieval_enzyme_names: vec![],
+            notes: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Target outcome used to interpret evidence and derive construct candidates.
@@ -344,6 +409,7 @@ pub struct ConstructObjective {
     pub host_route: Vec<HostRouteStep>,
     pub medium_conditions: Vec<String>,
     pub helper_profile_id: Option<String>,
+    pub adapter_restriction_capture_plans: Vec<AdapterRestrictionCapturePlan>,
     pub required_host_traits: Vec<String>,
     pub forbidden_host_traits: Vec<String>,
     pub required_roles: Vec<ConstructRole>,
@@ -369,6 +435,7 @@ impl Default for ConstructObjective {
             host_route: vec![],
             medium_conditions: vec![],
             helper_profile_id: None,
+            adapter_restriction_capture_plans: vec![],
             required_host_traits: vec![],
             forbidden_host_traits: vec![],
             required_roles: vec![],

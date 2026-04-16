@@ -2819,6 +2819,21 @@ Construct reasoning graph foundation (implemented first slice):
         `hsdR+`, or `MDRS+`
       - deterministic sequence motif tallies for Dam, Dcm, and EcoK-like
         target sites
+    - adapter/linker restriction-capture review from:
+      - explicit construct-objective capture plans that record:
+        - capture restriction enzyme
+        - minimal vs MCS-like adapter style
+        - whether blunt insert ends are required
+        - optional insert-methylation protection intent
+        - optional extra retrieval-site enzymes on longer adapters
+      - deterministic internal-site tallies for the chosen capture enzyme on
+        the insert sequence
+      - review flags when:
+        - the capture enzyme cannot be resolved from the active catalog
+        - the insert already carries the same site without protection
+        - insert methylation is requested and therefore still requires
+          enzyme-specific methylation-sensitivity review before assuming only
+          newly ligated adapter sites will cut
     - growth/condition context from structured medium-condition interpretation
       (for example nutrient omission, antibiotic selection agent, heat shock,
       and temperature signals)
@@ -2879,12 +2894,14 @@ Construct reasoning graph foundation (implemented first slice):
     - embedded stored reasoning graphs for full offline inspection/replay
   - planning/routine handoff now also consumes the same graph:
     - `routine_preference_context` records can carry
-      `construct_reasoning_seq_id`, `variant_effect_tags`,
+      `construct_reasoning_seq_id`,
+      `construct_strategy_derived_preferred_routine_families`,
+      `variant_effect_tags`,
       `variant_suggested_assay_ids`, and
       `variant_derived_preferred_routine_families`
     - `routines list` / `routines compare` planning estimates and GUI Routine
-      Assistant traces can therefore explain when variant-derived assay context
-      boosted one routine family over another
+      Assistant traces can therefore explain when adapter/linker capture or
+      variant-derived assay context boosted one routine family over another
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - dbSNP / VCF-generated variant markers => `hard_fact`

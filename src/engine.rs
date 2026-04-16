@@ -136,6 +136,7 @@ pub(crate) struct RoutinePreferenceContext {
     pub helper_resolution_status: String,
     pub explicit_preferred_routine_families: Vec<String>,
     pub helper_derived_preferred_routine_families: Vec<String>,
+    pub construct_strategy_derived_preferred_routine_families: Vec<String>,
     pub variant_derived_preferred_routine_families: Vec<String>,
     pub effective_preferred_routine_families: Vec<String>,
     pub helper_offered_functions: Vec<String>,
@@ -189,6 +190,30 @@ struct ConstructRestrictionMethylationConflict {
     label: String,
     upstream_step_id: String,
     downstream_step_id: String,
+    rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructAdapterRestrictionCapturePlanSummary {
+    capture_id: String,
+    restriction_enzyme_name: String,
+    enzyme_resolution_status: String,
+    adapter_style: String,
+    blunt_insert_required: bool,
+    protection_mode: String,
+    extra_retrieval_enzyme_names: Vec<String>,
+    capture_site_geometry: Option<String>,
+    internal_site_count: usize,
+    internal_site_status: String,
+    internal_site_ranges_0based: Vec<[usize; 2]>,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct ConstructAdapterRestrictionCaptureReviewItem {
+    capture_id: String,
+    issue_id: String,
+    label: String,
     rationale: String,
 }
 
@@ -10615,6 +10640,42 @@ impl GentleEngine {
         )
     }
 
+    fn construct_reasoning_strategy_preference_summary(
+        graph: Option<&ConstructReasoningGraph>,
+    ) -> (Option<String>, Vec<String>, Option<String>) {
+        let Some(graph) = graph else {
+            return (None, vec![], None);
+        };
+        let strategy_families = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "adapter_restriction_capture_context")
+            .and_then(|fact| {
+                fact.value_json
+                    .get("derived_preferred_routine_families")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                    })
+            })
+            .unwrap_or_default();
+        let rationale = if strategy_families.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "Construct reasoning for '{}' suggests routine family/ies {} from adapter/linker capture context.",
+                graph.seq_id,
+                strategy_families.join(", ")
+            ))
+        };
+        (Some(graph.seq_id.clone()), strategy_families, rationale)
+    }
+
     fn build_routine_preference_context(
         helper_profile_id: Option<&str>,
         explicit_preferred_routine_families: &[String],
@@ -10622,13 +10683,19 @@ impl GentleEngine {
         helper_resolution_status: &str,
         helper_resolution_note: Option<String>,
         construct_reasoning_seq_id: Option<&str>,
+        construct_strategy_derived_preferred_routine_families: &[String],
         variant_effect_tags: &[String],
         variant_suggested_assay_ids: &[String],
         variant_derived_preferred_routine_families: &[String],
+        construct_strategy_reasoning_note: Option<String>,
         variant_reasoning_note: Option<String>,
     ) -> RoutinePreferenceContext {
         let explicit_preferred_routine_families =
             Self::normalize_routine_family_preferences(explicit_preferred_routine_families);
+        let construct_strategy_derived_preferred_routine_families =
+            Self::normalize_routine_family_preferences(
+                construct_strategy_derived_preferred_routine_families,
+            );
         let variant_derived_preferred_routine_families =
             Self::normalize_routine_family_preferences(variant_derived_preferred_routine_families);
         let helper_profile_id = helper_profile_id
@@ -10667,6 +10734,9 @@ impl GentleEngine {
         if let Some(note) = helper_resolution_note {
             rationale.push(note);
         }
+        if let Some(note) = construct_strategy_reasoning_note {
+            rationale.push(note);
+        }
         if let Some(note) = variant_reasoning_note {
             rationale.push(note);
         }
@@ -10675,6 +10745,7 @@ impl GentleEngine {
         let mut effective_preferred_routine_families = explicit_preferred_routine_families
             .iter()
             .chain(helper_derived_preferred_routine_families.iter())
+            .chain(construct_strategy_derived_preferred_routine_families.iter())
             .chain(variant_derived_preferred_routine_families.iter())
             .cloned()
             .collect::<BTreeSet<_>>()
@@ -10688,6 +10759,7 @@ impl GentleEngine {
             helper_resolution_status: helper_resolution_status.to_string(),
             explicit_preferred_routine_families,
             helper_derived_preferred_routine_families,
+            construct_strategy_derived_preferred_routine_families,
             variant_derived_preferred_routine_families,
             effective_preferred_routine_families,
             helper_offered_functions,
@@ -10710,6 +10782,9 @@ impl GentleEngine {
                 .clone(),
             helper_derived_preferred_routine_families: context
                 .helper_derived_preferred_routine_families
+                .clone(),
+            construct_strategy_derived_preferred_routine_families: context
+                .construct_strategy_derived_preferred_routine_families
                 .clone(),
             variant_derived_preferred_routine_families: context
                 .variant_derived_preferred_routine_families
@@ -10741,6 +10816,8 @@ impl GentleEngine {
                 &[],
                 &[],
                 &[],
+                &[],
+                None,
                 None,
             );
         };
@@ -10755,6 +10832,8 @@ impl GentleEngine {
                 &[],
                 &[],
                 &[],
+                &[],
+                None,
                 None,
             ),
             Ok(None) => Self::build_routine_preference_context(
@@ -10769,6 +10848,8 @@ impl GentleEngine {
                 &[],
                 &[],
                 &[],
+                &[],
+                None,
                 None,
             ),
             Err(error) => Self::build_routine_preference_context(
@@ -10784,6 +10865,8 @@ impl GentleEngine {
                 &[],
                 &[],
                 &[],
+                &[],
+                None,
                 None,
             ),
         }
@@ -10793,6 +10876,7 @@ impl GentleEngine {
         objective: &ConstructObjective,
         helper_interpretation: Option<&HelperConstructInterpretation>,
         construct_reasoning_seq_id: Option<&str>,
+        construct_strategy_derived_preferred_routine_families: &[String],
         variant_effect_tags: &[String],
         variant_suggested_assay_ids: &[String],
         variant_derived_preferred_routine_families: &[String],
@@ -10823,9 +10907,17 @@ impl GentleEngine {
             helper_resolution_status,
             helper_resolution_note,
             construct_reasoning_seq_id,
+            construct_strategy_derived_preferred_routine_families,
             variant_effect_tags,
             variant_suggested_assay_ids,
             variant_derived_preferred_routine_families,
+            (!construct_strategy_derived_preferred_routine_families.is_empty()).then(|| {
+                format!(
+                    "Construct reasoning records adapter/linker capture strategy-derived routine family/ies {} for sequence '{}'.",
+                    construct_strategy_derived_preferred_routine_families.join(", "),
+                    construct_reasoning_seq_id.unwrap_or_default()
+                )
+            }),
             (!variant_suggested_assay_ids.is_empty()).then(|| {
                 format!(
                     "Variant-aware construct reasoning suggests assay family/ies {} for sequence '{}'.",
@@ -11023,6 +11115,11 @@ impl GentleEngine {
                     .ok()
             });
         let (
+            construct_strategy_seq_id,
+            construct_strategy_derived_preferred_routine_families,
+            construct_strategy_reasoning_note,
+        ) = Self::construct_reasoning_strategy_preference_summary(graph.as_ref());
+        let (
             construct_reasoning_seq_id,
             variant_effect_tags,
             variant_suggested_assay_ids,
@@ -11030,15 +11127,23 @@ impl GentleEngine {
             variant_reasoning_note,
         ) = Self::construct_reasoning_variant_preference_summary(graph.as_ref());
         if construct_reasoning_seq_id.is_some()
+            || construct_strategy_seq_id.is_some()
+            || !construct_strategy_derived_preferred_routine_families.is_empty()
             || !variant_effect_tags.is_empty()
             || !variant_suggested_assay_ids.is_empty()
             || !variant_derived_preferred_routine_families.is_empty()
         {
-            context.construct_reasoning_seq_id = construct_reasoning_seq_id;
+            context.construct_reasoning_seq_id =
+                construct_reasoning_seq_id.or(construct_strategy_seq_id);
+            context.construct_strategy_derived_preferred_routine_families =
+                construct_strategy_derived_preferred_routine_families;
             context.variant_effect_tags = variant_effect_tags;
             context.variant_suggested_assay_ids = variant_suggested_assay_ids;
             context.variant_derived_preferred_routine_families =
                 variant_derived_preferred_routine_families;
+            if let Some(note) = construct_strategy_reasoning_note {
+                context.rationale.push(note);
+            }
             if let Some(note) = variant_reasoning_note {
                 context.rationale.push(note);
             }
@@ -11048,6 +11153,11 @@ impl GentleEngine {
                 .explicit_preferred_routine_families
                 .iter()
                 .chain(context.helper_derived_preferred_routine_families.iter())
+                .chain(
+                    context
+                        .construct_strategy_derived_preferred_routine_families
+                        .iter(),
+                )
                 .chain(context.variant_derived_preferred_routine_families.iter())
                 .cloned()
                 .collect::<BTreeSet<_>>()
@@ -11746,6 +11856,47 @@ impl GentleEngine {
         steps.retain(|step| seen.insert(step.step_id.clone()));
     }
 
+    fn normalize_restriction_enzyme_name(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        active_restriction_enzymes()
+            .into_iter()
+            .find(|enzyme| enzyme.name.eq_ignore_ascii_case(trimmed))
+            .map(|enzyme| enzyme.name)
+            .unwrap_or_else(|| trimmed.to_string())
+    }
+
+    fn normalize_adapter_restriction_capture_plans(plans: &mut Vec<AdapterRestrictionCapturePlan>) {
+        for (idx, plan) in plans.iter_mut().enumerate() {
+            plan.capture_id = if plan.capture_id.trim().is_empty() {
+                format!("adapter_capture_{}", idx.saturating_add(1))
+            } else {
+                Self::normalize_id_token(plan.capture_id.trim())
+            };
+            plan.restriction_enzyme_name =
+                Self::normalize_restriction_enzyme_name(&plan.restriction_enzyme_name);
+            plan.extra_retrieval_enzyme_names = plan
+                .extra_retrieval_enzyme_names
+                .iter()
+                .map(|value| Self::normalize_restriction_enzyme_name(value))
+                .filter(|value| !value.is_empty())
+                .collect();
+            plan.extra_retrieval_enzyme_names
+                .sort_by_key(|value| value.to_ascii_lowercase());
+            plan.extra_retrieval_enzyme_names.dedup();
+            Self::normalize_optional_note_text(&mut plan.notes);
+        }
+        plans.retain(|plan| {
+            !plan.restriction_enzyme_name.is_empty()
+                || !plan.extra_retrieval_enzyme_names.is_empty()
+                || !plan.notes.is_empty()
+        });
+        let mut seen: HashSet<String> = HashSet::new();
+        plans.retain(|plan| seen.insert(plan.capture_id.clone()));
+    }
+
     fn normalize_construct_objective(mut objective: ConstructObjective) -> ConstructObjective {
         objective.schema = CONSTRUCT_OBJECTIVE_SCHEMA.to_string();
         objective.objective_id = if !objective.objective_id.trim().is_empty() {
@@ -11798,6 +11949,9 @@ impl GentleEngine {
             Self::normalize_optional_id_token_text(objective.helper_profile_id.take());
         Self::normalize_host_route_steps(&mut objective.host_route);
         Self::normalize_tag_like_text(&mut objective.medium_conditions);
+        Self::normalize_adapter_restriction_capture_plans(
+            &mut objective.adapter_restriction_capture_plans,
+        );
         Self::normalize_tag_like_text(&mut objective.required_host_traits);
         Self::normalize_tag_like_text(&mut objective.forbidden_host_traits);
         Self::normalize_role_list(&mut objective.required_roles);
@@ -12598,6 +12752,71 @@ impl GentleEngine {
                 vec![helper_profile_id.clone()],
                 vec![],
             );
+        }
+        for capture_plan in &objective.adapter_restriction_capture_plans {
+            let mut context_tags = vec![
+                "adapter_restriction_capture".to_string(),
+                "linker".to_string(),
+                capture_plan.adapter_style.as_str().to_string(),
+                capture_plan.protection_mode.as_str().to_string(),
+            ];
+            if capture_plan.blunt_insert_required {
+                context_tags.push("blunt_insert_required".to_string());
+            }
+            let mut provenance_refs = vec![
+                capture_plan.capture_id.clone(),
+                capture_plan.restriction_enzyme_name.clone(),
+            ];
+            provenance_refs.extend(capture_plan.extra_retrieval_enzyme_names.clone());
+            Self::push_construct_reasoning_objective_context_evidence(
+                &mut evidence,
+                seq_id,
+                objective,
+                EvidenceScope::WholeConstruct,
+                format!(
+                    "Adapter capture: {} via {}",
+                    capture_plan.capture_id, capture_plan.restriction_enzyme_name
+                ),
+                format!(
+                    "Construct objective records a {} adapter/linker capture plan using restriction site '{}'.",
+                    capture_plan.adapter_style.as_str(),
+                    capture_plan.restriction_enzyme_name
+                ),
+                None,
+                None,
+                None,
+                None,
+                context_tags,
+                provenance_refs,
+                capture_plan.notes.clone(),
+            );
+            if !capture_plan.extra_retrieval_enzyme_names.is_empty() {
+                Self::push_construct_reasoning_objective_context_evidence(
+                    &mut evidence,
+                    seq_id,
+                    objective,
+                    EvidenceScope::WholeConstruct,
+                    format!(
+                        "Adapter retrieval sites: {}",
+                        capture_plan.extra_retrieval_enzyme_names.join(", ")
+                    ),
+                    format!(
+                        "Construct objective records extra retrieval site(s) on adapter capture plan '{}'.",
+                        capture_plan.capture_id
+                    ),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![
+                        "adapter_restriction_capture".to_string(),
+                        "retrieval_sites".to_string(),
+                        capture_plan.adapter_style.as_str().to_string(),
+                    ],
+                    capture_plan.extra_retrieval_enzyme_names.clone(),
+                    capture_plan.notes.clone(),
+                );
+            }
         }
         for step in &objective.host_route {
             let rationale = if step.rationale.is_empty() {
@@ -14059,6 +14278,139 @@ impl GentleEngine {
         conflicts
     }
 
+    fn construct_reasoning_find_restriction_enzyme_by_name(
+        enzyme_name: &str,
+    ) -> Option<RestrictionEnzyme> {
+        let target = enzyme_name.trim();
+        if target.is_empty() {
+            return None;
+        }
+        active_restriction_enzymes()
+            .into_iter()
+            .find(|enzyme| enzyme.name.eq_ignore_ascii_case(target))
+    }
+
+    fn construct_reasoning_internal_restriction_site_ranges(
+        dna: &DNAsequence,
+        enzyme: &RestrictionEnzyme,
+    ) -> Vec<[usize; 2]> {
+        enzyme
+            .get_sites(dna, None)
+            .into_iter()
+            .filter_map(|site| {
+                site.recognition_bounds_0based(dna.len())
+                    .map(|(start, end)| [start, end])
+            })
+            .collect()
+    }
+
+    fn construct_reasoning_summarize_adapter_restriction_capture_plans(
+        dna: &DNAsequence,
+        objective: &ConstructObjective,
+    ) -> (
+        Vec<ConstructAdapterRestrictionCapturePlanSummary>,
+        Vec<ConstructAdapterRestrictionCaptureReviewItem>,
+        Vec<String>,
+    ) {
+        let mut summaries = vec![];
+        let mut review_items = vec![];
+        let mut derived_preferred_routine_families = BTreeSet::new();
+
+        for plan in &objective.adapter_restriction_capture_plans {
+            derived_preferred_routine_families.insert("restriction".to_string());
+            let Some(enzyme) = Self::construct_reasoning_find_restriction_enzyme_by_name(
+                &plan.restriction_enzyme_name,
+            ) else {
+                summaries.push(ConstructAdapterRestrictionCapturePlanSummary {
+                    capture_id: plan.capture_id.clone(),
+                    restriction_enzyme_name: plan.restriction_enzyme_name.clone(),
+                    enzyme_resolution_status: "not_found".to_string(),
+                    adapter_style: plan.adapter_style.as_str().to_string(),
+                    blunt_insert_required: plan.blunt_insert_required,
+                    protection_mode: plan.protection_mode.as_str().to_string(),
+                    extra_retrieval_enzyme_names: plan.extra_retrieval_enzyme_names.clone(),
+                    capture_site_geometry: None,
+                    internal_site_count: 0,
+                    internal_site_status: "enzyme_not_found".to_string(),
+                    internal_site_ranges_0based: vec![],
+                    notes: plan.notes.clone(),
+                });
+                review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                    capture_id: plan.capture_id.clone(),
+                    issue_id: "capture_enzyme_not_found".to_string(),
+                    label: "Adapter capture enzyme needs review".to_string(),
+                    rationale: format!(
+                        "Adapter/linker capture plan '{}' references restriction enzyme '{}', but the active restriction catalog could not resolve that enzyme name.",
+                        plan.capture_id, plan.restriction_enzyme_name
+                    ),
+                });
+                continue;
+            };
+
+            let internal_site_ranges =
+                Self::construct_reasoning_internal_restriction_site_ranges(dna, &enzyme);
+            let internal_site_count = internal_site_ranges.len();
+            let internal_site_status = if internal_site_count == 0 {
+                "no_internal_site_conflict"
+            } else if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
+                "methylation_protection_requested"
+            } else {
+                "internal_site_conflict"
+            };
+
+            summaries.push(ConstructAdapterRestrictionCapturePlanSummary {
+                capture_id: plan.capture_id.clone(),
+                restriction_enzyme_name: enzyme.name.clone(),
+                enzyme_resolution_status: "resolved".to_string(),
+                adapter_style: plan.adapter_style.as_str().to_string(),
+                blunt_insert_required: plan.blunt_insert_required,
+                protection_mode: plan.protection_mode.as_str().to_string(),
+                extra_retrieval_enzyme_names: plan.extra_retrieval_enzyme_names.clone(),
+                capture_site_geometry: Some(enzyme.end_geometry().kind_label().to_string()),
+                internal_site_count,
+                internal_site_status: internal_site_status.to_string(),
+                internal_site_ranges_0based: internal_site_ranges.clone(),
+                notes: plan.notes.clone(),
+            });
+
+            if internal_site_count == 0 {
+                continue;
+            }
+
+            if plan.protection_mode == AdapterCaptureProtectionMode::InsertMethylation {
+                review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                    capture_id: plan.capture_id.clone(),
+                    issue_id: "methylation_protection_requires_enzyme_specific_review".to_string(),
+                    label: "Insert methylation protection requires review".to_string(),
+                    rationale: format!(
+                        "Adapter/linker capture plan '{}' reuses restriction site '{}' that already occurs {} time(s) on the insert. Planned insert methylation keeps the intended protection strategy explicit, but enzyme-specific methylation sensitivity still needs review before assuming only newly ligated adapter sites will cut.",
+                        plan.capture_id,
+                        enzyme.name,
+                        internal_site_count
+                    ),
+                });
+            } else {
+                review_items.push(ConstructAdapterRestrictionCaptureReviewItem {
+                    capture_id: plan.capture_id.clone(),
+                    issue_id: "internal_capture_site_conflict".to_string(),
+                    label: "Internal adapter capture site conflict".to_string(),
+                    rationale: format!(
+                        "Adapter/linker capture plan '{}' uses restriction site '{}', and that site already occurs {} time(s) on the insert without an explicit protection mode.",
+                        plan.capture_id,
+                        enzyme.name,
+                        internal_site_count
+                    ),
+                });
+            }
+        }
+
+        (
+            summaries,
+            review_items,
+            derived_preferred_routine_families.into_iter().collect(),
+        )
+    }
+
     fn construct_reasoning_evidence_ids_matching<F>(
         evidence: &[DesignEvidence],
         mut predicate: F,
@@ -14148,6 +14500,15 @@ impl GentleEngine {
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
                 row.scope == EvidenceScope::HelperProfile
             });
+        let adapter_capture_evidence_ids =
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::WholeConstruct
+                    && row.role == ConstructRole::ContextBaggage
+                    && row
+                        .context_tags
+                        .iter()
+                        .any(|tag| tag == "adapter_restriction_capture")
+            });
         let medium_evidence_ids =
             Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
                 row.scope == EvidenceScope::MediumCondition
@@ -14175,6 +14536,26 @@ impl GentleEngine {
                         )
                     })
             });
+        let (
+            adapter_capture_plan_summaries,
+            adapter_capture_review_items,
+            adapter_capture_derived_preferred_routine_families,
+        ) = Self::construct_reasoning_summarize_adapter_restriction_capture_plans(dna, objective);
+        let adapter_capture_restriction_evidence_ids = if adapter_capture_plan_summaries.is_empty()
+        {
+            vec![]
+        } else {
+            let resolved_enzyme_names = adapter_capture_plan_summaries
+                .iter()
+                .filter(|row| row.enzyme_resolution_status == "resolved")
+                .map(|row| row.restriction_enzyme_name.clone())
+                .collect::<BTreeSet<_>>();
+            Self::construct_reasoning_evidence_ids_matching(evidence, |row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && row.role == ConstructRole::RestrictionSite
+                    && resolved_enzyme_names.contains(&row.label)
+            })
+        };
         let host_fit_context_present = objective.propagation_host_profile_id.is_some()
             || objective.expression_host_profile_id.is_some()
             || !objective.host_route.is_empty()
@@ -14466,6 +14847,60 @@ impl GentleEngine {
             ));
         }
 
+        if !adapter_capture_plan_summaries.is_empty() {
+            let adapter_capture_status = if !adapter_capture_review_items.is_empty() {
+                "review_needed"
+            } else {
+                "context_recorded"
+            };
+            let adapter_capture_label = if !adapter_capture_review_items.is_empty() {
+                "Adapter/linker restriction capture requires review".to_string()
+            } else {
+                "Adapter/linker restriction capture context recorded".to_string()
+            };
+            let adapter_capture_rationale = if !adapter_capture_review_items.is_empty() {
+                adapter_capture_review_items
+                    .iter()
+                    .map(|item| item.rationale.clone())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            } else {
+                format!(
+                    "Construct objective records {} adapter/linker capture plan(s), and the current deterministic engine inspects internal reuse of the chosen capture restriction site(s) on the insert together with any requested insert-methylation protection mode.",
+                    adapter_capture_plan_summaries.len()
+                )
+            };
+            let mut adapter_fact_evidence_ids = adapter_capture_evidence_ids.clone();
+            adapter_fact_evidence_ids.extend(adapter_capture_restriction_evidence_ids.clone());
+            adapter_fact_evidence_ids.sort();
+            adapter_fact_evidence_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_adapter_restriction_capture_context",
+                "adapter_restriction_capture_context",
+                adapter_capture_label,
+                adapter_capture_rationale.clone(),
+                adapter_fact_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": adapter_capture_status,
+                    "capture_plans": adapter_capture_plan_summaries,
+                    "review_items": adapter_capture_review_items,
+                    "derived_preferred_routine_families": adapter_capture_derived_preferred_routine_families,
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_adapter_restriction_capture_strategy",
+                "evaluate_adapter_restriction_capture_strategy",
+                "Evaluate Adapter/Linker Restriction Capture".to_string(),
+                adapter_capture_rationale,
+                adapter_fact_evidence_ids,
+                vec!["fact_adapter_restriction_capture_context".to_string()],
+                json!({
+                    "status": adapter_capture_status,
+                }),
+            ));
+        }
+
         if !objective.medium_conditions.is_empty() {
             let signal_categories = condition_signals
                 .iter()
@@ -14577,6 +15012,7 @@ impl GentleEngine {
             objective,
             helper_interpretation,
             (!variant_summaries.is_empty()).then_some(seq_id),
+            &adapter_capture_derived_preferred_routine_families,
             &variant_effect_tags,
             &suggested_variant_assay_ids,
             &variant_derived_preferred_routine_families,
@@ -14651,6 +15087,9 @@ impl GentleEngine {
                 .helper_derived_preferred_routine_families
                 .is_empty()
             || !routine_preference_context
+                .construct_strategy_derived_preferred_routine_families
+                .is_empty()
+            || !routine_preference_context
                 .variant_derived_preferred_routine_families
                 .is_empty()
         {
@@ -14662,37 +15101,72 @@ impl GentleEngine {
                     .helper_derived_preferred_routine_families
                     .is_empty(),
                 routine_preference_context
+                    .construct_strategy_derived_preferred_routine_families
+                    .is_empty(),
+                routine_preference_context
                     .variant_derived_preferred_routine_families
                     .is_empty(),
                 routine_preference_context.helper_resolution_status.as_str(),
             ) {
-                (false, false, false, _) => "explicit_helper_and_variant_derived",
-                (false, false, true, _) => "explicit_and_helper_derived",
-                (false, true, false, _) => "explicit_and_variant_derived",
-                (true, false, false, _) => "helper_and_variant_derived",
-                (false, true, true, _) => "explicit_only",
-                (true, false, true, _) => "helper_derived",
-                (true, true, false, _) => "variant_derived",
-                (true, true, true, "error") => "helper_resolution_error",
-                (true, true, true, "not_found") => "helper_not_found",
+                (false, false, false, false, _) => "explicit_helper_strategy_and_variant_derived",
+                (false, false, false, true, _) => "explicit_helper_and_strategy_derived",
+                (false, false, true, false, _) => "explicit_helper_and_variant_derived",
+                (false, true, false, false, _) => "explicit_strategy_and_variant_derived",
+                (true, false, false, false, _) => "helper_strategy_and_variant_derived",
+                (false, false, true, true, _) => "explicit_and_helper_derived",
+                (false, true, false, true, _) => "explicit_and_strategy_derived",
+                (false, true, true, false, _) => "explicit_and_variant_derived",
+                (true, false, false, true, _) => "helper_and_strategy_derived",
+                (true, false, true, false, _) => "helper_and_variant_derived",
+                (true, true, false, false, _) => "strategy_and_variant_derived",
+                (false, true, true, true, _) => "explicit_only",
+                (true, false, true, true, _) => "helper_derived",
+                (true, true, false, true, _) => "strategy_derived",
+                (true, true, true, false, _) => "variant_derived",
+                (true, true, true, true, "error") => "helper_resolution_error",
+                (true, true, true, true, "not_found") => "helper_not_found",
                 _ => "unspecified",
             };
             let planning_label = match planning_status {
+                "explicit_helper_strategy_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "explicit_helper_and_strategy_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
                 "explicit_helper_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "explicit_strategy_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "helper_strategy_and_variant_derived" => {
                     "Routine planning preferences synthesized".to_string()
                 }
                 "explicit_and_helper_derived" => {
                     "Routine planning preferences synthesized".to_string()
                 }
+                "explicit_and_strategy_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
                 "explicit_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
+                "helper_and_strategy_derived" => {
                     "Routine planning preferences synthesized".to_string()
                 }
                 "helper_and_variant_derived" => {
                     "Routine planning preferences synthesized".to_string()
                 }
+                "strategy_and_variant_derived" => {
+                    "Routine planning preferences synthesized".to_string()
+                }
                 "explicit_only" => "Routine planning preferences recorded".to_string(),
                 "helper_derived" => {
                     "Routine planning preferences derived from helper profile".to_string()
+                }
+                "strategy_derived" => {
+                    "Routine planning preferences derived from construct strategy".to_string()
                 }
                 "variant_derived" => {
                     "Routine planning preferences derived from variant assay context".to_string()
@@ -15102,7 +15576,7 @@ impl GentleEngine {
             facts,
             decisions,
             notes: vec![
-                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation/variant evidence, interpreted growth-condition signals, host-route restriction/methylation review, and first hard-rule host/helper/selection/variant summary decisions."
+                "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation/variant evidence, interpreted growth-condition signals, host-route plus adapter-capture restriction/methylation review, and first hard-rule host/helper/selection/variant summary decisions."
                     .to_string(),
             ],
             ..ConstructReasoningGraph::default()

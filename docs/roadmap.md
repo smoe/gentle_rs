@@ -4216,6 +4216,16 @@ Post-baseline follow-ups:
     and GUI Routine Assistant traces plus explain-stage summaries now persist
     the active construct-reasoning sequence id and variant-driven routine
     preference context instead of only helper/objective-derived preferences.
+  - Done (2026-04-16, adapter/linker restriction-capture slice): construct
+    objectives can now record blunt-end adapter/linker capture plans with a
+    chosen restriction enzyme, minimal vs MCS-like adapter style, optional
+    insert-methylation protection intent, and extra retrieval-site enzymes.
+    The reasoning graph now derives a dedicated
+    `adapter_restriction_capture_context` fact/decision from that plus the
+    actual insert sequence, keeps unresolved enzymes / internal same-site
+    conflicts / methylation-protection review explicit, surfaces the result in
+    GUI + run-bundle summaries, and lets that same reasoning bias routine
+    preference synthesis toward restriction-family workflows.
   - Primary interface focus for the next construct-reasoning slices:
     - GUI remains the main human inspection/editing surface.
     - ClawBio/OpenClaw is the main agent-facing surface for reasoning output,
@@ -4250,6 +4260,9 @@ Post-baseline follow-ups:
     - let GUI and ClawBio/OpenClaw inspection surfaces deep-link from host/
       helper reasoning nodes into the underlying catalog records instead of
       showing only detached fact summaries
+    - add enzyme-specific methylation-sensitivity catalogs so adapter/linker
+      capture reasoning can graduate from “planned protection requires review”
+      to enzyme-aware cut/protect predictions
     - expose non-sequence condition/host/helper reasoning clearly in the two
       primary interfaces:
       - GUI: deepen the new inspector from read-only fact/decision summaries
