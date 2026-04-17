@@ -448,6 +448,7 @@ const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_expo
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
+const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
@@ -462,6 +463,10 @@ const ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG: &str = "annotate_promoter_windows
 
 fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
     1
+}
+
+fn default_tfbs_score_track_clip_negative() -> bool {
+    true
 }
 
 fn default_promoter_window_upstream_bp() -> usize {
@@ -508,6 +513,8 @@ mod import_anchors;
 mod lineage_containers;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[path = "engine/analysis/promoter_design.rs"]
+mod promoter_design;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
 #[path = "engine/analysis/rna_reads.rs"]
@@ -3313,6 +3320,16 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeTfbsScoreTracks {
+        seq_id: String,
+        motifs: Vec<String>,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     AnnotatePromoterWindows {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4572,6 +4589,7 @@ impl GentleEngine {
                 "SummarizeRnaReadGeneSupport".to_string(),
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
+                "SummarizeTfbsScoreTracks".to_string(),
                 "AnnotatePromoterWindows".to_string(),
                 "SummarizeVariantPromoterContext".to_string(),
                 "SuggestPromoterReporterFragments".to_string(),
@@ -6424,6 +6442,7 @@ impl GentleEngine {
                 | Operation::SummarizeRnaReadGeneSupport { .. }
                 | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::SummarizeTfbsRegion { .. }
+                | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
                 | Operation::ExportRnaReadReport { .. }
@@ -16057,8 +16076,8 @@ impl GentleEngine {
                 "no_assay_rule_matched"
             };
             let variant_assay_label = match variant_assay_status {
-                "assay_candidates_suggested" => "Variant follow-up assays suggested".to_string(),
-                _ => "Variant follow-up assays require manual review".to_string(),
+                "assay_candidates_suggested" => "Promoter-design assays suggested".to_string(),
+                _ => "Promoter-design assays require manual review".to_string(),
             };
             let variant_assay_rationale = if suggested_variant_assay_ids.is_empty() {
                 "Variant markers are present, but the current deterministic assay suggester did not match a promoter/regulatory, coding, splice, or UTR assay family from the available overlap evidence.".to_string()
@@ -16095,7 +16114,7 @@ impl GentleEngine {
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_suggest_variant_follow_up_assays",
                 "suggest_variant_follow_up_assays",
-                "Suggest Variant Follow-up Assays".to_string(),
+                "Suggest Promoter-design Assays".to_string(),
                 variant_assay_rationale,
                 variant_related_evidence_ids,
                 vec!["fact_variant_assay_context".to_string()],

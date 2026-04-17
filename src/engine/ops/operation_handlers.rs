@@ -5730,6 +5730,7 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            tfbs_score_tracks: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
@@ -12070,6 +12071,40 @@ impl GentleEngine {
                     summary.context_end_0based_exclusive,
                 ));
                 result.tfbs_region_summary = Some(summary);
+            }
+            Operation::SummarizeTfbsScoreTracks {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                clip_negative,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_score_tracks(
+                    &seq_id,
+                    &motifs,
+                    start_0based,
+                    end_0based_exclusive,
+                    clip_negative,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_tfbs_score_track_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote TFBS score tracks for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with clip_negative={}",
+                    report.seq_id,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.clip_negative
+                ));
+                result.tfbs_score_tracks = Some(report);
             }
             Operation::AnnotatePromoterWindows {
                 input,

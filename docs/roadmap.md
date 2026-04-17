@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -963,17 +963,22 @@ order. Durable architecture constraints and decisions remain in
         accession-only transcript labels are demoted in favor of gene-style
         names when possible, and nearby duplicate labels are compacted for
         cleaner figure output
-      - the first dedicated GUI `Variant Follow-up` expert is now in place:
-        - it opens from `variation` features through the description pane,
-          feature-tree context menu, or map context menu
-        - it seeds the selected rsID/dbSNP marker into a dedicated window and
-          drives shared `AnnotatePromoterWindows`,
-          `SummarizeVariantPromoterContext`,
-          `SuggestPromoterReporterFragments`, `ExtractRegion`,
-          `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and `Branch`
-          operations without dropping into generic `Engine Ops`
+      - the first dedicated GUI promoter-design surface is now in place:
+        - the visible window is now labeled `Promoter design`
+        - it opens from `variation`, `gene`, `mRNA`, and `promoter` features
+          through the description pane, feature-tree context menu, or map
+          context menu
+        - it seeds the selected rsID/dbSNP marker or promoter-relevant gene
+          context into a dedicated window and drives shared
+          `AnnotatePromoterWindows`, `SummarizeVariantPromoterContext`,
+          `SuggestPromoterReporterFragments`, `SummarizeTfbsScoreTracks`,
+          `ExtractRegion`, `MaterializeVariantAllele`, `LoadFile`, `Ligation`,
+          and `Branch` operations without dropping into generic `Engine Ops`
         - it keeps the source context sequence pinned even if the active DNA
           window later switches to derived fragment or reporter products
+        - it now also exposes positive-only TF/PSSM score tracks across one
+          promoter span so TERT/TP73-style promoter case studies can inspect
+          continuous motif support instead of only thresholded TFBS blobs
         - it now also exports a portable handoff bundle directly from the GUI:
           promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
           SVG previews, `report.md`, `result.json`, and replay `commands.sh`

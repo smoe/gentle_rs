@@ -25237,6 +25237,96 @@ fn apply_summarize_tfbs_region_operation_returns_summary_payload() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_clips_negative_scores_to_zero() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(80)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let unclipped = engine
+        .summarize_tfbs_score_tracks("promoter", &[String::from("SP1")], 0, 40, false)
+        .expect("unclipped score tracks");
+    let clipped = engine
+        .summarize_tfbs_score_tracks("promoter", &[String::from("SP1")], 0, 40, true)
+        .expect("clipped score tracks");
+
+    let unclipped_track = unclipped.tracks.first().expect("SP1 track");
+    let clipped_track = clipped.tracks.first().expect("SP1 track");
+    assert!(
+        unclipped_track
+            .forward_scores
+            .iter()
+            .any(|score| *score < 0.0)
+    );
+    assert!(
+        unclipped_track
+            .reverse_scores
+            .iter()
+            .any(|score| *score < 0.0)
+    );
+    assert!(
+        clipped_track
+            .forward_scores
+            .iter()
+            .all(|score| *score >= 0.0)
+    );
+    assert!(
+        clipped_track
+            .reverse_scores
+            .iter()
+            .all(|score| *score >= 0.0)
+    );
+    assert!(
+        clipped_track
+            .forward_scores
+            .iter()
+            .zip(unclipped_track.forward_scores.iter())
+            .any(|(clipped_score, raw_score)| *clipped_score == 0.0 && *raw_score < 0.0)
+    );
+    assert!(clipped.clip_negative);
+}
+
+#[test]
+fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::SummarizeTfbsScoreTracks {
+            seq_id: "promoter".to_string(),
+            motifs: vec!["SP1".to_string(), "TP73".to_string()],
+            start_0based: 5,
+            end_0based_exclusive: 85,
+            clip_negative: true,
+            path: None,
+        })
+        .expect("apply tfbs score tracks op");
+
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.changed_seq_ids.is_empty());
+    let report = result
+        .tfbs_score_tracks
+        .expect("score-track report should be attached");
+    assert_eq!(report.seq_id, "promoter");
+    assert_eq!(report.view_start_0based, 5);
+    assert_eq!(report.view_end_0based_exclusive, 85);
+    assert!(report.clip_negative);
+    assert_eq!(
+        report.motifs_requested,
+        vec!["SP1".to_string(), "TP73".to_string()]
+    );
+    assert_eq!(report.tracks.len(), 2);
+    assert!(
+        report
+            .tracks
+            .iter()
+            .all(|track| track.forward_scores.iter().all(|score| *score >= 0.0))
+    );
+}
+
+#[test]
 fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store() {
     let mut engine = GentleEngine::new();
     let stored = engine

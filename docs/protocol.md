@@ -834,6 +834,17 @@ Current draft operations:
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
   - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
+- `SummarizeTfbsScoreTracks { seq_id, motifs, start_0based, end_0based_exclusive, clip_negative, path? }`
+  - non-mutating continuous motif-score export for Promoter design and headless
+    ClawBio/OpenClaw-style inspection
+  - returns schema `gentle.tfbs_score_tracks.v1`
+  - reports per-position forward and reverse score tracks for each requested
+    TF/PSSM token across one shared span
+  - `clip_negative=true` clamps negative scores to `0.0`, which is the
+    intended display mode for promoter-design plots when only positive support
+    should be shown
+  - `path` writes the same structured JSON report to disk for reuse outside the
+    current adapter session
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`

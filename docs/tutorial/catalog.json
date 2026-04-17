@@ -208,7 +208,7 @@
     },
     {
       "id": "vkorc1_variant_followup_expert_gui",
-      "title": "Variant Follow-up Expert for VKORC1 / rs9923231",
+      "title": "Promoter Design for VKORC1 / rs9923231",
       "path": "docs/tutorial/vkorc1_variant_followup_expert_gui.md",
       "type": "gui_walkthrough",
       "status": "manual/hybrid",
@@ -218,7 +218,7 @@
         "cloning_planning",
         "pharmacogenomics"
       ],
-      "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Variant Follow-up expert, and export one portable promoter-reporter handoff bundle."
+      "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle."
     },
     {
       "id": "tp73_uniprot_projection_audit_cli",

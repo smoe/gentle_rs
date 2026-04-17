@@ -43,7 +43,7 @@ If you want to manually sanity-check the newer protein workflows:
 
 If you are GUI-first and want one concrete pharmacogenomic handoff into cloning:
 
-- Use the short Variant Follow-up expert tutorial first:
+- Use the short Promoter design tutorial first:
   [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md)
 - Use the VKORC1 / rs9923231 PGx-alert-to-mammalian-reporter walkthrough:
   [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md)
@@ -163,7 +163,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Beginner PCR setup from one selected core region | Hand-written short path for core ROI + maximum primer distance + maximum amplicon using the selection context menu and PCR Designer starter block. |
 | [`docs/tutorial/protein_transcript_native_expert_gui.md`](./protein_transcript_native_expert_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Local transcript-native protein expert validation | Hand-written manual check for `Protein Evidence... -> Open Derived Protein Expert` and derived-only SVG export without external protein evidence. |
 | [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Protein import, reverse translation, provenance inspection, lineage audit | Hand-written manual check for Ensembl protein import, reverse translation result inspection, and reverse-translation lineage reopen. |
-| [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md) | GUI walkthrough | `manual/hybrid` | Fastest GUI path from one SNP to one portable reporter-design bundle | Focuses on the dedicated `Variant Follow-up` expert and ends with the exported handoff bundle. |
+| [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md) | GUI walkthrough | `manual/hybrid` | Fastest GUI path from one SNP to one portable reporter-design bundle | Focuses on the dedicated `Promoter design` window and ends with the exported handoff bundle. |
 | [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `shared-engine baseline` | GUI-first pharmacogenomic reporter planning | Longer background + parity path for the same VKORC1 / rs9923231 promoter-reporter story. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |

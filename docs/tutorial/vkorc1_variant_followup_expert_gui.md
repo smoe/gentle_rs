@@ -1,15 +1,15 @@
-# Variant Follow-up Expert for VKORC1 / rs9923231
+# Promoter Design for VKORC1 / rs9923231
 
 > Type: `GUI walkthrough`
 > Status: `manual/hybrid`
-> Goal: use the dedicated `Variant Follow-up` window to go from one dbSNP
+> Goal: use the dedicated `Promoter design` window to go from one dbSNP
 > marker to one exportable promoter-reporter handoff bundle for later work in
 > human cells.
 
 This is the shortest GUI path for the current ClawBio-facing story.
 
 It starts from one pharmacogenomic alert around warfarin and `VKORC1`, then
-uses the dedicated `Variant Follow-up` expert to:
+uses the dedicated `Promoter design` window to:
 
 - classify `rs9923231` as promoter-proximal
 - propose one transcript-aware promoter fragment
@@ -81,11 +81,11 @@ Expected result:
 - the view includes a visible `variation` marker for `rs9923231`
 - the feature tree shows at least `variation`, `gene`, and `mRNA`
 
-## Step 2: Open the Dedicated Variant Follow-up Window
+## Step 2: Open the Dedicated Promoter Design Window
 
 1. In the context sequence window, click the `variation` marker for
    `rs9923231`
-2. Open `Variant Follow-up`
+2. Open `Promoter design`
    You can reach it from:
    - the description pane
    - the feature-tree context menu
@@ -102,7 +102,7 @@ If those are already filled, the window is seeded correctly.
 
 ## Step 3: Annotate Promoter Windows
 
-1. In `Variant Follow-up`, click `Annotate promoter windows`
+1. In `Promoter design`, click `Annotate promoter windows`
 
 What GENtle is doing here:
 
@@ -246,7 +246,7 @@ planning without pretending the wet-lab outcome is already known.
 
 ## Troubleshooting
 
-If `Variant Follow-up` does not appear:
+If `Promoter design` does not appear:
 
 - make sure you selected a `variation` feature, not a gene or transcript row
 

@@ -3627,14 +3627,19 @@ Tutorial projects:
     promoter-luciferase planning using the dbSNP fetch path, derived
     promoter-window / promoter-context reasoning, and one pinned local
     mammalian luciferase backbone, with per-step GUI/CLI parity mapping.
-  - the sequence window now exposes a dedicated `Variant Follow-up` expert for
-    `variation` features via the feature description pane, feature-tree context
-    menu, and map context menu; it drives shared `AnnotatePromoterWindows`,
+  - the sequence window now exposes a dedicated `Promoter design` window for
+    `variation`, `gene`, `mRNA`, and `promoter` features via the feature
+    description pane, feature-tree context menu, and map context menu; it
+    drives shared `AnnotatePromoterWindows`,
     `SummarizeVariantPromoterContext`,
-    `SuggestPromoterReporterFragments`, `ExtractRegion`,
-    `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and `Branch`
-    operations without dropping into generic `Engine Ops`.
-  - the same expert now also exposes `Export handoff bundle`, which writes a
+    `SuggestPromoterReporterFragments`, `SummarizeTfbsScoreTracks`,
+    `ExtractRegion`, `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and
+    `Branch` operations without dropping into generic `Engine Ops`.
+  - the same window now also exposes positive-only TF score tracks across the
+    chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
+    `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
+    reporter construction.
+  - the same window now also exposes `Export handoff bundle`, which writes a
     portable ClawBio-facing bundle containing:
     - promoter-context JSON
     - promoter-candidate JSON

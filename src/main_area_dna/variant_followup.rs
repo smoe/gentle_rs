@@ -21,7 +21,7 @@ pub(super) struct VariantFollowupBundleArtifacts {
 
 impl MainAreaDna {
     pub(super) fn feature_kind_supports_variant_followup(kind_upper: &str) -> bool {
-        kind_upper == "VARIATION"
+        matches!(kind_upper, "VARIATION" | "GENE" | "MRNA" | "PROMOTER")
     }
 
     pub(super) fn feature_supports_variant_followup(&self, feature_id: usize) -> bool {
@@ -44,17 +44,17 @@ impl MainAreaDna {
     ) -> bool {
         if !self.feature_supports_variant_followup(feature_id) {
             self.op_status = format!(
-                "Could not open Variant Follow-up from {source}: selected feature is not a variation"
+                "Could not open Promoter design from {source}: selected feature is not promoter-design relevant"
             );
             return false;
         }
         if let Err(err) = self.seed_variant_followup_defaults_for_feature(feature_id) {
-            self.op_status = format!("Could not open Variant Follow-up from {source}: {err}");
+            self.op_status = format!("Could not open Promoter design from {source}: {err}");
             self.op_error_popup = Some(err);
             return false;
         }
         self.show_variant_followup_window = true;
-        self.op_status = format!("Opened Variant Follow-up from {source}");
+        self.op_status = format!("Opened Promoter design from {source}");
         self.op_error_popup = None;
         true
     }
@@ -71,16 +71,150 @@ impl MainAreaDna {
     }
 
     fn variant_followup_window_title(ui: &VariantFollowupUiState) -> String {
-        let label = ui.variant_label_or_id.trim();
-        if label.is_empty() {
-            format!("Variant Follow-up ({})", ui.source_seq_id)
+        let label = ui.gene_label.trim();
+        if !label.is_empty() {
+            format!("Promoter design - {} ({})", label, ui.source_seq_id)
         } else {
-            format!("Variant Follow-up - {} ({})", label, ui.source_seq_id)
+            let label = ui.variant_label_or_id.trim();
+            if label.is_empty() {
+                format!("Promoter design ({})", ui.source_seq_id)
+            } else {
+                format!("Promoter design - {} ({})", label, ui.source_seq_id)
+            }
         }
     }
 
     fn variant_followup_help_text() -> &'static str {
-        "ClawBio-facing promoter follow-up for a selected variation: derive transcript-based promoter windows, summarize promoter context, propose a luciferase reporter fragment, materialize matched alleles, and preview a mammalian promoterless luciferase reporter pair."
+        "Promoter-focused design workspace for a selected sequence feature: derive transcript-based promoter windows, inspect positive-only TF motif score tracks, summarize promoter context, propose luciferase reporter fragments, materialize matched alleles when a variant is present, and preview a mammalian promoterless luciferase reporter pair."
+    }
+
+    fn promoter_design_default_motifs(gene_label: &str) -> String {
+        match gene_label.trim().to_ascii_uppercase().as_str() {
+            "TERT" => "SP1".to_string(),
+            "TP73" => "TP73,SP1,BACH2,PATZ1".to_string(),
+            _ => "SP1".to_string(),
+        }
+    }
+
+    fn variant_followup_sequence_len(&self, seq_id: &str) -> Option<usize> {
+        if seq_id.trim().is_empty() {
+            return None;
+        }
+        if self.seq_id.as_deref() == Some(seq_id) {
+            return self.dna.read().ok().map(|dna| dna.len());
+        }
+        self.engine.as_ref().and_then(|engine| {
+            engine.read().ok().and_then(|guard| {
+                guard
+                    .state()
+                    .sequences
+                    .get(seq_id)
+                    .map(crate::dna_sequence::DNAsequence::len)
+            })
+        })
+    }
+
+    fn variant_followup_has_variant_seed(&self) -> bool {
+        !self
+            .variant_followup_ui
+            .variant_label_or_id
+            .trim()
+            .is_empty()
+    }
+
+    fn feature_seed_gene_label(feature: &gb_io::seq::Feature) -> String {
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "gene",
+                "gene_name",
+                "label",
+                "name",
+                "standard_name",
+                "locus_tag",
+            ],
+        )
+        .unwrap_or_default()
+    }
+
+    fn feature_seed_transcript_id(feature: &gb_io::seq::Feature) -> String {
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &["transcript_id", "label", "name", "standard_name"],
+        )
+        .unwrap_or_default()
+    }
+
+    fn feature_seed_token(
+        feature: &gb_io::seq::Feature,
+        variant_label: &str,
+        gene_label: &str,
+    ) -> String {
+        if !variant_label.trim().is_empty() {
+            return Self::variant_followup_suggested_token(variant_label);
+        }
+        if !gene_label.trim().is_empty() {
+            return Self::sanitize_export_name_component(gene_label, "promoter");
+        }
+        Self::sanitize_export_name_component(&feature.kind.to_string(), "promoter")
+    }
+
+    fn seed_variant_followup_defaults_for_feature(
+        &mut self,
+        feature_id: usize,
+    ) -> Result<(), String> {
+        let source_seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence selected".to_string())?;
+        let feature = self
+            .variant_followup_feature_clone(&source_seq_id, feature_id)
+            .ok_or_else(|| format!("Feature n-{feature_id} is no longer available"))?;
+        let feature_kind = feature.kind.to_string().trim().to_ascii_uppercase();
+        let variant_label = if feature_kind == "VARIATION" {
+            Self::variant_followup_feature_variant_label(&feature)
+                .unwrap_or_else(|| format!("variation_n{}", feature_id + 1))
+        } else {
+            String::new()
+        };
+        let gene_label = Self::feature_seed_gene_label(&feature);
+        let transcript_id = if feature_kind == "MRNA" {
+            Self::feature_seed_transcript_id(&feature)
+        } else {
+            String::new()
+        };
+        let token = Self::feature_seed_token(&feature, &variant_label, &gene_label);
+        let seq_len = self
+            .variant_followup_sequence_len(&source_seq_id)
+            .unwrap_or_default();
+        self.variant_followup_ui = VariantFollowupUiState {
+            source_seq_id,
+            source_feature_id: Some(feature_id),
+            variant_label_or_id: variant_label,
+            gene_label: gene_label.clone(),
+            transcript_id,
+            score_track_motifs: Self::promoter_design_default_motifs(&gene_label),
+            score_track_start_0based: "0".to_string(),
+            score_track_end_0based_exclusive: seq_len.to_string(),
+            score_track_clip_negative: true,
+            promoter_upstream_bp: "1000".to_string(),
+            promoter_downstream_bp: "200".to_string(),
+            tfbs_focus_half_window_bp: "100".to_string(),
+            retain_downstream_from_tss_bp: "200".to_string(),
+            retain_upstream_beyond_variant_bp: "500".to_string(),
+            max_candidates: "5".to_string(),
+            fragment_output_id: format!("{token}_promoter_fragment"),
+            reference_output_id: format!("{token}_promoter_reference"),
+            alternate_output_id: format!("{token}_promoter_alternate"),
+            reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
+            reporter_backbone_path:
+                "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
+            reporter_output_prefix: format!("{token}_reporter"),
+            cached_score_tracks: None,
+            cached_report: None,
+            cached_candidates: None,
+        };
+        Ok(())
     }
 
     fn variant_followup_sequence_exists(&self, seq_id: &str) -> bool {
@@ -179,51 +313,10 @@ impl MainAreaDna {
         Self::sanitize_export_name_component(trimmed, "variant")
     }
 
-    fn seed_variant_followup_defaults_for_feature(
-        &mut self,
-        feature_id: usize,
-    ) -> Result<(), String> {
-        let source_seq_id = self
-            .seq_id
-            .clone()
-            .ok_or_else(|| "No active sequence selected".to_string())?;
-        let feature = self
-            .variant_followup_feature_clone(&source_seq_id, feature_id)
-            .ok_or_else(|| format!("Feature n-{feature_id} is no longer available"))?;
-        let variant_label = Self::variant_followup_feature_variant_label(&feature)
-            .unwrap_or_else(|| format!("variation_n{}", feature_id + 1));
-        let gene_label =
-            Self::feature_tree_first_nonempty_qualifier(&feature, &["gene"]).unwrap_or_default();
-        let token = Self::variant_followup_suggested_token(&variant_label);
-        self.variant_followup_ui = VariantFollowupUiState {
-            source_seq_id,
-            source_feature_id: Some(feature_id),
-            variant_label_or_id: variant_label,
-            gene_label,
-            transcript_id: String::new(),
-            promoter_upstream_bp: "1000".to_string(),
-            promoter_downstream_bp: "200".to_string(),
-            tfbs_focus_half_window_bp: "100".to_string(),
-            retain_downstream_from_tss_bp: "200".to_string(),
-            retain_upstream_beyond_variant_bp: "500".to_string(),
-            max_candidates: "5".to_string(),
-            fragment_output_id: format!("{token}_promoter_fragment"),
-            reference_output_id: format!("{token}_promoter_reference"),
-            alternate_output_id: format!("{token}_promoter_alternate"),
-            reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
-            reporter_backbone_path:
-                "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
-            reporter_output_prefix: format!("{token}_reporter"),
-            cached_report: None,
-            cached_candidates: None,
-        };
-        Ok(())
-    }
-
     fn variant_followup_input_seq_id(&self) -> Result<String, String> {
         let seq_id = self.variant_followup_ui.source_seq_id.trim();
         if seq_id.is_empty() {
-            Err("Variant Follow-up is not seeded from a source sequence yet".to_string())
+            Err("Promoter design is not seeded from a source sequence yet".to_string())
         } else {
             Ok(seq_id.to_string())
         }
@@ -232,6 +325,22 @@ impl MainAreaDna {
     fn variant_followup_optional_text(value: &str) -> Option<String> {
         let trimmed = value.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
+    }
+
+    fn promoter_design_parse_motif_tokens(raw: &str) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut out = vec![];
+        for token in raw
+            .split(|ch: char| ch == ',' || ch == ';' || ch.is_whitespace())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let normalized = token.to_ascii_uppercase();
+            if seen.insert(normalized) {
+                out.push(token.to_string());
+            }
+        }
+        out
     }
 
     fn variant_followup_bundle_stem(&self) -> String {
@@ -330,6 +439,68 @@ impl MainAreaDna {
                 self.variant_followup_ui.transcript_id = transcript_id.to_string();
             }
         }
+    }
+
+    fn run_variant_followup_score_tracks(
+        &mut self,
+        path: Option<String>,
+    ) -> Option<TfbsScoreTrackReport> {
+        let seq_id = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return None;
+            }
+        };
+        let motifs =
+            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+        if motifs.is_empty() {
+            self.op_status =
+                "Promoter design score tracks require at least one TF motif token".to_string();
+            return None;
+        }
+        let start_0based = match Self::parse_optional_usize_text(
+            &self.variant_followup_ui.score_track_start_0based,
+            "score-track start bp",
+        ) {
+            Ok(value) => value.unwrap_or(0),
+            Err(err) => {
+                self.op_status = err;
+                return None;
+            }
+        };
+        let end_0based_exclusive = match Self::parse_optional_usize_text(
+            &self.variant_followup_ui.score_track_end_0based_exclusive,
+            "score-track end bp",
+        ) {
+            Ok(value) => value.unwrap_or_else(|| {
+                self.variant_followup_sequence_len(&seq_id)
+                    .unwrap_or(start_0based)
+            }),
+            Err(err) => {
+                self.op_status = err;
+                return None;
+            }
+        };
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                clip_negative: self.variant_followup_ui.score_track_clip_negative,
+                path,
+            });
+        if let Some(report) = result.and_then(|row| row.tfbs_score_tracks) {
+            self.variant_followup_ui.cached_score_tracks = Some(report.clone());
+            Some(report)
+        } else {
+            None
+        }
+    }
+
+    fn summarize_variant_followup_score_tracks(&mut self) {
+        let _ = self.run_variant_followup_score_tracks(None);
     }
 
     fn annotate_variant_followup_promoter_windows(&mut self) {
@@ -1046,7 +1217,7 @@ impl MainAreaDna {
             .or_else(|| candidates.chosen_transcript_id.clone())
             .unwrap_or_else(|| "<auto>".to_string());
         format!(
-            "# Variant Follow-up handoff\n\n## Interpretation coming from ClawBio\n\nClawBio interprets a pharmacogenomic alert around warfarin and `{variant}` and proposes a regulatory follow-up.\n\nThe narrow question handed to GENtle is:\n\n> Is `{variant}` promoter-proximal enough around `{gene}` that it is worth building matched promoter-reporter constructs for follow-up in human cells?\n\nClawBio is therefore responsible for:\n\n- the pharmacogenomic interpretation\n- the motivation for a regulatory assay\n- the choice to follow up in a human-cell luciferase reporter format\n\n## Deterministic build/render work done in GENtle\n\nGENtle is responsible for:\n\n- deriving transcript-TSS-centered promoter windows\n- summarizing promoter overlap and TSS distance\n- ranking transcript-aware reporter fragments\n- materializing matched reference and alternate inserts\n- loading a pinned mammalian promoterless luciferase backbone\n- previewing reference and alternate reporter constructs\n- exporting reviewable artifacts\n\n## Chosen baseline design\n\n- source context sequence id: `{source_seq}`\n- variant: `{variant}`\n- chosen gene: `{gene}`\n- chosen transcript: `{transcript}`\n- promoter overlap: `{promoter_overlap}`\n- signed TSS distance: `{signed_distance}`\n- promoter window defaults:\n  - upstream = `{promoter_upstream} bp`\n  - downstream = `{promoter_downstream} bp`\n- recommended promoter fragment interval:\n  - local `{fragment_start}..{fragment_end}`\n  - extracted id = `{fragment_id}`\n- matched inserts:\n  - `{reference_insert}`\n  - `{alternate_insert}`\n- pinned local backbone:\n  - `{backbone_id}`\n- construct previews:\n  - `{reference_reporter}`\n  - `{alternate_reporter}`\n\n## Why this backbone is appropriate for human-cell work\n\n- it is a promoterless mammalian luciferase reporter architecture\n- it keeps the readout focused on promoter output rather than bacterial protein-expression logic\n- it matches transient transfection planning in human cells\n- it gives the handoff one pinned local backbone so the canonical path does not depend on live GenBank retrieval\n\n## Important assumptions\n\n- this is a human-cell regulatory assay story\n- this bundle stops at a reproducible design/handoff point\n- it does **not** claim wet-lab validation\n- it does **not** claim that the construct alone proves warfarin response\n- adenoviral delivery is deferred as a later escalation only if transfection efficiency becomes the bottleneck\n\n## Artifacts\n\n- promoter-context JSON: `{promoter_context_json}`\n- promoter-candidate JSON: `{promoter_candidates_json}`\n- promoter-context SVG: `{promoter_context_svg}`\n- reference construct SVG: `{reference_svg}`\n- alternate construct SVG: `{alternate_svg}`\n- commands: `{commands_sh}`\n- structured summary: `{result_json}`\n\n## Bench-facing next actions\n\n1. Build the reference and alternate inserts with identical boundaries.\n2. Keep the mammalian reporter backbone constant between alleles.\n3. Verify insert orientation and junction integrity.\n4. Choose one human cell model and a normalization strategy for the later assay.\n5. Treat warfarin exposure as a later experimental condition layered on top of the finished promoter-reporter pair.\n",
+            "# Promoter design handoff\n\n## Interpretation coming from ClawBio\n\nClawBio interprets a pharmacogenomic alert around warfarin and `{variant}` and proposes a regulatory follow-up.\n\nThe narrow question handed to GENtle is:\n\n> Is `{variant}` promoter-proximal enough around `{gene}` that it is worth building matched promoter-reporter constructs for follow-up in human cells?\n\nClawBio is therefore responsible for:\n\n- the pharmacogenomic interpretation\n- the motivation for a regulatory assay\n- the choice to follow up in a human-cell luciferase reporter format\n\n## Deterministic build/render work done in GENtle\n\nGENtle is responsible for:\n\n- deriving transcript-TSS-centered promoter windows\n- summarizing promoter overlap and TSS distance\n- ranking transcript-aware reporter fragments\n- materializing matched reference and alternate inserts\n- loading a pinned mammalian promoterless luciferase backbone\n- previewing reference and alternate reporter constructs\n- exporting reviewable artifacts\n\n## Chosen baseline design\n\n- source context sequence id: `{source_seq}`\n- variant: `{variant}`\n- chosen gene: `{gene}`\n- chosen transcript: `{transcript}`\n- promoter overlap: `{promoter_overlap}`\n- signed TSS distance: `{signed_distance}`\n- promoter window defaults:\n  - upstream = `{promoter_upstream} bp`\n  - downstream = `{promoter_downstream} bp`\n- recommended promoter fragment interval:\n  - local `{fragment_start}..{fragment_end}`\n  - extracted id = `{fragment_id}`\n- matched inserts:\n  - `{reference_insert}`\n  - `{alternate_insert}`\n- pinned local backbone:\n  - `{backbone_id}`\n- construct previews:\n  - `{reference_reporter}`\n  - `{alternate_reporter}`\n\n## Why this backbone is appropriate for human-cell work\n\n- it is a promoterless mammalian luciferase reporter architecture\n- it keeps the readout focused on promoter output rather than bacterial protein-expression logic\n- it matches transient transfection planning in human cells\n- it gives the handoff one pinned local backbone so the canonical path does not depend on live GenBank retrieval\n\n## Important assumptions\n\n- this is a human-cell regulatory assay story\n- this bundle stops at a reproducible design/handoff point\n- it does **not** claim wet-lab validation\n- it does **not** claim that the construct alone proves warfarin response\n- adenoviral delivery is deferred as a later escalation only if transfection efficiency becomes the bottleneck\n\n## Artifacts\n\n- promoter-context JSON: `{promoter_context_json}`\n- promoter-candidate JSON: `{promoter_candidates_json}`\n- promoter-context SVG: `{promoter_context_svg}`\n- reference construct SVG: `{reference_svg}`\n- alternate construct SVG: `{alternate_svg}`\n- commands: `{commands_sh}`\n- structured summary: `{result_json}`\n\n## Bench-facing next actions\n\n1. Build the reference and alternate inserts with identical boundaries.\n2. Keep the mammalian reporter backbone constant between alleles.\n3. Verify insert orientation and junction integrity.\n4. Choose one human cell model and a normalization strategy for the later assay.\n5. Treat warfarin exposure as a later experimental condition layered on top of the finished promoter-reporter pair.\n",
             variant = report.variant_label.as_str(),
             gene = chosen_gene,
             source_seq = report.seq_id.as_str(),
@@ -1148,7 +1319,7 @@ impl MainAreaDna {
 
     fn export_variant_followup_handoff_bundle(&mut self) {
         let Some(parent_dir) = rfd::FileDialog::new().pick_folder() else {
-            self.op_status = "Variant Follow-up bundle export canceled".to_string();
+            self.op_status = "Promoter design bundle export canceled".to_string();
             return;
         };
         let report = match self.run_variant_followup_promoter_context(None) {
@@ -1210,7 +1381,7 @@ impl MainAreaDna {
         let bundle_dir = parent_dir.join(&artifacts.bundle_id);
         if let Err(err) = fs::create_dir_all(&bundle_dir) {
             self.op_status = format!(
-                "Could not create Variant Follow-up bundle directory '{}': {err}",
+                "Could not create Promoter design bundle directory '{}': {err}",
                 bundle_dir.display()
             );
             return;
@@ -1288,8 +1459,7 @@ impl MainAreaDna {
         let result_json_text = match serde_json::to_string_pretty(&result_json) {
             Ok(text) => text,
             Err(err) => {
-                self.op_status =
-                    format!("Could not serialize Variant Follow-up result.json: {err}");
+                self.op_status = format!("Could not serialize Promoter design result.json: {err}");
                 return;
             }
         };
@@ -1300,7 +1470,7 @@ impl MainAreaDna {
         ] {
             if let Err(err) = fs::write(path, text) {
                 self.op_status = format!(
-                    "Could not write Variant Follow-up {label} '{}': {err}",
+                    "Could not write Promoter design {label} '{}': {err}",
                     path.display()
                 );
                 return;
@@ -1313,13 +1483,22 @@ impl MainAreaDna {
         ];
         self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
         self.op_status = format!(
-            "Exported Variant Follow-up bundle to '{}'",
+            "Exported Promoter design bundle to '{}'",
             bundle_dir.display()
         );
         self.op_error_popup = None;
     }
 
     fn render_variant_followup_report_summary(&mut self, ui: &mut egui::Ui) {
+        if !self.variant_followup_has_variant_seed() {
+            ui.small(
+                egui::RichText::new(
+                    "No variant is selected for this Promoter design session yet. Open the window from a variation feature to capture promoter-context reasoning and allele-specific reporter planning.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        }
         let Some(report) = self.variant_followup_ui.cached_report.as_ref() else {
             ui.small(
                 egui::RichText::new(
@@ -1429,6 +1608,15 @@ impl MainAreaDna {
     }
 
     fn render_variant_followup_candidate_summary(&mut self, ui: &mut egui::Ui) {
+        if !self.variant_followup_has_variant_seed() {
+            ui.small(
+                egui::RichText::new(
+                    "Reporter-fragment ranking is variant-specific. Open Promoter design from a variation feature when you want GENtle to propose allele-paired reporter inserts.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        }
         let Some(candidates) = self.variant_followup_ui.cached_candidates.as_ref() else {
             ui.small(
                 egui::RichText::new(
@@ -1480,11 +1668,202 @@ impl MainAreaDna {
         });
     }
 
+    fn promoter_design_plot_markers(&self) -> Vec<(usize, &'static str, egui::Color32)> {
+        let mut markers = vec![];
+        if let Some(report) = self.variant_followup_ui.cached_report.as_ref() {
+            markers.push((
+                report.variant_start_0based,
+                "variant",
+                egui::Color32::from_rgb(245, 158, 11),
+            ));
+        } else if self.variant_followup_has_variant_seed()
+            && let (Some(source_seq_id), Some(feature_id)) = (
+                Some(self.variant_followup_ui.source_seq_id.as_str()),
+                self.variant_followup_ui.source_feature_id,
+            )
+            && let Some(feature) = self.variant_followup_feature_clone(source_seq_id, feature_id)
+        {
+            let mut ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if let Some((start, _)) = ranges.into_iter().min_by_key(|(start, _)| *start) {
+                markers.push((start, "variant", egui::Color32::from_rgb(245, 158, 11)));
+            }
+        }
+        markers
+    }
+
+    fn paint_promoter_design_track_plot(
+        ui: &mut egui::Ui,
+        report: &TfbsScoreTrackReport,
+        track: &crate::engine::TfbsScoreTrackRow,
+        markers: &[(usize, &'static str, egui::Color32)],
+    ) {
+        let desired = egui::vec2(ui.available_width().max(420.0), 76.0);
+        let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        let plot_rect = rect.shrink2(egui::vec2(8.0, 8.0));
+        painter.rect_stroke(
+            plot_rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+        let baseline_y = plot_rect.bottom() - 10.0;
+        painter.line_segment(
+            [
+                egui::pos2(plot_rect.left(), baseline_y),
+                egui::pos2(plot_rect.right(), baseline_y),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+        );
+        if track.scored_window_count == 0 {
+            painter.text(
+                plot_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "motif longer than selected range",
+                egui::FontId::proportional(12.0),
+                egui::Color32::from_rgb(100, 116, 139),
+            );
+            return;
+        }
+        let score_max = report.global_max_score.max(1.0) as f32;
+        let x_denom = track.scored_window_count.saturating_sub(1).max(1) as f32;
+        let y_height = (baseline_y - (plot_rect.top() + 8.0)).max(8.0);
+        let to_x = |idx: usize| plot_rect.left() + (idx as f32 / x_denom) * plot_rect.width();
+        let to_y =
+            |score: f64| baseline_y - ((score as f32 / score_max).clamp(0.0, 1.0) * y_height);
+
+        for (marker_pos, label, color) in markers {
+            if *marker_pos < report.view_start_0based
+                || *marker_pos >= report.view_end_0based_exclusive
+            {
+                continue;
+            }
+            let span = report
+                .view_end_0based_exclusive
+                .saturating_sub(report.view_start_0based)
+                .saturating_sub(1)
+                .max(1) as f32;
+            let x = plot_rect.left()
+                + ((*marker_pos - report.view_start_0based) as f32 / span) * plot_rect.width();
+            painter.line_segment(
+                [
+                    egui::pos2(x, plot_rect.top() + 4.0),
+                    egui::pos2(x, baseline_y),
+                ],
+                egui::Stroke::new(1.0, *color),
+            );
+            painter.text(
+                egui::pos2(x + 3.0, plot_rect.top() + 2.0),
+                egui::Align2::LEFT_TOP,
+                *label,
+                egui::FontId::proportional(10.0),
+                *color,
+            );
+        }
+
+        let forward_points = track
+            .forward_scores
+            .iter()
+            .enumerate()
+            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
+            .collect::<Vec<_>>();
+        if forward_points.len() > 1 {
+            painter.add(egui::Shape::line(
+                forward_points,
+                egui::Stroke::new(1.8, egui::Color32::from_rgb(14, 116, 144)),
+            ));
+        }
+        let reverse_points = track
+            .reverse_scores
+            .iter()
+            .enumerate()
+            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
+            .collect::<Vec<_>>();
+        if reverse_points.len() > 1 {
+            painter.add(egui::Shape::line(
+                reverse_points,
+                egui::Stroke::new(1.6, egui::Color32::from_rgb(180, 83, 9)),
+            ));
+        }
+        painter.text(
+            egui::pos2(plot_rect.right() - 4.0, plot_rect.top() + 2.0),
+            egui::Align2::RIGHT_TOP,
+            format!("0 .. {:.2}", report.global_max_score),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+    }
+
+    fn render_variant_followup_score_track_summary(&mut self, ui: &mut egui::Ui) {
+        let Some(report) = self.variant_followup_ui.cached_score_tracks.as_ref() else {
+            ui.small(
+                egui::RichText::new(
+                    "No TF score tracks cached yet. Run 'Show TF score tracks' to inspect positive-only motif scoring across the selected promoter span.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        let markers = self.promoter_design_plot_markers();
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Promoter TF score tracks").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} motif(s) across {}..{} | score={}{}",
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind,
+                    if report.clip_negative {
+                        " | negative values clipped to 0"
+                    } else {
+                        ""
+                    }
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            for track in &report.tracks {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.set_min_width(150.0);
+                    ui.vertical(|ui| {
+                        let label = track.tf_name.clone().unwrap_or_else(|| track.tf_id.clone());
+                        ui.label(egui::RichText::new(label).strong());
+                        ui.small(format!(
+                            "{} windows | max {:.2}{}",
+                            track.scored_window_count,
+                            track.max_score,
+                            track
+                                .max_position_0based
+                                .map(|pos| format!(" @ {}", pos))
+                                .unwrap_or_default()
+                        ));
+                        ui.small(
+                            egui::RichText::new("forward / reverse")
+                                .color(egui::Color32::from_rgb(71, 85, 105)),
+                        );
+                    });
+                    ui.vertical(|ui| {
+                        Self::paint_promoter_design_track_plot(ui, report, track, &markers);
+                    });
+                });
+            }
+        });
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
         let current_seq_id = self.seq_id.clone().unwrap_or_default();
         let source_missing = !self.variant_followup_sequence_exists(&source_seq_id);
+        let has_variant_seed = self.variant_followup_has_variant_seed();
+        let promoter_design_mode = if has_variant_seed {
+            "variant-seeded"
+        } else {
+            "gene/promoter-seeded"
+        };
+        let mut score_track_params_changed = false;
         let mut summary_params_changed = false;
         let mut candidate_params_changed = false;
 
@@ -1497,7 +1876,7 @@ impl MainAreaDna {
             .on_hover_text(Self::variant_followup_help_text());
             ui.label(
                 egui::RichText::new(
-                    "Generated promoter windows are transcript-derived evidence owned by the engine; this window only orchestrates the shared operations and displays the portable records.",
+                    "Generated promoter windows and TF score tracks are engine-owned evidence; this window only orchestrates the shared operations and displays the portable records.",
                 )
                 .size(9.0)
                 .color(egui::Color32::from_rgb(100, 116, 139)),
@@ -1525,6 +1904,10 @@ impl MainAreaDna {
                 ))
                 .color(egui::Color32::from_rgb(71, 85, 105)),
             );
+            ui.small(
+                egui::RichText::new(format!("Mode: {promoter_design_mode}"))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
         }
 
         ui.separator();
@@ -1543,6 +1926,76 @@ impl MainAreaDna {
                 summary_params_changed = true;
                 candidate_params_changed = true;
             }
+            ui.end_row();
+
+            ui.label("TF motifs");
+            ui.vertical(|ui| {
+                if ui
+                    .text_edit_singleline(&mut self.variant_followup_ui.score_track_motifs)
+                    .changed()
+                {
+                    score_track_params_changed = true;
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .small_button("SP1")
+                        .on_hover_text("Focus on SP1, useful for the TERT promoter case study.")
+                        .clicked()
+                    {
+                        self.variant_followup_ui.score_track_motifs = "SP1".to_string();
+                        score_track_params_changed = true;
+                    }
+                    if ui
+                        .small_button("Yamanaka + NANOG")
+                        .on_hover_text("Load POU5F1, SOX2, KLF4, MYC, and NANOG.")
+                        .clicked()
+                    {
+                        self.variant_followup_ui.score_track_motifs =
+                            "POU5F1,SOX2,KLF4,MYC,NANOG".to_string();
+                        score_track_params_changed = true;
+                    }
+                    if ui
+                        .small_button("TP73 set")
+                        .on_hover_text(
+                            "Load TP73, SP1, BACH2, and PATZ1 for the TP73 promoter case study.",
+                        )
+                        .clicked()
+                    {
+                        self.variant_followup_ui.score_track_motifs =
+                            "TP73,SP1,BACH2,PATZ1".to_string();
+                        score_track_params_changed = true;
+                    }
+                });
+            });
+            ui.end_row();
+
+            ui.label("Score-track range");
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .text_edit_singleline(&mut self.variant_followup_ui.score_track_start_0based)
+                    .changed()
+                {
+                    score_track_params_changed = true;
+                }
+                ui.label("..");
+                if ui
+                    .text_edit_singleline(
+                        &mut self.variant_followup_ui.score_track_end_0based_exclusive,
+                    )
+                    .changed()
+                {
+                    score_track_params_changed = true;
+                }
+                if ui
+                    .checkbox(
+                        &mut self.variant_followup_ui.score_track_clip_negative,
+                        "clip negatives",
+                    )
+                    .changed()
+                {
+                    score_track_params_changed = true;
+                }
+            });
             ui.end_row();
 
             ui.label("Gene label");
@@ -1651,12 +2104,27 @@ impl MainAreaDna {
         if summary_params_changed {
             self.variant_followup_ui.cached_report = None;
         }
+        if score_track_params_changed {
+            self.variant_followup_ui.cached_score_tracks = None;
+        }
         if summary_params_changed || candidate_params_changed {
             self.variant_followup_ui.cached_candidates = None;
         }
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Show TF score tracks"),
+                )
+                .on_hover_text(
+                    "Compute continuous per-position TF motif scores across the selected promoter range, using positive-only display by default.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_score_tracks();
+            }
             if ui
                 .add_enabled(
                     engine_available && !source_missing,
@@ -1671,11 +2139,11 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
-                    engine_available && !source_missing,
+                    engine_available && !source_missing && has_variant_seed,
                     egui::Button::new("Summarize promoter context"),
                 )
                 .on_hover_text(
-                    "Build the portable variant-promoter context record for ClawBio/OpenClaw handoff.",
+                    "Build the portable variant-promoter context record for ClawBio/OpenClaw handoff when a selected SNP anchors the promoter question.",
                 )
                 .clicked()
             {
@@ -1683,7 +2151,7 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
-                    engine_available && !source_missing,
+                    engine_available && !source_missing && has_variant_seed,
                     egui::Button::new("Propose reporter fragment"),
                 )
                 .on_hover_text(
@@ -1698,7 +2166,10 @@ impl MainAreaDna {
         ui.horizontal_wrapped(|ui| {
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
-                .add_enabled(has_candidates, egui::Button::new("Extract recommended fragment"))
+                .add_enabled(
+                    has_variant_seed && has_candidates,
+                    egui::Button::new("Extract recommended fragment"),
+                )
                 .on_hover_text(
                     "Materialize the recommended promoter fragment through the shared ExtractRegion operation.",
                 )
@@ -1708,7 +2179,10 @@ impl MainAreaDna {
             }
             let has_fragment = !self.variant_followup_ui.fragment_output_id.trim().is_empty();
             if ui
-                .add_enabled(has_fragment, egui::Button::new("Make reference/alternate inserts"))
+                .add_enabled(
+                    has_variant_seed && has_fragment,
+                    egui::Button::new("Make reference/alternate inserts"),
+                )
                 .on_hover_text(
                     "Build matched SNV-specific promoter inserts from the extracted fragment.",
                 )
@@ -1719,7 +2193,10 @@ impl MainAreaDna {
             let has_materialized = !self.variant_followup_ui.reference_output_id.trim().is_empty()
                 && !self.variant_followup_ui.alternate_output_id.trim().is_empty();
             if ui
-                .add_enabled(has_materialized, egui::Button::new("Preview luciferase pair"))
+                .add_enabled(
+                    has_variant_seed && has_materialized,
+                    egui::Button::new("Preview luciferase pair"),
+                )
                 .on_hover_text(
                     "Load the pinned local mammalian promoterless luciferase backbone if needed, then build reference/alternate reporter previews.",
                 )
@@ -1729,7 +2206,7 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
-                    engine_available && !source_missing,
+                    engine_available && !source_missing && has_variant_seed,
                     egui::Button::new("Export handoff bundle"),
                 )
                 .on_hover_text(
@@ -1742,6 +2219,8 @@ impl MainAreaDna {
         });
 
         ui.separator();
+        self.render_variant_followup_score_track_summary(ui);
+        ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_candidate_summary(ui);

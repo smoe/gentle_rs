@@ -96,8 +96,9 @@ use crate::{
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, VariantAlleleChoice, VariantPromoterContextReport,
-        Workflow, resolve_formula_roi_range_inputs_0based_on_sequence,
+        TfThresholdOverride, TfbsProgress, TfbsScoreTrackReport, VariantAlleleChoice,
+        VariantPromoterContextReport, Workflow,
+        resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
     engine_shell::{
@@ -1682,6 +1683,7 @@ mod tests {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
+            tfbs_score_tracks: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
@@ -4269,6 +4271,7 @@ mod tests {
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
+                tfbs_score_tracks: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
@@ -7237,10 +7240,12 @@ mod tests {
             area.variant_followup_ui.alternate_output_id,
             "rs9923231_promoter_alternate"
         );
+        assert_eq!(area.variant_followup_ui.score_track_motifs, "SP1");
+        assert!(area.variant_followup_ui.score_track_clip_negative);
     }
 
     #[test]
-    fn feature_supports_variant_followup_only_for_variation_features() {
+    fn feature_supports_variant_followup_accepts_gene_mrna_promoter_and_variation() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
         dna.features_mut().push(Feature {
@@ -7253,10 +7258,53 @@ mod tests {
             location: Location::simple_range(2, 20),
             qualifiers: vec![("label".into(), Some("VKORC1".to_string()))],
         });
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(2, 20),
+            qualifiers: vec![("label".into(), Some("NM_VKORC1_1".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: "promoter".into(),
+            location: Location::simple_range(0, 12),
+            qualifiers: vec![("label".into(), Some("VKORC1 promoter".to_string()))],
+        });
         let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
 
         assert!(area.feature_supports_variant_followup(0));
-        assert!(!area.feature_supports_variant_followup(1));
+        assert!(area.feature_supports_variant_followup(1));
+        assert!(area.feature_supports_variant_followup(2));
+        assert!(area.feature_supports_variant_followup(3));
+    }
+
+    #[test]
+    fn open_variant_followup_for_gene_feature_seeds_promoter_design_presets() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "gene".into(),
+            location: Location::simple_range(2, 20),
+            qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("tp73_context".to_string()), None);
+
+        let opened = area.open_variant_followup_for_feature(0, "test");
+
+        assert!(opened);
+        assert!(area.show_variant_followup_window);
+        assert_eq!(area.variant_followup_ui.source_seq_id, "tp73_context");
+        assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
+        assert_eq!(area.variant_followup_ui.variant_label_or_id, "");
+        assert_eq!(area.variant_followup_ui.gene_label, "TP73");
+        assert_eq!(
+            area.variant_followup_ui.score_track_motifs,
+            "TP73,SP1,BACH2,PATZ1"
+        );
+        assert_eq!(area.variant_followup_ui.score_track_start_0based, "0");
+        assert_eq!(
+            area.variant_followup_ui.score_track_end_0based_exclusive,
+            "40"
+        );
+        assert!(area.variant_followup_ui.score_track_clip_negative);
     }
 
     #[test]
@@ -9602,7 +9650,7 @@ mod tests {
                     .any(|line| line.contains("transcript_context"))
         }));
         assert!(reasoning.fact_entries.iter().any(|entry| {
-            entry.title == "Variant follow-up assays suggested"
+            entry.title == "Promoter-design assays suggested"
                 && entry
                     .detail_lines
                     .iter()
@@ -10530,6 +10578,10 @@ struct VariantFollowupUiState {
     variant_label_or_id: String,
     gene_label: String,
     transcript_id: String,
+    score_track_motifs: String,
+    score_track_start_0based: String,
+    score_track_end_0based_exclusive: String,
+    score_track_clip_negative: bool,
     promoter_upstream_bp: String,
     promoter_downstream_bp: String,
     tfbs_focus_half_window_bp: String,
@@ -10542,6 +10594,7 @@ struct VariantFollowupUiState {
     reporter_backbone_seq_id: String,
     reporter_backbone_path: String,
     reporter_output_prefix: String,
+    cached_score_tracks: Option<TfbsScoreTrackReport>,
     cached_report: Option<VariantPromoterContextReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
@@ -10554,6 +10607,10 @@ impl Default for VariantFollowupUiState {
             variant_label_or_id: String::new(),
             gene_label: String::new(),
             transcript_id: String::new(),
+            score_track_motifs: "SP1".to_string(),
+            score_track_start_0based: String::new(),
+            score_track_end_0based_exclusive: String::new(),
+            score_track_clip_negative: true,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
             tfbs_focus_half_window_bp: "100".to_string(),
@@ -10567,6 +10624,7 @@ impl Default for VariantFollowupUiState {
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: String::new(),
+            cached_score_tracks: None,
             cached_report: None,
             cached_candidates: None,
         }
@@ -42415,11 +42473,11 @@ impl MainAreaDna {
                                     }
                                     let variant_followup_response = ui.add_enabled(
                                         entry.supports_variant_followup,
-                                        egui::Button::new("Open Variant Follow-up"),
+                                        egui::Button::new("Open Promoter Design"),
                                     );
                                     let variant_followup_response =
                                         variant_followup_response.on_hover_text(
-                                            "Open the promoter follow-up expert for this variation feature",
+                                            "Open the dedicated Promoter design window for this promoter-relevant feature",
                                         );
                                     if variant_followup_response.clicked() {
                                         clicked_feature = Some((entry.id, false));
@@ -42929,25 +42987,25 @@ impl MainAreaDna {
             {
                 ui.separator();
                 ui.label(
-                    egui::RichText::new("Variant follow-up")
+                    egui::RichText::new("Promoter design")
                         .strong()
                         .size(detail_font_size),
                 );
                 ui.label(
                     egui::RichText::new(
-                        "Open the dedicated promoter follow-up expert to classify promoter context, propose a reporter fragment, and preview the mammalian luciferase pair through shared engine operations.",
+                        "Open the dedicated Promoter design window to inspect positive-only TF score tracks, classify promoter context, propose a reporter fragment, and preview the mammalian luciferase pair through shared engine operations.",
                     )
                     .size(detail_font_size),
                 );
                 let button_label = if self.show_variant_followup_window {
-                    "Focus Variant Follow-up"
+                    "Focus Promoter Design"
                 } else {
-                    "Open Variant Follow-up"
+                    "Open Promoter Design"
                 };
                 if ui
                     .button(button_label)
                     .on_hover_text(
-                        "Open or focus the dedicated Variant Follow-up window for this variation feature",
+                        "Open or focus the dedicated Promoter design window for this promoter-relevant feature",
                     )
                     .clicked()
                 {
@@ -43567,10 +43625,10 @@ impl MainAreaDna {
                     }
                     let variant_response = ui.add_enabled(
                         self.feature_supports_variant_followup(feature_id),
-                        egui::Button::new("Open Variant Follow-up"),
+                        egui::Button::new("Open Promoter Design"),
                     );
                     let variant_response = variant_response.on_hover_text(
-                        "Open the dedicated promoter follow-up expert for this variation feature",
+                        "Open the dedicated Promoter design window for this promoter-relevant feature",
                     );
                     if variant_response.clicked() {
                         map_open_variant_followup_feature = Some(feature_id);

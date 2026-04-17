@@ -371,6 +371,52 @@ pub struct TfbsRegionSummary {
     pub rows: Vec<TfbsRegionSummaryRow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One continuous TF motif score track over a requested DNA span.
+///
+/// `forward_scores[i]` and `reverse_scores[i]` correspond to the motif window
+/// that starts at `track_start_0based + i`. Scores may be clipped to `0.0`
+/// when the parent report requests positive-only display.
+pub struct TfbsScoreTrackRow {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub motif_length_bp: usize,
+    pub track_start_0based: usize,
+    pub scored_window_count: usize,
+    pub max_score: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_position_0based: Option<usize>,
+    #[serde(default)]
+    pub forward_scores: Vec<f64>,
+    #[serde(default)]
+    pub reverse_scores: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable per-position TF motif score tracks for promoter-design review.
+pub struct TfbsScoreTrackReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub score_kind: String,
+    pub view_start_0based: usize,
+    pub view_end_0based_exclusive: usize,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    pub global_max_score: f64,
+    #[serde(default)]
+    pub tracks: Vec<TfbsScoreTrackRow>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// How transcript-derived promoter windows are collapsed before annotation or
@@ -1316,6 +1362,8 @@ pub struct OpResult {
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

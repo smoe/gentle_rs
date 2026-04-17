@@ -1889,6 +1889,11 @@ Shared shell command:
       - anchor-related examples:
         - `set-param require_verified_genome_anchor_for_extension true`
         - `set-param genome_anchor_prepared_fallback_policy "single_compatible|always_explicit|off"`
+    - promoter-design TF score-track example via the raw operation bridge:
+      - `gentle_cli op '{"type":"SummarizeTfbsScoreTracks","seq_id":"tp73_context","motifs":["TP73","SP1","BACH2","PATZ1"],"start_0based":0,"end_0based_exclusive":4000,"clip_negative":true}'`
+      - clip-negative mode is the intended default for presentation-oriented
+        promoter plots because it suppresses negative-only windows and leaves
+        only positive motif support
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (currently disabled by security policy)

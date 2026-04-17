@@ -162,7 +162,7 @@ GUI:
 1. open `vkorc1_rs9923231_context`
 2. confirm `Variation`, `Gene`, and `mRNA` are visible
 3. select the `variation` marker for `rs9923231`
-4. open `Variant Follow-up`
+4. open `Promoter design`
    - from the description pane, map context menu, or feature-tree context menu
 5. in the dedicated window:
    - leave `variant_label_or_id = rs9923231`
@@ -200,7 +200,7 @@ cargo run --quiet --bin gentle_cli -- \
 
 GUI:
 
-1. stay in `Variant Follow-up`
+1. stay in `Promoter design`
 2. keep the default fragment heuristic:
    - `retain_downstream_from_tss_bp = 200`
    - `retain_upstream_beyond_variant_bp = 500`
@@ -241,7 +241,7 @@ the boundaries.
 
 GUI:
 
-1. stay in `Variant Follow-up`
+1. stay in `Promoter design`
 2. confirm the default fragment id:
    - `vkorc1_rs9923231_promoter_fragment`
 3. click `Make reference/alternate inserts`
@@ -275,7 +275,7 @@ This is a key reproducibility point:
 
 GUI:
 
-1. stay in `Variant Follow-up`
+1. stay in `Promoter design`
 2. confirm the pinned local backbone fields:
    - sequence id `gentle_mammalian_luciferase_backbone_v1`
    - path
@@ -297,7 +297,7 @@ There are two equivalent ways to do this now.
 
 GUI:
 
-1. stay in `Variant Follow-up`
+1. stay in `Promoter design`
 2. click `Preview luciferase pair`
 3. expect two derived preview ids:
    - `vkorc1_rs9923231_reporter_reference`
@@ -348,7 +348,7 @@ cargo run --quiet --bin gentle_cli -- \
 
 GUI:
 
-1. stay in `Variant Follow-up`
+1. stay in `Promoter design`
 2. click `Export handoff bundle`
 3. choose a parent folder
 4. GENtle creates one bundle directory containing:
