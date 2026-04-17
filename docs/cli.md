@@ -398,7 +398,7 @@ Reference genome capability status:
 
 Construct-reasoning inspection capability status:
 
-- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning export-graph`)
+- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning export-graph`)
 - `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
 - `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
 - `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`)
@@ -730,6 +730,7 @@ UniProt mapping capability status:
   - `construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]`
   - `construct-reasoning list-graphs [SEQ_ID]`
   - `construct-reasoning show-graph GRAPH_ID`
+  - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
   - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
   backed by `BuildProteinToDnaHandoffReasoning` plus the existing persisted
   construct-reasoning graph store.
@@ -738,6 +739,11 @@ UniProt mapping capability status:
     - `summary_lines`
     - `warning_lines`
     - `fact_summaries`
+  - `construct-reasoning set-annotation-status` updates one persisted
+    annotation candidate in place and returns:
+    - the updated portable graph
+    - the updated `annotation_candidate`
+    - the same shared `summary` block exposed by `construct-reasoning show-graph`
   - for adapter/linker restriction-capture facts, that summary now surfaces the
     same shared-engine review as the GUI inspector:
     - per-motif conflicts across capture plus retrieval sites

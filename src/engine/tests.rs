@@ -25922,6 +25922,19 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
         .expect("persisted graph");
     assert_eq!(persisted.graph_id, graph.graph_id);
     assert_eq!(persisted.evidence.len(), graph.evidence.len());
+    assert!(
+        persisted
+            .annotation_candidates
+            .iter()
+            .any(|row| row.role == ConstructRole::Exon
+                && row.source_kind == "confirmed_annotation")
+    );
+    assert!(
+        persisted
+            .annotation_candidates
+            .iter()
+            .all(|row| row.role != ConstructRole::RestrictionSite)
+    );
 }
 
 #[test]
@@ -26245,6 +26258,14 @@ fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promote
                 .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
             .unwrap_or(false)
     );
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::Promoter
+            && row.source_kind == "generated_annotation"
+            && row
+                .supporting_fact_labels
+                .iter()
+                .any(|label| label == "Variant effect candidates derived")
+    }));
 }
 
 #[test]
@@ -26567,6 +26588,109 @@ fn build_construct_reasoning_graph_records_transcript_ambiguous_variant_context(
                     .all(|tag| tag.as_str() != Some("missense_variant"))
             })
             .unwrap_or(false)
+    }));
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::Variant
+            && row.transcript_context_status.as_deref() == Some("multi_transcript_ambiguous")
+            && row
+                .effect_tags
+                .iter()
+                .any(|tag| tag == "transcript_context_ambiguous")
+    }));
+}
+
+#[test]
+fn set_construct_reasoning_annotation_candidate_status_updates_persisted_graph() {
+    let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(2, 10),
+        qualifiers: vec![
+            ("label".into(), Some("Confirmed exon".to_string())),
+            ("evidence".into(), Some("supported by cDNA".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("reasoning_status_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_status_demo", None, None)
+        .expect("build graph");
+    let candidate_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Exon)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("annotation candidate");
+
+    let updated = engine
+        .set_construct_reasoning_annotation_candidate_status(
+            &graph.graph_id,
+            &candidate_id,
+            EditableStatus::Accepted,
+        )
+        .expect("accept annotation candidate");
+
+    assert!(updated.annotation_candidates.iter().any(|candidate| {
+        candidate.annotation_id == candidate_id
+            && candidate.editable_status == EditableStatus::Accepted
+    }));
+
+    let persisted = engine
+        .construct_reasoning_graph(&graph.graph_id)
+        .expect("persisted graph");
+    assert!(persisted.annotation_candidates.iter().any(|row| {
+        row.annotation_id == candidate_id && row.editable_status == EditableStatus::Accepted
+    }));
+}
+
+#[test]
+fn refresh_construct_reasoning_graph_preserves_annotation_candidate_statuses() {
+    let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(2, 10),
+        qualifiers: vec![
+            ("label".into(), Some("Confirmed exon".to_string())),
+            ("evidence".into(), Some("supported by cDNA".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("reasoning_status_refresh".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_status_refresh", None, None)
+        .expect("build graph");
+    let candidate_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Exon)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("annotation candidate id");
+    engine
+        .set_construct_reasoning_annotation_candidate_status(
+            &graph.graph_id,
+            &candidate_id,
+            EditableStatus::Rejected,
+        )
+        .expect("reject annotation candidate");
+
+    let refreshed = engine
+        .refresh_construct_reasoning_graph_for_seq_id("reasoning_status_refresh")
+        .expect("refresh graph");
+    assert!(refreshed.annotation_candidates.iter().any(|candidate| {
+        candidate.annotation_id == candidate_id
+            && candidate.editable_status == EditableStatus::Rejected
     }));
 }
 

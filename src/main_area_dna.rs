@@ -63,16 +63,16 @@ use crate::{
     },
     dna_sequence::DNAsequence,
     engine::{
-        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
-        CandidateRecord, CandidateSetOperator, ConstructReasoningGraph, ConstructRole,
-        DecisionMethod, DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget,
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
-        EditableStatus, Engine, EngineError, ErrorCode, EvidenceClass, ExportFormat,
-        FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide,
-        GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode,
-        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
-        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
+        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
+        CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
+        ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
+        DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
+        EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
+        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
+        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
+        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
         PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
@@ -9397,6 +9397,7 @@ mod tests {
                 objective_title: "Assemble promoter cassette".to_string(),
                 objective_goal: "Inspect promoter evidence".to_string(),
                 evidence: vec![ConstructReasoningOverlaySpan {
+                    annotation_id: "annotation_promoter".to_string(),
                     evidence_id: "ev_promoter".to_string(),
                     start_0based: 3,
                     end_0based_exclusive: 12,
@@ -9410,6 +9411,14 @@ mod tests {
                     context_tags: vec!["cassette".to_string(), "5prime".to_string()],
                     provenance_kind: "annotation_projection".to_string(),
                     provenance_refs: vec!["gene:TP73".to_string()],
+                    source_kind: "supporting_annotation".to_string(),
+                    supporting_fact_labels: vec!["Variant effect candidates derived".to_string()],
+                    supporting_decision_titles: vec!["Evaluate Variant Effect Context".to_string()],
+                    transcript_context_status: Some("multi_transcript_ambiguous".to_string()),
+                    effect_tags: vec![
+                        "promoter_variant_candidate".to_string(),
+                        "transcript_context_ambiguous".to_string(),
+                    ],
                     editable_status: EditableStatus::Draft,
                     warnings: vec![],
                     notes: vec!["inspect upstream fusion".to_string()],
@@ -9434,6 +9443,16 @@ mod tests {
             area.description_cache_details
                 .iter()
                 .any(|line| line.contains("why: Annotation and restriction context agree"))
+        );
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("supports_facts: Variant effect candidates derived"))
+        );
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("transcript_context: multi_transcript_ambiguous"))
         );
         assert!(area.description_cache_expert_view.is_none());
     }
@@ -9555,6 +9574,73 @@ mod tests {
             .expect("construct reasoning cache");
         assert_eq!(reasoning.graph_id, "graph_reasoning_two");
         assert_eq!(reasoning.objective_title, "Reasoning Two");
+    }
+
+    #[test]
+    fn set_construct_reasoning_annotation_candidate_status_refreshes_overlay_and_details() {
+        let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "exon".into(),
+            location: Location::simple_range(2, 10),
+            qualifiers: vec![
+                ("label".into(), Some("Confirmed exon".to_string())),
+                ("evidence".into(), Some("supported by cDNA".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_status".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "seq_reasoning_status",
+                None,
+                Some("graph_reasoning_status"),
+            )
+            .expect("build graph");
+        let candidate = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.role == ConstructRole::Exon)
+            .expect("annotation candidate");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area =
+            MainAreaDna::new(dna, Some("seq_reasoning_status".to_string()), Some(engine));
+
+        area.focus_construct_reasoning_graph("graph_reasoning_status");
+        area.map_dna
+            .select_reasoning_evidence(Some(candidate.evidence_id.clone()));
+        area.refresh_description_cache();
+
+        area.set_construct_reasoning_annotation_candidate_status(
+            "graph_reasoning_status",
+            &candidate.annotation_id,
+            EditableStatus::Accepted,
+        );
+
+        let (_, span) = area
+            .find_construct_reasoning_span(&candidate.evidence_id)
+            .expect("updated reasoning span");
+        assert_eq!(span.editable_status, EditableStatus::Accepted);
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("editable_status: accepted"))
+        );
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert!(reasoning.annotation_entries.iter().any(|entry| {
+            entry.annotation_id.as_deref() == Some(candidate.annotation_id.as_str())
+                && entry
+                    .detail_lines
+                    .iter()
+                    .any(|line| line.contains("status: accepted"))
+        }));
     }
 
     #[test]
@@ -10554,6 +10640,8 @@ struct ConstructReasoningInspectorEntry {
     title: String,
     detail_lines: Vec<String>,
     warning_lines: Vec<String>,
+    annotation_id: Option<String>,
+    editable_status: Option<EditableStatus>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -10561,6 +10649,7 @@ struct ConstructReasoningInspectorCache {
     graph_id: String,
     objective_title: String,
     objective_goal: String,
+    annotation_entries: Vec<ConstructReasoningInspectorEntry>,
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
     decision_entries: Vec<ConstructReasoningInspectorEntry>,
     note_lines: Vec<String>,
@@ -17874,6 +17963,117 @@ impl MainAreaDna {
         }
     }
 
+    fn set_construct_reasoning_annotation_candidate_status(
+        &mut self,
+        graph_id: &str,
+        annotation_id: &str,
+        editable_status: EditableStatus,
+    ) {
+        let Some(engine) = &self.engine else {
+            self.op_status =
+                "Could not update annotation candidate: no engine is attached".to_string();
+            return;
+        };
+        let outcome = engine
+            .write()
+            .unwrap()
+            .set_construct_reasoning_annotation_candidate_status(
+                graph_id,
+                annotation_id,
+                editable_status,
+            );
+        match outcome {
+            Ok(graph) => {
+                self.focused_construct_reasoning_graph_id = Some(graph.graph_id.clone());
+                self.construct_reasoning_overlay_sync_key = None;
+                self.refresh_construct_reasoning_overlay_if_needed(true);
+                self.refresh_description_cache();
+                self.op_status = format!(
+                    "Marked annotation candidate '{}' as {}",
+                    annotation_id,
+                    Self::construct_reasoning_editable_status_label(editable_status)
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not update annotation candidate '{}': {}",
+                    annotation_id, err.message
+                );
+            }
+        }
+    }
+
+    fn render_construct_reasoning_annotation_candidate_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        graph_id: &str,
+        annotation_id: &str,
+        editable_status: EditableStatus,
+    ) -> Option<EditableStatus> {
+        if editable_status == EditableStatus::Locked {
+            ui.small("This annotation candidate is locked.");
+            return None;
+        }
+        let mut next_status: Option<EditableStatus> = None;
+        ui.horizontal_wrapped(|ui| {
+            let accept_label = if editable_status == EditableStatus::Accepted {
+                "Accepted"
+            } else {
+                "Accept"
+            };
+            if ui
+                .add_enabled(
+                    editable_status != EditableStatus::Accepted,
+                    egui::Button::new(accept_label),
+                )
+                .on_hover_text(
+                    "Mark this annotation candidate as accepted so it stands out as a reviewed automated annotation.",
+                )
+                .clicked()
+            {
+                next_status = Some(EditableStatus::Accepted);
+            }
+            let reject_label = if editable_status == EditableStatus::Rejected {
+                "Rejected"
+            } else {
+                "Reject"
+            };
+            if ui
+                .add_enabled(
+                    editable_status != EditableStatus::Rejected,
+                    egui::Button::new(reject_label),
+                )
+                .on_hover_text(
+                    "Mark this annotation candidate as rejected so it remains inspectable but clearly not endorsed as an automated annotation.",
+                )
+                .clicked()
+            {
+                next_status = Some(EditableStatus::Rejected);
+            }
+            if ui
+                .add_enabled(
+                    editable_status != EditableStatus::Draft,
+                    egui::Button::new("Mark Draft"),
+                )
+                .on_hover_text(
+                    "Reset this annotation candidate back to draft when it still needs review.",
+                )
+                .clicked()
+            {
+                next_status = Some(EditableStatus::Draft);
+            }
+        });
+        if let Some(next_status) = next_status {
+            self.set_construct_reasoning_annotation_candidate_status(
+                graph_id,
+                annotation_id,
+                next_status,
+            );
+            return Some(next_status);
+        }
+        None
+    }
+
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
         match method {
             DecisionMethod::HardRule => "hard_rule",
@@ -18337,6 +18537,8 @@ impl MainAreaDna {
             title: fact.label.clone(),
             detail_lines,
             warning_lines,
+            annotation_id: None,
+            editable_status: None,
         }
     }
 
@@ -18360,12 +18562,73 @@ impl MainAreaDna {
             title: node.title.clone(),
             detail_lines,
             warning_lines: vec![],
+            annotation_id: None,
+            editable_status: None,
+        }
+    }
+
+    fn construct_reasoning_inspector_entry_for_annotation_candidate(
+        candidate: &AnnotationCandidate,
+    ) -> ConstructReasoningInspectorEntry {
+        let mut detail_lines = vec![
+            format!(
+                "role: {}",
+                Self::construct_reasoning_role_label(candidate.role)
+            ),
+            format!(
+                "status: {}",
+                Self::construct_reasoning_editable_status_label(candidate.editable_status)
+            ),
+        ];
+        if !candidate.source_kind.trim().is_empty() {
+            detail_lines.push(format!("source: {}", candidate.source_kind.trim()));
+        }
+        if !candidate.rationale.trim().is_empty() {
+            detail_lines.push(format!("why: {}", candidate.rationale.trim()));
+        }
+        if !candidate.supporting_fact_labels.is_empty() {
+            detail_lines.push(format!(
+                "supports_facts: {}",
+                candidate.supporting_fact_labels.join(", ")
+            ));
+        }
+        if !candidate.supporting_decision_titles.is_empty() {
+            detail_lines.push(format!(
+                "supports_decisions: {}",
+                candidate.supporting_decision_titles.join(", ")
+            ));
+        }
+        if let Some(status) = candidate.transcript_context_status.as_deref() {
+            detail_lines.push(format!("transcript_context: {status}"));
+        }
+        if !candidate.effect_tags.is_empty() {
+            detail_lines.push(format!("effect_tags: {}", candidate.effect_tags.join(", ")));
+        }
+        let mut warning_lines = candidate.warnings.clone();
+        if candidate.transcript_context_status.as_deref() == Some("multi_transcript_ambiguous") {
+            warning_lines.push("Transcript interpretation remains ambiguous".to_string());
+        }
+        ConstructReasoningInspectorEntry {
+            title: if candidate.label.trim().is_empty() {
+                Self::construct_reasoning_role_label(candidate.role).to_string()
+            } else {
+                candidate.label.clone()
+            },
+            detail_lines,
+            warning_lines,
+            annotation_id: Some(candidate.annotation_id.clone()),
+            editable_status: Some(candidate.editable_status),
         }
     }
 
     fn build_construct_reasoning_inspector_cache(
         graph: &ConstructReasoningGraph,
     ) -> ConstructReasoningInspectorCache {
+        let mut annotation_entries = graph
+            .annotation_candidates
+            .iter()
+            .map(Self::construct_reasoning_inspector_entry_for_annotation_candidate)
+            .collect::<Vec<_>>();
         let mut fact_entries = graph
             .facts
             .iter()
@@ -18376,12 +18639,14 @@ impl MainAreaDna {
             .iter()
             .map(Self::construct_reasoning_inspector_entry_for_decision)
             .collect::<Vec<_>>();
+        annotation_entries.retain(|entry| !entry.title.trim().is_empty());
         fact_entries.retain(|entry| !entry.title.trim().is_empty());
         decision_entries.retain(|entry| !entry.title.trim().is_empty());
         ConstructReasoningInspectorCache {
             graph_id: graph.graph_id.clone(),
             objective_title: graph.objective.title.clone(),
             objective_goal: graph.objective.goal.clone(),
+            annotation_entries,
             fact_entries,
             decision_entries,
             note_lines: graph.notes.clone(),
@@ -18446,6 +18711,27 @@ impl MainAreaDna {
         }
         if !span.provenance_refs.is_empty() {
             details.push(format!("refs: {}", span.provenance_refs.join(", ")));
+        }
+        if !span.source_kind.trim().is_empty() {
+            details.push(format!("annotation_source: {}", span.source_kind.trim()));
+        }
+        if !span.supporting_fact_labels.is_empty() {
+            details.push(format!(
+                "supports_facts: {}",
+                span.supporting_fact_labels.join(", ")
+            ));
+        }
+        if !span.supporting_decision_titles.is_empty() {
+            details.push(format!(
+                "supports_decisions: {}",
+                span.supporting_decision_titles.join(", ")
+            ));
+        }
+        if let Some(status) = span.transcript_context_status.as_deref() {
+            details.push(format!("transcript_context: {status}"));
+        }
+        if !span.effect_tags.is_empty() {
+            details.push(format!("effect_tags: {}", span.effect_tags.join(", ")));
         }
         for warning in span.warnings.iter().take(2) {
             if !warning.trim().is_empty() {
@@ -43014,6 +43300,41 @@ impl MainAreaDna {
                     self.open_variant_followup_for_feature(feature_id, "description panel");
                 }
             }
+            if let Some((overlay, span)) = self
+                .description_cache_selected_reasoning_evidence_id
+                .as_deref()
+                .and_then(|evidence_id| self.find_construct_reasoning_span(evidence_id))
+            {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Annotation curation")
+                        .strong()
+                        .size(detail_font_size),
+                );
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} [{}]",
+                        Self::construct_reasoning_title(&span),
+                        Self::construct_reasoning_editable_status_label(span.editable_status)
+                    ))
+                    .size(detail_font_size),
+                );
+                if !span.source_kind.trim().is_empty() {
+                    ui.small(format!("source: {}", span.source_kind.trim()));
+                }
+                if !span.supporting_fact_labels.is_empty() {
+                    ui.small(format!(
+                        "supports: {}",
+                        span.supporting_fact_labels.join(", ")
+                    ));
+                }
+                self.render_construct_reasoning_annotation_candidate_actions(
+                    ui,
+                    &overlay.graph_id,
+                    &span.annotation_id,
+                    span.editable_status,
+                );
+            }
             if let Some(reasoning) = self.description_cache_construct_reasoning.clone() {
                 ui.separator();
                 ui.label(
@@ -43036,18 +43357,61 @@ impl MainAreaDna {
                 }
                 if !reasoning.graph_id.trim().is_empty() {
                     ui.label(
-                        egui::RichText::new(format!("graph: {}", reasoning.graph_id))
+                        egui::RichText::new(format!("graph: {}", reasoning.graph_id.as_str()))
                             .monospace()
                             .size(detail_font_size),
                     );
                 }
-                if reasoning.fact_entries.is_empty() && reasoning.decision_entries.is_empty() {
+                let reasoning_graph_id = reasoning.graph_id.clone();
+                if reasoning.annotation_entries.is_empty()
+                    && reasoning.fact_entries.is_empty()
+                    && reasoning.decision_entries.is_empty()
+                {
                     ui.label(
                         egui::RichText::new(
-                            "No construct-reasoning facts or decisions are stored for this sequence yet.",
+                            "No construct-reasoning annotation candidates, facts, or decisions are stored for this sequence yet.",
                         )
                         .size(detail_font_size),
                     );
+                }
+                if !reasoning.annotation_entries.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Annotation candidates")
+                            .strong()
+                            .size(detail_font_size),
+                    );
+                    for entry in reasoning.annotation_entries {
+                        egui::CollapsingHeader::new(entry.title.clone())
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                if let (Some(annotation_id), Some(editable_status)) = (
+                                    entry.annotation_id.as_deref(),
+                                    entry.editable_status,
+                                ) {
+                                    self.render_construct_reasoning_annotation_candidate_actions(
+                                        ui,
+                                        &reasoning_graph_id,
+                                        annotation_id,
+                                        editable_status,
+                                    );
+                                }
+                                for line in &entry.detail_lines {
+                                    ui.label(
+                                        egui::RichText::new(line)
+                                            .monospace()
+                                            .size(detail_font_size),
+                                    );
+                                }
+                                for warning in &entry.warning_lines {
+                                    ui.label(
+                                        egui::RichText::new(format!("warning: {warning}"))
+                                            .monospace()
+                                            .size(detail_font_size)
+                                            .color(egui::Color32::from_rgb(176, 80, 32)),
+                                    );
+                                }
+                            });
+                    }
                 }
                 for entry in reasoning.fact_entries {
                     egui::CollapsingHeader::new(entry.title.clone())

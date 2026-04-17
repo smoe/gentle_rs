@@ -32,14 +32,14 @@ use crate::{
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, Engine, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, Operation, OperationProgress,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
+        FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
+        OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
@@ -1660,6 +1660,11 @@ pub enum ShellCommand {
     },
     ConstructReasoningShowGraph {
         graph_id: String,
+    },
+    ConstructReasoningSetAnnotationStatus {
+        graph_id: String,
+        annotation_id: String,
+        editable_status: EditableStatus,
     },
     ConstructReasoningExportGraph {
         graph_id: String,
@@ -7466,6 +7471,16 @@ impl ShellCommand {
             Self::ConstructReasoningShowGraph { graph_id } => {
                 format!("show construct-reasoning graph '{}'", graph_id)
             }
+            Self::ConstructReasoningSetAnnotationStatus {
+                graph_id,
+                annotation_id,
+                editable_status,
+            } => format!(
+                "set construct-reasoning annotation '{}' in graph '{}' to '{}'",
+                annotation_id,
+                graph_id,
+                editable_status.as_str()
+            ),
             Self::ConstructReasoningExportGraph { graph_id, path } => format!(
                 "export construct-reasoning graph '{}' to '{}'",
                 graph_id, path
@@ -7897,6 +7912,7 @@ impl ShellCommand {
                 | Self::SeqConfirmRun { .. }
                 | Self::ReverseTranslateRun { .. }
                 | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
+                | Self::ConstructReasoningSetAnnotationStatus { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
@@ -20888,6 +20904,40 @@ fn execute_protein_sequence_command(
                 }),
             })
         }
+        ShellCommand::ConstructReasoningSetAnnotationStatus {
+            graph_id,
+            annotation_id,
+            editable_status,
+        } => {
+            let graph = engine
+                .set_construct_reasoning_annotation_candidate_status(
+                    graph_id,
+                    annotation_id,
+                    *editable_status,
+                )
+                .map_err(|e| e.to_string())?;
+            let candidate = graph
+                .annotation_candidates
+                .iter()
+                .find(|candidate| candidate.annotation_id == *annotation_id)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "Annotation candidate '{}' was not found after updating construct-reasoning graph '{}'",
+                        annotation_id, graph_id
+                    )
+                })?;
+            let summary = format_construct_reasoning_graph_summary(&graph);
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "graph": graph,
+                    "annotation_candidate": candidate,
+                    "editable_status": editable_status.as_str(),
+                    "summary": summary,
+                }),
+            })
+        }
         ShellCommand::ConstructReasoningExportGraph { graph_id, path } => {
             let graph = engine
                 .export_construct_reasoning_graph_json(graph_id, path)
@@ -21988,6 +22038,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
             | ShellCommand::ConstructReasoningListGraphs { .. }
             | ShellCommand::ConstructReasoningShowGraph { .. }
+            | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
             | ShellCommand::ConstructReasoningExportGraph { .. }
     ) {
         return execute_protein_sequence_command(engine, command);
@@ -22233,6 +22284,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
         | ShellCommand::ConstructReasoningListGraphs { .. }
         | ShellCommand::ConstructReasoningShowGraph { .. }
+        | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
         | ShellCommand::ConstructReasoningExportGraph { .. } => {
             execute_protein_sequence_command(engine, command)?
         }

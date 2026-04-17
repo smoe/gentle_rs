@@ -3964,7 +3964,7 @@ pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<Shell
 pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, export-graph"
+            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, export-graph"
                 .to_string(),
         );
     }
@@ -4201,6 +4201,38 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
                 graph_id: tokens[2].trim().to_string(),
             })
         }
+        "set-annotation-status" => {
+            if tokens.len() != 5 {
+                return Err(
+                    "construct-reasoning set-annotation-status requires GRAPH_ID ANNOTATION_ID STATUS"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            let annotation_id = tokens[3].trim().to_string();
+            if graph_id.is_empty() || annotation_id.is_empty() {
+                return Err(
+                    "construct-reasoning set-annotation-status requires non-empty GRAPH_ID and ANNOTATION_ID"
+                        .to_string(),
+                );
+            }
+            let editable_status = match tokens[4].trim().to_ascii_lowercase().as_str() {
+                "draft" => EditableStatus::Draft,
+                "accepted" => EditableStatus::Accepted,
+                "rejected" => EditableStatus::Rejected,
+                "locked" => EditableStatus::Locked,
+                other => {
+                    return Err(format!(
+                        "Unsupported construct-reasoning annotation status '{other}' (expected draft|accepted|rejected|locked)"
+                    ));
+                }
+            };
+            Ok(ShellCommand::ConstructReasoningSetAnnotationStatus {
+                graph_id,
+                annotation_id,
+                editable_status,
+            })
+        }
         "export-graph" => {
             if tokens.len() != 4 {
                 return Err(
@@ -4213,7 +4245,7 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
             })
         }
         other => Err(format!(
-            "Unknown construct-reasoning subcommand '{other}' (expected build-protein-dna-handoff, list-graphs, show-graph, export-graph)"
+            "Unknown construct-reasoning subcommand '{other}' (expected build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, export-graph)"
         )),
     }
 }

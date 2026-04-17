@@ -12,6 +12,7 @@ pub const DESIGN_EVIDENCE_SCHEMA: &str = "gentle.design_evidence.v1";
 pub const DESIGN_FACT_SCHEMA: &str = "gentle.design_fact.v1";
 pub const DESIGN_DECISION_NODE_SCHEMA: &str = "gentle.design_decision_node.v1";
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = "gentle.construct_candidate.v1";
+pub const ANNOTATION_CANDIDATE_SCHEMA: &str = "gentle.annotation_candidate.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
 pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
@@ -34,6 +35,10 @@ fn default_design_decision_node_schema() -> String {
 
 fn default_construct_candidate_schema() -> String {
     CONSTRUCT_CANDIDATE_SCHEMA.to_string()
+}
+
+fn default_annotation_candidate_schema() -> String {
+    ANNOTATION_CANDIDATE_SCHEMA.to_string()
 }
 
 fn default_construct_reasoning_graph_schema() -> String {
@@ -701,6 +706,60 @@ impl Default for ConstructCandidate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// One inspectable annotation-grade interval derived from construct reasoning.
+pub struct AnnotationCandidate {
+    #[serde(default = "default_annotation_candidate_schema")]
+    pub schema: String,
+    pub annotation_id: String,
+    pub evidence_id: String,
+    pub seq_id: SeqId,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: Option<String>,
+    pub role: ConstructRole,
+    pub label: String,
+    pub rationale: String,
+    pub source_kind: String,
+    pub supporting_fact_ids: Vec<String>,
+    pub supporting_fact_labels: Vec<String>,
+    pub supporting_decision_ids: Vec<String>,
+    pub supporting_decision_titles: Vec<String>,
+    pub transcript_context_status: Option<String>,
+    pub effect_tags: Vec<String>,
+    pub editable_status: EditableStatus,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+impl Default for AnnotationCandidate {
+    fn default() -> Self {
+        Self {
+            schema: default_annotation_candidate_schema(),
+            annotation_id: String::new(),
+            evidence_id: String::new(),
+            seq_id: String::new(),
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            strand: None,
+            role: ConstructRole::Other,
+            label: String::new(),
+            rationale: String::new(),
+            source_kind: String::new(),
+            supporting_fact_ids: vec![],
+            supporting_fact_labels: vec![],
+            supporting_decision_ids: vec![],
+            supporting_decision_titles: vec![],
+            transcript_context_status: None,
+            effect_tags: vec![],
+            editable_status: EditableStatus::Draft,
+            warnings: vec![],
+            notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 /// Complete sequence-linked reasoning graph for one design objective.
 pub struct ConstructReasoningGraph {
     #[serde(default = "default_construct_reasoning_graph_schema")]
@@ -717,6 +776,7 @@ pub struct ConstructReasoningGraph {
     pub facts: Vec<DesignFact>,
     pub decisions: Vec<DesignDecisionNode>,
     pub candidates: Vec<ConstructCandidate>,
+    pub annotation_candidates: Vec<AnnotationCandidate>,
     pub notes: Vec<String>,
 }
 
@@ -734,6 +794,7 @@ impl Default for ConstructReasoningGraph {
             facts: vec![],
             decisions: vec![],
             candidates: vec![],
+            annotation_candidates: vec![],
             notes: vec![],
         }
     }
