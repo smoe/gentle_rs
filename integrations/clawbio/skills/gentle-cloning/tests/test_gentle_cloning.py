@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -355,6 +356,112 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
     assert copied_path == generated_root / "outside" / "demo.protocol.svg"
 
 
+def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "capabilities",
+                "timeout_secs": 180,
+                "ensure_reference_prepared": {
+                    "genome_id": "Human GRCh38 Ensembl 116",
+                    "prepare_timeout_secs": 7200,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "sentinel=\"${FAKE_PREP_SENTINEL:?}\"\n"
+        "capture=\"${FAKE_CLI_CAPTURE:?}\"\n"
+        "printf '%s\\n' \"$*\" >> \"$capture\"\n"
+        "if [ \"$1\" = \"genomes\" ] && [ \"$2\" = \"status\" ]; then\n"
+        "  if [ -f \"$sentinel\" ]; then\n"
+        "    printf '{\"prepared\":true,\"genome_id\":\"%s\",\"sequence_source_type\":\"ensembl_fasta\",\"annotation_source_type\":\"ensembl_gtf\"}\\n' \"$3\"\n"
+        "  else\n"
+        "    printf '{\"prepared\":false,\"genome_id\":\"%s\",\"sequence_source_type\":\"ensembl_fasta\",\"annotation_source_type\":\"ensembl_gtf\"}\\n' \"$3\"\n"
+        "  fi\n"
+        "elif [ \"$1\" = \"genomes\" ] && [ \"$2\" = \"prepare\" ]; then\n"
+        "  : > \"$sentinel\"\n"
+        "  printf '{\"prepared\":true,\"genome_id\":\"%s\"}\\n' \"$3\"\n"
+        "else\n"
+        "  printf '{\"capabilities\":[\"demo\"]}\\n'\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    capture_path = tmp_path / "captured.txt"
+    sentinel_path = tmp_path / "prepared.flag"
+    output_dir = tmp_path / "out"
+
+    env = dict(os.environ)
+    env["FAKE_CLI_CAPTURE"] = str(capture_path)
+    env["FAKE_PREP_SENTINEL"] = str(sentinel_path)
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    preflight = result["preflight"]["reference_preparation"]
+    assert preflight["prepared_before"] is False
+    assert preflight["prepare_attempted"] is True
+    assert preflight["prepared_after"] is True
+    assert preflight["status"] == "prepared_during_run"
+    assert len(preflight["steps"]) == 3
+    assert preflight["steps"][0]["command"] == [
+        str(fake_cli),
+        "genomes",
+        "status",
+        "Human GRCh38 Ensembl 116",
+    ]
+    assert preflight["steps"][1]["command"] == [
+        str(fake_cli),
+        "genomes",
+        "prepare",
+        "Human GRCh38 Ensembl 116",
+        "--timeout-secs",
+        "7200",
+    ]
+    assert preflight["steps"][2]["command"] == [
+        str(fake_cli),
+        "genomes",
+        "status",
+        "Human GRCh38 Ensembl 116",
+    ]
+    commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'genomes status \'Human GRCh38 Ensembl 116\'' in commands_text
+    assert (
+        'genomes prepare \'Human GRCh38 Ensembl 116\' --timeout-secs 7200'
+        in commands_text
+    )
+    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+
+
 def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
@@ -422,6 +529,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "shell",
             "render-svg rs9923231_vkorc1 linear artifacts/rs9923231_vkorc1.context.linear.svg",
             180,
+        ),
+        "request_workflow_vkorc1_context_svg_auto_prepare.json": (
+            "workflow",
+            None,
+            1200,
         ),
         "request_inspect_sequence_context_rs9923231_vkorc1.json": (
             "op",
@@ -538,6 +650,24 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/rs9923231_vkorc1.context.linear.svg"
             ]
+        if name == "request_workflow_vkorc1_context_svg_auto_prepare.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert payload["ensure_reference_prepared"] == {
+                "genome_id": "Human GRCh38 Ensembl 116",
+                "catalog_path": "assets/genomes.json",
+                "cache_dir": "data/genomes",
+                "prepare_timeout_secs": 7200,
+            }
+            assert payload["expected_artifacts"] == [
+                "artifacts/rs9923231_vkorc1.context.demo.svg"
+            ]
+            workflow = payload["workflow"]
+            assert workflow["run_id"] == "clawbio_vkorc1_context_svg_auto_prepare"
+            ops = workflow["ops"]
+            assert ops[0]["FetchDbSnpRegion"]["rs_id"] == "rs9923231"
+            assert ops[-1]["RenderSequenceSvg"]["path"] == (
+                "artifacts/rs9923231_vkorc1.context.demo.svg"
+            )
         if name == "request_inspect_sequence_context_rs9923231_vkorc1.json":
             assert payload["operation"] == {
                 "InspectSequenceContextView": {

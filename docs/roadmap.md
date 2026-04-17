@@ -1003,6 +1003,15 @@ order. Durable architecture constraints and decisions remain in
           GENtle picture first (catalog version, prepared/not prepared, current
           prepare/index status if known) instead of stopping at "no direct
           remote database access"
+        - the first concrete wrapper-side automation slice is now in place:
+          `gentle-cloning` requests can opt into
+          `ensure_reference_prepared`, which runs
+          `genomes status ...` and only then `genomes prepare ...` when needed,
+          while recording the before/after status payloads in the bundle
+        - the lowest-hanging graphical demo on that same path is now explicit:
+          one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
+          `rs9923231`, and export a linear `VKORC1` genomic-context SVG for
+          chat/presentation handoff
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo

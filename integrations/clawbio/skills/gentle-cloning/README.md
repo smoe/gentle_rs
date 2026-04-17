@@ -93,6 +93,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_sequence_context_rs9923231_vkorc1.json --output /tmp/gentle_rs9923231_context_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json --output /tmp/gentle_rs9923231_context_svg
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_context_svg_auto_prepare.json --output /tmp/gentle_rs9923231_context_demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json --output /tmp/gentle_rs9923231_context_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_grch38_tp53_gene_models.json --output /tmp/gentle_tp53_bed
@@ -126,6 +127,11 @@ Notes:
 - `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
   follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
   fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_workflow_vkorc1_context_svg_auto_prepare.json` is the lowest-hanging
+  graphical demo route:
+  it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
+  `rs9923231` and exports one linear genomic-context SVG into the wrapper
+  bundle
 - `request_inspect_sequence_context_rs9923231_vkorc1.json` is the compact
   summary follow-on after `request_dbsnp_fetch_rs9923231.json`; it returns the
   shared `InspectSequenceContextView` report so chat layers can answer with one
@@ -204,7 +210,7 @@ Alternative runtimes:
 
 - `schema`: `gentle.clawbio_skill_request.v1`
 - `mode`: `capabilities|state-summary|shell|op|workflow|raw`
-- optional: `state_path`, `timeout_secs`
+- optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
 
@@ -212,6 +218,17 @@ Mode-specific fields:
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
 - `raw`: `raw_args[]`
+
+`ensure_reference_prepared` is an opt-in wrapper preflight:
+
+- required: `genome_id`
+- optional: `catalog_path`, `cache_dir`, `status_timeout_secs`,
+  `prepare_timeout_secs`
+
+When present, the wrapper runs `genomes status ...` first and only runs
+`genomes prepare ...` when the requested reference is not yet prepared. The
+before/after status payloads and exact preflight commands are then written into
+`report.md`, `result.json`, and `reproducibility/commands.sh`.
 
 Relative `workflow_path` values are resolved in this order:
 
@@ -246,6 +263,10 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context SVG
+- `examples/request_workflow_vkorc1_context_svg_auto_prepare.json`
+  - lowest-hanging graphical demo for remote ClawBio/OpenClaw installs
+  - auto-checks/prepares `Human GRCh38 Ensembl 116`, fetches `rs9923231`, and
+    exports a compact linear genomic-context SVG into the wrapper bundle
 - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - exports the fetched locus' gene/mRNA/variation rows with genomic coordinates

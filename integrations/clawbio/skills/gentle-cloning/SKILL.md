@@ -315,6 +315,7 @@ Expected outputs:
 | Referenced GENtle workflow file | `.json` | `workflow_path` inside the request when replaying a saved workflow | `examples/request_workflow_file.json` |
 | Embedded operation payload | JSON object | `operation` when `mode=op` | `{"ExtractRegion": {...}}` |
 | Embedded shell command | string | `shell_line` when `mode=shell` | `"genomes prepare \"Human GRCh38 Ensembl 116\" --timeout-secs 7200"` |
+| Optional reference-preparation preflight | JSON object | `ensure_reference_prepared` when the request should first confirm a local Ensembl-backed reference is prepared | `{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}` |
 
 ## Workflow
 
@@ -345,14 +346,20 @@ task:
      from that repo root so repo-relative assets referenced by the workflow
      keep working after the scaffold is copied into a separate ClawBio
      checkout.
-5. **Execute exactly once**: run the command with the declared timeout and no
-   hidden retries or silent fallback behavior beyond the resolver order above.
-6. **Capture provenance**: record resolver metadata, full command, timestamps,
+5. **Run optional reference preflight**: when `ensure_reference_prepared` is
+   present, run `genomes status ...` first and automatically run
+   `genomes prepare ...` only when the requested reference is not yet prepared.
+   Record the before/after status payloads and exact preflight commands in the
+   output bundle.
+6. **Execute exactly once**: run the main command with the declared timeout and
+   no hidden retries or silent fallback behavior beyond the resolver order
+   above.
+7. **Capture provenance**: record resolver metadata, full command, timestamps,
    exit code, stdout, stderr, and any execution error.
-7. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
+8. **Write the ClawBio bundle**: generate `report.md`, `result.json`,
    `reproducibility/commands.sh`, `reproducibility/environment.yml`, and
    `reproducibility/checksums.sha256`.
-8. **Summarize for the user**: explain what GENtle actually ran, what state or
+9. **Summarize for the user**: explain what GENtle actually ran, what state or
    workflow it touched, and what the next deterministic validation step should
    be.
 
@@ -404,6 +411,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json \
   --output /tmp/gentle_clawbio_rs9923231_context_svg
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_vkorc1_context_svg_auto_prepare.json \
+  --output /tmp/gentle_clawbio_rs9923231_context_demo
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json \
   --output /tmp/gentle_clawbio_rs9923231_context_bed
@@ -476,6 +486,11 @@ Notes:
 - `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
   follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
   fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_workflow_vkorc1_context_svg_auto_prepare.json` is the lowest-hanging
+  graphical demo route:
+  it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
+  `rs9923231` and exports one linear genomic-context SVG into the wrapper
+  bundle
 - `request_seed_qpcr_tp53_splicing.json` is a matching follow-on shell route
   after the TP53 splicing example state is present; it emits the non-mutating
   `gentle.qpcr_seed_request.v1` payload from splicing group `2`
@@ -636,6 +651,11 @@ Apply the following methodology:
   or `raw`.
 - `timeout_secs`: command timeout in seconds; default `180`.
 - `state_path`: optional but strongly recommended for stateful workflows.
+- `ensure_reference_prepared`: optional reference preflight that runs
+  `genomes status ...` and, when needed, `genomes prepare ...` before the main
+  request. This is the recommended way for ClawBio/OpenClaw to say
+  "I can use local Ensembl-backed data here if it is already prepared, and I
+  can prepare it first when that is the only missing step."
 - `workflow_path`: preferred when a saved replayable GENtle workflow already
   exists.
 - Resolver order: explicit `--gentle-cli`, then Docker/OCI-friendly
@@ -660,6 +680,10 @@ Apply the following methodology:
     - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
     - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context
       SVG
+  - `examples/request_workflow_vkorc1_context_svg_auto_prepare.json`
+    - lowest-hanging graphical demo for remote ClawBio/OpenClaw installs
+    - auto-checks/prepares `Human GRCh38 Ensembl 116`, fetches `rs9923231`,
+      and exports a compact linear genomic-context SVG into the wrapper bundle
   - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
     - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
     - exports the fetched locus' gene/mRNA/variation rows with genomic

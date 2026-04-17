@@ -1,0 +1,68 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "ensure_reference_prepared": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "catalog_path": "assets/genomes.json",
+    "cache_dir": "data/genomes",
+    "prepare_timeout_secs": 7200
+  },
+  "workflow": {
+    "run_id": "clawbio_vkorc1_context_svg_auto_prepare",
+    "ops": [
+      {
+        "FetchDbSnpRegion": {
+          "rs_id": "rs9923231",
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "flank_bp": 3000,
+          "output_id": "rs9923231_vkorc1",
+          "annotation_scope": "full",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "SequencePanel",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MapPanel",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Features",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "RestrictionEnzymes",
+          "visible": false
+        }
+      },
+      {
+        "SetLinearViewport": {
+          "start_bp": 2113,
+          "span_bp": 1388
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "rs9923231_vkorc1",
+          "mode": "Linear",
+          "path": "artifacts/rs9923231_vkorc1.context.demo.svg"
+        }
+      }
+    ]
+  },
+  "expected_artifacts": [
+    "artifacts/rs9923231_vkorc1.context.demo.svg"
+  ],
+  "timeout_secs": 1200
+}

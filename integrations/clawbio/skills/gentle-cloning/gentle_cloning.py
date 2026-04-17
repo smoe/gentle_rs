@@ -36,6 +36,16 @@ class Request:
     workflow: Any = None
     workflow_path: str | None = None
     expected_artifacts: list[str] | None = None
+    ensure_reference_prepared: Any = None
+
+
+@dataclasses.dataclass
+class EnsureReferencePrepared:
+    genome_id: str
+    catalog_path: str | None = None
+    cache_dir: str | None = None
+    status_timeout_secs: int = 300
+    prepare_timeout_secs: int = 7200
 
 
 @dataclasses.dataclass
@@ -189,6 +199,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         workflow=payload.get("workflow"),
         workflow_path=payload.get("workflow_path"),
         expected_artifacts=payload.get("expected_artifacts"),
+        ensure_reference_prepared=payload.get("ensure_reference_prepared"),
     )
     if request.expected_artifacts is not None:
         if not isinstance(request.expected_artifacts, list):
@@ -213,6 +224,40 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         raise SkillError(
             "unsupported mode. Use one of: capabilities, state-summary, shell, "
             "op, workflow, raw"
+        )
+    if request.ensure_reference_prepared is not None:
+        ensure = request.ensure_reference_prepared
+        if not isinstance(ensure, dict):
+            raise SkillError(
+                "ensure_reference_prepared must be an object when present"
+            )
+        genome_id = str(ensure.get("genome_id", "")).strip()
+        if not genome_id:
+            raise SkillError(
+                "ensure_reference_prepared requires non-empty string field 'genome_id'"
+            )
+        status_timeout_secs = int(ensure.get("status_timeout_secs", 300))
+        prepare_timeout_secs = int(ensure.get("prepare_timeout_secs", 7200))
+        if status_timeout_secs <= 0:
+            raise SkillError(
+                "ensure_reference_prepared.status_timeout_secs must be > 0"
+            )
+        if prepare_timeout_secs <= 0:
+            raise SkillError(
+                "ensure_reference_prepared.prepare_timeout_secs must be > 0"
+            )
+        for optional_path_field in ("catalog_path", "cache_dir"):
+            value = ensure.get(optional_path_field)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise SkillError(
+                    f"ensure_reference_prepared.{optional_path_field} must be a non-empty string when present"
+                )
+        request.ensure_reference_prepared = EnsureReferencePrepared(
+            genome_id=genome_id,
+            catalog_path=ensure.get("catalog_path"),
+            cache_dir=ensure.get("cache_dir"),
+            status_timeout_secs=status_timeout_secs,
+            prepare_timeout_secs=prepare_timeout_secs,
         )
     return request
 
@@ -314,6 +359,155 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
     return args
 
 
+def _build_reference_status_args(reference: EnsureReferencePrepared) -> list[str]:
+    args = ["genomes", "status", reference.genome_id]
+    if reference.catalog_path:
+        args.extend(["--catalog", reference.catalog_path])
+    if reference.cache_dir:
+        args.extend(["--cache-dir", reference.cache_dir])
+    return args
+
+
+def _build_reference_prepare_args(reference: EnsureReferencePrepared) -> list[str]:
+    args = [
+        "genomes",
+        "prepare",
+        reference.genome_id,
+        "--timeout-secs",
+        str(reference.prepare_timeout_secs),
+    ]
+    if reference.catalog_path:
+        args.extend(["--catalog", reference.catalog_path])
+    if reference.cache_dir:
+        args.extend(["--cache-dir", reference.cache_dir])
+    return args
+
+
+def _run_cli_command(
+    resolution: CliResolution,
+    cli_args: list[str],
+    execution_cwd: Path,
+    timeout_secs: int,
+) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
+    command = resolution.argv_prefix + cli_args
+    started_utc = _now_utc_iso()
+    run_result = subprocess.run(
+        command,
+        cwd=execution_cwd,
+        capture_output=True,
+        text=True,
+        timeout=timeout_secs,
+        check=False,
+    )
+    ended_utc = _now_utc_iso()
+    step = {
+        "command": command,
+        "started_utc": started_utc,
+        "ended_utc": ended_utc,
+        "exit_code": run_result.returncode,
+        "stdout": run_result.stdout,
+        "stderr": run_result.stderr,
+        "status": ("ok" if run_result.returncode == 0 else "command_failed"),
+    }
+    return run_result, step
+
+
+def _reference_preflight_record(reference: EnsureReferencePrepared) -> dict[str, Any]:
+    return {
+        "genome_id": reference.genome_id,
+        "catalog_path": reference.catalog_path,
+        "cache_dir": reference.cache_dir,
+        "status_timeout_secs": reference.status_timeout_secs,
+        "prepare_timeout_secs": reference.prepare_timeout_secs,
+        "prepared_before": None,
+        "prepared_after": None,
+        "prepare_attempted": False,
+        "status_before": None,
+        "status_after": None,
+        "steps": [],
+        "status": "pending",
+    }
+
+
+def _parse_json_stdout(stdout: str, context: str) -> Any:
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError as e:
+        raise SkillError(f"{context} did not return valid JSON: {e}") from e
+
+
+def _ensure_reference_prepared(
+    reference: EnsureReferencePrepared,
+    resolution: CliResolution,
+    execution_cwd: Path,
+    record: dict[str, Any],
+) -> None:
+    status_args = _build_reference_status_args(reference)
+    status_result, status_step = _run_cli_command(
+        resolution,
+        status_args,
+        execution_cwd,
+        reference.status_timeout_secs,
+    )
+    record["steps"].append(status_step)
+    if status_result.returncode != 0:
+        record["status"] = "failed"
+        raise SkillError(
+            "reference-status preflight failed; inspect preflight step stderr in result.json/report.md"
+        )
+    status_payload = _parse_json_stdout(
+        status_result.stdout,
+        f"genomes status {reference.genome_id}",
+    )
+    record["status_before"] = status_payload
+    record["prepared_before"] = bool(status_payload.get("prepared"))
+    if record["prepared_before"]:
+        record["prepared_after"] = True
+        record["status_after"] = status_payload
+        record["status"] = "already_prepared"
+        return
+
+    prepare_args = _build_reference_prepare_args(reference)
+    prepare_result, prepare_step = _run_cli_command(
+        resolution,
+        prepare_args,
+        execution_cwd,
+        reference.prepare_timeout_secs,
+    )
+    record["steps"].append(prepare_step)
+    record["prepare_attempted"] = True
+    if prepare_result.returncode != 0:
+        record["status"] = "failed"
+        raise SkillError(
+            "reference-prepare preflight failed; inspect preflight step stderr in result.json/report.md"
+        )
+
+    status_after_result, status_after_step = _run_cli_command(
+        resolution,
+        status_args,
+        execution_cwd,
+        reference.status_timeout_secs,
+    )
+    record["steps"].append(status_after_step)
+    if status_after_result.returncode != 0:
+        record["status"] = "failed"
+        raise SkillError(
+            "post-prepare reference-status preflight failed; inspect preflight step stderr in result.json/report.md"
+        )
+    status_after_payload = _parse_json_stdout(
+        status_after_result.stdout,
+        f"post-prepare genomes status {reference.genome_id}",
+    )
+    record["status_after"] = status_after_payload
+    record["prepared_after"] = bool(status_after_payload.get("prepared"))
+    if not record["prepared_after"]:
+        record["status"] = "failed"
+        raise SkillError(
+            "reference-prepare completed but the requested reference still is not reported as prepared"
+        )
+    record["status"] = "prepared_during_run"
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as handle:
@@ -345,6 +539,7 @@ def _write_report(
     command: list[str] | None,
     run_result: subprocess.CompletedProcess[str] | None,
     collected_artifacts: list[dict[str, str]],
+    reference_preflight: dict[str, Any] | None,
     started_utc: str,
     ended_utc: str,
     status: str,
@@ -377,9 +572,69 @@ def _write_report(
             lines.append(
                 f"  - `{artifact['declared_path']}` -> `{artifact['copied_path']}`"
             )
+    if reference_preflight:
+        lines.append(
+            f"- Reference preflight: `{reference_preflight.get('status', 'unknown')}`"
+        )
     lines.extend(
         [
             "",
+        ]
+    )
+    if reference_preflight:
+        lines.extend(
+            [
+                "## Reference Preflight",
+                "",
+                f"- Genome: `{reference_preflight['genome_id']}`",
+                f"- Prepared before run: `{reference_preflight['prepared_before']}`",
+                f"- Prepare attempted: `{reference_preflight['prepare_attempted']}`",
+                f"- Prepared after run: `{reference_preflight['prepared_after']}`",
+                "",
+            ]
+        )
+        status_before = reference_preflight.get("status_before")
+        if isinstance(status_before, dict):
+            lines.extend(
+                [
+                    "### Status Before",
+                    "",
+                    "```json",
+                    json.dumps(status_before, indent=2, ensure_ascii=True),
+                    "```",
+                    "",
+                ]
+            )
+        status_after = reference_preflight.get("status_after")
+        if (
+            isinstance(status_after, dict)
+            and status_after != status_before
+        ):
+            lines.extend(
+                [
+                    "### Status After",
+                    "",
+                    "```json",
+                    json.dumps(status_after, indent=2, ensure_ascii=True),
+                    "```",
+                    "",
+                ]
+            )
+        lines.extend(["### Preflight Commands", ""])
+        for idx, step in enumerate(reference_preflight.get("steps", []), start=1):
+            step_command = " ".join(
+                shlex.quote(v) for v in step.get("command", [])
+            ) or "(none)"
+            lines.extend(
+                [
+                    f"{idx}. `{step.get('status', 'unknown')}`",
+                    f"   Command: `{step_command}`",
+                    f"   Exit code: `{step.get('exit_code')}`",
+                ]
+            )
+        lines.extend([""])
+    lines.extend(
+        [
             "## Command",
             "",
             "```bash",
@@ -440,6 +695,7 @@ def main() -> int:
     status = "failed"
     error_message: str | None = None
     collected_artifacts: list[dict[str, str]] = []
+    reference_preflight: dict[str, Any] | None = None
 
     try:
         if args.demo:
@@ -460,17 +716,26 @@ def main() -> int:
                 raise
             raise
 
-        cli_args = _build_cli_args(request, Path(__file__))
-        command = resolution.argv_prefix + cli_args
         execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
-        run_result = subprocess.run(
-            command,
-            cwd=execution_cwd,
-            capture_output=True,
-            text=True,
-            timeout=request.timeout_secs,
-            check=False,
+        if request.ensure_reference_prepared is not None:
+            reference_preflight = _reference_preflight_record(
+                request.ensure_reference_prepared
+            )
+            _ensure_reference_prepared(
+                request.ensure_reference_prepared,
+                resolution,
+                execution_cwd,
+                reference_preflight,
+            )
+
+        cli_args = _build_cli_args(request, Path(__file__))
+        run_result, main_step = _run_cli_command(
+            resolution,
+            cli_args,
+            execution_cwd,
+            request.timeout_secs,
         )
+        command = main_step["command"]
         status = "ok" if run_result.returncode == 0 else "command_failed"
         if run_result.returncode != 0:
             error_message = (
@@ -509,20 +774,29 @@ def main() -> int:
         command=command,
         run_result=run_result,
         collected_artifacts=collected_artifacts,
+        reference_preflight=reference_preflight,
         started_utc=started,
         ended_utc=ended,
         status=status,
         error_message=error_message,
     )
 
-    command_line = " ".join(shlex.quote(v) for v in command) if command else "# no command executed"
+    command_lines = [
+        " ".join(shlex.quote(v) for v in step.get("command", []))
+        for step in (reference_preflight or {}).get("steps", [])
+        if step.get("command")
+    ]
+    if command:
+        command_lines.append(" ".join(shlex.quote(v) for v in command))
+    if not command_lines:
+        command_lines = ["# no command executed"]
     commands_text = "\n".join(
         [
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             f"# generated_utc: {ended}",
             f"cd {shlex.quote(str(execution_cwd))}",
-            command_line,
+            *command_lines,
             "",
         ]
     )
@@ -543,6 +817,9 @@ def main() -> int:
         "stdout": (run_result.stdout if run_result else ""),
         "stderr": (run_result.stderr if run_result else ""),
         "error": error_message,
+        "preflight": {
+            "reference_preparation": reference_preflight,
+        },
         "artifacts": {
             "report_md": str(report_path),
             "result_json": str(result_path),
