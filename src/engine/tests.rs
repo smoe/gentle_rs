@@ -26695,6 +26695,129 @@ fn refresh_construct_reasoning_graph_preserves_annotation_candidate_statuses() {
 }
 
 #[test]
+fn write_back_construct_reasoning_annotation_candidate_materializes_generated_feature() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("reasoning_writeback_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_writeback_demo", None, None)
+        .expect("build graph");
+    let candidate_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Promoter)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("generated promoter candidate");
+    engine
+        .set_construct_reasoning_annotation_candidate_status(
+            &graph.graph_id,
+            &candidate_id,
+            EditableStatus::Accepted,
+        )
+        .expect("accept annotation candidate");
+
+    let (updated_graph, writeback) = engine
+        .write_back_construct_reasoning_annotation_candidate(&graph.graph_id, &candidate_id)
+        .expect("write back annotation candidate");
+
+    assert!(writeback.created);
+    assert!(!writeback.already_present);
+    assert_eq!(writeback.annotation_id, candidate_id);
+    assert!(updated_graph.annotation_candidates.iter().any(|candidate| {
+        candidate.role == ConstructRole::Promoter
+            && candidate.editable_status == EditableStatus::Accepted
+    }));
+
+    let dna = engine
+        .state()
+        .sequences
+        .get("reasoning_writeback_demo")
+        .expect("updated sequence");
+    let written_feature = dna
+        .features()
+        .iter()
+        .find(|feature| {
+            feature
+                .qualifier_values("construct_reasoning_annotation_id")
+                .any(|value| value == candidate_id.as_str())
+        })
+        .expect("written feature");
+    assert_eq!(written_feature.kind.to_string(), "promoter");
+    assert!(
+        written_feature
+            .qualifier_values("generated_by")
+            .any(|value| value == "ConstructReasoningWriteAnnotation")
+    );
+}
+
+#[test]
+fn write_back_construct_reasoning_annotation_candidate_reports_existing_feature_backing() {
+    let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(2, 10),
+        qualifiers: vec![
+            ("label".into(), Some("Confirmed exon".to_string())),
+            ("evidence".into(), Some("supported by cDNA".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("reasoning_writeback_existing".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("reasoning_writeback_existing", None, None)
+        .expect("build graph");
+    let candidate_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Exon)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("existing exon candidate");
+    engine
+        .set_construct_reasoning_annotation_candidate_status(
+            &graph.graph_id,
+            &candidate_id,
+            EditableStatus::Accepted,
+        )
+        .expect("accept annotation candidate");
+
+    let (_, writeback) = engine
+        .write_back_construct_reasoning_annotation_candidate(&graph.graph_id, &candidate_id)
+        .expect("write back annotation candidate");
+
+    assert!(!writeback.created);
+    assert!(writeback.already_present);
+    assert!(
+        writeback
+            .notes
+            .iter()
+            .any(|note| { note.contains("already backed by an ordinary sequence feature") })
+    );
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_variant_routine_planning_context() {
     let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

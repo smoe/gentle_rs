@@ -647,6 +647,17 @@ fn parse_construct_reasoning_protein_handoff_command_family() {
             && editable_status == EditableStatus::Accepted
     ));
 
+    let write_annotation =
+        parse_shell_line("construct-reasoning write-annotation graph_1 annotation_promoter")
+            .expect("parse construct-reasoning write-annotation");
+    assert!(matches!(
+        write_annotation,
+        ShellCommand::ConstructReasoningWriteAnnotation {
+            graph_id,
+            annotation_id,
+        } if graph_id == "graph_1" && annotation_id == "annotation_promoter"
+    ));
+
     let export = parse_shell_line("construct-reasoning export-graph graph_1 out.json")
         .expect("parse construct-reasoning export-graph");
     assert!(matches!(
@@ -1260,6 +1271,85 @@ fn execute_construct_reasoning_set_annotation_status_updates_graph_and_summary()
             }))
             .unwrap_or(false)
     );
+}
+
+#[test]
+fn execute_construct_reasoning_write_annotation_materializes_generated_feature() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            2000, 2613,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("VKORC1".to_string())),
+            ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+            ("label".into(), Some("VKORC1-201".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("construct_reasoning_cli_writeback".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "construct_reasoning_cli_writeback",
+            None,
+            Some("graph_annotation_writeback_cli"),
+        )
+        .expect("build graph");
+    let annotation_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Promoter)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("generated promoter annotation candidate");
+    engine
+        .set_construct_reasoning_annotation_candidate_status(
+            &graph.graph_id,
+            &annotation_id,
+            EditableStatus::Accepted,
+        )
+        .expect("accept annotation candidate");
+
+    let output = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningWriteAnnotation {
+            graph_id: graph.graph_id.clone(),
+            annotation_id: annotation_id.clone(),
+        },
+    )
+    .expect("write back construct-reasoning annotation");
+
+    assert!(output.state_changed);
+    assert_eq!(output.output["writeback"]["created"].as_bool(), Some(true));
+    assert_eq!(
+        output.output["writeback"]["annotation_id"].as_str(),
+        Some(annotation_id.as_str())
+    );
+    assert!(
+        output.output["summary"]["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str()
+                    .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
+            }))
+            .unwrap_or(false)
+    );
+
+    let persisted_dna = engine
+        .state()
+        .sequences
+        .get("construct_reasoning_cli_writeback")
+        .expect("persisted sequence");
+    assert!(persisted_dna.features().iter().any(|feature| {
+        feature
+            .qualifier_values("construct_reasoning_annotation_id")
+            .any(|value| value == annotation_id.as_str())
+    }));
 }
 
 #[test]

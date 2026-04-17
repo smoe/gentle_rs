@@ -398,10 +398,10 @@ Reference genome capability status:
 
 Construct-reasoning inspection capability status:
 
-- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning export-graph`)
-- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`)
-- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`)
-- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_set_annotation_status`)
+- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning write-annotation`, `construct-reasoning export-graph`)
+- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_set_annotation_status`, `construct_reasoning_write_annotation`)
 
 Agent-assistant capability status:
 
@@ -731,6 +731,7 @@ UniProt mapping capability status:
   - `construct-reasoning list-graphs [SEQ_ID]`
   - `construct-reasoning show-graph GRAPH_ID`
   - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
+  - `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
   - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
   backed by `BuildProteinToDnaHandoffReasoning` plus the existing persisted
   construct-reasoning graph store.
@@ -743,6 +744,13 @@ UniProt mapping capability status:
     annotation candidate in place and returns:
     - the updated portable graph
     - the updated `annotation_candidate`
+    - the same shared `summary` block exposed by `construct-reasoning show-graph`
+  - `construct-reasoning write-annotation` materializes one accepted or locked
+    generated annotation candidate as an ordinary sequence feature and returns:
+    - the refreshed portable graph
+    - the refreshed or already-backed `annotation_candidate`
+    - a `writeback` report (`gentle.annotation_candidate_writeback.v1`) with
+      `created`, `already_present`, and the resulting `feature_id`
     - the same shared `summary` block exposed by `construct-reasoning show-graph`
   - for adapter/linker restriction-capture facts, that summary now surfaces the
     same shared-engine review as the GUI inspector:

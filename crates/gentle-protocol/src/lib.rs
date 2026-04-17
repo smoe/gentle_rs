@@ -16,8 +16,9 @@ use std::{
 };
 
 pub use construct_reasoning::{
-    ANNOTATION_CANDIDATE_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, CONSTRUCT_CANDIDATE_SCHEMA,
+    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+    AnnotationCandidate, AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA,
     CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
     ConstructRole, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,

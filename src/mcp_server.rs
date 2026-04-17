@@ -423,6 +423,30 @@ fn tool_list() -> Value {
             }
         },
         {
+            "name": "construct_reasoning_write_annotation",
+            "title": "Write Back Construct Reasoning Annotation",
+            "description": "Materialize one accepted or locked generated construct-reasoning annotation candidate as an ordinary sequence feature through the shared `construct-reasoning write-annotation` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to mutate."
+                    },
+                    "annotation_id": {
+                        "type": "string",
+                        "description": "Stored accepted or locked generated annotation-candidate id to materialize as a sequence feature."
+                    }
+                },
+                "required": ["graph_id", "annotation_id"],
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "helper_interpretation",
             "title": "Helper Interpretation",
             "description": "Return the normalized helper-construct interpretation for one helper id or alias.",
@@ -1106,6 +1130,35 @@ fn construct_reasoning_set_annotation_status_tool_result(
     }
 }
 
+fn construct_reasoning_write_annotation_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let annotation_id = match required_string_arg(&args, "annotation_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        vec![
+            "construct-reasoning".to_string(),
+            "write-annotation".to_string(),
+            graph_id,
+            annotation_id,
+        ],
+        "construct_reasoning_write_annotation",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn helper_interpretation_tool_result(arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let helper_id = match required_string_arg(&args, "helper_id") {
@@ -1662,6 +1715,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 &params.arguments,
             )
         }
+        "construct_reasoning_write_annotation" => {
+            construct_reasoning_write_annotation_tool_result(default_state_path, &params.arguments)
+        }
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
@@ -1829,6 +1885,18 @@ mod tests {
     };
     use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
+
+    fn normalize_construct_reasoning_status_output(
+        mut value: serde_json::Value,
+    ) -> serde_json::Value {
+        if let Some(graph) = value
+            .get_mut("graph")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            graph.remove("generated_at_unix_ms");
+        }
+        value
+    }
 
     fn frame(value: &Value) -> Vec<u8> {
         let body = serde_json::to_vec(value).expect("serialize test message");
@@ -2798,7 +2866,48 @@ mod tests {
             mcp_set.pointer("/result/isError").and_then(Value::as_bool),
             Some(false)
         );
-        assert_eq!(mcp_set["result"]["structuredContent"], expected_set);
+        assert_eq!(
+            normalize_construct_reasoning_status_output(
+                mcp_set["result"]["structuredContent"].clone()
+            ),
+            normalize_construct_reasoning_status_output(expected_set)
+        );
+
+        let expected_writeback = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load accepted state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "construct-reasoning".to_string(),
+                "write-annotation".to_string(),
+                graph.graph_id.clone(),
+                annotation_id.clone(),
+            ])
+            .expect("parse shell write-annotation");
+            execute_shell_command(&mut engine, &command)
+                .expect("execute shell write-annotation")
+                .output
+        };
+        let mcp_writeback = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "construct_reasoning_write_annotation",
+            json!({
+                "state_path": state_path_str,
+                "graph_id": graph.graph_id.clone(),
+                "annotation_id": annotation_id
+            }),
+        );
+        assert_eq!(
+            mcp_writeback
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            normalize_construct_reasoning_status_output(
+                mcp_writeback["result"]["structuredContent"].clone()
+            ),
+            normalize_construct_reasoning_status_output(expected_writeback)
+        );
     }
 
     #[test]

@@ -9644,6 +9644,85 @@ mod tests {
     }
 
     #[test]
+    fn write_back_construct_reasoning_annotation_candidate_refreshes_sequence_and_status() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::Complement(Box::new(Location::simple_range(2000, 2613))),
+            qualifiers: vec![
+                ("gene".into(), Some("VKORC1".to_string())),
+                ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+                ("label".into(), Some("VKORC1-201".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_writeback".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "seq_reasoning_writeback",
+                None,
+                Some("graph_reasoning_writeback"),
+            )
+            .expect("build graph");
+        let candidate = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.role == ConstructRole::Promoter)
+            .cloned()
+            .expect("generated promoter annotation candidate");
+        engine
+            .set_construct_reasoning_annotation_candidate_status(
+                &graph.graph_id,
+                &candidate.annotation_id,
+                EditableStatus::Accepted,
+            )
+            .expect("accept annotation candidate");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(
+            dna,
+            Some("seq_reasoning_writeback".to_string()),
+            Some(engine.clone()),
+        );
+
+        area.focus_construct_reasoning_graph("graph_reasoning_writeback");
+        area.refresh_description_cache();
+        area.write_back_construct_reasoning_annotation_candidate(
+            "graph_reasoning_writeback",
+            &candidate.annotation_id,
+        );
+
+        let stored_dna = engine
+            .read()
+            .expect("engine")
+            .state()
+            .sequences
+            .get("seq_reasoning_writeback")
+            .cloned()
+            .expect("stored sequence");
+        assert!(stored_dna.features().iter().any(|feature| {
+            feature
+                .qualifier_values("construct_reasoning_annotation_id")
+                .any(|value| value == candidate.annotation_id.as_str())
+        }));
+        assert!(area.op_status.contains("Wrote back annotation candidate"));
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert!(reasoning.annotation_entries.iter().any(|entry| {
+            entry
+                .detail_lines
+                .iter()
+                .any(|line| line.contains("status: accepted"))
+        }));
+    }
+
+    #[test]
     fn sync_from_engine_display_does_not_rebuild_construct_reasoning_overlay_each_frame() {
         let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -10642,6 +10721,7 @@ struct ConstructReasoningInspectorEntry {
     warning_lines: Vec<String>,
     annotation_id: Option<String>,
     editable_status: Option<EditableStatus>,
+    source_kind: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -18003,16 +18083,63 @@ impl MainAreaDna {
         }
     }
 
+    fn write_back_construct_reasoning_annotation_candidate(
+        &mut self,
+        graph_id: &str,
+        annotation_id: &str,
+    ) {
+        let Some(engine) = &self.engine else {
+            self.op_status =
+                "Could not write back annotation candidate: no engine is attached".to_string();
+            return;
+        };
+        let outcome = engine
+            .write()
+            .unwrap()
+            .write_back_construct_reasoning_annotation_candidate(graph_id, annotation_id);
+        match outcome {
+            Ok((graph, writeback)) => {
+                self.focused_construct_reasoning_graph_id = Some(graph.graph_id.clone());
+                self.construct_reasoning_overlay_sync_key = None;
+                self.refresh_construct_reasoning_overlay_if_needed(true);
+                self.refresh_description_cache();
+                if writeback.created {
+                    self.op_status = format!(
+                        "Wrote back annotation candidate '{}' as feature '{}' on '{}'",
+                        annotation_id, writeback.feature_kind, writeback.seq_id
+                    );
+                } else if writeback.already_present {
+                    self.op_status = format!(
+                        "Annotation candidate '{}' is already represented as a sequence feature",
+                        annotation_id
+                    );
+                } else {
+                    self.op_status = format!(
+                        "No feature was written back for annotation candidate '{}'",
+                        annotation_id
+                    );
+                }
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not write back annotation candidate '{}': {}",
+                    annotation_id, err.message
+                );
+            }
+        }
+    }
+
     fn render_construct_reasoning_annotation_candidate_actions(
         &mut self,
         ui: &mut egui::Ui,
         graph_id: &str,
         annotation_id: &str,
         editable_status: EditableStatus,
+        source_kind: &str,
     ) -> Option<EditableStatus> {
+        let status_mutable = editable_status != EditableStatus::Locked;
         if editable_status == EditableStatus::Locked {
             ui.small("This annotation candidate is locked.");
-            return None;
         }
         let mut next_status: Option<EditableStatus> = None;
         ui.horizontal_wrapped(|ui| {
@@ -18023,7 +18150,7 @@ impl MainAreaDna {
             };
             if ui
                 .add_enabled(
-                    editable_status != EditableStatus::Accepted,
+                    status_mutable && editable_status != EditableStatus::Accepted,
                     egui::Button::new(accept_label),
                 )
                 .on_hover_text(
@@ -18040,7 +18167,7 @@ impl MainAreaDna {
             };
             if ui
                 .add_enabled(
-                    editable_status != EditableStatus::Rejected,
+                    status_mutable && editable_status != EditableStatus::Rejected,
                     egui::Button::new(reject_label),
                 )
                 .on_hover_text(
@@ -18052,7 +18179,7 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
-                    editable_status != EditableStatus::Draft,
+                    status_mutable && editable_status != EditableStatus::Draft,
                     egui::Button::new("Mark Draft"),
                 )
                 .on_hover_text(
@@ -18061,6 +18188,19 @@ impl MainAreaDna {
                 .clicked()
             {
                 next_status = Some(EditableStatus::Draft);
+            }
+            let writeback_enabled = matches!(
+                editable_status,
+                EditableStatus::Accepted | EditableStatus::Locked
+            ) && source_kind.trim() == "generated_annotation";
+            if ui
+                .add_enabled(writeback_enabled, egui::Button::new("Write Back"))
+                .on_hover_text(
+                    "Write this accepted generated annotation candidate back as an ordinary sequence feature.",
+                )
+                .clicked()
+            {
+                self.write_back_construct_reasoning_annotation_candidate(graph_id, annotation_id);
             }
         });
         if let Some(next_status) = next_status {
@@ -18539,6 +18679,7 @@ impl MainAreaDna {
             warning_lines,
             annotation_id: None,
             editable_status: None,
+            source_kind: None,
         }
     }
 
@@ -18564,6 +18705,7 @@ impl MainAreaDna {
             warning_lines: vec![],
             annotation_id: None,
             editable_status: None,
+            source_kind: None,
         }
     }
 
@@ -18618,6 +18760,7 @@ impl MainAreaDna {
             warning_lines,
             annotation_id: Some(candidate.annotation_id.clone()),
             editable_status: Some(candidate.editable_status),
+            source_kind: Some(candidate.source_kind.clone()),
         }
     }
 
@@ -43333,6 +43476,7 @@ impl MainAreaDna {
                     &overlay.graph_id,
                     &span.annotation_id,
                     span.editable_status,
+                    &span.source_kind,
                 );
             }
             if let Some(reasoning) = self.description_cache_construct_reasoning.clone() {
@@ -43393,6 +43537,7 @@ impl MainAreaDna {
                                         &reasoning_graph_id,
                                         annotation_id,
                                         editable_status,
+                                        entry.source_kind.as_deref().unwrap_or_default(),
                                     );
                                 }
                                 for line in &entry.detail_lines {

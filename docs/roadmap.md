@@ -4398,6 +4398,13 @@ Post-baseline follow-ups:
     in a muted form. The same mutation route is now also exposed through the
     JS/Lua wrappers and the MCP tool surface so adapter parity holds for
     reviewed annotation-candidate status as well.
+  - Done (2026-04-18, annotation-candidate write-back): accepted or locked
+    generated annotation candidates can now be written back as ordinary
+    sequence features through the shared engine route
+    (`construct-reasoning write-annotation`). GUI, CLI/shared shell, JS, Lua,
+    and MCP all use that same mutation contract, and the returned
+    `gentle.annotation_candidate_writeback.v1` report makes explicit whether a
+    new feature was created or the candidate was already backed by one.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

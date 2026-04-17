@@ -462,6 +462,9 @@ const DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP: usize = 200;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP: usize = 500;
 const DEFAULT_PROMOTER_REPORTER_MAX_CANDIDATES: usize = 5;
 const ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG: &str = "annotate_promoter_windows";
+const CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_TAG: &str = "generated";
+const CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_BY: &str =
+    "ConstructReasoningWriteAnnotation";
 
 fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
     1
@@ -13115,6 +13118,17 @@ impl GentleEngine {
         )
     }
 
+    fn construct_reasoning_annotation_candidate_span_key(
+        candidate: &AnnotationCandidate,
+    ) -> (usize, usize, ConstructRole, String) {
+        (
+            candidate.start_0based,
+            candidate.end_0based_exclusive,
+            candidate.role,
+            candidate.label.trim().to_ascii_lowercase(),
+        )
+    }
+
     fn preserve_construct_reasoning_annotation_candidate_statuses(
         annotation_candidates: &mut [AnnotationCandidate],
         previous_graph: Option<&ConstructReasoningGraph>,
@@ -13137,6 +13151,16 @@ impl GentleEngine {
                 )
             })
             .collect::<BTreeMap<_, _>>();
+        let by_span_key = previous_graph
+            .annotation_candidates
+            .iter()
+            .map(|candidate| {
+                (
+                    Self::construct_reasoning_annotation_candidate_span_key(candidate),
+                    candidate.editable_status,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         for candidate in annotation_candidates.iter_mut() {
             let preserved = by_annotation_id
                 .get(candidate.annotation_id.as_str())
@@ -13144,6 +13168,13 @@ impl GentleEngine {
                 .or_else(|| {
                     by_match_key
                         .get(&Self::construct_reasoning_annotation_candidate_match_key(
+                            candidate,
+                        ))
+                        .copied()
+                })
+                .or_else(|| {
+                    by_span_key
+                        .get(&Self::construct_reasoning_annotation_candidate_span_key(
                             candidate,
                         ))
                         .copied()
@@ -13571,6 +13602,320 @@ impl GentleEngine {
         store.graphs.insert(graph.graph_id.clone(), graph.clone());
         self.write_construct_reasoning_store(store)?;
         Ok(graph)
+    }
+
+    fn construct_reasoning_annotation_candidate_is_writeback_eligible(
+        candidate: &AnnotationCandidate,
+        evidence: &DesignEvidence,
+    ) -> bool {
+        candidate.source_kind == "generated_annotation"
+            && evidence.scope == EvidenceScope::SequenceSpan
+    }
+
+    fn construct_reasoning_annotation_candidate_feature_kind(role: ConstructRole) -> &'static str {
+        match role {
+            ConstructRole::Gene => "gene",
+            ConstructRole::Transcript => "mRNA",
+            ConstructRole::Exon => "exon",
+            ConstructRole::Cds => "CDS",
+            ConstructRole::Utr5Prime => "5'UTR",
+            ConstructRole::Utr3Prime => "3'UTR",
+            ConstructRole::Promoter => "promoter",
+            ConstructRole::Enhancer => "enhancer",
+            ConstructRole::Terminator => "terminator",
+            ConstructRole::Variant => "variation",
+            ConstructRole::Linker => "misc_feature",
+            ConstructRole::Tag => "misc_feature",
+            ConstructRole::SignalPeptide => "sig_peptide",
+            ConstructRole::LocalizationSignal => "misc_feature",
+            ConstructRole::HomologyArm => "misc_feature",
+            ConstructRole::FusionBoundary => "misc_feature",
+            ConstructRole::Tfbs | ConstructRole::SpliceBoundary => "regulatory",
+            ConstructRole::RestrictionSite
+            | ConstructRole::ContextBaggage
+            | ConstructRole::Other => "misc_feature",
+        }
+    }
+
+    fn construct_reasoning_annotation_candidate_feature_location(
+        candidate: &AnnotationCandidate,
+    ) -> gb_io::seq::Location {
+        let base = gb_io::seq::Location::simple_range(
+            candidate.start_0based as i64,
+            candidate.end_0based_exclusive as i64,
+        );
+        if candidate.strand.as_deref() == Some("-") {
+            gb_io::seq::Location::Complement(Box::new(base))
+        } else {
+            base
+        }
+    }
+
+    fn construct_reasoning_feature_matches_annotation_candidate(
+        feature: &gb_io::seq::Feature,
+        annotation_id: &str,
+    ) -> bool {
+        Self::feature_has_qualifier_value(
+            feature,
+            "construct_reasoning_annotation_id",
+            annotation_id,
+        )
+    }
+
+    fn build_construct_reasoning_annotation_candidate_feature(
+        graph_id: &str,
+        candidate: &AnnotationCandidate,
+        evidence: &DesignEvidence,
+    ) -> gb_io::seq::Feature {
+        let label = candidate
+            .label
+            .trim()
+            .to_string()
+            .chars()
+            .collect::<String>();
+        let feature_kind =
+            Self::construct_reasoning_annotation_candidate_feature_kind(candidate.role);
+        let display_label = if label.trim().is_empty() {
+            candidate.role.as_str().to_string()
+        } else {
+            label
+        };
+        let mut note = format!(
+            "Written back from construct reasoning graph '{}' candidate '{}' (source_kind='{}').",
+            graph_id, candidate.annotation_id, candidate.source_kind
+        );
+        if !candidate.rationale.trim().is_empty() {
+            note.push(' ');
+            note.push_str(candidate.rationale.trim());
+        }
+        let mut qualifiers = vec![
+            ("label".into(), Some(display_label)),
+            ("note".into(), Some(note)),
+            (
+                "gentle_generated".into(),
+                Some(CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_TAG.to_string()),
+            ),
+            (
+                "generated_by".into(),
+                Some(CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_BY.to_string()),
+            ),
+            (
+                "construct_reasoning_graph_id".into(),
+                Some(graph_id.to_string()),
+            ),
+            (
+                "construct_reasoning_annotation_id".into(),
+                Some(candidate.annotation_id.clone()),
+            ),
+            (
+                "construct_reasoning_evidence_id".into(),
+                Some(candidate.evidence_id.clone()),
+            ),
+            (
+                "construct_reasoning_source_kind".into(),
+                Some(candidate.source_kind.clone()),
+            ),
+            (
+                "construct_reasoning_editable_status".into(),
+                Some(candidate.editable_status.as_str().to_string()),
+            ),
+            (
+                "construct_reasoning_role".into(),
+                Some(candidate.role.as_str().to_string()),
+            ),
+            (
+                "construct_reasoning_evidence_provenance_kind".into(),
+                Some(evidence.provenance_kind.clone()),
+            ),
+        ];
+        if let Some(strand) = candidate.strand.as_deref() {
+            qualifiers.push(("strand".into(), Some(strand.to_string())));
+        }
+        if let Some(status) = candidate.transcript_context_status.as_deref() {
+            qualifiers.push(("transcript_context_status".into(), Some(status.to_string())));
+        }
+        if !candidate.effect_tags.is_empty() {
+            qualifiers.push((
+                "construct_reasoning_effect_tags".into(),
+                Some(candidate.effect_tags.join(",")),
+            ));
+        }
+        if !candidate.supporting_fact_ids.is_empty() {
+            qualifiers.push((
+                "construct_reasoning_supporting_fact_ids".into(),
+                Some(candidate.supporting_fact_ids.join(",")),
+            ));
+        }
+        if !candidate.supporting_decision_ids.is_empty() {
+            qualifiers.push((
+                "construct_reasoning_supporting_decision_ids".into(),
+                Some(candidate.supporting_decision_ids.join(",")),
+            ));
+        }
+        match candidate.role {
+            ConstructRole::Promoter => {
+                qualifiers.push(("regulatory_class".into(), Some("promoter".to_string())));
+            }
+            ConstructRole::Enhancer => {
+                qualifiers.push(("regulatory_class".into(), Some("enhancer".to_string())));
+            }
+            ConstructRole::Terminator => {
+                qualifiers.push(("regulatory_class".into(), Some("terminator".to_string())));
+            }
+            ConstructRole::Tfbs => {
+                qualifiers.push(("regulatory_class".into(), Some("tfbs".to_string())));
+            }
+            ConstructRole::SpliceBoundary => {
+                qualifiers.push((
+                    "regulatory_class".into(),
+                    Some("splice_boundary".to_string()),
+                ));
+            }
+            _ => {}
+        }
+        gb_io::seq::Feature {
+            kind: feature_kind.into(),
+            location: Self::construct_reasoning_annotation_candidate_feature_location(candidate),
+            qualifiers,
+        }
+    }
+
+    pub fn write_back_construct_reasoning_annotation_candidate(
+        &mut self,
+        graph_id: &str,
+        annotation_id: &str,
+    ) -> Result<(ConstructReasoningGraph, AnnotationCandidateWriteback), EngineError> {
+        let graph_id = graph_id.trim();
+        if graph_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "graph_id cannot be empty".to_string(),
+            });
+        }
+        let annotation_id = annotation_id.trim();
+        if annotation_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "annotation_id cannot be empty".to_string(),
+            });
+        }
+        let graph = self.construct_reasoning_graph(graph_id)?;
+        let candidate = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.annotation_id == annotation_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Annotation candidate '{}' not found in construct reasoning graph '{}'",
+                    annotation_id, graph_id
+                ),
+            })?;
+        if !matches!(
+            candidate.editable_status,
+            EditableStatus::Accepted | EditableStatus::Locked
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Annotation candidate '{}' must be accepted before write-back",
+                    annotation_id
+                ),
+            });
+        }
+        let evidence = graph
+            .evidence
+            .iter()
+            .find(|row| row.evidence_id == candidate.evidence_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Evidence '{}' referenced by annotation candidate '{}' was not found in graph '{}'",
+                    candidate.evidence_id, annotation_id, graph_id
+                ),
+            })?;
+        let mut writeback = AnnotationCandidateWriteback {
+            graph_id: graph.graph_id.clone(),
+            annotation_id: candidate.annotation_id.clone(),
+            evidence_id: candidate.evidence_id.clone(),
+            seq_id: graph.seq_id.clone(),
+            feature_kind: Self::construct_reasoning_annotation_candidate_feature_kind(
+                candidate.role,
+            )
+            .to_string(),
+            feature_label: if candidate.label.trim().is_empty() {
+                candidate.role.as_str().to_string()
+            } else {
+                candidate.label.clone()
+            },
+            start_0based: candidate.start_0based,
+            end_0based_exclusive: candidate.end_0based_exclusive,
+            strand: candidate.strand.clone(),
+            source_kind: candidate.source_kind.clone(),
+            editable_status: candidate.editable_status,
+            ..AnnotationCandidateWriteback::default()
+        };
+        if evidence.provenance_kind == "sequence_feature_annotation" {
+            writeback.already_present = true;
+            writeback.notes.push(
+                "Annotation candidate is already backed by an ordinary sequence feature."
+                    .to_string(),
+            );
+            return Ok((graph, writeback));
+        }
+        if !Self::construct_reasoning_annotation_candidate_is_writeback_eligible(
+            &candidate, &evidence,
+        ) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Annotation candidate '{}' is not currently eligible for automatic write-back",
+                    annotation_id
+                ),
+            });
+        }
+        let seq_id = graph.seq_id.clone();
+        let dna = self
+            .state
+            .sequences
+            .get_mut(&seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        if dna.features().iter().any(|feature| {
+            Self::construct_reasoning_feature_matches_annotation_candidate(
+                feature,
+                &candidate.annotation_id,
+            )
+        }) {
+            writeback.already_present = true;
+            writeback.notes.push(
+                "Annotation candidate was already written back as a sequence feature.".to_string(),
+            );
+            return Ok((graph, writeback));
+        }
+        dna.features_mut().push(
+            Self::build_construct_reasoning_annotation_candidate_feature(
+                graph_id, &candidate, &evidence,
+            ),
+        );
+        Self::prepare_sequence(dna);
+        writeback.created = true;
+        writeback.notes.push(
+            "Accepted annotation candidate was written back as an ordinary sequence feature."
+                .to_string(),
+        );
+        let refreshed_graph = self.refresh_construct_reasoning_graph_for_seq_id(&seq_id)?;
+        if let Some(updated_candidate) = refreshed_graph.annotation_candidates.iter().find(|row| {
+            Self::construct_reasoning_annotation_candidate_span_key(row)
+                == Self::construct_reasoning_annotation_candidate_span_key(&candidate)
+        }) {
+            writeback.editable_status = updated_candidate.editable_status;
+        }
+        Ok((refreshed_graph, writeback))
     }
 
     fn construct_reasoning_default_objective(

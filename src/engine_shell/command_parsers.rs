@@ -4233,6 +4233,26 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
                 editable_status,
             })
         }
+        "write-annotation" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "construct-reasoning write-annotation requires GRAPH_ID ANNOTATION_ID"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            let annotation_id = tokens[3].trim().to_string();
+            if graph_id.is_empty() || annotation_id.is_empty() {
+                return Err(
+                    "construct-reasoning write-annotation requires non-empty GRAPH_ID and ANNOTATION_ID"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::ConstructReasoningWriteAnnotation {
+                graph_id,
+                annotation_id,
+            })
+        }
         "export-graph" => {
             if tokens.len() != 4 {
                 return Err(
@@ -4245,7 +4265,7 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
             })
         }
         other => Err(format!(
-            "Unknown construct-reasoning subcommand '{other}' (expected build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, export-graph)"
+            "Unknown construct-reasoning subcommand '{other}' (expected build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, write-annotation, export-graph)"
         )),
     }
 }

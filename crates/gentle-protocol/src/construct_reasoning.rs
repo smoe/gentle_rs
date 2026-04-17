@@ -13,6 +13,7 @@ pub const DESIGN_FACT_SCHEMA: &str = "gentle.design_fact.v1";
 pub const DESIGN_DECISION_NODE_SCHEMA: &str = "gentle.design_decision_node.v1";
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = "gentle.construct_candidate.v1";
 pub const ANNOTATION_CANDIDATE_SCHEMA: &str = "gentle.annotation_candidate.v1";
+pub const ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA: &str = "gentle.annotation_candidate_writeback.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
 pub const HOST_PROFILE_CATALOG_SCHEMA: &str = "gentle.host_profile_catalog.v1";
@@ -39,6 +40,10 @@ fn default_construct_candidate_schema() -> String {
 
 fn default_annotation_candidate_schema() -> String {
     ANNOTATION_CANDIDATE_SCHEMA.to_string()
+}
+
+fn default_annotation_candidate_writeback_schema() -> String {
+    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA.to_string()
 }
 
 fn default_construct_reasoning_graph_schema() -> String {
@@ -752,6 +757,53 @@ impl Default for AnnotationCandidate {
             transcript_context_status: None,
             effect_tags: vec![],
             editable_status: EditableStatus::Draft,
+            warnings: vec![],
+            notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Result of writing one accepted construct-reasoning annotation candidate back
+/// into the sequence as an ordinary feature.
+pub struct AnnotationCandidateWriteback {
+    #[serde(default = "default_annotation_candidate_writeback_schema")]
+    pub schema: String,
+    pub graph_id: String,
+    pub annotation_id: String,
+    pub evidence_id: String,
+    pub seq_id: SeqId,
+    pub feature_kind: String,
+    pub feature_label: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: Option<String>,
+    pub source_kind: String,
+    pub editable_status: EditableStatus,
+    pub created: bool,
+    pub already_present: bool,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+impl Default for AnnotationCandidateWriteback {
+    fn default() -> Self {
+        Self {
+            schema: default_annotation_candidate_writeback_schema(),
+            graph_id: String::new(),
+            annotation_id: String::new(),
+            evidence_id: String::new(),
+            seq_id: String::new(),
+            feature_kind: String::new(),
+            feature_label: String::new(),
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            strand: None,
+            source_kind: String::new(),
+            editable_status: EditableStatus::Draft,
+            created: false,
+            already_present: false,
             warnings: vec![],
             notes: vec![],
         }

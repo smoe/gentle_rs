@@ -121,6 +121,9 @@ impl LuaInterface {
             "  - set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status): Updates one stored annotation-candidate review status"
         );
         println!(
+            "  - write_back_construct_reasoning_annotation(project, graph_id, annotation_id): Writes one accepted generated annotation candidate back as a sequence feature"
+        );
+        println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
         );
         println!(
@@ -353,6 +356,25 @@ impl LuaInterface {
                 "construct-reasoning set-annotation-status failed: {e}"
             ))
         })?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
+    }
+
+    fn write_back_construct_reasoning_annotation(
+        state: ProjectState,
+        graph_id: String,
+        annotation_id: String,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningWriteAnnotation {
+            graph_id,
+            annotation_id,
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("construct-reasoning write-annotation failed: {e}")))?;
         Ok(ShellUtilityResponse {
             state: engine.state().clone(),
             state_changed: run.state_changed,
@@ -821,6 +843,23 @@ impl LuaInterface {
                         graph_id,
                         annotation_id,
                         editable_status,
+                    )?;
+                    lua.to_value(&output)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "write_back_construct_reasoning_annotation",
+            self.lua.create_function(
+                |lua, (state, graph_id, annotation_id): (Value, String, String)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::write_back_construct_reasoning_annotation(
+                        state,
+                        graph_id,
+                        annotation_id,
                     )?;
                     lua.to_value(&output)
                 },
@@ -1734,6 +1773,18 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn normalize_construct_reasoning_status_output(
+        mut value: serde_json::Value,
+    ) -> serde_json::Value {
+        if let Some(graph) = value
+            .get_mut("graph")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            graph.remove("generated_at_unix_ms");
+        }
+        value
+    }
+
     #[test]
     fn lua_sync_rebase_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
@@ -2005,7 +2056,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -2235,7 +2286,77 @@ mod tests {
         .expect("shell status command");
 
         assert_eq!(wrapper.state_changed, shell_run.state_changed);
-        assert_eq!(wrapper.output, shell_run.output);
+        assert_eq!(
+            normalize_construct_reasoning_status_output(wrapper.output),
+            normalize_construct_reasoning_status_output(shell_run.output)
+        );
+    }
+
+    #[test]
+    fn lua_construct_reasoning_annotation_writeback_wrapper_matches_shared_shell_output() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Complement(Box::new(
+                gb_io::seq::Location::simple_range(2000, 2613),
+            )),
+            qualifiers: vec![
+                ("gene".into(), Some("VKORC1".to_string())),
+                ("transcript_id".into(), Some("ENSTVKORC1".to_string())),
+                ("label".into(), Some("VKORC1-201".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("construct_reasoning_lua_writeback".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state.clone());
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "construct_reasoning_lua_writeback",
+                None,
+                Some("construct_reasoning_lua_writeback_graph"),
+            )
+            .expect("build graph");
+        let annotation_id = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.role == crate::engine::ConstructRole::Promoter)
+            .map(|candidate| candidate.annotation_id.clone())
+            .expect("annotation candidate id");
+        engine
+            .set_construct_reasoning_annotation_candidate_status(
+                &graph.graph_id,
+                &annotation_id,
+                crate::engine::EditableStatus::Accepted,
+            )
+            .expect("accept annotation candidate");
+        state = engine.state().clone();
+
+        let wrapper = LuaInterface::write_back_construct_reasoning_annotation(
+            state.clone(),
+            graph.graph_id.clone(),
+            annotation_id.clone(),
+        )
+        .expect("lua writeback wrapper");
+
+        let mut shell_engine = GentleEngine::from_state(state);
+        let shell_run = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningWriteAnnotation {
+                graph_id: graph.graph_id,
+                annotation_id,
+            },
+        )
+        .expect("shell writeback command");
+
+        assert_eq!(wrapper.state_changed, shell_run.state_changed);
+        assert_eq!(
+            normalize_construct_reasoning_status_output(wrapper.output),
+            normalize_construct_reasoning_status_output(shell_run.output)
+        );
     }
 
     #[test]

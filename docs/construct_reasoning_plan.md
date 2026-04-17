@@ -708,6 +708,10 @@ Current landed slice:
   candidates across graph rebuilds
 - the DNA window exposes the same curation in both the clicked-span detail
   view and the `Annotation candidates` inspector section
+- accepted or locked generated candidates can now be written back as ordinary
+  sequence features through the shared engine/shell path, with a portable
+  `gentle.annotation_candidate_writeback.v1` report describing whether a new
+  feature was created or already existed
 
 ### Phase 4.5: host/helper context integration
 

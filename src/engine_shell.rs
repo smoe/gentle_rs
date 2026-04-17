@@ -1668,6 +1668,10 @@ pub enum ShellCommand {
         annotation_id: String,
         editable_status: EditableStatus,
     },
+    ConstructReasoningWriteAnnotation {
+        graph_id: String,
+        annotation_id: String,
+    },
     ConstructReasoningExportGraph {
         graph_id: String,
         path: String,
@@ -7487,6 +7491,13 @@ impl ShellCommand {
                 annotation_id,
                 graph_id,
                 editable_status.as_str()
+            ),
+            Self::ConstructReasoningWriteAnnotation {
+                graph_id,
+                annotation_id,
+            } => format!(
+                "write construct-reasoning annotation '{}' from graph '{}' back as a sequence feature",
+                annotation_id, graph_id
             ),
             Self::ConstructReasoningExportGraph { graph_id, path } => format!(
                 "export construct-reasoning graph '{}' to '{}'",
@@ -20977,6 +20988,29 @@ fn execute_protein_sequence_command(
                 }),
             })
         }
+        ShellCommand::ConstructReasoningWriteAnnotation {
+            graph_id,
+            annotation_id,
+        } => {
+            let (graph, writeback) = engine
+                .write_back_construct_reasoning_annotation_candidate(graph_id, annotation_id)
+                .map_err(|e| e.to_string())?;
+            let candidate = graph
+                .annotation_candidates
+                .iter()
+                .find(|candidate| candidate.annotation_id == *annotation_id)
+                .cloned();
+            let summary = format_construct_reasoning_graph_summary(&graph);
+            Ok(ShellRunResult {
+                state_changed: writeback.created,
+                output: json!({
+                    "graph": graph,
+                    "annotation_candidate": candidate,
+                    "writeback": writeback,
+                    "summary": summary,
+                }),
+            })
+        }
         ShellCommand::ConstructReasoningExportGraph { graph_id, path } => {
             let graph = engine
                 .export_construct_reasoning_graph_json(graph_id, path)
@@ -22080,6 +22114,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ConstructReasoningListGraphs { .. }
             | ShellCommand::ConstructReasoningShowGraph { .. }
             | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
+            | ShellCommand::ConstructReasoningWriteAnnotation { .. }
             | ShellCommand::ConstructReasoningExportGraph { .. }
     ) {
         return execute_protein_sequence_command(engine, command);
@@ -22326,6 +22361,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ConstructReasoningListGraphs { .. }
         | ShellCommand::ConstructReasoningShowGraph { .. }
         | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
+        | ShellCommand::ConstructReasoningWriteAnnotation { .. }
         | ShellCommand::ConstructReasoningExportGraph { .. } => {
             execute_protein_sequence_command(engine, command)?
         }

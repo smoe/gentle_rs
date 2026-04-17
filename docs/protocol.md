@@ -1428,6 +1428,22 @@ MCP query/introspection tool contracts (current):
     - updated `annotation_candidate`
     - same compact shared summary block used by `construct_reasoning_graph`
 
+- `construct_reasoning_write_annotation`
+  - arguments:
+    - required: `graph_id`, `annotation_id`
+    - optional: `state_path`
+  - behavior:
+    - runs the same mutating shared shell command as
+      `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
+    - materializes one accepted or locked generated annotation candidate as an
+      ordinary sequence feature when it is eligible
+    - persists the updated project state when the command changes it
+  - result:
+    - refreshed graph payload
+    - refreshed or already-backed `annotation_candidate`
+    - `writeback` report in `gentle.annotation_candidate_writeback.v1` shape
+    - same compact shared summary block used by `construct_reasoning_graph`
+
 - `ensembl_installable_genomes`
   - arguments:
     - optional: `collection`, `filter`
@@ -2970,6 +2986,10 @@ Construct reasoning graph foundation (implemented first slice):
       it contributes to
     - editable `draft|accepted|rejected|locked` status now persists on the
       candidate itself so reviewed annotation state survives graph refresh
+  - annotation-candidate write-back report:
+    - `gentle.annotation_candidate_writeback.v1`
+    - reports whether one accepted/locked generated candidate created a new
+      ordinary sequence feature or was already backed by one
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -2991,11 +3011,17 @@ Construct reasoning graph foundation (implemented first slice):
   - side-panel `Annotation candidates` section for graph-backed candidate
     annotations that now support shared-engine accept/reject/draft curation
     instead of only read-only inspection
+    - accepted or locked generated candidates now also expose a shared-engine
+      `Write Back` action that materializes them as ordinary sequence features
   - shared shell/CLI mutation route:
     - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
     - updates the persisted graph in place and returns the updated candidate
       plus the same compact summary block exposed by
       `construct-reasoning show-graph`
+    - `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
+    - writes back one accepted or locked generated candidate as a feature,
+      refreshes the graph, and returns the `gentle.annotation_candidate_writeback.v1`
+      report alongside the refreshed candidate and summary block
   - Planning-window `Host Profile Browser` backed by the same shared catalog so
     host/strain traits can be inspected without reparsing raw JSON
   - GUI-only role/class visibility filters layered on top of the same shared
