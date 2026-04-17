@@ -273,6 +273,8 @@ pub struct TutorialManifest {
     #[serde(default = "default_tutorial_manifest_schema")]
     pub schema: String,
     #[serde(default)]
+    pub description: String,
+    #[serde(default)]
     pub concepts: Vec<TutorialConcept>,
     pub chapters: Vec<TutorialChapter>,
 }
@@ -876,6 +878,7 @@ pub fn generate_tutorial_manifest_from_sources(
     });
     let manifest = TutorialManifest {
         schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
+        description: "Generated executable tutorial runtime manifest for GENtle. Used by `tutorial-generate` / `tutorial-check` and the GUI `Open Tutorial Project...` flow to map source-backed chapters onto canonical workflow examples.".to_string(),
         concepts: meta.concepts,
         chapters,
     };
@@ -990,6 +993,12 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
             display_path(manifest_path),
             manifest.schema,
             TUTORIAL_MANIFEST_SCHEMA
+        ));
+    }
+    if manifest.description.trim().is_empty() {
+        return Err(format!(
+            "Tutorial manifest '{}' has empty description",
+            display_path(manifest_path)
         ));
     }
     if manifest.chapters.is_empty() {
@@ -1808,6 +1817,10 @@ fn render_tutorial_index(
 ) -> String {
     let mut out = String::new();
     out.push_str("# GENtle Tutorial (Generated)\n\n");
+    if !manifest.description.trim().is_empty() {
+        out.push_str(manifest.description.trim());
+        out.push_str("\n\n");
+    }
     out.push_str("This folder is generated from:\n");
     out.push_str("- `docs/tutorial/sources/catalog_meta.json`\n");
     out.push_str("- `docs/tutorial/sources/*.json`\n");

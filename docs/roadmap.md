@@ -1586,6 +1586,12 @@ order. Durable architecture constraints and decisions remain in
       tutorial and reference pages
     - documents both the integrated audit route and the external composition
       from reusable low-level `uniprot ...` primitives plus the parity report
+  - dedicated online TP73 UniProt/Ensembl projection-audit chapter added:
+    `tp73_uniprot_projection_audit_cli` (backed by canonical
+    `tp73_uniprot_projection_audit_online` workflow example plus the shared
+    `FetchUniprotSwissProt -> FetchEnsemblProtein -> ProjectUniprotToGenome ->
+    AuditUniprotProjectionConsistency -> AuditUniprotProjectionParity` route
+    and one shared expert SVG export)
   - dedicated online TP63 anchor-extension chapter added:
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +

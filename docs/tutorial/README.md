@@ -120,6 +120,8 @@ Ensembl:
 
 - Use the TP73 UniProt projection audit tutorial:
   [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md)
+- reproducible executable companion:
+  [`docs/tutorial/generated/chapters/19_tp73_uniprot_projection_audit_cli.md`](./generated/chapters/19_tp73_uniprot_projection_audit_cli.md)
 
 ## Confidence Map
 
@@ -285,12 +287,14 @@ Use the labels above as trust/maintenance signals:
 
 ### Path J: TP73 UniProt/Ensembl projection audit
 
-1. Read [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md)
-2. Run the integrated `uniprot audit-projection ...` path on the stored TP73 projection
-3. Inspect the saved audit report and local unsent maintainer-email draft
-4. Rebuild the same reasoning from `resolve-ensembl-links`, `transcript-accounting`,
+1. Optionally begin from the executable companion:
+   [`docs/tutorial/generated/chapters/19_tp73_uniprot_projection_audit_cli.md`](./generated/chapters/19_tp73_uniprot_projection_audit_cli.md)
+2. Read [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md)
+3. Run the integrated `uniprot audit-projection ...` path on the stored TP73 projection
+4. Inspect the saved audit report and local unsent maintainer-email draft
+5. Rebuild the same reasoning from `resolve-ensembl-links`, `transcript-accounting`,
    `compare-ensembl-exons`, and `compare-ensembl-peptide`
-5. Run `uniprot audit-parity ...` to compare the integrated Rust audit against
+6. Run `uniprot audit-parity ...` to compare the integrated Rust audit against
    the public primitive composition
 
 ### Path K: Tutorial planning and dependency triage
