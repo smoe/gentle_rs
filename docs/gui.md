@@ -1579,9 +1579,14 @@ Controls:
    - Shows or hides mRNA feature rendering.
 9. Reasoning
    - Toggles the read-only construct-reasoning overlay for the active sequence.
-   - Current first slice auto-refreshes the engine-derived graph and paints
-     evidence spans from restriction sites, sequence annotations, and variant
-     markers directly on the linear DNA map.
+   - Current overlay auto-refreshes the engine-derived graph and paints only
+     annotation-grade sequence spans on the linear DNA map:
+     - generated/inferred annotation-like spans such as promoter windows
+     - cDNA-confirmed exon/splice/CDS/transcript spans
+     - sequence intervals that directly support a stored fact or decision
+   - Raw low-level evidence such as unrestricted restriction-site or TFBS spam
+     stays in the graph but is no longer drawn by default just because it
+     exists as `sequence_span` evidence.
    - Hovering an evidence span shows a compact "why is this here?" tooltip.
    - Clicking an evidence span routes the side-panel details view to that exact
      reasoning record (role, class, range, rationale, provenance, and notes).

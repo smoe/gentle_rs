@@ -2937,7 +2937,14 @@ Construct reasoning graph foundation (implemented first slice):
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
-    graph and paints evidence spans directly on-sequence
+    graph and now paints only annotation-grade/supporting sequence spans
+    directly on-sequence:
+    - generated or inferred annotation-like spans (for example promoter windows)
+    - cDNA-confirmed exon/splice/CDS/transcript spans
+    - sequence intervals explicitly referenced by stored facts or decisions
+    - raw low-level evidence such as unrestricted restriction-site spam stays
+      in the graph/inspector and is no longer drawn by default just because it
+      exists as `sequence_span` evidence
   - GUI-side hover/selection inspection for one evidence span at a time
   - side-panel construct-reasoning inspector section for non-sequence facts and
     decision steps (host/helper/host-route restriction-methylation/medium/

@@ -2,8 +2,9 @@
 
 use crate::{
     engine::{
-        ConstructReasoningGraph, ConstructRole, EditableStatus, EvidenceClass, EvidenceScope,
-        LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
+        ConstructReasoningGraph, ConstructRole, DesignDecisionNode, DesignEvidence, DesignFact,
+        EditableStatus, EvidenceClass, EvidenceScope, LinearSequenceLetterLayoutMode,
+        RestrictionEnzymeDisplayMode,
     },
     enzymes::default_preferred_restriction_enzyme_names,
     gc_contents::DEFAULT_SECTION_SIZE_BP,
@@ -179,11 +180,84 @@ pub struct ConstructReasoningOverlay {
 }
 
 impl ConstructReasoningOverlay {
+    fn referenced_evidence_ids(graph: &ConstructReasoningGraph) -> BTreeSet<&str> {
+        let mut ids = BTreeSet::new();
+        Self::collect_fact_evidence_ids(&mut ids, &graph.facts);
+        Self::collect_decision_evidence_ids(&mut ids, &graph.decisions);
+        ids
+    }
+
+    fn collect_fact_evidence_ids<'a>(ids: &mut BTreeSet<&'a str>, facts: &'a [DesignFact]) {
+        for fact in facts {
+            for evidence_id in &fact.based_on_evidence_ids {
+                let trimmed = evidence_id.trim();
+                if !trimmed.is_empty() {
+                    ids.insert(trimmed);
+                }
+            }
+        }
+    }
+
+    fn collect_decision_evidence_ids<'a>(
+        ids: &mut BTreeSet<&'a str>,
+        decisions: &'a [DesignDecisionNode],
+    ) {
+        for decision in decisions {
+            for evidence_id in &decision.input_evidence_ids {
+                let trimmed = evidence_id.trim();
+                if !trimmed.is_empty() {
+                    ids.insert(trimmed);
+                }
+            }
+        }
+    }
+
+    fn is_generated_or_annotation_grade(entry: &DesignEvidence) -> bool {
+        if entry.scope != EvidenceScope::SequenceSpan {
+            return false;
+        }
+        if entry
+            .context_tags
+            .iter()
+            .any(|tag| tag.eq_ignore_ascii_case("cdna_confirmed"))
+            && matches!(
+                entry.role,
+                ConstructRole::Exon
+                    | ConstructRole::SpliceBoundary
+                    | ConstructRole::Cds
+                    | ConstructRole::Transcript
+            )
+        {
+            return true;
+        }
+        let looks_generated = entry.context_tags.iter().any(|tag| {
+            tag.eq_ignore_ascii_case("generated")
+                || tag.eq_ignore_ascii_case("annotate_promoter_windows")
+        }) || entry.provenance_kind.starts_with("derived_");
+        looks_generated
+            && !matches!(
+                entry.role,
+                ConstructRole::RestrictionSite
+                    | ConstructRole::Tfbs
+                    | ConstructRole::ContextBaggage
+            )
+    }
+
+    fn should_include_entry(
+        entry: &DesignEvidence,
+        referenced_evidence_ids: &BTreeSet<&str>,
+    ) -> bool {
+        entry.scope == EvidenceScope::SequenceSpan
+            && (referenced_evidence_ids.contains(entry.evidence_id.as_str())
+                || Self::is_generated_or_annotation_grade(entry))
+    }
+
     pub fn from_graph(graph: &ConstructReasoningGraph) -> Self {
+        let referenced_evidence_ids = Self::referenced_evidence_ids(graph);
         let mut evidence = graph
             .evidence
             .iter()
-            .filter(|entry| entry.scope == EvidenceScope::SequenceSpan)
+            .filter(|entry| Self::should_include_entry(entry, &referenced_evidence_ids))
             .map(|entry| ConstructReasoningOverlaySpan {
                 evidence_id: entry.evidence_id.clone(),
                 start_0based: entry.start_0based,
@@ -1162,10 +1236,10 @@ impl Default for DnaDisplay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{ConstructObjective, DesignEvidence};
+    use crate::engine::{ConstructObjective, DesignDecisionNode, DesignEvidence, DesignFact};
 
     #[test]
-    fn construct_reasoning_overlay_from_graph_only_keeps_sequence_spans() {
+    fn construct_reasoning_overlay_keeps_generated_and_referenced_sequence_spans() {
         let overlay = ConstructReasoningOverlay::from_graph(&ConstructReasoningGraph {
             graph_id: "graph_demo".to_string(),
             seq_id: "demo".to_string(),
@@ -1185,23 +1259,142 @@ mod tests {
                     ..DesignEvidence::default()
                 },
                 DesignEvidence {
-                    evidence_id: "cds_span".to_string(),
+                    evidence_id: "restriction_site_raw".to_string(),
+                    seq_id: "demo".to_string(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based: 4,
+                    end_0based_exclusive: 10,
+                    role: ConstructRole::RestrictionSite,
+                    evidence_class: EvidenceClass::HardFact,
+                    label: "EcoRI".to_string(),
+                    rationale: "Raw restriction site evidence".to_string(),
+                    ..DesignEvidence::default()
+                },
+                DesignEvidence {
+                    evidence_id: "generated_promoter".to_string(),
                     seq_id: "demo".to_string(),
                     scope: EvidenceScope::SequenceSpan,
                     start_0based: 12,
                     end_0based_exclusive: 48,
+                    role: ConstructRole::Promoter,
+                    evidence_class: EvidenceClass::ContextEvidence,
+                    label: "TP73 promoter window".to_string(),
+                    rationale: "Promoter window derived from transcript TSS geometry".to_string(),
+                    context_tags: vec!["promoter".to_string(), "generated".to_string()],
+                    provenance_kind: "derived_promoter_window".to_string(),
+                    ..DesignEvidence::default()
+                },
+                DesignEvidence {
+                    evidence_id: "cds_span".to_string(),
+                    seq_id: "demo".to_string(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based: 55,
+                    end_0based_exclusive: 96,
                     role: ConstructRole::Cds,
                     evidence_class: EvidenceClass::ReliableAnnotation,
                     label: "Reporter CDS".to_string(),
                     rationale: "Imported CDS annotation".to_string(),
                     ..DesignEvidence::default()
                 },
+                DesignEvidence {
+                    evidence_id: "variant_span".to_string(),
+                    seq_id: "demo".to_string(),
+                    scope: EvidenceScope::SequenceSpan,
+                    start_0based: 64,
+                    end_0based_exclusive: 65,
+                    role: ConstructRole::Variant,
+                    evidence_class: EvidenceClass::HardFact,
+                    label: "rs-demo".to_string(),
+                    rationale: "Variant marker".to_string(),
+                    ..DesignEvidence::default()
+                },
             ],
+            facts: vec![DesignFact {
+                fact_id: "fact_variant_effect_context".to_string(),
+                fact_type: "variant_effect_context".to_string(),
+                based_on_evidence_ids: vec!["variant_span".to_string(), "cds_span".to_string()],
+                ..DesignFact::default()
+            }],
+            decisions: vec![DesignDecisionNode {
+                decision_id: "decision_variant_effect".to_string(),
+                decision_type: "evaluate_variant_effect_context".to_string(),
+                input_evidence_ids: vec!["variant_span".to_string(), "cds_span".to_string()],
+                ..DesignDecisionNode::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        });
+
+        assert_eq!(
+            overlay
+                .evidence
+                .iter()
+                .map(|row| row.evidence_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["generated_promoter", "cds_span", "variant_span"]
+        );
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_keeps_cdna_confirmed_spans_as_annotation_grade() {
+        let overlay = ConstructReasoningOverlay::from_graph(&ConstructReasoningGraph {
+            graph_id: "graph_demo".to_string(),
+            seq_id: "demo".to_string(),
+            objective: ConstructObjective {
+                title: "Reasoning demo".to_string(),
+                goal: "Inspect mapped evidence".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![DesignEvidence {
+                evidence_id: "confirmed_exon".to_string(),
+                seq_id: "demo".to_string(),
+                scope: EvidenceScope::SequenceSpan,
+                start_0based: 120,
+                end_0based_exclusive: 180,
+                role: ConstructRole::Exon,
+                evidence_class: EvidenceClass::HardFact,
+                label: "Confirmed exon".to_string(),
+                rationale: "cDNA-confirmed exon annotation".to_string(),
+                context_tags: vec!["exon".to_string(), "cdna_confirmed".to_string()],
+                ..DesignEvidence::default()
+            }],
             ..ConstructReasoningGraph::default()
         });
 
         assert_eq!(overlay.evidence.len(), 1);
-        assert_eq!(overlay.evidence[0].evidence_id, "cds_span");
-        assert_eq!(overlay.evidence[0].label, "Reporter CDS");
+        assert_eq!(overlay.evidence[0].evidence_id, "confirmed_exon");
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_keeps_written_back_generated_promoter_features() {
+        let overlay = ConstructReasoningOverlay::from_graph(&ConstructReasoningGraph {
+            graph_id: "graph_demo".to_string(),
+            seq_id: "demo".to_string(),
+            objective: ConstructObjective {
+                title: "Reasoning demo".to_string(),
+                goal: "Inspect mapped evidence".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![DesignEvidence {
+                evidence_id: "annotated_promoter".to_string(),
+                seq_id: "demo".to_string(),
+                scope: EvidenceScope::SequenceSpan,
+                start_0based: 40,
+                end_0based_exclusive: 120,
+                role: ConstructRole::Promoter,
+                evidence_class: EvidenceClass::ReliableAnnotation,
+                label: "Generated promoter feature".to_string(),
+                rationale: "Promoter feature written back by AnnotatePromoterWindows".to_string(),
+                context_tags: vec![
+                    "promoter".to_string(),
+                    "annotate_promoter_windows".to_string(),
+                ],
+                provenance_kind: "sequence_feature_annotation".to_string(),
+                ..DesignEvidence::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        });
+
+        assert_eq!(overlay.evidence.len(), 1);
+        assert_eq!(overlay.evidence[0].evidence_id, "annotated_promoter");
     }
 }

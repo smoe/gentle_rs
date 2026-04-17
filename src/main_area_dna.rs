@@ -13165,7 +13165,7 @@ impl MainAreaDna {
                     format!("Reasoning ({construct_reasoning_count})"),
                 )
                 .on_hover_text(format!(
-                    "Show or hide read-only construct-reasoning evidence spans derived from restriction sites and sequence annotations ({construct_reasoning_count} intervals in current view)"
+                    "Show or hide read-only construct-reasoning spans that behave like automated annotation or directly support a stored fact/decision ({construct_reasoning_count} intervals in current view)"
                 ));
             if construct_reasoning_response.clicked() {
                 let visible = {

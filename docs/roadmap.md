@@ -4317,6 +4317,14 @@ Post-baseline follow-ups:
     hover/click inspection, side-panel evidence details, and GUI-only role /
     evidence-class filters through the adjacent `Why` menu without duplicating
     or mutating the underlying engine-owned graph.
+  - Done (2026-04-17, overlay selectivity fix): the DNA-window reasoning
+    overlay now behaves more like automated annotation instead of painting
+    every raw `sequence_span` evidence row. The shared overlay builder now
+    keeps generated/inferred annotation-grade spans, cDNA-confirmed
+    exon/splice/CDS/transcript spans, and sequence intervals that are
+    explicitly referenced by stored facts/decisions. Raw restriction-site/TFBS
+    evidence remains in the graph and inspector but no longer floods long
+    genomic windows by default.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,
