@@ -1579,6 +1579,13 @@ order. Durable architecture constraints and decisions remain in
     `tp53_uniprot_projection_online` workflow example and the shared
     `FetchUniprotSwissProt -> ProjectUniprotToGenome -> RenderFeatureExpertSvg`
     route rather than a GUI-only protein window)
+  - dedicated manual TP73 UniProt/Ensembl projection-audit tutorial added:
+    `docs/tutorial/tp73_uniprot_projection_audit_cli.md`
+    - now also registered through `docs/tutorial/sources/*.json`, so the
+      generated discovery catalog tracks it alongside the other hand-written
+      tutorial and reference pages
+    - documents both the integrated audit route and the external composition
+      from reusable low-level `uniprot ...` primitives plus the parity report
   - dedicated online TP63 anchor-extension chapter added:
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +

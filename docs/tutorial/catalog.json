@@ -219,6 +219,21 @@
         "pharmacogenomics"
       ],
       "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Variant Follow-up expert, and export one portable promoter-reporter handoff bundle."
+    },
+    {
+      "id": "tp73_uniprot_projection_audit_cli",
+      "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+      "path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "agent_users",
+        "contributors"
+      ],
+      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft."
     }
   ]
 }

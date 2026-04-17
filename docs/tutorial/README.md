@@ -115,6 +115,12 @@ If you want to batch-compare many cDNA `fasta.gz` samples for one target gene:
 - Use the RNA-read batch gene-support tutorial:
   [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md)
 
+If you want a CLI-first TP73 protein/transcript audit against UniProt and
+Ensembl:
+
+- Use the TP73 UniProt projection audit tutorial:
+  [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md)
+
 ## Confidence Map
 
 Treat the tutorial catalog as three confidence bands:
@@ -164,6 +170,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |
+| [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | TP73 UniProt/Ensembl projection audit, primitive composition, parity verification | Hand-written CLI-first audit of projected TP73 protein evidence with transcript accounting, exon/CDS comparison, peptide comparison, parity check, and a local unsent maintainer-email draft. |
 | [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) | Operational reference tutorial | `manual/reference` | Tutorial planning, onboarding sequencing, contributor navigation | Graphical map of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
@@ -276,7 +283,17 @@ Use the labels above as trust/maintenance signals:
 5. Export one target-gene sample sheet for abundance, exon-pair co-presence,
    and mean-length comparison
 
-### Path J: Tutorial planning and dependency triage
+### Path J: TP73 UniProt/Ensembl projection audit
+
+1. Read [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md)
+2. Run the integrated `uniprot audit-projection ...` path on the stored TP73 projection
+3. Inspect the saved audit report and local unsent maintainer-email draft
+4. Rebuild the same reasoning from `resolve-ensembl-links`, `transcript-accounting`,
+   `compare-ensembl-exons`, and `compare-ensembl-peptide`
+5. Run `uniprot audit-parity ...` to compare the integrated Rust audit against
+   the public primitive composition
+
+### Path K: Tutorial planning and dependency triage
 
 1. Read [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
 2. Choose whether you want generated executable depth, GUI walkthrough depth,
