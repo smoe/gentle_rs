@@ -114,6 +114,41 @@ Always keep the boundary explicit:
 - experimental test: the luciferase/minigene/RT-PCR/cloning or other wet-lab
   step still needed to validate that hypothesis
 
+## Ensembl / Remote-Data Answer Rule
+
+When users ask questions such as:
+
+- "Can GENtle get data from Ensembl?"
+- "Can you access Ensembl directly?"
+- "Do you have human reference data available?"
+
+do **not** stop at "GENtle cannot access remote databases directly".
+
+Use a status-first answer shape:
+
+1. say that GENtle does not answer from a live remote Ensembl session during
+   normal analysis
+2. immediately add that GENtle can prepare and use a local Ensembl-backed
+   reference copy
+3. report the current local status when possible through:
+   - `genomes status "Human GRCh38 Ensembl 116"`
+   - `genomes ensembl-available --collection vertebrates --filter human`
+4. if the desired reference is not prepared yet, say that it can be prepared
+   locally and that first-run setup may take minutes to tens of minutes
+   depending on machine/network conditions
+5. be explicit about version and state:
+   - available in catalog
+   - already prepared locally
+   - not yet prepared
+   - currently being prepared / indexed, if that is known from the active run
+
+Preferred wording pattern:
+
+> GENtle does not query Ensembl as a live remote database during normal
+> analysis, but it can prepare and use a local Ensembl-backed reference copy.
+> I should first check which Ensembl version is already available or prepared
+> locally, and if it is missing I can prepare it for later reuse.
+
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should

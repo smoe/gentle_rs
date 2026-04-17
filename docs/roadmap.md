@@ -997,6 +997,12 @@ order. Durable architecture constraints and decisions remain in
           `ExportSequenceContextBundle`, which should package the current
           sequence-view SVG plus the coordinate-bearing companion text/table
           into one deterministic artifact set for chat/bundle consumers
+        - another immediate chat-facing improvement is reference-availability
+          disclosure:
+          when users ask about Ensembl access, ClawBio should surface the local
+          GENtle picture first (catalog version, prepared/not prepared, current
+          prepare/index status if known) instead of stopping at "no direct
+          remote database access"
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
@@ -1004,6 +1010,9 @@ order. Durable architecture constraints and decisions remain in
         - finish the broader sequence-context bundle/manifest layer so
           ClawBio can pick one "best first figure" and one compact textual
           summary without inventing presentation logic from raw files alone
+        - consider one dedicated shared reference-availability summary surface
+          for chat/report layers, rather than relying only on ad-hoc
+          `genomes status` / `helpers status` phrasing in the caller
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

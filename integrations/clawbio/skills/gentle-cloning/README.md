@@ -48,6 +48,23 @@ intended framing is:
   tools. Its added value is deterministic preparation, cataloging, provenance,
   and reuse in the same workflow.
 
+### Ensembl availability answers
+
+For user questions like "Can GENtle get data from Ensembl?", the intended
+ClawBio/OpenClaw answer pattern is:
+
+- do not stop at "no direct remote database access"
+- immediately say that GENtle can prepare and reuse a local
+  Ensembl-backed reference copy
+- inspect the current local state first with:
+  - `genomes status "Human GRCh38 Ensembl 116"`
+  - `genomes ensembl-available --collection vertebrates --filter human`
+- if the reference is not prepared yet, say so explicitly and offer the local
+  prepare path rather than presenting the request as a dead end
+
+This keeps the answer truthful while still surfacing the practical path
+forward.
+
 ## Recommended first-time route: local GENtle checkout
 
 This is the intended newcomer path for ClawBio/BioClaw users who want to keep
