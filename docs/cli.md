@@ -1634,6 +1634,8 @@ Shared shell command:
     - `primers export-report REPORT_ID OUTPUT.json`
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
+      - persisted qPCR report output now includes `best_assay_summary` plus
+        machine-readable `best_assay_probe_placement`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`

@@ -9450,6 +9450,11 @@ fn execute_primers_design_qpcr_list_show_export() {
         Some("gentle.qpcr_design_report_list.v1")
     );
     assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+    assert!(
+        listed.output["reports"][0]["best_assay_summary"]
+            .as_str()
+            .is_some_and(|value| !value.trim().is_empty())
+    );
 
     let shown = execute_shell_command(
         &mut engine,
@@ -9462,6 +9467,16 @@ fn execute_primers_design_qpcr_list_show_export() {
     assert_eq!(
         shown.output["report"]["report_id"].as_str(),
         Some("tp73_qpcr")
+    );
+    assert!(
+        shown.output["report"]["best_assay_probe_placement"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(
+        shown.output["report"]["best_assay_summary"]
+            .as_str()
+            .is_some_and(|value| !value.trim().is_empty())
     );
 
     let exported = execute_shell_command(

@@ -9065,6 +9065,8 @@ impl GentleEngine {
                 roi_start_0based: report.roi_start_0based,
                 roi_end_0based: report.roi_end_0based,
                 assay_count: report.assay_count,
+                best_assay_probe_placement: report.best_assay_probe_placement.clone(),
+                best_assay_summary: report.best_assay_summary.clone(),
                 backend_used: report.backend.used.clone(),
             })
             .collect()

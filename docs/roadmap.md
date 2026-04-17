@@ -1200,6 +1200,9 @@ order. Durable architecture constraints and decisions remain in
     qPCR cartoon summary, and the preview adds splicing-aware labels/explained
     context (`single-exon`, `junction-spanning`, `junction-crossing`) whenever
     a matching splicing expert view is active on the same template
+  - persisted qPCR reports/list rows now also carry a compact best-assay
+    summary plus machine-readable probe-placement label so shell/CLI/agent
+    inspection can reuse the same explanation surface
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional

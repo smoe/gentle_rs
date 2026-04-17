@@ -10031,6 +10031,51 @@ impl GentleEngine {
                     Some(&qpcr_progress_context),
                     &mut emit_qpcr_progress,
                 )?;
+                let (best_assay_probe_placement, best_assay_summary) = if let Some(best_assay) =
+                    assays.first()
+                {
+                    let roi_len_bp = roi_end_0based.saturating_sub(roi_start_0based).max(1);
+                    let probe_center_0based = best_assay
+                        .probe
+                        .start_0based
+                        .saturating_add(best_assay.probe.length_bp.saturating_div(2));
+                    let probe_relative = probe_center_0based.saturating_sub(roi_start_0based)
+                        as f64
+                        / roi_len_bp as f64;
+                    let probe_placement = if probe_relative <= 0.33 {
+                        "left_biased"
+                    } else if probe_relative >= 0.67 {
+                        "right_biased"
+                    } else {
+                        "centered"
+                    };
+                    let placement_text = match probe_placement {
+                        "left_biased" => "left-biased inside the ROI",
+                        "right_biased" => "right-biased inside the ROI",
+                        _ => "centered inside the ROI",
+                    };
+                    (
+                        probe_placement.to_string(),
+                        format!(
+                            "assay #{} spans {}..{} ({} bp); probe is {} at {}..{}; ΔTm(primer)={:.1}°C, ΔTm(probe)={:.1}°C; score={:.1}",
+                            best_assay.rank,
+                            best_assay.amplicon_start_0based,
+                            best_assay.amplicon_end_0based_exclusive,
+                            best_assay.amplicon_length_bp,
+                            placement_text,
+                            best_assay.probe.start_0based,
+                            best_assay.probe.end_0based_exclusive,
+                            best_assay.primer_tm_delta_c,
+                            best_assay.probe_tm_delta_c,
+                            best_assay.score
+                        ),
+                    )
+                } else {
+                    (
+                        "none".to_string(),
+                        "No accepted qPCR assays were retained in this report.".to_string(),
+                    )
+                };
 
                 let report_id = Self::render_primer_design_report_id(report_id, &template);
                 let report = QpcrDesignReport {
@@ -10052,6 +10097,8 @@ impl GentleEngine {
                     max_probe_tm_delta_c,
                     max_assays,
                     assay_count: assays.len(),
+                    best_assay_probe_placement,
+                    best_assay_summary,
                     assays,
                     rejection_summary,
                     backend,

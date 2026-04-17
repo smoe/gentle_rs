@@ -3619,6 +3619,9 @@ Operation progress/cancellation semantics:
   - `gentle.qpcr_design_report.v1`
   - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
     window, and rule flags.
+  - includes `best_assay_probe_placement` and `best_assay_summary` so
+    shell/CLI/GUI reopen flows can inspect one compact persisted explanation of
+    the current top retained assay without re-deriving it locally.
   - includes qPCR rejection summary with pair-level and probe-level counters.
 
 Primer-design shell command family (implemented):
