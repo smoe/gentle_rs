@@ -19935,6 +19935,55 @@ fn execute_sequence_analysis_command(
 }
 
 #[inline(never)]
+fn execute_external_sequence_fetch_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::GenbankFetch { accession, as_id } => {
+            let op_result = engine
+                .apply(Operation::FetchGenBankAccession {
+                    accession: accession.clone(),
+                    as_id: as_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::DbsnpFetch {
+            rs_id,
+            genome_id,
+            flank_bp,
+            output_id,
+            annotation_scope,
+            max_annotation_features,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::FetchDbSnpRegion {
+                    rs_id: rs_id.clone(),
+                    genome_id: genome_id.clone(),
+                    flank_bp: *flank_bp,
+                    output_id: output_id.clone(),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        _ => unreachable!("non-external-fetch command passed to external-fetch helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_sequencing_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -21888,6 +21937,12 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::GenbankFetch { .. } | ShellCommand::DbsnpFetch { .. }
+    ) {
+        return execute_external_sequence_fetch_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::SeqTraceImport { .. }
             | ShellCommand::SeqTraceList { .. }
             | ShellCommand::SeqTraceShow { .. }
@@ -22144,44 +22199,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FlexShow { .. }
         | ShellCommand::SplicingRefsDerive { .. }
         | ShellCommand::AlignCompute { .. } => execute_sequence_analysis_command(engine, command)?,
-        ShellCommand::GenbankFetch { accession, as_id } => {
-            let op_result = engine
-                .apply(Operation::FetchGenBankAccession {
-                    accession: accession.clone(),
-                    as_id: as_id.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
-        ShellCommand::DbsnpFetch {
-            rs_id,
-            genome_id,
-            flank_bp,
-            output_id,
-            annotation_scope,
-            max_annotation_features,
-            catalog_path,
-            cache_dir,
-        } => {
-            let op_result = engine
-                .apply(Operation::FetchDbSnpRegion {
-                    rs_id: rs_id.clone(),
-                    genome_id: genome_id.clone(),
-                    flank_bp: *flank_bp,
-                    output_id: output_id.clone(),
-                    annotation_scope: *annotation_scope,
-                    max_annotation_features: *max_annotation_features,
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
+        ShellCommand::GenbankFetch { .. } | ShellCommand::DbsnpFetch { .. } => {
+            execute_external_sequence_fetch_command(engine, command)?
         }
         ShellCommand::UniprotFetch { .. }
         | ShellCommand::EnsemblProteinFetch { .. }

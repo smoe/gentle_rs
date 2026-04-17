@@ -3423,6 +3423,7 @@ mod tests {
         }
     }
 
+    #[inline(never)]
     fn execute_forwarded_like_cli(
         state: ProjectState,
         args: Vec<String>,
@@ -3444,6 +3445,7 @@ mod tests {
         (run.state_changed, run.output, engine.state().clone())
     }
 
+    #[inline(never)]
     fn execute_shared_shell_tokens(
         state: ProjectState,
         tokens: Vec<String>,
@@ -4291,8 +4293,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_forwarded_dbsnp_fetch_dispatch_matches_shared_shell_execution() {
+    #[inline(never)]
+    fn run_forwarded_dbsnp_fetch_dispatch_parity_test() {
         let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
         let td = tempdir().expect("tempdir");
         let fasta_path = td.path().join("toy.fa");
@@ -4419,6 +4421,11 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>()
         );
         assert!(forwarded_state.sequences.contains_key("rs123_fetch"));
+    }
+
+    #[test]
+    fn test_forwarded_dbsnp_fetch_dispatch_matches_shared_shell_execution() {
+        run_forwarded_dbsnp_fetch_dispatch_parity_test();
     }
 
     #[test]
