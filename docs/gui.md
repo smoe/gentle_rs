@@ -1698,11 +1698,12 @@ Controls:
      - applies simple left/right flank windows from the current beginner
        distance setting
      - opens or focuses the dedicated PCR Designer
-   - direct ROI seeding now opens or focuses the dedicated `PCR Designer`
-     specialist so pair-PCR setup stays out of the crowded lower `Engine Ops`
-     pane.
-   - qPCR still remains in `Engine Ops`; the seeded ROI fields are shared
-     between both surfaces.
+- direct ROI seeding now opens or focuses the dedicated `PCR Designer`
+  specialist so pair-PCR and qPCR setup can stay out of the crowded lower
+  `Engine Ops` pane.
+- the dedicated `PCR Designer` now has an explicit `Pair PCR | qPCR` mode
+  switch; ROI seeding is shared, while the queued batch-region helpers still
+  remain pair-PCR-focused in this first pass.
    - after paint-dragging on the linear map, the post-drag chip now includes
      direct coordinate editing (`start..end`) for the painted interval, with
      explicit apply action (0-based, end-exclusive).
@@ -2750,6 +2751,16 @@ qPCR form:
   - `max assays`
 - the qPCR controls mirror the primer-pair hover help and use wider ROI
   coordinate fields so large genomic positions remain easy to enter
+- in the dedicated `PCR Designer`, qPCR is now a first-class mode rather than
+  an Engine-Ops-only appendix:
+  - `Pair PCR | qPCR` selector switches the right-hand constraints/run panel
+    between the two workflows
+  - the left-hand paint/selection workflow stays shared so the same painted or
+    formula-defined ROI can feed either pair-PCR or qPCR without switching
+    windows
+  - lineage/report reopen on qPCR reports now lands on the qPCR mode
+  - the left-hand paint/selection ROI workflow is shared, while queued
+    batch-region helpers remain pair-PCR-only for now
 
 Buttons:
 

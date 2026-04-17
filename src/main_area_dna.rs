@@ -674,6 +674,34 @@ impl SequencingChromatogramFocusMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum PcrDesignerMode {
+    #[default]
+    PrimerPairs,
+    QpcrAssays,
+}
+
+impl PcrDesignerMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::PrimerPairs => "Pair PCR",
+            Self::QpcrAssays => "qPCR",
+        }
+    }
+
+    fn helper_text(self) -> &'static str {
+        match self {
+            Self::PrimerPairs => {
+                "Pair-PCR mode focuses on ROI-flanking primer-pair search, simple-PCR starter flow, and queued multi-region batch runs."
+            }
+            Self::QpcrAssays => {
+                "qPCR mode reuses the same template and ROI context, then adds probe-side constraints and assay scoring on top of retained primer pairs."
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum SequencingConfirmationReviewFocusKind {
@@ -795,6 +823,8 @@ struct EngineOpsUiState {
     pcr_mut_alt: String,
     #[serde(default)]
     primer_design_ui: PrimerDesignOpsUiState,
+    #[serde(default)]
+    pcr_designer_mode: PcrDesignerMode,
     #[serde(default = "default_simple_pcr_max_primer_distance_bp")]
     simple_pcr_max_primer_distance_bp: String,
     #[serde(default)]
@@ -1080,10 +1110,10 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::{
-        DnaPresentationMode, MainAreaDna, PcrPaintRole, PrimaryMapMode, RnaReadTask,
-        RnaReadTaskMessage, RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
-        SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
-        ViewSvgExportProfile,
+        DnaPresentationMode, MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
+        RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
+        SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
+        SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -5018,6 +5048,7 @@ mod tests {
 
         assert!(area.show_engine_ops);
         assert_eq!(area.primer_design_ui.report_id, "primer_ui_focus");
+        assert_eq!(area.pcr_designer_mode, PcrDesignerMode::PrimerPairs);
         assert!(area.op_status.contains("Primer report 'primer_ui_focus'"));
     }
 
@@ -5098,6 +5129,7 @@ mod tests {
 
         assert!(area.show_engine_ops);
         assert_eq!(area.qpcr_design_ui.report_id, "qpcr_ui_focus");
+        assert_eq!(area.pcr_designer_mode, PcrDesignerMode::QpcrAssays);
         assert!(area.op_status.contains("qPCR report 'qpcr_ui_focus'"));
     }
 
@@ -6501,6 +6533,15 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_pcr_designer_mode() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
+        let state = area.current_engine_ops_state();
+        assert_eq!(state.pcr_designer_mode, PcrDesignerMode::QpcrAssays);
+    }
+
+    #[test]
     fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -6521,6 +6562,16 @@ mod tests {
             .remove("dna_presentation_mode");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.dna_presentation_mode, DnaPresentationMode::Region);
+    }
+
+    #[test]
+    fn pcr_designer_mode_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().remove("pcr_designer_mode");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.pcr_designer_mode, PcrDesignerMode::PrimerPairs);
     }
 
     #[test]
@@ -10118,6 +10169,7 @@ pub struct MainAreaDna {
     pcr_mut_ref: String,
     pcr_mut_alt: String,
     primer_design_ui: PrimerDesignOpsUiState,
+    pcr_designer_mode: PcrDesignerMode,
     simple_pcr_max_primer_distance_bp: String,
     pcr_queued_regions_ui: Vec<PcrQueuedRegionUiState>,
     pcr_batch_create_extract_copies: bool,
@@ -10629,6 +10681,7 @@ impl MainAreaDna {
             pcr_mut_ref: "A".to_string(),
             pcr_mut_alt: "G".to_string(),
             primer_design_ui: PrimerDesignOpsUiState::default(),
+            pcr_designer_mode: PcrDesignerMode::PrimerPairs,
             simple_pcr_max_primer_distance_bp: default_simple_pcr_max_primer_distance_bp(),
             pcr_queued_regions_ui: vec![],
             pcr_batch_create_extract_copies: false,
@@ -10952,6 +11005,7 @@ impl MainAreaDna {
         if !normalized_id.is_empty() {
             self.primer_design_ui.report_id = normalized_id.to_string();
         }
+        self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
         self.show_engine_ops = true;
         self.show_primer_design_report(normalized_id);
     }
@@ -10961,6 +11015,7 @@ impl MainAreaDna {
         if !normalized_id.is_empty() {
             self.qpcr_design_ui.report_id = normalized_id.to_string();
         }
+        self.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
         self.show_engine_ops = true;
         self.show_qpcr_design_report(normalized_id);
     }
@@ -30948,6 +31003,7 @@ impl MainAreaDna {
                 return;
             }
         };
+        self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
         let rejection = &report.rejection_summary;
         let rejection_summary = format!(
             "rejections(window/gc_tm/non_unique/amplicon/primer/pair/eval_skip)={}/{}/{}/{}/{}/{}/{}",
@@ -32372,6 +32428,7 @@ impl MainAreaDna {
                 return;
             }
         };
+        self.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
         let top = report
             .assays
             .first()
@@ -33736,6 +33793,9 @@ impl MainAreaDna {
             ui.small("No active sequence selected.");
             return;
         }
+        if !include_qpcr_section {
+            self.pcr_designer_mode = PcrDesignerMode::PrimerPairs;
+        }
         let primer_task_running = self.primer_design_task.is_some();
         ui.small(format!(
             "Template: {} (reports are persisted in project metadata)",
@@ -33854,10 +33914,30 @@ impl MainAreaDna {
                 );
             }
         });
+        if include_qpcr_section {
+            ui.group(|ui| {
+                ui.label("PCR Designer mode");
+                ui.horizontal(|ui| {
+                    for mode in [PcrDesignerMode::PrimerPairs, PcrDesignerMode::QpcrAssays] {
+                        let selected = self.pcr_designer_mode == mode;
+                        if ui
+                            .selectable_label(selected, mode.label())
+                            .on_hover_text(mode.helper_text())
+                            .clicked()
+                        {
+                            self.pcr_designer_mode = mode;
+                            self.save_engine_ops_state();
+                        }
+                    }
+                });
+                ui.small(self.pcr_designer_mode.helper_text());
+            });
+        }
 
-        egui::CollapsingHeader::new("Design primer pairs")
-            .default_open(true)
-            .show(ui, |ui| {
+        if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+            egui::CollapsingHeader::new("Design primer pairs")
+                .default_open(true)
+                .show(ui, |ui| {
                 egui::Grid::new("primer_pairs_overview_grid")
                     .num_columns(4)
                     .spacing([12.0, 6.0])
@@ -34292,13 +34372,14 @@ impl MainAreaDna {
                 self.render_primer_design_report_preview(ui);
                 self.render_restriction_cloning_handoff_section(ui, &template);
             });
+        }
 
-        if include_qpcr_section {
+        if include_qpcr_section && self.pcr_designer_mode == PcrDesignerMode::QpcrAssays {
             egui::CollapsingHeader::new("Design qPCR assays")
-                .default_open(false)
+                .default_open(true)
                 .show(ui, |ui| {
                 ui.small(
-                    "Tip: queue multi-region primer workflows in `Design primer pairs`; qPCR remains optional for follow-up assays.",
+                    "qPCR builds on the same template/ROI context as pair-PCR, then adds probe-side filtering and assay ranking. Pair-PCR queue/batch tools remain in the Pair PCR mode for now.",
                 );
                     ui.horizontal(|ui| {
                         ui.label("ROI start").on_hover_text(
@@ -34522,7 +34603,7 @@ impl MainAreaDna {
 
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.label(
-            "Paint-first pair-PCR designer. Drag on the linear DNA map with fixed semantic colors: ROI (green), upstream window (red), downstream window (blue).",
+            "Paint-first PCR/qPCR designer. Drag on the linear DNA map with fixed semantic colors: ROI (green), upstream window (red), downstream window (blue).",
         );
         self.render_pcr_paint_role_controls(ui, true);
         ui.small(
@@ -34530,7 +34611,10 @@ impl MainAreaDna {
         );
         ui.separator();
         ui.columns(2, |columns| {
-            columns[0].heading("Paint + Queue");
+            columns[0].heading(match self.pcr_designer_mode {
+                PcrDesignerMode::PrimerPairs => "Paint + Queue",
+                PcrDesignerMode::QpcrAssays => "Paint + ROI",
+            });
             self.render_selection_formula_inline_controls(&mut columns[0], 280.0);
             let selection_roi = self.current_selection_range_0based();
             columns[0].horizontal_wrapped(|ui| {
@@ -34548,15 +34632,17 @@ impl MainAreaDna {
                         self.op_status = err;
                     }
                 }
-                let queue_clicked = ui
-                    .add_enabled(
-                        selection_roi.is_some(),
-                        egui::Button::new("Queue selection"),
-                    )
-                    .on_hover_text("Queue current map/text selection as one PCR region")
-                    .clicked();
-                if queue_clicked {
-                    self.queue_current_selection_for_pcr();
+                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+                    let queue_clicked = ui
+                        .add_enabled(
+                            selection_roi.is_some(),
+                            egui::Button::new("Queue selection"),
+                        )
+                        .on_hover_text("Queue current map/text selection as one PCR region")
+                        .clicked();
+                    if queue_clicked {
+                        self.queue_current_selection_for_pcr();
+                    }
                 }
             });
             if let Some((start, end_exclusive)) = selection_roi {
@@ -34567,32 +34653,44 @@ impl MainAreaDna {
             } else {
                 columns[0].small("No active selection. Use formula or drag-select on map.");
             }
+            if self.pcr_designer_mode == PcrDesignerMode::QpcrAssays {
+                columns[0].small(
+                    "qPCR mode reuses the same ROI painting and selection workflow, but queued batch-region actions remain pair-PCR-only in this first pass.",
+                );
+            }
             columns[0].separator();
             self.render_pcr_designer_map_panel(&mut columns[0], ctx);
             columns[0].separator();
             self.render_pcr_paint_interval_summary(&mut columns[0]);
             columns[0].horizontal(|ui| {
-                if ui
-                    .button("Queue painted ROI")
-                    .on_hover_text("Queue the currently painted ROI interval")
-                    .clicked()
-                {
-                    if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
-                        self.queue_painted_roi_from_interval(start, end_exclusive, "painted ROI");
-                    } else {
-                        self.op_status =
-                            "Paint an ROI interval first (green role) before queueing".to_string();
+                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+                    if ui
+                        .button("Queue painted ROI")
+                        .on_hover_text("Queue the currently painted ROI interval")
+                        .clicked()
+                    {
+                        if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
+                            self.queue_painted_roi_from_interval(
+                                start,
+                                end_exclusive,
+                                "painted ROI",
+                            );
+                        } else {
+                            self.op_status =
+                                "Paint an ROI interval first (green role) before queueing"
+                                    .to_string();
+                        }
                     }
                 }
                 if ui
                     .button("Set form ROI from paint")
-                    .on_hover_text("Copy painted ROI interval into pair-PCR ROI form fields")
+                    .on_hover_text("Copy painted ROI interval into the active PCR/qPCR ROI form fields")
                     .clicked()
                 {
                     if let Some((start, end_exclusive)) = self.pcr_paint_intervals.roi {
                         self.set_primer_design_roi_fields_0based(start, end_exclusive);
                         self.op_status = format!(
-                            "Set pair-PCR ROI fields from painted interval: {}..{}",
+                            "Set PCR Designer ROI fields from painted interval: {}..{}",
                             start, end_exclusive
                         );
                         self.save_engine_ops_state();
@@ -34603,13 +34701,18 @@ impl MainAreaDna {
                     }
                 }
             });
-            self.render_pcr_queue_compact_table(&mut columns[0]);
+            if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
+                self.render_pcr_queue_compact_table(&mut columns[0]);
+            }
 
-            columns[1].heading("Constraints + Run");
+            columns[1].heading(match self.pcr_designer_mode {
+                PcrDesignerMode::PrimerPairs => "Pair-PCR Constraints + Run",
+                PcrDesignerMode::QpcrAssays => "qPCR Constraints + Run",
+            });
             egui::ScrollArea::vertical()
                 .id_salt("pcr_designer_pair_scroll")
                 .show(&mut columns[1], |ui| {
-                    self.render_primer_design_ops(ui, false);
+                    self.render_primer_design_ops(ui, true);
                 });
         });
     }
@@ -39650,6 +39753,7 @@ impl MainAreaDna {
             pcr_mut_ref: self.pcr_mut_ref.clone(),
             pcr_mut_alt: self.pcr_mut_alt.clone(),
             primer_design_ui: self.primer_design_ui.clone(),
+            pcr_designer_mode: self.pcr_designer_mode,
             simple_pcr_max_primer_distance_bp: self.simple_pcr_max_primer_distance_bp.clone(),
             pcr_queued_regions_ui: self.pcr_queued_regions_ui.clone(),
             pcr_batch_create_extract_copies: self.pcr_batch_create_extract_copies,
@@ -39866,6 +39970,7 @@ impl MainAreaDna {
         self.pcr_mut_ref = s.pcr_mut_ref;
         self.pcr_mut_alt = s.pcr_mut_alt;
         self.primer_design_ui = s.primer_design_ui;
+        self.pcr_designer_mode = s.pcr_designer_mode;
         self.simple_pcr_max_primer_distance_bp =
             if s.simple_pcr_max_primer_distance_bp.trim().is_empty() {
                 default_simple_pcr_max_primer_distance_bp()

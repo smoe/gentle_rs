@@ -1094,6 +1094,10 @@ order. Durable architecture constraints and decisions remain in
     fragment ids exist
   - internal pair-PCR/qPCR execution now emits staged `PrimerDesign` progress
     snapshots and PCR Designer surfaces those counts live while jobs run
+  - follow-up still needed: machine-oriented monitors for started long-running
+    design jobs so shell/CLI/agent callers can distinguish "job started",
+    "still making progress", and "appears stalled / too unconstrained" without
+    scraping human-only status text
   - engine operation `PcrOverlapExtensionMutagenesis` now supports
     overlap-extension insertion/deletion/replacement workflows with
     deterministic inner-overlap tail synthesis and graph-visible staged
@@ -1214,9 +1218,14 @@ order. Durable architecture constraints and decisions remain in
   - dedicated PCR Designer specialist window is now available:
     - `Patterns -> PCR Designer...` and command palette `PCR Designer`
     - sequence-context aware dedicated viewport with paint controls + map +
-      queue summary on left and pair-PCR constraints/run/report panel on right
+      queue summary on left and PCR/qPCR constraints/run/report panel on right
     - DNA-window ROI seeding now opens/focuses this specialist instead of
       relying on the crowded lower `Engine Ops` pane for pair-PCR entry
+    - the specialist now includes an explicit `Pair PCR | qPCR` mode switch:
+      - pair-PCR remains the default mode
+      - qPCR report/lineage reopen now focuses the qPCR mode automatically
+      - ROI painting/selection is shared across both modes
+      - queued batch-region helpers remain pair-PCR-only in this first pass
     - specialist left pane now includes `Selection formula` + `Apply Sel`
       plus direct `Set ROI from selection` / `Queue selection` actions so
       formula-defined selections can be used without switching windows
@@ -1233,11 +1242,18 @@ order. Durable architecture constraints and decisions remain in
       - shared-shell `primers design` / `primers show-report` now expose the
         same core-distance geometry as `simple_pcr_pairs`, so GUI and CLI can
         inspect the saved report in the same beginner vocabulary
-    - qPCR remains in the existing Engine Ops panel for this v1 scope
     - main project lineage now also reopens PCR Designer from PCR-related
       operation glyphs / `Op` cells using the stored template-sequence context
     - shared-shell UI intents now include:
       `ui open pcr-design` and `ui focus pcr-design`
+    - revisit qPCR once the assay workflow grows beyond "primer pairs + probe":
+      - keep qPCR inside the shared PCR Designer while ROI/backend/report flows
+        remain mostly shared with pair-PCR
+      - exon-junction / reference-gene / assay-intent presets
+      - multi-assay panels and qPCR-specific batch review
+      - validation/efficiency-oriented follow-on tooling
+      - at that point, reassess whether qPCR still belongs as a mode inside
+        PCR Designer or merits a dedicated assay workspace
   - single-run GUI `Design Primer Pairs` execution now runs asynchronously in a
     background worker to keep the sequence window responsive while Primer3 is
     running
@@ -2166,17 +2182,21 @@ Notes:
 4. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
 5. Async long-running command orchestration is still incomplete:
-   - BLAST async job-handle/progress/cancel baseline is now available through
-     shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP
-     (`blast_async_start|status|cancel|list`)
-   - async BLAST queueing/concurrency baseline is now implemented (bounded FIFO
+  - BLAST async job-handle/progress/cancel baseline is now available through
+    shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP
+    (`blast_async_start|status|cancel|list`)
+  - async BLAST queueing/concurrency baseline is now implemented (bounded FIFO
      scheduler with configurable max concurrency)
-   - agent auto-execution still needs higher-level orchestration for polling and
-     multi-step async flows (it currently executes one suggested command at a
-     time)
-   - upcoming primer-pair selection workflows are expected to fan out into
-     multiple BLAST searches; this still needs workflow-level async orchestration
-     on top of the baseline job primitives
+  - agent auto-execution still needs higher-level orchestration for polling and
+    multi-step async flows (it currently executes one suggested command at a
+    time)
+  - primer/qPCR design now has shared progress parity, but still needs durable
+    monitor semantics for "operation started" / heartbeat / stall detection so
+    machine callers can supervise slow or over-broad searches instead of only
+    consuming live text progress
+  - upcoming primer-pair selection workflows are expected to fan out into
+    multiple BLAST searches; this still needs workflow-level async orchestration
+    on top of the baseline job primitives
 6. Core architecture parity gaps remain:
    - some utilities are still adapter-level rather than engine operations
      (notably `import-pool` and resource-sync utilities)
