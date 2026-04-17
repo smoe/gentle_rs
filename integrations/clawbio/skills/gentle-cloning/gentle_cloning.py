@@ -531,6 +531,28 @@ def _write_repro_environment(path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _parse_stdout_json(stdout: str) -> Any | None:
+    trimmed = stdout.strip()
+    if not trimmed:
+        return None
+    try:
+        return json.loads(trimmed)
+    except json.JSONDecodeError:
+        return None
+
+
+def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+    if stdout_json.get("schema") != "gentle.sequence_context_view.v1":
+        return None
+    raw_lines = stdout_json.get("summary_lines")
+    if not isinstance(raw_lines, list):
+        return None
+    lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
+    return lines or None
+
+
 def _write_report(
     path: Path,
     request: Request,
@@ -538,6 +560,8 @@ def _write_report(
     execution_cwd: Path,
     command: list[str] | None,
     run_result: subprocess.CompletedProcess[str] | None,
+    stdout_json: Any | None,
+    chat_summary_lines: list[str] | None,
     collected_artifacts: list[dict[str, str]],
     reference_preflight: dict[str, Any] | None,
     started_utc: str,
@@ -564,6 +588,8 @@ def _write_report(
     lines.append(f"- Execution cwd: `{execution_cwd}`")
     if exit_code is not None:
         lines.append(f"- Exit code: `{exit_code}`")
+    if isinstance(stdout_json, dict) and isinstance(stdout_json.get("schema"), str):
+        lines.append(f"- Parsed stdout JSON schema: `{stdout_json['schema']}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
     if collected_artifacts:
@@ -576,6 +602,9 @@ def _write_report(
         lines.append(
             f"- Reference preflight: `{reference_preflight.get('status', 'unknown')}`"
         )
+    if chat_summary_lines:
+        lines.extend(["", "## Chat Summary", ""])
+        lines.extend(f"- {line}" for line in chat_summary_lines)
     lines.extend(
         [
             "",
@@ -696,6 +725,8 @@ def main() -> int:
     error_message: str | None = None
     collected_artifacts: list[dict[str, str]] = []
     reference_preflight: dict[str, Any] | None = None
+    stdout_json: Any | None = None
+    chat_summary_lines: list[str] | None = None
 
     try:
         if args.demo:
@@ -741,6 +772,8 @@ def main() -> int:
             error_message = (
                 f"gentle_cli exited with {run_result.returncode}; inspect stderr in report.md"
             )
+        stdout_json = _parse_stdout_json(run_result.stdout)
+        chat_summary_lines = _extract_chat_summary_lines(stdout_json)
         collected_artifacts = _copy_collected_artifacts(
             request, output_dir, execution_cwd
         )
@@ -773,6 +806,8 @@ def main() -> int:
         execution_cwd=execution_cwd,
         command=command,
         run_result=run_result,
+        stdout_json=stdout_json,
+        chat_summary_lines=chat_summary_lines,
         collected_artifacts=collected_artifacts,
         reference_preflight=reference_preflight,
         started_utc=started,
@@ -815,7 +850,9 @@ def main() -> int:
         "command": command,
         "exit_code": (run_result.returncode if run_result else None),
         "stdout": (run_result.stdout if run_result else ""),
+        "stdout_json": stdout_json,
         "stderr": (run_result.stderr if run_result else ""),
+        "chat_summary_lines": chat_summary_lines,
         "error": error_message,
         "preflight": {
             "reference_preparation": reference_preflight,

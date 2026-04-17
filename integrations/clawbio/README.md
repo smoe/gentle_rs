@@ -54,6 +54,10 @@ The wrapper emits the standard ClawBio-style bundle:
 
 - `report.md`
 - `result.json`
+  - includes raw `stdout`/`stderr`
+  - includes `stdout_json` when wrapped GENtle output is valid JSON
+  - includes `chat_summary_lines[]` for compact `InspectSequenceContextView`
+    replies
 - `reproducibility/commands.sh`
 - `reproducibility/environment.yml`
 - `reproducibility/checksums.sha256`

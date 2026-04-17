@@ -177,6 +177,8 @@ Current shared GENtle routes behind this capability:
 Expected outputs:
 
 - one compact textual/JSON context summary for chat-first replies
+  - when the route is `InspectSequenceContextView`, the wrapper now exposes it
+    via `result.json.stdout_json` plus `result.json.chat_summary_lines[]`
 - one SVG map
 - one BED/tabular coordinate export
 - one reproducibility bundle from the ClawBio wrapper
@@ -640,6 +642,9 @@ Apply the following methodology:
    (`RenderSequenceSvg` / expert SVG) and a coordinate-bearing textual or
    tabular companion (`inspect-feature-expert`, `features export-bed`, or
    structured JSON output) rather than only one or the other.
+   - for `InspectSequenceContextView`, prefer relaying
+     `result.json.chat_summary_lines[]` first, then attach SVG/BED outputs only
+     when the user needs the larger artifact
 7. **Treat prepared references as reusable infrastructure**: do not imply
    prepared Ensembl assets or BLAST indices are only valuable inside GENtle;
    explain that they can also support external bioinformatics tooling.

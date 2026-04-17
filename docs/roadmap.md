@@ -1766,9 +1766,14 @@ order. Durable architecture constraints and decisions remain in
       - `InspectSequenceContextView { seq_id, mode?, viewport?, include_visible_classes?, coordinate_mode? }`
         - first baseline is now implemented as a shared read-only engine
           report for compact viewport + visible-class + feature-row summaries
+        - companion shell/skill examples are now in place, and the ClawBio
+          wrapper now parses that report into `result.json.stdout_json` plus
+          `result.json.chat_summary_lines[]` so chat layers can relay the
+          compact summary before attaching SVG/BED artifacts
         - next follow-up on that same contract:
-          add companion shell/skill examples and use it as the preferred
-          chat-facing summary source in ClawBio
+          have upstream ClawBio/OpenClaw planners prefer this route
+          automatically for DNA-window-style questions instead of relying only
+          on skill/documentation guidance
       - `ExportSequenceContextBundle { seq_id, mode?, viewport?, coordinate_mode?, include_feature_bed?, include_text_summary?, include_restriction_sites?, restriction_enzymes[]?, output_dir }`
         - unified "sequence context bundle" export that emits the DNA-window
           SVG plus a coordinate-bearing tabular/text companion in one

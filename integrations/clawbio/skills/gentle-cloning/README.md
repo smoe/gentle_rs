@@ -138,6 +138,9 @@ Notes:
   summary follow-on after `request_dbsnp_fetch_rs9923231.json`; it returns the
   shared `InspectSequenceContextView` report so chat layers can answer with one
   concise viewport/context summary before attaching larger figures
+  - the wrapper now promotes that report into `result.json.stdout_json` and
+    `result.json.chat_summary_lines[]` so OpenClaw/ClawBio can relay the
+    summary directly
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
@@ -263,6 +266,8 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_inspect_sequence_context_rs9923231_vkorc1.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - returns one compact viewport-aware context summary for chat/report layers
+  - prefer `result.json.chat_summary_lines[]` as the first reply, then attach
+    SVG/BED follow-ons as needed
 - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context SVG

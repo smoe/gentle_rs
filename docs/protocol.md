@@ -1900,6 +1900,11 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `status`: `ok|command_failed|timeout|failed|degraded_demo`
   - includes resolver details, executed command, exit code, stdout/stderr, and
     generated artifact paths
+  - `stdout_json` is populated when the wrapped `gentle_cli` stdout parses as
+    JSON
+  - `chat_summary_lines[]` is populated when `stdout_json.schema` is
+    `gentle.sequence_context_view.v1`, so ClawBio/OpenClaw can relay the
+    compact sequence-context summary before attaching larger SVG/BED artifacts
   - `artifacts.collected[]` may enumerate declared output files copied into the
     wrapper bundle with `declared_path`, `source_path`, and `copied_path`
 - reproducibility outputs:

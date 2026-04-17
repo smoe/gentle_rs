@@ -37,6 +37,8 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     payload = json.loads(run.stdout)
     assert payload["schema"] == "gentle.clawbio_skill_result.v1"
     assert payload["status"] in ("ok", "degraded_demo")
+    assert payload["stdout_json"] is None
+    assert payload["chat_summary_lines"] is None
     assert (output_dir / "report.md").exists()
     assert (output_dir / "result.json").exists()
     assert (output_dir / "reproducibility" / "commands.sh").exists()
@@ -66,6 +68,71 @@ def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
     result_json = json.loads((out_dir / "result.json").read_text(encoding="utf-8"))
     assert result_json["status"] == "failed"
     assert "unsupported request schema" in result_json["error"]
+
+
+def test_result_payload_promotes_sequence_context_chat_summary(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "op",
+                "operation": {
+                    "InspectSequenceContextView": {
+                        "seq_id": "rs9923231_vkorc1",
+                        "mode": "linear",
+                        "viewport_start_0based": 2400,
+                        "viewport_end_0based_exclusive": 3501,
+                        "coordinate_mode": "genomic",
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.sequence_context_view.v1","seq_id":"rs9923231_vkorc1",'
+        '"summary_lines":["VKORC1 context around rs9923231","Visible classes: gene, mrna, variation"],'
+        '"rows":[]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["stdout_json"]["schema"] == "gentle.sequence_context_view.v1"
+    assert result["chat_summary_lines"] == [
+        "VKORC1 context around rs9923231",
+        "Visible classes: gene, mrna, variation",
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Chat Summary" in report
+    assert "- VKORC1 context around rs9923231" in report
+    assert "- Visible classes: gene, mrna, variation" in report
 
 
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:

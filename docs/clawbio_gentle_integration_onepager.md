@@ -61,6 +61,9 @@ Request (`gentle.clawbio_skill_request.v1`):
 Result (`gentle.clawbio_skill_result.v1`):
 - `status`: `ok | command_failed | timeout | failed | degraded_demo`
 - Includes executed command, exit code, stdout/stderr, resolver metadata, and artifact paths.
+- `stdout_json` is populated when wrapped `gentle_cli` stdout parses as JSON.
+- `chat_summary_lines[]` is populated for `gentle.sequence_context_view.v1`
+  results so chat layers can answer with the compact DNA-window summary first.
 
 ## Deterministic Execution Pattern
 
@@ -102,8 +105,11 @@ These artifacts are the handoff unit for ranking, review, and replay.
 {
   "schema": "gentle.clawbio_skill_result.v1",
   "status": "ok",
+  "chat_summary_lines": [
+    "1 CDS feature in view"
+  ],
   "stdout_json": {
-    "schema": "gentle.sequence_feature_query_result.v1"
+    "schema": "gentle.sequence_context_view.v1"
   }
 }
 ```
