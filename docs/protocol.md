@@ -3612,6 +3612,9 @@ Primer-design shell command family (implemented):
   qPCR-only non-mutating helper commands that resolve an ROI and emit one
   seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
   (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
+- the qPCR designer can now use the same seeded report geometry to drive an
+  in-window preview summary, so the shared shell payload and the GUI stay on
+  one deterministic qPCR setup story.
 - `primers design` and `primers show-report` additionally include
   `simple_pcr_pairs`, a derived helper array that summarizes each accepted pair
   in simple-PCR terms:

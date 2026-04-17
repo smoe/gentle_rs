@@ -2380,6 +2380,218 @@ pub fn pcr_assay_pair_spec_with_geometry(
     resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
 }
 
+/// Build deterministic geometry bindings for the built-in qPCR assay cartoon
+/// (`pcr.assay.qpcr`).
+///
+/// The qPCR strip keeps one explicit probe window inside the ROI and uses
+/// separate forward/reverse primer site lengths so saved-assay previews can
+/// reflect real assay geometry instead of only the baseline proportions.
+pub fn pcr_assay_qpcr_geometry_bindings(
+    roi_left_bp: usize,
+    probe_window_left_margin_bp: usize,
+    probe_site_bp: usize,
+    probe_window_right_margin_bp: usize,
+    roi_right_bp: usize,
+    forward_window_margin_bp: usize,
+    forward_primer_site_bp: usize,
+    reverse_window_margin_bp: usize,
+    reverse_primer_site_bp: usize,
+) -> ProtocolCartoonTemplateBindings {
+    const ROI_SEGMENT_MAX_BP: usize = 120;
+    const PROBE_SITE_MAX_BP: usize = 32;
+    const PROBE_WINDOW_MARGIN_MAX_BP: usize = 32;
+    const PRIMER_SITE_MAX_BP: usize = 32;
+    const WINDOW_MARGIN_MAX_BP: usize = 48;
+    const CONTEXT_MAX_BP: usize = 96;
+
+    let roi_left_bp = roi_left_bp.clamp(1, ROI_SEGMENT_MAX_BP);
+    let roi_right_bp = roi_right_bp.clamp(1, ROI_SEGMENT_MAX_BP);
+    let probe_site_bp = probe_site_bp.clamp(1, PROBE_SITE_MAX_BP);
+    let probe_window_left_margin_bp =
+        probe_window_left_margin_bp.clamp(1, PROBE_WINDOW_MARGIN_MAX_BP);
+    let probe_window_right_margin_bp =
+        probe_window_right_margin_bp.clamp(1, PROBE_WINDOW_MARGIN_MAX_BP);
+    let forward_primer_site_bp = forward_primer_site_bp.clamp(1, PRIMER_SITE_MAX_BP);
+    let reverse_primer_site_bp = reverse_primer_site_bp.clamp(1, PRIMER_SITE_MAX_BP);
+    let forward_window_margin_bp = forward_window_margin_bp.clamp(1, WINDOW_MARGIN_MAX_BP);
+    let reverse_window_margin_bp = reverse_window_margin_bp.clamp(1, WINDOW_MARGIN_MAX_BP);
+    let forward_window_bp = forward_primer_site_bp
+        .saturating_add(forward_window_margin_bp)
+        .max(2);
+    let reverse_window_bp = reverse_primer_site_bp
+        .saturating_add(reverse_window_margin_bp)
+        .max(2);
+    let probe_window_bp = probe_window_left_margin_bp
+        .saturating_add(probe_site_bp)
+        .saturating_add(probe_window_right_margin_bp)
+        .max(3);
+    let roi_total_bp = roi_left_bp
+        .saturating_add(probe_window_bp)
+        .saturating_add(roi_right_bp)
+        .max(1);
+    let left_context_bp =
+        ((forward_window_bp.saturating_add(roi_left_bp)) / 2).clamp(1, CONTEXT_MAX_BP);
+    let right_context_bp =
+        ((reverse_window_bp.saturating_add(roi_right_bp)) / 2).clamp(1, CONTEXT_MAX_BP);
+
+    let mut feature_overrides: Vec<ProtocolCartoonTemplateFeatureBinding> = vec![];
+    let mut push = |event_id: &str, molecule_id: &str, feature_id: &str, length_bp: usize| {
+        feature_overrides.push(ProtocolCartoonTemplateFeatureBinding {
+            event_id: event_id.to_string(),
+            molecule_id: molecule_id.to_string(),
+            feature_id: feature_id.to_string(),
+            label: None,
+            length_bp: Some(length_bp.max(1)),
+            top_length_bp: Some(length_bp.max(1)),
+            bottom_length_bp: Some(length_bp.max(1)),
+            color_hex: None,
+            bottom_color_hex: None,
+            top_nick_after: None,
+            bottom_nick_after: None,
+        });
+    };
+
+    push(
+        "context_roi",
+        "template_context",
+        "template_left_context",
+        left_context_bp,
+    );
+    push("context_roi", "template_context", "roi", roi_total_bp);
+    push(
+        "context_roi",
+        "template_context",
+        "template_right_context",
+        right_context_bp,
+    );
+
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "template_left_context",
+        left_context_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "forward_window",
+        forward_window_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "roi_left",
+        roi_left_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "probe_window",
+        probe_window_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "roi_right",
+        roi_right_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "reverse_window",
+        reverse_window_bp,
+    );
+    push(
+        "primer_constraints",
+        "template_with_qpcr_windows",
+        "template_right_context",
+        right_context_bp,
+    );
+
+    for event_id in ["primers_probe", "quantify"] {
+        let molecule_id = if event_id == "primers_probe" {
+            "qpcr_layout"
+        } else {
+            "quantified_amplicon"
+        };
+        push(
+            event_id,
+            molecule_id,
+            "forward_primer_site",
+            forward_primer_site_bp,
+        );
+        push(
+            event_id,
+            molecule_id,
+            "forward_window_margin",
+            forward_window_margin_bp,
+        );
+        push(event_id, molecule_id, "roi_left", roi_left_bp);
+        push(
+            event_id,
+            molecule_id,
+            "probe_window_left",
+            probe_window_left_margin_bp,
+        );
+        push(event_id, molecule_id, "probe_site", probe_site_bp);
+        push(
+            event_id,
+            molecule_id,
+            "probe_window_right",
+            probe_window_right_margin_bp,
+        );
+        push(event_id, molecule_id, "roi_right", roi_right_bp);
+        push(
+            event_id,
+            molecule_id,
+            "reverse_window_margin",
+            reverse_window_margin_bp,
+        );
+        push(
+            event_id,
+            molecule_id,
+            "reverse_primer_site",
+            reverse_primer_site_bp,
+        );
+    }
+
+    ProtocolCartoonTemplateBindings {
+        schema: protocol_cartoon_template_bindings_schema_id(),
+        template_id: Some(ProtocolCartoonKind::PcrAssayQpcr.id().to_string()),
+        defaults: ProtocolCartoonTemplateBindingsDefaults::default(),
+        event_overrides: vec![],
+        molecule_overrides: vec![],
+        feature_overrides,
+    }
+}
+
+/// Resolve the built-in qPCR assay template with explicit geometry bindings.
+pub fn pcr_assay_qpcr_spec_with_geometry(
+    roi_left_bp: usize,
+    probe_window_left_margin_bp: usize,
+    probe_site_bp: usize,
+    probe_window_right_margin_bp: usize,
+    roi_right_bp: usize,
+    forward_window_margin_bp: usize,
+    forward_primer_site_bp: usize,
+    reverse_window_margin_bp: usize,
+    reverse_primer_site_bp: usize,
+) -> Result<ProtocolCartoonSpec, String> {
+    let template = pcr_assay_qpcr_template();
+    let bindings = pcr_assay_qpcr_geometry_bindings(
+        roi_left_bp,
+        probe_window_left_margin_bp,
+        probe_site_bp,
+        probe_window_right_margin_bp,
+        roi_right_bp,
+        forward_window_margin_bp,
+        forward_primer_site_bp,
+        reverse_window_margin_bp,
+        reverse_primer_site_bp,
+    );
+    resolve_protocol_cartoon_template_with_bindings(&template, &bindings)
+}
+
 /// Build deterministic geometry bindings for the built-in overlap-extension
 /// substitution cartoon (`pcr.oe.substitution`).
 ///
@@ -3116,7 +3328,7 @@ fn qpcr_constraint_windows_molecule(
 fn qpcr_assay_layout_molecule(
     id: &str,
     label: &str,
-    primer_site_bp: usize,
+    forward_primer_site_bp: usize,
     forward_window_margin_bp: usize,
     roi_left_bp: usize,
     probe_window_left_margin_bp: usize,
@@ -3124,6 +3336,7 @@ fn qpcr_assay_layout_molecule(
     probe_window_right_margin_bp: usize,
     roi_right_bp: usize,
     reverse_window_margin_bp: usize,
+    reverse_primer_site_bp: usize,
     forward_window_color: &str,
     roi_color: &str,
     probe_window_color: &str,
@@ -3136,7 +3349,7 @@ fn qpcr_assay_layout_molecule(
             duplex_feature_block(
                 "forward_primer_site",
                 "Forward primer",
-                primer_site_bp,
+                forward_primer_site_bp,
                 forward_window_color,
             ),
             duplex_feature_block(
@@ -3174,7 +3387,7 @@ fn qpcr_assay_layout_molecule(
             duplex_feature_block(
                 "reverse_primer_site",
                 "Reverse primer",
-                primer_site_bp,
+                reverse_primer_site_bp,
                 reverse_window_color,
             ),
         ],
@@ -3186,7 +3399,7 @@ fn qpcr_assay_layout_molecule(
 fn qpcr_quantified_amplicon_molecule(
     id: &str,
     label: &str,
-    primer_site_bp: usize,
+    forward_primer_site_bp: usize,
     forward_window_margin_bp: usize,
     roi_left_bp: usize,
     probe_window_left_margin_bp: usize,
@@ -3194,6 +3407,7 @@ fn qpcr_quantified_amplicon_molecule(
     probe_window_right_margin_bp: usize,
     roi_right_bp: usize,
     reverse_window_margin_bp: usize,
+    reverse_primer_site_bp: usize,
     forward_window_color: &str,
     roi_color: &str,
     probe_window_color: &str,
@@ -3206,7 +3420,7 @@ fn qpcr_quantified_amplicon_molecule(
             duplex_feature_block(
                 "forward_primer_site",
                 "Forward primer",
-                primer_site_bp,
+                forward_primer_site_bp,
                 forward_window_color,
             ),
             duplex_feature_block(
@@ -3244,7 +3458,7 @@ fn qpcr_quantified_amplicon_molecule(
             duplex_feature_block(
                 "reverse_primer_site",
                 "Reverse primer",
-                primer_site_bp,
+                reverse_primer_site_bp,
                 reverse_window_color,
             ),
         ],
@@ -3652,6 +3866,7 @@ fn pcr_assay_qpcr_spec() -> ProtocolCartoonSpec {
                     PROBE_WINDOW_RIGHT_MARGIN_BP,
                     ROI_RIGHT_BP,
                     REVERSE_WINDOW_MARGIN_BP,
+                    PRIMER_SITE_BP,
                     forward_window_color,
                     roi_color,
                     probe_window_color,
@@ -3676,6 +3891,7 @@ fn pcr_assay_qpcr_spec() -> ProtocolCartoonSpec {
                     PROBE_WINDOW_RIGHT_MARGIN_BP,
                     ROI_RIGHT_BP,
                     REVERSE_WINDOW_MARGIN_BP,
+                    PRIMER_SITE_BP,
                     forward_window_color,
                     roi_color,
                     probe_window_color,
@@ -5525,6 +5741,17 @@ mod tests {
         assert!(!svg.contains("data-feature-marker=\"P\""));
         assert!(!svg.contains("data-feature-marker=\"F\""));
         assert!(!svg.contains("data-feature-marker=\"R\""));
+    }
+
+    #[test]
+    fn render_qpcr_svg_with_geometry_bindings_resolves() {
+        let spec = pcr_assay_qpcr_spec_with_geometry(24, 5, 20, 4, 28, 9, 19, 11, 21)
+            .expect("resolve qPCR geometry");
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("qPCR Assay"));
+        assert!(svg.contains("Primers + Probe"));
+        assert!(svg.contains("Quantify"));
     }
 
     #[test]

@@ -419,6 +419,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json \
   --output /tmp/gentle_clawbio_tp53_splicing_text
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json \
+  --output /tmp/gentle_clawbio_tp53_qpcr_seed
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json \
   --output /tmp/gentle_clawbio_qpcr_graphics
 python clawbio.py run gentle-cloning \
@@ -436,6 +439,9 @@ Notes:
 - `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
   follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
   fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_seed_qpcr_tp53_splicing.json` is a matching follow-on shell route
+  after the TP53 splicing example state is present; it emits the non-mutating
+  `gentle.qpcr_seed_request.v1` payload from splicing group `2`
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED

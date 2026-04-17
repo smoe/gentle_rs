@@ -74,11 +74,11 @@ use crate::{
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
         PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, RenderSvgMode, RestrictionCloningPcrHandoffMode,
-        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
-        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
-        RnaReadAlignConfig, RnaReadAlignmentDisplay, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, RenderSvgMode,
+        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
+        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
         RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -122,6 +122,7 @@ use crate::{
     pool_gel::build_pool_gel_layout,
     protocol_cartoon::{
         ProtocolCartoonKind, pcr_assay_pair_geometry_bindings, pcr_assay_pair_spec_with_geometry,
+        pcr_assay_qpcr_geometry_bindings, pcr_assay_qpcr_spec_with_geometry,
         protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
         render_protocol_cartoon_svg, resolve_protocol_cartoon_template_with_bindings,
     },
@@ -571,6 +572,61 @@ impl Default for QpcrDesignOpsUiState {
             max_assays: "200".to_string(),
             report_id: "qpcr_report_gui".to_string(),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct QpcrCartoonPreviewGeometry {
+    source_label: String,
+    roi_left_bp: usize,
+    probe_window_left_margin_bp: usize,
+    probe_site_bp: usize,
+    probe_window_right_margin_bp: usize,
+    roi_right_bp: usize,
+    forward_window_margin_bp: usize,
+    forward_primer_site_bp: usize,
+    reverse_window_margin_bp: usize,
+    reverse_primer_site_bp: usize,
+}
+
+impl QpcrCartoonPreviewGeometry {
+    fn total_roi_bp(&self) -> usize {
+        self.roi_left_bp
+            .saturating_add(self.probe_window_left_margin_bp)
+            .saturating_add(self.probe_site_bp)
+            .saturating_add(self.probe_window_right_margin_bp)
+            .saturating_add(self.roi_right_bp)
+    }
+
+    fn bindings_feature_override_count(&self) -> usize {
+        pcr_assay_qpcr_geometry_bindings(
+            self.roi_left_bp,
+            self.probe_window_left_margin_bp,
+            self.probe_site_bp,
+            self.probe_window_right_margin_bp,
+            self.roi_right_bp,
+            self.forward_window_margin_bp,
+            self.forward_primer_site_bp,
+            self.reverse_window_margin_bp,
+            self.reverse_primer_site_bp,
+        )
+        .feature_overrides
+        .len()
+    }
+
+    fn short_summary(&self) -> String {
+        format!(
+            "source={} | roi={} bp | F primer={} bp (+{} bp window margin) | probe={} bp (+{}/{} bp window margins) | R primer={} bp (+{} bp window margin)",
+            self.source_label,
+            self.total_roi_bp(),
+            self.forward_primer_site_bp,
+            self.forward_window_margin_bp,
+            self.probe_site_bp,
+            self.probe_window_left_margin_bp,
+            self.probe_window_right_margin_bp,
+            self.reverse_primer_site_bp,
+            self.reverse_window_margin_bp
+        )
     }
 }
 
@@ -4986,6 +5042,79 @@ mod tests {
     }
 
     #[test]
+    fn qpcr_preview_geometry_from_report_tracks_top_assay_lengths() {
+        let report = crate::engine::QpcrDesignReport {
+            report_id: "qpcr_preview_geometry".to_string(),
+            template: "tpl".to_string(),
+            roi_start_0based: 30,
+            roi_end_0based: 70,
+            assay_count: 1,
+            assays: vec![crate::engine::QpcrAssayRecord {
+                rank: 1,
+                score: 97.2,
+                forward: crate::engine::PrimerDesignPrimerRecord {
+                    start_0based: 8,
+                    end_0based_exclusive: 28,
+                    length_bp: 20,
+                    ..Default::default()
+                },
+                reverse: crate::engine::PrimerDesignPrimerRecord {
+                    start_0based: 76,
+                    end_0based_exclusive: 98,
+                    length_bp: 22,
+                    ..Default::default()
+                },
+                probe: crate::engine::PrimerDesignPrimerRecord {
+                    start_0based: 42,
+                    end_0based_exclusive: 60,
+                    length_bp: 18,
+                    ..Default::default()
+                },
+                amplicon_start_0based: 8,
+                amplicon_end_0based_exclusive: 98,
+                amplicon_length_bp: 90,
+                primer_tm_delta_c: 0.8,
+                probe_tm_delta_c: 4.3,
+                rule_flags: Default::default(),
+            }],
+            ..Default::default()
+        };
+        let top = report.assays.first().expect("top assay");
+
+        let geometry = MainAreaDna::qpcr_preview_geometry_from_report(&report)
+            .expect("preview geometry from report");
+
+        assert!(geometry.source_label.contains("qpcr_preview_geometry"));
+        assert_eq!(geometry.forward_primer_site_bp, top.forward.length_bp);
+        assert_eq!(geometry.reverse_primer_site_bp, top.reverse.length_bp);
+        assert_eq!(geometry.probe_site_bp, top.probe.length_bp);
+        assert!(geometry.bindings_feature_override_count() > 0);
+    }
+
+    #[test]
+    fn qpcr_preview_geometry_from_ui_reflects_current_lengths() {
+        let dna = DNAsequence::from_sequence(
+            "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+        )
+        .expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.roi_start_0based = "25".to_string();
+        area.qpcr_design_ui.roi_end_0based = "95".to_string();
+        area.qpcr_design_ui.forward.min_length = "19".to_string();
+        area.qpcr_design_ui.reverse.min_length = "21".to_string();
+        area.qpcr_design_ui.probe.min_length = "17".to_string();
+
+        let geometry = area
+            .qpcr_preview_geometry_from_ui()
+            .expect("preview geometry from ui");
+
+        assert_eq!(geometry.forward_primer_site_bp, 19);
+        assert_eq!(geometry.reverse_primer_site_bp, 21);
+        assert_eq!(geometry.probe_site_bp, 17);
+        assert!(geometry.total_roi_bp() >= 17);
+    }
+
+    #[test]
     fn focus_primer_design_report_selects_report_and_shows_engine_ops() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -7272,10 +7401,8 @@ mod tests {
             "gentle_mammalian_luciferase_backbone_v1".to_string();
         area.variant_followup_ui.reporter_backbone_path =
             "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string();
-        let artifacts = area.variant_followup_bundle_artifacts(
-            "rs9923231_reference",
-            "rs9923231_alternate",
-        );
+        let artifacts =
+            area.variant_followup_bundle_artifacts("rs9923231_reference", "rs9923231_alternate");
         let report = VariantPromoterContextReport {
             schema: "gentle.variant_promoter_context.v1".to_string(),
             seq_id: "vkorc1_context".to_string(),
@@ -7341,21 +7468,12 @@ mod tests {
             rationale: "Top-ranked reverse-strand promoter fragment".to_string(),
         };
 
-        let commands = area.build_variant_followup_handoff_commands(
-            &artifacts,
-            &report,
-            &recommended,
-        );
+        let commands =
+            area.build_variant_followup_handoff_commands(&artifacts, &report, &recommended);
 
-        assert!(commands.contains(
-            "render-svg vkorc1_context linear \"$BUNDLE_DIR/"
-        ));
-        assert!(commands.contains(
-            "render-svg rs9923231_reference circular \"$BUNDLE_DIR/"
-        ));
-        assert!(commands.contains(
-            "render-svg rs9923231_alternate circular \"$BUNDLE_DIR/"
-        ));
+        assert!(commands.contains("render-svg vkorc1_context linear \"$BUNDLE_DIR/"));
+        assert!(commands.contains("render-svg rs9923231_reference circular \"$BUNDLE_DIR/"));
+        assert!(commands.contains("render-svg rs9923231_alternate circular \"$BUNDLE_DIR/"));
         assert!(!commands.contains(
             "RenderSequenceSvg\":{\"seq_id\":\"vkorc1_context\",\"mode\":\"Linear\",\"path\":\"$BUNDLE_DIR/"
         ));
@@ -31094,6 +31212,120 @@ impl MainAreaDna {
             })
     }
 
+    fn load_qpcr_design_report(&self, report_id: &str) -> Result<QpcrDesignReport, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("qPCR report_id is empty".to_string());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_qpcr_design_report(report_id)
+            .map_err(|err| format!("Could not load qPCR report '{report_id}': {}", err.message))
+    }
+
+    fn qpcr_preview_geometry_from_report(
+        report: &QpcrDesignReport,
+    ) -> Option<QpcrCartoonPreviewGeometry> {
+        let assay = report.assays.first()?;
+        let forward_window_margin_bp = report
+            .roi_start_0based
+            .saturating_sub(assay.forward.end_0based_exclusive)
+            .max(1);
+        let reverse_window_margin_bp = assay
+            .reverse
+            .start_0based
+            .saturating_sub(report.roi_end_0based)
+            .max(1);
+        let roi_left_bp = assay
+            .probe
+            .start_0based
+            .saturating_sub(report.roi_start_0based)
+            .max(1);
+        let roi_right_bp = report
+            .roi_end_0based
+            .saturating_sub(assay.probe.end_0based_exclusive)
+            .max(1);
+        let probe_window_margin_seed = assay.probe.length_bp.saturating_div(3).max(1);
+        Some(QpcrCartoonPreviewGeometry {
+            source_label: format!(
+                "saved report {} top assay #{}",
+                report.report_id, assay.rank
+            ),
+            roi_left_bp,
+            probe_window_left_margin_bp: probe_window_margin_seed,
+            probe_site_bp: assay.probe.length_bp.max(1),
+            probe_window_right_margin_bp: probe_window_margin_seed,
+            roi_right_bp,
+            forward_window_margin_bp,
+            forward_primer_site_bp: assay.forward.length_bp.max(1),
+            reverse_window_margin_bp,
+            reverse_primer_site_bp: assay.reverse.length_bp.max(1),
+        })
+    }
+
+    fn qpcr_preview_geometry_from_ui(&self) -> Result<QpcrCartoonPreviewGeometry, String> {
+        let (roi_start_0based, roi_end_0based) = self.resolve_roi_range_inputs_0based(
+            &self.qpcr_design_ui.roi_start_0based,
+            &self.qpcr_design_ui.roi_end_0based,
+            "qpcr_design",
+        )?;
+        let roi_bp = roi_end_0based.saturating_sub(roi_start_0based).max(1);
+        let forward_primer_site_bp = self
+            .qpcr_design_ui
+            .forward
+            .min_length
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .unwrap_or(20)
+            .max(1);
+        let reverse_primer_site_bp = self
+            .qpcr_design_ui
+            .reverse
+            .min_length
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .unwrap_or(20)
+            .max(1);
+        let probe_site_bp = self
+            .qpcr_design_ui
+            .probe
+            .min_length
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .unwrap_or(20)
+            .max(1);
+        let probe_window_left_margin_bp = (probe_site_bp / 4).max(1);
+        let probe_window_right_margin_bp = (probe_site_bp / 4).max(1);
+        let inner_roi_bp = roi_bp
+            .saturating_sub(probe_site_bp)
+            .saturating_sub(probe_window_left_margin_bp)
+            .saturating_sub(probe_window_right_margin_bp)
+            .max(2);
+        let roi_left_bp = (inner_roi_bp / 2).max(1);
+        let roi_right_bp = inner_roi_bp.saturating_sub(roi_left_bp).max(1);
+        let forward_window_margin_bp = (forward_primer_site_bp / 2).max(1);
+        let reverse_window_margin_bp = (reverse_primer_site_bp / 2).max(1);
+        Ok(QpcrCartoonPreviewGeometry {
+            source_label: "current qPCR ROI + constraint defaults".to_string(),
+            roi_left_bp,
+            probe_window_left_margin_bp,
+            probe_site_bp,
+            probe_window_right_margin_bp,
+            roi_right_bp,
+            forward_window_margin_bp,
+            forward_primer_site_bp,
+            reverse_window_margin_bp,
+            reverse_primer_site_bp,
+        })
+    }
+
     fn load_restriction_cloning_pcr_handoff_report(
         &self,
         report_id: &str,
@@ -31601,6 +31833,162 @@ impl MainAreaDna {
                     "Showing 5 of {} accepted primer pairs. Use `Export report_id...` for the full saved report.",
                     report.pairs.len()
                 ));
+            }
+        });
+    }
+
+    fn render_qpcr_design_report_preview(&mut self, ui: &mut egui::Ui) {
+        let report_id = self.qpcr_design_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            ui.small("Current qPCR report_id is empty.");
+            return;
+        }
+        let report = match self.load_qpcr_design_report(&report_id) {
+            Ok(report) => report,
+            Err(message) => {
+                ui.small(message);
+                return;
+            }
+        };
+        ui.group(|ui| {
+            ui.label("qPCR report preview");
+            ui.small(format!(
+                "report={} template={} roi={}..{} (len {} bp) assays={} backend={}->{}",
+                report.report_id,
+                report.template,
+                report.roi_start_0based,
+                report.roi_end_0based,
+                report.roi_end_0based.saturating_sub(report.roi_start_0based),
+                report.assay_count,
+                report.backend.requested,
+                report.backend.used
+            ));
+            if report.assays.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(180, 83, 9),
+                    "No accepted qPCR assays in this saved report.",
+                );
+                ui.small(format!(
+                    "Rejections: primer_pair={} probe_window={} probe_gc/tm={} probe_non_unique={} assay={}",
+                    report.rejection_summary.primer_pair.pair_constraint_failure,
+                    report.rejection_summary.probe_out_of_window,
+                    report.rejection_summary.probe_gc_or_tm_out_of_bounds,
+                    report.rejection_summary.probe_non_unique_anneal,
+                    report.rejection_summary.probe_or_assay_failure
+                ));
+                return;
+            }
+            ui.small(
+                "Top saved assays with forward/reverse/probe geometry, amplicon span, and qPCR-specific ΔT checks.",
+            );
+            egui::Grid::new("qpcr_report_preview_grid")
+                .striped(true)
+                .num_columns(9)
+                .show(ui, |ui| {
+                    ui.strong("#");
+                    ui.strong("amplicon");
+                    ui.strong("len");
+                    ui.strong("forward");
+                    ui.strong("probe");
+                    ui.strong("reverse");
+                    ui.strong("ΔTm primers");
+                    ui.strong("ΔTm probe");
+                    ui.strong("score");
+                    ui.end_row();
+                    for assay in report.assays.iter().take(5) {
+                        ui.monospace(format!("{}", assay.rank));
+                        ui.monospace(format!(
+                            "{}..{}",
+                            assay.amplicon_start_0based, assay.amplicon_end_0based_exclusive
+                        ));
+                        ui.monospace(format!("{}", assay.amplicon_length_bp));
+                        ui.monospace(format!(
+                            "{}..{} ({} bp)",
+                            assay.forward.start_0based,
+                            assay.forward.end_0based_exclusive,
+                            assay.forward.length_bp
+                        ));
+                        ui.monospace(format!(
+                            "{}..{} ({} bp)",
+                            assay.probe.start_0based,
+                            assay.probe.end_0based_exclusive,
+                            assay.probe.length_bp
+                        ));
+                        ui.monospace(format!(
+                            "{}..{} ({} bp)",
+                            assay.reverse.start_0based,
+                            assay.reverse.end_0based_exclusive,
+                            assay.reverse.length_bp
+                        ));
+                        ui.monospace(format!("{:.1}", assay.primer_tm_delta_c));
+                        ui.monospace(format!("{:.1}", assay.probe_tm_delta_c));
+                        ui.monospace(format!("{:.1}", assay.score));
+                        ui.end_row();
+                    }
+                });
+            if let Some(top) = report.assays.first() {
+                ui.small(format!(
+                    "Top assay rule flags: roi={} amplicon={} primer ΔT={} probe-inside={} probe ΔT={}",
+                    top.rule_flags.roi_covered,
+                    top.rule_flags.amplicon_size_in_range,
+                    top.rule_flags.primer_tm_delta_in_range,
+                    top.rule_flags.probe_inside_amplicon,
+                    top.rule_flags.probe_tm_delta_in_range
+                ));
+            }
+            if report.assays.len() > 5 {
+                ui.small(format!(
+                    "Showing 5 of {} accepted qPCR assays. Use `Export report_id...` for the full saved report.",
+                    report.assays.len()
+                ));
+            }
+        });
+    }
+
+    fn render_live_qpcr_cartoon_preview(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.label("Live qPCR cartoon geometry");
+            let geometry = self
+                .load_qpcr_design_report(&self.qpcr_design_ui.report_id)
+                .ok()
+                .and_then(|report| Self::qpcr_preview_geometry_from_report(&report))
+                .or_else(|| self.qpcr_preview_geometry_from_ui().ok());
+            let Some(geometry) = geometry else {
+                ui.small(
+                    "Enter a valid qPCR ROI or select a saved qPCR report to derive a live assay-cartoon preview.",
+                );
+                return;
+            };
+            ui.monospace(geometry.short_summary());
+            ui.small(format!(
+                "deterministic bindings ready ({} feature overrides)",
+                geometry.bindings_feature_override_count()
+            ));
+            match pcr_assay_qpcr_spec_with_geometry(
+                geometry.roi_left_bp,
+                geometry.probe_window_left_margin_bp,
+                geometry.probe_site_bp,
+                geometry.probe_window_right_margin_bp,
+                geometry.roi_right_bp,
+                geometry.forward_window_margin_bp,
+                geometry.forward_primer_site_bp,
+                geometry.reverse_window_margin_bp,
+                geometry.reverse_primer_site_bp,
+            ) {
+                Ok(spec) => {
+                    let svg = render_protocol_cartoon_spec_svg(&spec);
+                    ui.small(format!(
+                        "qPCR cartoon spec resolves with {} event(s); svg ready ({} chars).",
+                        spec.events.len(),
+                        svg.len()
+                    ));
+                }
+                Err(err) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Could not resolve qPCR cartoon: {err}"),
+                    );
+                }
             }
         });
     }
@@ -32449,19 +32837,10 @@ impl MainAreaDna {
             self.op_status = "qPCR report_id is empty".to_string();
             return;
         }
-        let Some(engine) = self.engine.clone() else {
-            self.op_status = "No engine attached".to_string();
-            return;
-        };
-        let report = match engine
-            .read()
-            .expect("Engine lock poisoned")
-            .get_qpcr_design_report(report_id)
-        {
+        let report = match self.load_qpcr_design_report(report_id) {
             Ok(report) => report,
-            Err(err) => {
-                self.op_status =
-                    format!("Could not load qPCR report '{report_id}': {}", err.message);
+            Err(message) => {
+                self.op_status = message;
                 return;
             }
         };
@@ -34547,6 +34926,7 @@ impl MainAreaDna {
                     "Probe side",
                     &mut self.qpcr_design_ui.probe,
                 );
+                self.render_live_qpcr_cartoon_preview(ui);
                 let qpcr_button = if primer_task_running {
                     "Design qPCR Assays (running...)"
                 } else {
@@ -34592,6 +34972,7 @@ impl MainAreaDna {
                         self.export_qpcr_design_report_dialog(&report_id);
                     }
                 });
+                self.render_qpcr_design_report_preview(ui);
                 });
         }
     }

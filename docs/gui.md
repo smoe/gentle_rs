@@ -2766,6 +2766,12 @@ qPCR form:
       without needing a separate shell/CLI round-trip
     - the same built-in protocol id remains usable from shared shell / direct
       CLI as `protocol-cartoon render-svg pcr.assay.qpcr OUTPUT.svg`
+  - qPCR mode now also shows:
+    - a saved-report assay preview with forward / reverse / probe geometry for
+      the top ranked assays
+    - a live qPCR cartoon-geometry summary derived from the selected saved
+      report when available, or from the current ROI + constraint defaults
+      otherwise
 
 Buttons:
 

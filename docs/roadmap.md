@@ -1135,12 +1135,18 @@ order. Durable architecture constraints and decisions remain in
     - both return `gentle.qpcr_seed_request.v1` plus built-in
       `pcr.assay.qpcr` protocol-cartoon metadata for command-line and
       ClawBio/OpenClaw reuse
+    - ClawBio now also carries a TP53 splicing-group shell example that emits
+      the qPCR seed payload directly from saved splicing context
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
   - PCR Designer qPCR mode now also exposes direct export of the built-in
     `pcr.assay.qpcr` protocol cartoon so the same probe-bearing strip is easy
     to reuse in handoffs and showcase material
+  - the qPCR designer now also shows a saved-assay preview plus a live
+    geometry summary for the built-in qPCR cartoon, derived from the selected
+    report when available and otherwise from the current ROI + constraint
+    defaults
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional
