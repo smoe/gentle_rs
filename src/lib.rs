@@ -104,6 +104,8 @@ pub mod sequence_rows_blank;
 pub mod sequence_rows_dna;
 /// Restriction-enzyme sequence-row renderer implementation.
 pub mod sequence_rows_restriction_enzymes;
+/// Combined readiness summary for prepared references, helpers, and resources.
+pub mod service_readiness;
 /// Generated/derived shell-help documentation helpers.
 pub mod shell_docs;
 /// Hidden shared support helpers for internal tests across library and binaries.

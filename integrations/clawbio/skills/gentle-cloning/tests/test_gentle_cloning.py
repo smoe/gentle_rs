@@ -577,6 +577,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "resources status",
             180,
         ),
+        "request_services_status.json": (
+            "shell",
+            "services status",
+            180,
+        ),
         "request_helpers_status_puc19.json": (
             "shell",
             'helpers status "Plasmid pUC19 (online)"',

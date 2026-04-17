@@ -10859,6 +10859,15 @@ fn parse_resources_status() {
 }
 
 #[test]
+fn parse_services_status() {
+    let cmd = parse_shell_line("services status").expect("parse services status");
+    match cmd {
+        ShellCommand::ServicesStatus => {}
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_resources_sync_rebase_with_local_fixture() {
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("rebase.sync.json");
@@ -10962,6 +10971,36 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
     assert_eq!(
         out.output["attract"]["download_url"].as_str(),
         Some("https://attract.cnic.es/attract/static/ATtRACT.zip")
+    );
+}
+
+#[test]
+fn execute_services_status_reports_combined_readiness() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(&mut engine, &ShellCommand::ServicesStatus)
+        .expect("execute services status");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.service_readiness.v1")
+    );
+    assert_eq!(
+        out.output["references"][0]["genome_id"].as_str(),
+        Some("Human GRCh38 Ensembl 116")
+    );
+    assert_eq!(
+        out.output["helpers"][0]["genome_id"].as_str(),
+        Some("Plasmid pUC19 (online)")
+    );
+    assert_eq!(
+        out.output["resources"]["attract"]["display_name"].as_str(),
+        Some("ATtRACT")
+    );
+    assert!(
+        out.output["summary_lines"]
+            .as_array()
+            .map(|rows| !rows.is_empty())
+            .unwrap_or(false)
     );
 }
 

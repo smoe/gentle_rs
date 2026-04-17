@@ -20,6 +20,7 @@ use gentle::{
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status::resource_catalog_status,
+    service_readiness::service_readiness_status,
 };
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -703,6 +704,7 @@ fn usage() {
   gentle_cli resources status\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
+  gentle_cli services status\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
   gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -2441,6 +2443,18 @@ fn run() -> Result<(), String> {
                 }
                 other => Err(format!(
                     "Unknown resources subcommand '{other}' (expected status, sync-rebase or sync-jaspar)"
+                )),
+            }
+        }
+        "services" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("services requires a subcommand: status".to_string());
+            }
+            match args[cmd_idx + 1].as_str() {
+                "status" => print_json(&service_readiness_status()?),
+                other => Err(format!(
+                    "Unknown services subcommand '{other}' (expected status)"
                 )),
             }
         }

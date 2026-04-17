@@ -1008,6 +1008,11 @@ order. Durable architecture constraints and decisions remain in
           active for `REBASE` and `JASPAR`, and it records `ATtRACT` explicitly
           as a not-yet-integrated external database, including the published
           ZIP download URL, so chat layers can be precise about current gaps
+        - the next layer above that is now in place too:
+          `services status` returns one combined readiness report for canonical
+          references, helper backbones, and active external resource snapshots,
+          giving ClawBio/OpenClaw a stable first question to ask GENtle before
+          deciding whether to fetch, prepare, or render
         - the first concrete wrapper-side automation slice is now in place:
           `gentle-cloning` requests can opt into
           `ensure_reference_prepared`, which runs
@@ -1024,12 +1029,9 @@ order. Durable architecture constraints and decisions remain in
         - finish the broader sequence-context bundle/manifest layer so
           ClawBio can pick one "best first figure" and one compact textual
           summary without inventing presentation logic from raw files alone
-        - consider one dedicated shared reference-availability summary surface
-          for chat/report layers, rather than relying only on ad-hoc
-          `genomes status` / `helpers status` phrasing in the caller
-        - unify the next layer above that into one service-readiness bundle so
-          ClawBio can answer from a single report covering prepared references,
-          helper backbones, motif/enzyme snapshots, and future ATtRACT support
+        - enrich the new service-readiness surface further so it can report
+          active prepare/index jobs and any future ATtRACT integration state,
+          not only static prepared/not-prepared readiness
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

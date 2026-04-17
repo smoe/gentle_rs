@@ -131,6 +131,7 @@ Use a status-first answer shape:
 2. immediately add that GENtle can prepare and use a local Ensembl-backed
    reference copy
 3. report the current local status when possible through:
+   - `services status`
    - `genomes status "Human GRCh38 Ensembl 116"`
    - `resources status`
    - `genomes ensembl-available --collection vertebrates --filter human`
@@ -393,6 +394,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_shell_state_summary.json \
   --output /tmp/gentle_clawbio_state_summary
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_services_status.json \
+  --output /tmp/gentle_clawbio_services_status
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_status_grch38.json \
   --output /tmp/gentle_clawbio_status_grch38
@@ -672,9 +676,10 @@ Apply the following methodology:
   fallback.
 - Included first-run bootstrap requests:
   - `examples/request_genomes_list_human.json`
-- `examples/request_genomes_status_grch38.json`
-- `examples/request_resources_status.json`
-- `examples/request_genomes_prepare_grch38.json`
+  - `examples/request_services_status.json`
+  - `examples/request_genomes_status_grch38.json`
+  - `examples/request_resources_status.json`
+  - `examples/request_genomes_prepare_grch38.json`
   - `examples/request_genomes_ensembl_available_human.json`
   - `examples/request_genomes_install_ensembl_mouse.json`
   - `examples/request_hosts_list_deor.json`
@@ -698,6 +703,11 @@ Apply the following methodology:
     - reports which integrated external resource snapshots are active right
       now (`REBASE`, `JASPAR`) and records `ATtRACT` explicitly as
       not-yet-integrated, including its current published ZIP download URL
+  - `examples/request_services_status.json`
+    - reports one combined readiness view across canonical references, helper
+      backbones, and active external resource snapshots so chat/report layers
+      can answer "what can this GENtle instance work with right now?" from one
+      deterministic artifact
   - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
     - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
     - exports the fetched locus' gene/mRNA/variation rows with genomic

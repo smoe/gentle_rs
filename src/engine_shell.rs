@@ -73,7 +73,7 @@ use crate::{
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    resource_status, resource_sync,
+    resource_status, resource_sync, service_readiness,
     shell_docs::{
         HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
@@ -897,6 +897,7 @@ pub enum ShellCommand {
         output: Option<String>,
     },
     ResourcesStatus,
+    ServicesStatus,
     RoutinesList {
         catalog_path: Option<String>,
         family: Option<String>,
@@ -5385,6 +5386,10 @@ impl ShellCommand {
                 format!("sync JASPAR from '{input}' to '{output}'")
             }
             Self::ResourcesStatus => "inspect active REBASE/JASPAR resource status".to_string(),
+            Self::ServicesStatus => {
+                "inspect combined service readiness for canonical references/helpers/resources"
+                    .to_string()
+            }
             Self::RoutinesList {
                 catalog_path,
                 family,
@@ -13964,6 +13969,22 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "services" => {
+            if tokens.len() < 2 {
+                return Err("services requires a subcommand: status".to_string());
+            }
+            match tokens[1].as_str() {
+                "status" => {
+                    if tokens.len() != 2 {
+                        return Err("services status takes no additional arguments".to_string());
+                    }
+                    Ok(ShellCommand::ServicesStatus)
+                }
+                other => Err(format!(
+                    "Unknown services subcommand '{other}' (expected status)"
+                )),
+            }
+        }
         "tracks" => {
             if tokens.len() < 2 {
                 return Err(
@@ -16572,6 +16593,11 @@ fn execute_export_import_and_resource_command(
             state_changed: false,
             output: serde_json::to_value(resource_status::resource_catalog_status())
                 .map_err(|e| format!("Could not serialize resource status: {e}"))?,
+        }),
+        ShellCommand::ServicesStatus => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(service_readiness::service_readiness_status()?)
+                .map_err(|e| format!("Could not serialize service readiness: {e}"))?,
         }),
         _ => unreachable!("non-export/import/resource command passed to helper"),
     }
@@ -21851,6 +21877,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ExportRunBundle { .. }
             | ShellCommand::ImportPool { .. }
             | ShellCommand::ResourcesStatus
+            | ShellCommand::ServicesStatus
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
     ) {
@@ -22812,6 +22839,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ExportRunBundle { .. }
         | ShellCommand::ImportPool { .. }
         | ShellCommand::ResourcesStatus
+        | ShellCommand::ServicesStatus
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. } => {
             execute_export_import_and_resource_command(engine, command)?
