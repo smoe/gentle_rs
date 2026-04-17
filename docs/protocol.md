@@ -2945,6 +2945,11 @@ Construct reasoning graph foundation (implemented first slice):
   - host-profile catalog loading/list projection from the shared starter JSON
     catalog (`assets/host_profiles.json`) with filter matching across ids,
     aliases, genotype/phenotype tags, notes, and source notes
+  - graph-backed annotation-candidate layer:
+    - `gentle.annotation_candidate.v1`
+    - one portable record per annotation-grade/supporting sequence interval
+    - carries support links from one visible span back to the facts/decisions
+      it contributes to
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -2957,9 +2962,15 @@ Construct reasoning graph foundation (implemented first slice):
       in the graph/inspector and is no longer drawn by default just because it
       exists as `sequence_span` evidence
   - GUI-side hover/selection inspection for one evidence span at a time
+    - selected spans now surface their annotation-candidate source kind,
+      supporting fact/decision labels, and transcript-aware summary when
+      available
   - side-panel construct-reasoning inspector section for non-sequence facts and
     decision steps (host/helper/host-route restriction-methylation/medium/
     growth/selection context) without pretending they are coordinate spans
+  - side-panel `Annotation candidates` section for graph-backed candidate
+    annotations that bridge reasoning toward later accepted/rejected/written
+    annotation workflows
   - Planning-window `Host Profile Browser` backed by the same shared catalog so
     host/strain traits can be inspected without reparsing raw JSON
   - GUI-only role/class visibility filters layered on top of the same shared

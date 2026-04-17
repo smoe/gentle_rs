@@ -334,6 +334,7 @@ pub const DESIGN_EVIDENCE_SCHEMA: &str = gentle_protocol::DESIGN_EVIDENCE_SCHEMA
 pub const DESIGN_FACT_SCHEMA: &str = gentle_protocol::DESIGN_FACT_SCHEMA;
 pub const DESIGN_DECISION_NODE_SCHEMA: &str = gentle_protocol::DESIGN_DECISION_NODE_SCHEMA;
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = gentle_protocol::CONSTRUCT_CANDIDATE_SCHEMA;
+pub const ANNOTATION_CANDIDATE_SCHEMA: &str = gentle_protocol::ANNOTATION_CANDIDATE_SCHEMA;
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
@@ -12628,6 +12629,66 @@ impl GentleEngine {
         candidate
     }
 
+    fn normalize_annotation_candidate(
+        mut candidate: AnnotationCandidate,
+        idx: usize,
+    ) -> AnnotationCandidate {
+        candidate.schema = ANNOTATION_CANDIDATE_SCHEMA.to_string();
+        candidate.annotation_id = if candidate.annotation_id.trim().is_empty() {
+            let evidence_token = if candidate.evidence_id.trim().is_empty() {
+                idx.to_string()
+            } else {
+                Self::normalize_id_token(&candidate.evidence_id)
+            };
+            format!(
+                "annotation_{}_{}",
+                Self::normalize_id_token(candidate.role.as_str()),
+                evidence_token
+            )
+        } else {
+            candidate.annotation_id.trim().to_string()
+        };
+        candidate.evidence_id = candidate.evidence_id.trim().to_string();
+        candidate.seq_id = candidate.seq_id.trim().to_string();
+        if candidate.end_0based_exclusive < candidate.start_0based {
+            std::mem::swap(
+                &mut candidate.start_0based,
+                &mut candidate.end_0based_exclusive,
+            );
+        }
+        candidate.strand = candidate
+            .strand
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        candidate.label = candidate.label.trim().to_string();
+        candidate.rationale = candidate.rationale.trim().to_string();
+        candidate.source_kind = candidate.source_kind.trim().to_string();
+        for values in [
+            &mut candidate.supporting_fact_ids,
+            &mut candidate.supporting_fact_labels,
+            &mut candidate.supporting_decision_ids,
+            &mut candidate.supporting_decision_titles,
+            &mut candidate.effect_tags,
+        ] {
+            *values = values
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            values.sort();
+            values.dedup();
+        }
+        candidate.transcript_context_status = candidate
+            .transcript_context_status
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Self::normalize_optional_note_text(&mut candidate.warnings);
+        Self::normalize_optional_note_text(&mut candidate.notes);
+        candidate
+    }
+
     fn normalize_construct_reasoning_graph(
         mut graph: ConstructReasoningGraph,
     ) -> ConstructReasoningGraph {
@@ -12697,6 +12758,28 @@ impl GentleEngine {
         graph
             .candidates
             .sort_by(|a, b| a.candidate_id.cmp(&b.candidate_id));
+        if graph.annotation_candidates.is_empty() {
+            graph.annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
+                &graph.seq_id,
+                &graph.evidence,
+                &graph.facts,
+                &graph.decisions,
+            );
+        }
+        graph.annotation_candidates = graph
+            .annotation_candidates
+            .into_iter()
+            .enumerate()
+            .map(|(idx, candidate)| Self::normalize_annotation_candidate(candidate, idx))
+            .collect();
+        graph.annotation_candidates.sort_by(|a, b| {
+            a.start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.role.cmp(&b.role))
+                .then(a.label.cmp(&b.label))
+                .then(a.annotation_id.cmp(&b.annotation_id))
+        });
         Self::normalize_optional_note_text(&mut graph.notes);
         graph
     }
@@ -15101,6 +15184,214 @@ impl GentleEngine {
         }
     }
 
+    fn construct_reasoning_sequence_evidence_is_annotation_grade(
+        evidence: &DesignEvidence,
+    ) -> bool {
+        if evidence.scope != EvidenceScope::SequenceSpan {
+            return false;
+        }
+        if evidence
+            .context_tags
+            .iter()
+            .any(|tag| tag == "cdna_confirmed")
+            && matches!(
+                evidence.role,
+                ConstructRole::Exon
+                    | ConstructRole::SpliceBoundary
+                    | ConstructRole::Cds
+                    | ConstructRole::Transcript
+            )
+        {
+            return true;
+        }
+        let looks_generated = evidence.context_tags.iter().any(|tag| {
+            matches!(
+                tag.as_str(),
+                "generated" | ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG
+            )
+        }) || evidence.provenance_kind.starts_with("derived_");
+        looks_generated
+            && !matches!(
+                evidence.role,
+                ConstructRole::RestrictionSite
+                    | ConstructRole::Tfbs
+                    | ConstructRole::ContextBaggage
+            )
+    }
+
+    fn construct_reasoning_annotation_source_kind(
+        evidence: &DesignEvidence,
+        has_support: bool,
+    ) -> String {
+        if evidence.context_tags.iter().any(|tag| {
+            matches!(
+                tag.as_str(),
+                "generated" | ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG
+            )
+        }) || evidence.provenance_kind.starts_with("derived_")
+        {
+            return "generated_annotation".to_string();
+        }
+        if evidence
+            .context_tags
+            .iter()
+            .any(|tag| tag == "cdna_confirmed")
+        {
+            return "confirmed_annotation".to_string();
+        }
+        if has_support {
+            return "supporting_annotation".to_string();
+        }
+        "imported_annotation".to_string()
+    }
+
+    fn construct_reasoning_variant_annotation_context(
+        facts: &[DesignFact],
+        evidence_id: &str,
+    ) -> (Option<String>, Vec<String>) {
+        for fact in facts {
+            if fact.fact_type != "variant_effect_context"
+                || !fact
+                    .based_on_evidence_ids
+                    .iter()
+                    .any(|id| id == evidence_id)
+            {
+                continue;
+            }
+            let Some(variants) = fact
+                .value_json
+                .get("variants")
+                .and_then(serde_json::Value::as_array)
+            else {
+                continue;
+            };
+            for variant in variants {
+                let matches_evidence = variant
+                    .get("evidence_id")
+                    .and_then(serde_json::Value::as_str)
+                    .map(|id| id == evidence_id)
+                    .unwrap_or(false);
+                if !matches_evidence {
+                    continue;
+                }
+                let transcript_context_status = variant
+                    .get("transcript_context_status")
+                    .and_then(serde_json::Value::as_str)
+                    .map(|value| value.to_string());
+                let mut effect_tags = variant
+                    .get("effect_tags")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(|value| value.to_string())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                effect_tags.sort();
+                effect_tags.dedup();
+                return (transcript_context_status, effect_tags);
+            }
+        }
+        (None, vec![])
+    }
+
+    fn construct_reasoning_build_annotation_candidates(
+        seq_id: &str,
+        evidence: &[DesignEvidence],
+        facts: &[DesignFact],
+        decisions: &[DesignDecisionNode],
+    ) -> Vec<AnnotationCandidate> {
+        let mut fact_support_by_evidence: HashMap<&str, (Vec<String>, Vec<String>)> =
+            HashMap::new();
+        for fact in facts {
+            for evidence_id in &fact.based_on_evidence_ids {
+                let entry = fact_support_by_evidence
+                    .entry(evidence_id.as_str())
+                    .or_insert_with(|| (vec![], vec![]));
+                entry.0.push(fact.fact_id.clone());
+                if !fact.label.trim().is_empty() {
+                    entry.1.push(fact.label.clone());
+                }
+            }
+        }
+        let mut decision_support_by_evidence: HashMap<&str, (Vec<String>, Vec<String>)> =
+            HashMap::new();
+        for decision in decisions {
+            for evidence_id in &decision.input_evidence_ids {
+                let entry = decision_support_by_evidence
+                    .entry(evidence_id.as_str())
+                    .or_insert_with(|| (vec![], vec![]));
+                entry.0.push(decision.decision_id.clone());
+                if !decision.title.trim().is_empty() {
+                    entry.1.push(decision.title.clone());
+                }
+            }
+        }
+
+        let mut rows = vec![];
+        for evidence_row in evidence {
+            if evidence_row.scope != EvidenceScope::SequenceSpan {
+                continue;
+            }
+            let (supporting_fact_ids, supporting_fact_labels) = fact_support_by_evidence
+                .get(evidence_row.evidence_id.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let (supporting_decision_ids, supporting_decision_titles) =
+                decision_support_by_evidence
+                    .get(evidence_row.evidence_id.as_str())
+                    .cloned()
+                    .unwrap_or_default();
+            let has_support =
+                !supporting_fact_ids.is_empty() || !supporting_decision_ids.is_empty();
+            if !has_support
+                && !Self::construct_reasoning_sequence_evidence_is_annotation_grade(evidence_row)
+            {
+                continue;
+            }
+            let (transcript_context_status, effect_tags) =
+                Self::construct_reasoning_variant_annotation_context(
+                    facts,
+                    &evidence_row.evidence_id,
+                );
+            rows.push(AnnotationCandidate {
+                annotation_id: format!(
+                    "annotation_{}_{}",
+                    Self::normalize_id_token(evidence_row.role.as_str()),
+                    Self::normalize_id_token(&evidence_row.evidence_id)
+                ),
+                evidence_id: evidence_row.evidence_id.clone(),
+                seq_id: if evidence_row.seq_id.trim().is_empty() {
+                    seq_id.to_string()
+                } else {
+                    evidence_row.seq_id.clone()
+                },
+                start_0based: evidence_row.start_0based,
+                end_0based_exclusive: evidence_row.end_0based_exclusive,
+                strand: evidence_row.strand.clone(),
+                role: evidence_row.role,
+                label: evidence_row.label.clone(),
+                rationale: evidence_row.rationale.clone(),
+                source_kind: Self::construct_reasoning_annotation_source_kind(
+                    evidence_row,
+                    has_support,
+                ),
+                supporting_fact_ids,
+                supporting_fact_labels,
+                supporting_decision_ids,
+                supporting_decision_titles,
+                transcript_context_status,
+                effect_tags,
+                editable_status: evidence_row.editable_status,
+                warnings: evidence_row.warnings.clone(),
+                notes: evidence_row.notes.clone(),
+                ..AnnotationCandidate::default()
+            });
+        }
+        rows
+    }
+
     fn build_construct_reasoning_facts_and_decisions(
         seq_id: &str,
         dna: &DNAsequence,
@@ -16185,6 +16476,9 @@ impl GentleEngine {
             &evidence,
             helper_interpretation.as_ref(),
         );
+        let annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
+            seq_id, &evidence, &facts, &decisions,
+        );
 
         let graph = ConstructReasoningGraph {
             graph_id: graph_id
@@ -16204,6 +16498,7 @@ impl GentleEngine {
             evidence,
             facts,
             decisions,
+            annotation_candidates,
             notes: vec![
                 "v1 deterministic reasoning graph includes construct-objective context evidence, sequence-backed restriction/annotation/variant evidence, interpreted growth-condition signals, host-route plus adapter-capture restriction/methylation review, and first hard-rule host/helper/selection/variant summary decisions."
                     .to_string(),

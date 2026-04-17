@@ -25776,6 +25776,19 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
         .expect("persisted graph");
     assert_eq!(persisted.graph_id, graph.graph_id);
     assert_eq!(persisted.evidence.len(), graph.evidence.len());
+    assert!(
+        persisted
+            .annotation_candidates
+            .iter()
+            .any(|row| row.role == ConstructRole::Exon
+                && row.source_kind == "confirmed_annotation")
+    );
+    assert!(
+        persisted
+            .annotation_candidates
+            .iter()
+            .all(|row| row.role != ConstructRole::RestrictionSite)
+    );
 }
 
 #[test]
@@ -26099,6 +26112,14 @@ fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promote
                 .any(|row| { row.as_str() == Some("allele_paired_promoter_luciferase_reporter") }))
             .unwrap_or(false)
     );
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::Promoter
+            && row.source_kind == "generated_annotation"
+            && row
+                .supporting_fact_labels
+                .iter()
+                .any(|label| label == "Variant effect candidates derived")
+    }));
 }
 
 #[test]
@@ -26421,6 +26442,14 @@ fn build_construct_reasoning_graph_records_transcript_ambiguous_variant_context(
                     .all(|tag| tag.as_str() != Some("missense_variant"))
             })
             .unwrap_or(false)
+    }));
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::Variant
+            && row.transcript_context_status.as_deref() == Some("multi_transcript_ambiguous")
+            && row
+                .effect_tags
+                .iter()
+                .any(|tag| tag == "transcript_context_ambiguous")
     }));
 }
 

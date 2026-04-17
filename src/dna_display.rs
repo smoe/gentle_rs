@@ -2,15 +2,14 @@
 
 use crate::{
     engine::{
-        ConstructReasoningGraph, ConstructRole, DesignDecisionNode, DesignEvidence, DesignFact,
-        EditableStatus, EvidenceClass, EvidenceScope, LinearSequenceLetterLayoutMode,
-        RestrictionEnzymeDisplayMode,
+        ConstructReasoningGraph, ConstructRole, EditableStatus, EvidenceClass,
+        LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
     },
     enzymes::default_preferred_restriction_enzyme_names,
     gc_contents::DEFAULT_SECTION_SIZE_BP,
     restriction_enzyme::{RestrictionEndGeometry, RestrictionEnzymeKey},
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use eframe::egui::Color32;
 
@@ -152,6 +151,7 @@ impl Default for VcfDisplayCriteria {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConstructReasoningOverlaySpan {
+    pub annotation_id: String,
     pub evidence_id: String,
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
@@ -165,6 +165,11 @@ pub struct ConstructReasoningOverlaySpan {
     pub context_tags: Vec<String>,
     pub provenance_kind: String,
     pub provenance_refs: Vec<String>,
+    pub source_kind: String,
+    pub supporting_fact_labels: Vec<String>,
+    pub supporting_decision_titles: Vec<String>,
+    pub transcript_context_status: Option<String>,
+    pub effect_tags: Vec<String>,
     pub editable_status: EditableStatus,
     pub warnings: Vec<String>,
     pub notes: Vec<String>,
@@ -180,101 +185,49 @@ pub struct ConstructReasoningOverlay {
 }
 
 impl ConstructReasoningOverlay {
-    fn referenced_evidence_ids(graph: &ConstructReasoningGraph) -> BTreeSet<&str> {
-        let mut ids = BTreeSet::new();
-        Self::collect_fact_evidence_ids(&mut ids, &graph.facts);
-        Self::collect_decision_evidence_ids(&mut ids, &graph.decisions);
-        ids
-    }
-
-    fn collect_fact_evidence_ids<'a>(ids: &mut BTreeSet<&'a str>, facts: &'a [DesignFact]) {
-        for fact in facts {
-            for evidence_id in &fact.based_on_evidence_ids {
-                let trimmed = evidence_id.trim();
-                if !trimmed.is_empty() {
-                    ids.insert(trimmed);
-                }
-            }
-        }
-    }
-
-    fn collect_decision_evidence_ids<'a>(
-        ids: &mut BTreeSet<&'a str>,
-        decisions: &'a [DesignDecisionNode],
-    ) {
-        for decision in decisions {
-            for evidence_id in &decision.input_evidence_ids {
-                let trimmed = evidence_id.trim();
-                if !trimmed.is_empty() {
-                    ids.insert(trimmed);
-                }
-            }
-        }
-    }
-
-    fn is_generated_or_annotation_grade(entry: &DesignEvidence) -> bool {
-        if entry.scope != EvidenceScope::SequenceSpan {
-            return false;
-        }
-        if entry
-            .context_tags
-            .iter()
-            .any(|tag| tag.eq_ignore_ascii_case("cdna_confirmed"))
-            && matches!(
-                entry.role,
-                ConstructRole::Exon
-                    | ConstructRole::SpliceBoundary
-                    | ConstructRole::Cds
-                    | ConstructRole::Transcript
-            )
-        {
-            return true;
-        }
-        let looks_generated = entry.context_tags.iter().any(|tag| {
-            tag.eq_ignore_ascii_case("generated")
-                || tag.eq_ignore_ascii_case("annotate_promoter_windows")
-        }) || entry.provenance_kind.starts_with("derived_");
-        looks_generated
-            && !matches!(
-                entry.role,
-                ConstructRole::RestrictionSite
-                    | ConstructRole::Tfbs
-                    | ConstructRole::ContextBaggage
-            )
-    }
-
-    fn should_include_entry(
-        entry: &DesignEvidence,
-        referenced_evidence_ids: &BTreeSet<&str>,
-    ) -> bool {
-        entry.scope == EvidenceScope::SequenceSpan
-            && (referenced_evidence_ids.contains(entry.evidence_id.as_str())
-                || Self::is_generated_or_annotation_grade(entry))
-    }
-
     pub fn from_graph(graph: &ConstructReasoningGraph) -> Self {
-        let referenced_evidence_ids = Self::referenced_evidence_ids(graph);
-        let mut evidence = graph
+        let evidence_by_id = graph
             .evidence
             .iter()
-            .filter(|entry| Self::should_include_entry(entry, &referenced_evidence_ids))
-            .map(|entry| ConstructReasoningOverlaySpan {
-                evidence_id: entry.evidence_id.clone(),
-                start_0based: entry.start_0based,
-                end_0based_exclusive: entry.end_0based_exclusive,
-                strand: entry.strand.clone(),
-                role: entry.role,
-                evidence_class: entry.evidence_class,
-                label: entry.label.clone(),
-                rationale: entry.rationale.clone(),
-                score: entry.score,
-                confidence: entry.confidence,
-                context_tags: entry.context_tags.clone(),
-                provenance_kind: entry.provenance_kind.clone(),
-                provenance_refs: entry.provenance_refs.clone(),
-                editable_status: entry.editable_status,
-                warnings: entry.warnings.clone(),
-                notes: entry.notes.clone(),
+            .map(|row| (row.evidence_id.as_str(), row))
+            .collect::<BTreeMap<_, _>>();
+        let mut evidence = graph
+            .annotation_candidates
+            .iter()
+            .filter_map(|candidate| {
+                let source_evidence = evidence_by_id.get(candidate.evidence_id.as_str())?;
+                Some(ConstructReasoningOverlaySpan {
+                    annotation_id: candidate.annotation_id.clone(),
+                    evidence_id: candidate.evidence_id.clone(),
+                    start_0based: candidate.start_0based,
+                    end_0based_exclusive: candidate.end_0based_exclusive,
+                    strand: candidate.strand.clone(),
+                    role: candidate.role,
+                    evidence_class: source_evidence.evidence_class,
+                    label: if candidate.label.trim().is_empty() {
+                        source_evidence.label.clone()
+                    } else {
+                        candidate.label.clone()
+                    },
+                    rationale: if candidate.rationale.trim().is_empty() {
+                        source_evidence.rationale.clone()
+                    } else {
+                        candidate.rationale.clone()
+                    },
+                    score: source_evidence.score,
+                    confidence: source_evidence.confidence,
+                    context_tags: source_evidence.context_tags.clone(),
+                    provenance_kind: source_evidence.provenance_kind.clone(),
+                    provenance_refs: source_evidence.provenance_refs.clone(),
+                    source_kind: candidate.source_kind.clone(),
+                    supporting_fact_labels: candidate.supporting_fact_labels.clone(),
+                    supporting_decision_titles: candidate.supporting_decision_titles.clone(),
+                    transcript_context_status: candidate.transcript_context_status.clone(),
+                    effect_tags: candidate.effect_tags.clone(),
+                    editable_status: candidate.editable_status,
+                    warnings: candidate.warnings.clone(),
+                    notes: candidate.notes.clone(),
+                })
             })
             .collect::<Vec<_>>();
         evidence.sort_by(|left, right| {
@@ -1236,7 +1189,10 @@ impl Default for DnaDisplay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{ConstructObjective, DesignDecisionNode, DesignEvidence, DesignFact};
+    use crate::engine::{
+        AnnotationCandidate, ConstructObjective, DesignDecisionNode, DesignEvidence, DesignFact,
+        EvidenceScope,
+    };
 
     #[test]
     fn construct_reasoning_overlay_keeps_generated_and_referenced_sequence_spans() {
@@ -1321,6 +1277,53 @@ mod tests {
                 input_evidence_ids: vec!["variant_span".to_string(), "cds_span".to_string()],
                 ..DesignDecisionNode::default()
             }],
+            annotation_candidates: vec![
+                AnnotationCandidate {
+                    annotation_id: "annotation_generated_promoter".to_string(),
+                    evidence_id: "generated_promoter".to_string(),
+                    seq_id: "demo".to_string(),
+                    start_0based: 12,
+                    end_0based_exclusive: 48,
+                    strand: Some("+".to_string()),
+                    role: ConstructRole::Promoter,
+                    label: "TP73 promoter window".to_string(),
+                    rationale: "Promoter window derived from transcript TSS geometry".to_string(),
+                    source_kind: "generated_annotation".to_string(),
+                    ..AnnotationCandidate::default()
+                },
+                AnnotationCandidate {
+                    annotation_id: "annotation_cds_span".to_string(),
+                    evidence_id: "cds_span".to_string(),
+                    seq_id: "demo".to_string(),
+                    start_0based: 55,
+                    end_0based_exclusive: 96,
+                    strand: Some("+".to_string()),
+                    role: ConstructRole::Cds,
+                    label: "Reporter CDS".to_string(),
+                    rationale: "Imported CDS annotation".to_string(),
+                    source_kind: "supporting_annotation".to_string(),
+                    supporting_fact_labels: vec!["Variant effect candidates derived".to_string()],
+                    supporting_decision_titles: vec!["Evaluate Variant Effect Context".to_string()],
+                    ..AnnotationCandidate::default()
+                },
+                AnnotationCandidate {
+                    annotation_id: "annotation_variant_span".to_string(),
+                    evidence_id: "variant_span".to_string(),
+                    seq_id: "demo".to_string(),
+                    start_0based: 64,
+                    end_0based_exclusive: 65,
+                    strand: Some("+".to_string()),
+                    role: ConstructRole::Variant,
+                    label: "rs-demo".to_string(),
+                    rationale: "Variant marker".to_string(),
+                    source_kind: "supporting_annotation".to_string(),
+                    supporting_fact_labels: vec!["Variant effect candidates derived".to_string()],
+                    supporting_decision_titles: vec!["Evaluate Variant Effect Context".to_string()],
+                    transcript_context_status: Some("multi_transcript_ambiguous".to_string()),
+                    effect_tags: vec!["promoter_variant_candidate".to_string()],
+                    ..AnnotationCandidate::default()
+                },
+            ],
             ..ConstructReasoningGraph::default()
         });
 
@@ -1357,6 +1360,19 @@ mod tests {
                 context_tags: vec!["exon".to_string(), "cdna_confirmed".to_string()],
                 ..DesignEvidence::default()
             }],
+            annotation_candidates: vec![AnnotationCandidate {
+                annotation_id: "annotation_confirmed_exon".to_string(),
+                evidence_id: "confirmed_exon".to_string(),
+                seq_id: "demo".to_string(),
+                start_0based: 120,
+                end_0based_exclusive: 180,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Exon,
+                label: "Confirmed exon".to_string(),
+                rationale: "cDNA-confirmed exon annotation".to_string(),
+                source_kind: "confirmed_annotation".to_string(),
+                ..AnnotationCandidate::default()
+            }],
             ..ConstructReasoningGraph::default()
         });
 
@@ -1390,6 +1406,19 @@ mod tests {
                 ],
                 provenance_kind: "sequence_feature_annotation".to_string(),
                 ..DesignEvidence::default()
+            }],
+            annotation_candidates: vec![AnnotationCandidate {
+                annotation_id: "annotation_written_back_promoter".to_string(),
+                evidence_id: "annotated_promoter".to_string(),
+                seq_id: "demo".to_string(),
+                start_0based: 40,
+                end_0based_exclusive: 120,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Promoter,
+                label: "Generated promoter feature".to_string(),
+                rationale: "Promoter feature written back by AnnotatePromoterWindows".to_string(),
+                source_kind: "generated_annotation".to_string(),
+                ..AnnotationCandidate::default()
             }],
             ..ConstructReasoningGraph::default()
         });

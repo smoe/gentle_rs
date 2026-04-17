@@ -15,12 +15,13 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
-    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
-    CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities, ConstructCandidate, ConstructObjective,
-    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA,
-    DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence,
-    DesignFact, DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon,
+    ANNOTATION_CANDIDATE_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
+    AdapterRestrictionCapturePlan, AnnotationCandidate, CONSTRUCT_CANDIDATE_SCHEMA,
+    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
+    Capabilities, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
+    ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    DotplotBoxplotBin, DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon,
     DotplotOverlayAnchorExonRef, DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec,
     DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode, DotplotQuerySeries,
     DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack, DotplotView,

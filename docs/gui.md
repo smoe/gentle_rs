@@ -1584,16 +1584,25 @@ Controls:
      - generated/inferred annotation-like spans such as promoter windows
      - cDNA-confirmed exon/splice/CDS/transcript spans
      - sequence intervals that directly support a stored fact or decision
+   - Those visible spans are now backed by shared engine-owned annotation
+     candidate records instead of adapter-local filtering alone.
    - Raw low-level evidence such as unrestricted restriction-site or TFBS spam
      stays in the graph but is no longer drawn by default just because it
      exists as `sequence_span` evidence.
    - Hovering an evidence span shows a compact "why is this here?" tooltip.
    - Clicking an evidence span routes the side-panel details view to that exact
-     reasoning record (role, class, range, rationale, provenance, and notes).
+     annotation candidate / reasoning record and now also shows:
+     - whether it is generated, confirmed, or merely supporting
+     - which stored facts and decisions it supports
+     - transcript-context status and effect tags when that span participates in
+       transcript-aware variant reasoning
    - The side-panel description area now also shows a dedicated
      `Construct reasoning` section for non-sequence facts and decision steps
      (for example host/helper/growth/selection context) so those records stay
      inspectable without being faked as coordinate spans.
+   - The same side panel now also includes an `Annotation candidates` section
+     listing the current graph-backed candidate annotations with their support
+     summaries and transcript-aware warnings.
    - That inspector now also surfaces host-route restriction/methylation review
      when route notes encode traits such as `hsdR- M+`, `dam+`, `dcm+`,
      `hsdR+`, or `MDRS+`.

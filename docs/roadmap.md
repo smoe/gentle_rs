@@ -4330,6 +4330,14 @@ Post-baseline follow-ups:
     explicitly referenced by stored facts/decisions. Raw restriction-site/TFBS
     evidence remains in the graph and inspector but no longer floods long
     genomic windows by default.
+  - Done (2026-04-17, annotation-candidate bridge): construct-reasoning graphs
+    now also persist a portable `annotation_candidates` layer so the sequence
+    overlay and inspector can treat visible spans as candidate annotations
+    rather than anonymous raw evidence. Selected spans now show which stored
+    facts/decisions they support, and transcript-aware variant candidates now
+    keep their `transcript_context_status` and effect-tag summary visible in
+    both the clicked-span details and the new `Annotation candidates` side
+    panel section.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

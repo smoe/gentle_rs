@@ -115,8 +115,20 @@ Add new portable records in `crates/gentle-protocol`:
 - `gentle.design_fact.v1`
 - `gentle.design_decision_node.v1`
 - `gentle.construct_candidate.v1`
+- `gentle.annotation_candidate.v1`
 - `gentle.construct_reasoning_graph.v1`
 - `gentle.construct_reasoning_store.v1`
+
+`annotation_candidate` is the bridge from “reasoning” to “automated
+annotation”:
+
+- it stays sequence-linked,
+- it records whether one visible interval is generated, confirmed, or only
+  supporting,
+- it carries support links back to the facts/decisions it contributes to,
+- it gives GUI and ClawBio/OpenClaw one portable place to inspect
+  transcript-aware ambiguity and effect-tag summaries before later
+  accept/reject/write-back workflows exist.
 
 Suggested enums:
 
