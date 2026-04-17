@@ -2950,6 +2950,8 @@ Construct reasoning graph foundation (implemented first slice):
     - one portable record per annotation-grade/supporting sequence interval
     - carries support links from one visible span back to the facts/decisions
       it contributes to
+    - editable `draft|accepted|rejected|locked` status now persists on the
+      candidate itself so reviewed annotation state survives graph refresh
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -2969,8 +2971,13 @@ Construct reasoning graph foundation (implemented first slice):
     decision steps (host/helper/host-route restriction-methylation/medium/
     growth/selection context) without pretending they are coordinate spans
   - side-panel `Annotation candidates` section for graph-backed candidate
-    annotations that bridge reasoning toward later accepted/rejected/written
-    annotation workflows
+    annotations that now support shared-engine accept/reject/draft curation
+    instead of only read-only inspection
+  - shared shell/CLI mutation route:
+    - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
+    - updates the persisted graph in place and returns the updated candidate
+      plus the same compact summary block exposed by
+      `construct-reasoning show-graph`
   - Planning-window `Host Profile Browser` backed by the same shared catalog so
     host/strain traits can be inspected without reparsing raw JSON
   - GUI-only role/class visibility filters layered on top of the same shared

@@ -565,6 +565,7 @@ impl RenderDnaLinear {
     fn construct_reasoning_overlay_fill(
         role: ConstructRole,
         evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
     ) -> Color32 {
         let base = Self::construct_reasoning_role_color(role);
         let alpha = match evidence_class {
@@ -574,12 +575,19 @@ impl RenderDnaLinear {
             EvidenceClass::SoftHypothesis => 95,
             EvidenceClass::UserOverride => 210,
         };
+        let alpha = match editable_status {
+            crate::engine::EditableStatus::Draft => alpha,
+            crate::engine::EditableStatus::Accepted => (alpha + 30).min(230),
+            crate::engine::EditableStatus::Rejected => (alpha / 3).max(42),
+            crate::engine::EditableStatus::Locked => (alpha + 12).min(220),
+        };
         Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
     }
 
     fn construct_reasoning_overlay_stroke(
         role: ConstructRole,
         evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
     ) -> Stroke {
         let width = match evidence_class {
             EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
@@ -587,10 +595,21 @@ impl RenderDnaLinear {
             EvidenceClass::ContextEvidence => 0.9,
             EvidenceClass::SoftHypothesis => 0.8,
         };
-        Stroke::new(
-            width,
-            Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
-        )
+        match editable_status {
+            crate::engine::EditableStatus::Draft => Stroke::new(
+                width,
+                Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
+            ),
+            crate::engine::EditableStatus::Accepted => {
+                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+            }
+            crate::engine::EditableStatus::Rejected => {
+                Stroke::new(width.max(1.0), Color32::from_gray(116))
+            }
+            crate::engine::EditableStatus::Locked => {
+                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+            }
+        }
     }
 
     fn construct_reasoning_overlay_min_width_px(bp_per_px: f32) -> f32 {
@@ -696,7 +715,11 @@ impl RenderDnaLinear {
             } else if hovered {
                 Stroke::new(1.6, Color32::WHITE)
             } else {
-                Self::construct_reasoning_overlay_stroke(span.role, span.evidence_class)
+                Self::construct_reasoning_overlay_stroke(
+                    span.role,
+                    span.evidence_class,
+                    span.editable_status,
+                )
             };
             positions.push(ConstructReasoningOverlayPosition {
                 evidence_id: span.evidence_id.clone(),
@@ -704,7 +727,11 @@ impl RenderDnaLinear {
                     Pos2::new(x1, center_y - CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
                     Pos2::new(x2, center_y + CONSTRUCT_REASONING_TRACK_HEIGHT * 0.5),
                 ),
-                fill: Self::construct_reasoning_overlay_fill(span.role, span.evidence_class),
+                fill: Self::construct_reasoning_overlay_fill(
+                    span.role,
+                    span.evidence_class,
+                    span.editable_status,
+                ),
                 stroke,
                 label: Self::construct_reasoning_overlay_label(&span),
                 start_0based: span.start_0based,

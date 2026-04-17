@@ -698,6 +698,17 @@ Acceptance:
 - edits persist in metadata
 - reload reproduces the same graph state
 
+Current landed slice:
+
+- graph-backed annotation candidates can now be marked `draft`, `accepted`,
+  `rejected`, or `locked`
+- the status persists in the same construct-reasoning graph metadata instead of
+  living only in the GUI session
+- deterministic refresh now preserves reviewed status for matching annotation
+  candidates across graph rebuilds
+- the DNA window exposes the same curation in both the clicked-span detail
+  view and the `Annotation candidates` inspector section
+
 ### Phase 4.5: host/helper context integration
 
 - add host profile and helper-construct profile catalogs

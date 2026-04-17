@@ -4338,6 +4338,15 @@ Post-baseline follow-ups:
     keep their `transcript_context_status` and effect-tag summary visible in
     both the clicked-span details and the new `Annotation candidates` side
     panel section.
+  - Done (2026-04-17, annotation-candidate curation): the shared
+    construct-reasoning store now persists annotation-candidate
+    `draft/accepted/rejected/locked` status, deterministic graph refresh
+    preserves that reviewed state across rebuilds, the shared shell/CLI now
+    exposes `construct-reasoning set-annotation-status`, and the DNA-window
+    description panel plus `Annotation candidates` inspector section can both
+    accept/reject/reset candidates without inventing GUI-only state. Accepted
+    spans now gain a green review outline while rejected spans remain visible
+    in a muted form.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

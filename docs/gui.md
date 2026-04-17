@@ -1603,6 +1603,13 @@ Controls:
    - The same side panel now also includes an `Annotation candidates` section
      listing the current graph-backed candidate annotations with their support
      summaries and transcript-aware warnings.
+   - Both the clicked-span detail view and the `Annotation candidates` section
+     now expose shared-engine accept/reject/draft controls so reviewed
+     automated-annotation candidates can be curated without inventing GUI-only
+     state.
+   - Accepted candidates stay role-colored but gain a clear green review
+     outline, while rejected candidates remain inspectable in a visibly muted
+     form instead of disappearing from the graph.
    - That inspector now also surfaces host-route restriction/methylation review
      when route notes encode traits such as `hsdR- M+`, `dam+`, `dcm+`,
      `hsdR+`, or `MDRS+`.

@@ -98,6 +98,7 @@ struct ConstructReasoningOverlayBand {
     outer: f32,
     role: ConstructRole,
     evidence_class: EvidenceClass,
+    editable_status: crate::engine::EditableStatus,
 }
 
 impl FeaturePosition {
@@ -849,6 +850,7 @@ impl RenderDnaCircular {
     fn construct_reasoning_overlay_fill(
         role: ConstructRole,
         evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
     ) -> Color32 {
         let base = Self::construct_reasoning_role_color(role);
         let alpha = match evidence_class {
@@ -858,12 +860,19 @@ impl RenderDnaCircular {
             EvidenceClass::SoftHypothesis => 95,
             EvidenceClass::UserOverride => 210,
         };
+        let alpha = match editable_status {
+            crate::engine::EditableStatus::Draft => alpha,
+            crate::engine::EditableStatus::Accepted => (alpha + 30).min(230),
+            crate::engine::EditableStatus::Rejected => (alpha / 3).max(42),
+            crate::engine::EditableStatus::Locked => (alpha + 12).min(220),
+        };
         Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
     }
 
     fn construct_reasoning_overlay_stroke(
         role: ConstructRole,
         evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
     ) -> Stroke {
         let width = match evidence_class {
             EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
@@ -871,10 +880,21 @@ impl RenderDnaCircular {
             EvidenceClass::ContextEvidence => 0.9,
             EvidenceClass::SoftHypothesis => 0.8,
         };
-        Stroke::new(
-            width,
-            Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
-        )
+        match editable_status {
+            crate::engine::EditableStatus::Draft => Stroke::new(
+                width,
+                Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
+            ),
+            crate::engine::EditableStatus::Accepted => {
+                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+            }
+            crate::engine::EditableStatus::Rejected => {
+                Stroke::new(width.max(1.0), Color32::from_gray(116))
+            }
+            crate::engine::EditableStatus::Locked => {
+                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+            }
+        }
     }
 
     fn construct_reasoning_overlay_bands(&self) -> Vec<ConstructReasoningOverlayBand> {
@@ -977,6 +997,7 @@ impl RenderDnaCircular {
                 outer,
                 role: span.role,
                 evidence_class: span.evidence_class,
+                editable_status: span.editable_status,
             });
         }
         bands
@@ -1008,11 +1029,19 @@ impl RenderDnaCircular {
             {
                 Stroke::new(1.6, Color32::WHITE)
             } else {
-                Self::construct_reasoning_overlay_stroke(band.role, band.evidence_class)
+                Self::construct_reasoning_overlay_stroke(
+                    band.role,
+                    band.evidence_class,
+                    band.editable_status,
+                )
             };
             painter.add(Shape::convex_polygon(
                 points,
-                Self::construct_reasoning_overlay_fill(band.role, band.evidence_class),
+                Self::construct_reasoning_overlay_fill(
+                    band.role,
+                    band.evidence_class,
+                    band.editable_status,
+                ),
                 stroke,
             ));
         }

@@ -151,6 +151,19 @@ impl GentleEngine {
                     .unwrap_or_default()
             })
             .unwrap_or_default();
+        let annotation_candidate_status_counts = graph.annotation_candidates.iter().fold(
+            BTreeMap::<&'static str, usize>::new(),
+            |mut counts, candidate| {
+                let key = match candidate.editable_status {
+                    EditableStatus::Draft => "draft",
+                    EditableStatus::Accepted => "accepted",
+                    EditableStatus::Rejected => "rejected",
+                    EditableStatus::Locked => "locked",
+                };
+                *counts.entry(key).or_insert(0) += 1;
+                counts
+            },
+        );
 
         let mut summary_lines = vec![];
         if !graph.objective.goal.trim().is_empty() {
@@ -209,6 +222,20 @@ impl GentleEngine {
                 "Suggested variant assays: {}",
                 suggested_variant_assay_ids.join(", ")
             ));
+        }
+        if !graph.annotation_candidates.is_empty() {
+            let mut status_parts = vec![];
+            for key in ["accepted", "rejected", "draft", "locked"] {
+                if let Some(count) = annotation_candidate_status_counts.get(key) {
+                    status_parts.push(format!("{count} {key}"));
+                }
+            }
+            if !status_parts.is_empty() {
+                summary_lines.push(format!(
+                    "Annotation candidates: {}",
+                    status_parts.join(", ")
+                ));
+            }
         }
         let (protein_handoff_candidate_count, protein_handoff_source_protein_seq_ids) =
             Self::construct_reasoning_graph_protein_to_dna_handoff_summary(graph);

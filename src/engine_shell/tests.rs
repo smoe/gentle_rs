@@ -13,11 +13,11 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, ConstructObjective, Container, ContainerKind, PrimerDesignProgress,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    RestrictionCloningPcrHandoffMode,
+    ArrangementMode, ConstructObjective, ConstructRole, Container, ContainerKind, EditableStatus,
+    PrimerDesignProgress, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -632,6 +632,21 @@ fn parse_construct_reasoning_protein_handoff_command_family() {
         ShellCommand::ConstructReasoningShowGraph { graph_id } if graph_id == "graph_1"
     ));
 
+    let set_status = parse_shell_line(
+        "construct-reasoning set-annotation-status graph_1 annotation_promoter accepted",
+    )
+    .expect("parse construct-reasoning set-annotation-status");
+    assert!(matches!(
+        set_status,
+        ShellCommand::ConstructReasoningSetAnnotationStatus {
+            graph_id,
+            annotation_id,
+            editable_status,
+        } if graph_id == "graph_1"
+            && annotation_id == "annotation_promoter"
+            && editable_status == EditableStatus::Accepted
+    ));
+
     let export = parse_shell_line("construct-reasoning export-graph graph_1 out.json")
         .expect("parse construct-reasoning export-graph");
     assert!(matches!(
@@ -1183,6 +1198,65 @@ fn execute_construct_reasoning_show_graph_includes_adapter_capture_summary() {
                             })
                         })
                         .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn execute_construct_reasoning_set_annotation_status_updates_graph_and_summary() {
+    let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(2, 10),
+        qualifiers: vec![
+            ("label".into(), Some("Confirmed exon".to_string())),
+            ("evidence".into(), Some("supported by cDNA".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("construct_reasoning_cli_status".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "construct_reasoning_cli_status",
+            None,
+            Some("graph_annotation_status_cli"),
+        )
+        .expect("build graph");
+    let annotation_id = graph
+        .annotation_candidates
+        .iter()
+        .find(|candidate| candidate.role == ConstructRole::Exon)
+        .map(|candidate| candidate.annotation_id.clone())
+        .expect("annotation candidate");
+
+    let output = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningSetAnnotationStatus {
+            graph_id: graph.graph_id.clone(),
+            annotation_id: annotation_id.clone(),
+            editable_status: EditableStatus::Accepted,
+        },
+    )
+    .expect("set construct-reasoning annotation status");
+
+    assert!(output.state_changed);
+    assert_eq!(output.output["editable_status"].as_str(), Some("accepted"));
+    assert_eq!(
+        output.output["annotation_candidate"]["editable_status"].as_str(),
+        Some("accepted")
+    );
+    assert!(
+        output.output["summary"]["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str()
+                    .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
             }))
             .unwrap_or(false)
     );

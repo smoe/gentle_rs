@@ -12689,6 +12689,56 @@ impl GentleEngine {
         candidate
     }
 
+    fn construct_reasoning_annotation_candidate_match_key(
+        candidate: &AnnotationCandidate,
+    ) -> (String, usize, usize, ConstructRole) {
+        (
+            candidate.evidence_id.clone(),
+            candidate.start_0based,
+            candidate.end_0based_exclusive,
+            candidate.role,
+        )
+    }
+
+    fn preserve_construct_reasoning_annotation_candidate_statuses(
+        annotation_candidates: &mut [AnnotationCandidate],
+        previous_graph: Option<&ConstructReasoningGraph>,
+    ) {
+        let Some(previous_graph) = previous_graph else {
+            return;
+        };
+        let by_annotation_id = previous_graph
+            .annotation_candidates
+            .iter()
+            .map(|candidate| (candidate.annotation_id.as_str(), candidate.editable_status))
+            .collect::<HashMap<_, _>>();
+        let by_match_key = previous_graph
+            .annotation_candidates
+            .iter()
+            .map(|candidate| {
+                (
+                    Self::construct_reasoning_annotation_candidate_match_key(candidate),
+                    candidate.editable_status,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for candidate in annotation_candidates.iter_mut() {
+            let preserved = by_annotation_id
+                .get(candidate.annotation_id.as_str())
+                .copied()
+                .or_else(|| {
+                    by_match_key
+                        .get(&Self::construct_reasoning_annotation_candidate_match_key(
+                            candidate,
+                        ))
+                        .copied()
+                });
+            if let Some(status) = preserved {
+                candidate.editable_status = status;
+            }
+        }
+    }
+
     fn normalize_construct_reasoning_graph(
         mut graph: ConstructReasoningGraph,
     ) -> ConstructReasoningGraph {
@@ -13047,6 +13097,65 @@ impl GentleEngine {
         }
         self.write_construct_reasoning_store(store)?;
         Ok(normalized)
+    }
+
+    pub fn set_construct_reasoning_annotation_candidate_status(
+        &mut self,
+        graph_id: &str,
+        annotation_id: &str,
+        editable_status: EditableStatus,
+    ) -> Result<ConstructReasoningGraph, EngineError> {
+        let graph_id = graph_id.trim();
+        if graph_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "graph_id cannot be empty".to_string(),
+            });
+        }
+        let annotation_id = annotation_id.trim();
+        if annotation_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "annotation_id cannot be empty".to_string(),
+            });
+        }
+        let mut store = self.read_construct_reasoning_store();
+        let Some(mut graph) = store.graphs.get(graph_id).cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Construct reasoning graph '{}' not found", graph_id),
+            });
+        };
+        let Some(candidate) = graph
+            .annotation_candidates
+            .iter_mut()
+            .find(|candidate| candidate.annotation_id == annotation_id)
+        else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Annotation candidate '{}' not found in construct reasoning graph '{}'",
+                    annotation_id, graph_id
+                ),
+            });
+        };
+        if candidate.editable_status == EditableStatus::Locked
+            && editable_status != EditableStatus::Locked
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Annotation candidate '{}' in graph '{}' is locked",
+                    annotation_id, graph_id
+                ),
+            });
+        }
+        candidate.editable_status = editable_status;
+        graph.generated_at_unix_ms = Self::now_unix_ms();
+        let graph = Self::normalize_construct_reasoning_graph(graph);
+        store.graphs.insert(graph.graph_id.clone(), graph.clone());
+        self.write_construct_reasoning_store(store)?;
+        Ok(graph)
     }
 
     fn construct_reasoning_default_objective(
@@ -16440,11 +16549,18 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
             })?;
+        let store = self.read_construct_reasoning_store();
+        let existing_graph = graph_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|graph_id| store.graphs.get(graph_id))
+            .filter(|graph| graph.seq_id.eq_ignore_ascii_case(seq_id))
+            .cloned()
+            .or_else(|| Self::select_construct_reasoning_graph_for_seq_id(&store, seq_id));
         let objective = if let Some(objective_id) = objective_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let store = self.read_construct_reasoning_store();
             store
                 .objectives
                 .get(objective_id)
@@ -16476,8 +16592,12 @@ impl GentleEngine {
             &evidence,
             helper_interpretation.as_ref(),
         );
-        let annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
+        let mut annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
             seq_id, &evidence, &facts, &decisions,
+        );
+        Self::preserve_construct_reasoning_annotation_candidate_statuses(
+            &mut annotation_candidates,
+            existing_graph.as_ref(),
         );
 
         let graph = ConstructReasoningGraph {
