@@ -505,6 +505,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
             7500,
         ),
+        "request_resources_status.json": (
+            "shell",
+            "resources status",
+            180,
+        ),
         "request_helpers_status_puc19.json": (
             "shell",
             'helpers status "Plasmid pUC19 (online)"',

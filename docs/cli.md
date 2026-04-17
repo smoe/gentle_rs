@@ -1382,6 +1382,7 @@ cargo run --bin gentle_cli -- ladders export dna_ladders.neb.json --filter NEB
 cargo run --bin gentle_cli -- ladders export rna_ladders.snapshot.json --molecule rna
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
+cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- agents list
@@ -2308,6 +2309,15 @@ DNA ladder catalog commands:
 
 Resource sync commands:
 
+- `resources status`
+  - Reports which integrated external resource snapshots are active right now.
+  - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
+    counts and whether GENtle is currently using a runtime override or the
+    built-in snapshot.
+  - Also records `ATtRACT` explicitly as a not-yet-integrated external
+    database so callers can stay honest about current scope.
+  - Includes the current ATtRACT homepage plus published ZIP download URL:
+    `https://attract.cnic.es/attract/static/ATtRACT.zip`.
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
   - Parses REBASE/Bairoch-style records (`withrefm`) into GENtle restriction-enzyme JSON.
   - `INPUT` may be a local file path or an `https://...` URL.

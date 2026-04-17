@@ -86,6 +86,8 @@ pub mod render_export;
 pub mod render_feature_expert;
 /// Sequence export helpers and render-side formatting.
 pub mod render_sequence;
+/// Runtime status helpers for built-in and overrideable external resources.
+pub mod resource_status;
 /// Resource synchronization (REBASE/JASPAR) parsing and snapshot writing.
 pub mod resource_sync;
 /// Restriction-enzyme site model and cut geometry utilities.

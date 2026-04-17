@@ -19,6 +19,7 @@ use gentle::{
         default_catalog_discovery_token,
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
+    resource_status::resource_catalog_status,
 };
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -699,6 +700,7 @@ fn usage() {
   gentle_cli planning sync status\n  \
   gentle_cli planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n  \
   gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n  \
+  gentle_cli resources status\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
@@ -2347,10 +2349,12 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "resources requires a subcommand: sync-rebase or sync-jaspar".to_string(),
+                    "resources requires a subcommand: status, sync-rebase or sync-jaspar"
+                        .to_string(),
                 );
             }
             match args[cmd_idx + 1].as_str() {
+                "status" => print_json(&resource_catalog_status()),
                 "sync-rebase" => {
                     if args.len() <= cmd_idx + 2 {
                         usage();
@@ -2436,7 +2440,7 @@ fn run() -> Result<(), String> {
                     Ok(())
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected sync-rebase or sync-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase or sync-jaspar)"
                 )),
             }
         }

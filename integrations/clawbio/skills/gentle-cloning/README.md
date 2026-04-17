@@ -58,6 +58,7 @@ ClawBio/OpenClaw answer pattern is:
   Ensembl-backed reference copy
 - inspect the current local state first with:
   - `genomes status "Human GRCh38 Ensembl 116"`
+  - `resources status`
   - `genomes ensembl-available --collection vertebrates --filter human`
 - if the reference is not prepared yet, say so explicitly and offer the local
   prepare path rather than presenting the request as a dead end
@@ -86,6 +87,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_install_ensembl_mouse.json --output /tmp/gentle_install_mouse
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_status.json --output /tmp/gentle_resources_status
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_blast_grch38_short.json --output /tmp/gentle_grch38_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
@@ -249,6 +251,7 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_genomes_status_grch38.json`
+- `examples/request_resources_status.json`
 - `examples/request_genomes_prepare_grch38.json`
 - `examples/request_helpers_status_puc19.json`
 - `examples/request_helpers_prepare_puc19.json`
@@ -267,6 +270,10 @@ Included follow-on analysis/planning/graphics requests:
   - lowest-hanging graphical demo for remote ClawBio/OpenClaw installs
   - auto-checks/prepares `Human GRCh38 Ensembl 116`, fetches `rs9923231`, and
     exports a compact linear genomic-context SVG into the wrapper bundle
+- `examples/request_resources_status.json`
+  - reports which integrated external resource snapshots are active right now
+    (`REBASE`, `JASPAR`) and records `ATtRACT` explicitly as
+    not-yet-integrated, including its current published ZIP download URL
 - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - exports the fetched locus' gene/mRNA/variation rows with genomic coordinates

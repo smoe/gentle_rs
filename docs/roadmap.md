@@ -1003,6 +1003,11 @@ order. Durable architecture constraints and decisions remain in
           GENtle picture first (catalog version, prepared/not prepared, current
           prepare/index status if known) instead of stopping at "no direct
           remote database access"
+        - that status framing is now widening into service-readiness reporting:
+          `resources status` now reports which integrated external snapshots are
+          active for `REBASE` and `JASPAR`, and it records `ATtRACT` explicitly
+          as a not-yet-integrated external database, including the published
+          ZIP download URL, so chat layers can be precise about current gaps
         - the first concrete wrapper-side automation slice is now in place:
           `gentle-cloning` requests can opt into
           `ensure_reference_prepared`, which runs
@@ -1022,6 +1027,9 @@ order. Durable architecture constraints and decisions remain in
         - consider one dedicated shared reference-availability summary surface
           for chat/report layers, rather than relying only on ad-hoc
           `genomes status` / `helpers status` phrasing in the caller
+        - unify the next layer above that into one service-readiness bundle so
+          ClawBio can answer from a single report covering prepared references,
+          helper backbones, motif/enzyme snapshots, and future ATtRACT support
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

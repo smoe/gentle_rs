@@ -10850,6 +10850,15 @@ fn parse_resources_sync_jaspar_with_output() {
 }
 
 #[test]
+fn parse_resources_status() {
+    let cmd = parse_shell_line("resources status").expect("parse resources status");
+    match cmd {
+        ShellCommand::ResourcesStatus => {}
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_resources_sync_rebase_with_local_fixture() {
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("rebase.sync.json");
@@ -10919,6 +10928,40 @@ fn execute_resources_sync_jaspar_with_local_fixture() {
     assert_eq!(
         snapshot.get("motif_count").and_then(|v| v.as_u64()),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_resources_status_reports_builtin_or_runtime_sources() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(&mut engine, &ShellCommand::ResourcesStatus)
+        .expect("execute resources status");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.resource_status.v1")
+    );
+    assert_eq!(out.output["rebase"]["resource_id"].as_str(), Some("rebase"));
+    assert_eq!(out.output["jaspar"]["resource_id"].as_str(), Some("jaspar"));
+    assert_eq!(
+        out.output["rebase"]["active_source"].as_str(),
+        Some("builtin")
+    );
+    assert_eq!(
+        out.output["jaspar"]["active_source"].as_str(),
+        Some("builtin")
+    );
+    assert_eq!(
+        out.output["attract"]["support_status"].as_str(),
+        Some("not_yet_integrated")
+    );
+    assert_eq!(
+        out.output["attract"]["display_name"].as_str(),
+        Some("ATtRACT")
+    );
+    assert_eq!(
+        out.output["attract"]["download_url"].as_str(),
+        Some("https://attract.cnic.es/attract/static/ATtRACT.zip")
     );
 }
 
