@@ -662,6 +662,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-feature SEQ_ID FEATURE_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
@@ -3857,6 +3859,30 @@ mod tests {
         assert!(matches!(
             primers_seed_splicing,
             ShellCommand::PrimersSeedFromSplicing { .. }
+        ));
+
+        let primers_seed_qpcr_feature = parse_shell_tokens(&[
+            "primers".to_string(),
+            "seed-qpcr-from-feature".to_string(),
+            "seqA".to_string(),
+            "5".to_string(),
+        ])
+        .expect("parse primers seed-qpcr-from-feature");
+        assert!(matches!(
+            primers_seed_qpcr_feature,
+            ShellCommand::PrimersSeedQpcrFromFeature { .. }
+        ));
+
+        let primers_seed_qpcr_splicing = parse_shell_tokens(&[
+            "primers".to_string(),
+            "seed-qpcr-from-splicing".to_string(),
+            "seqA".to_string(),
+            "7".to_string(),
+        ])
+        .expect("parse primers seed-qpcr-from-splicing");
+        assert!(matches!(
+            primers_seed_qpcr_splicing,
+            ShellCommand::PrimersSeedQpcrFromSplicing { .. }
         ));
 
         let primers_export_qpcr = parse_shell_tokens(&[

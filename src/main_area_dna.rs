@@ -123,7 +123,7 @@ use crate::{
     protocol_cartoon::{
         ProtocolCartoonKind, pcr_assay_pair_geometry_bindings, pcr_assay_pair_spec_with_geometry,
         protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
-        resolve_protocol_cartoon_template_with_bindings,
+        render_protocol_cartoon_svg, resolve_protocol_cartoon_template_with_bindings,
     },
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
@@ -32375,6 +32375,43 @@ impl MainAreaDna {
         }
     }
 
+    fn export_builtin_protocol_cartoon_svg_dialog(
+        &mut self,
+        protocol: ProtocolCartoonKind,
+        fallback_name: &str,
+    ) {
+        let default_name = format!(
+            "{}.svg",
+            Self::sanitize_export_name_component(protocol.id(), fallback_name)
+        );
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = format!("{} SVG export canceled", protocol.id());
+            return;
+        };
+        let svg = render_protocol_cartoon_svg(&protocol);
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Exported built-in protocol cartoon '{}' to {}",
+                    protocol.id(),
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export protocol cartoon '{}' to '{}': {}",
+                    protocol.id(),
+                    path.display(),
+                    err
+                );
+            }
+        }
+    }
+
     fn list_qpcr_design_reports(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -34378,6 +34415,27 @@ impl MainAreaDna {
             egui::CollapsingHeader::new("Design qPCR assays")
                 .default_open(true)
                 .show(ui, |ui| {
+                ui.group(|ui| {
+                    ui.label("qPCR protocol cartoon");
+                    ui.small(
+                        "Use the built-in probe-bearing qPCR strip to explain or promote the assay workflow from the same deterministic protocol-cartoon family.",
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .button("Export qPCR Cartoon SVG...")
+                            .on_hover_text(
+                                "Export the built-in qPCR assay protocol cartoon (`pcr.assay.qpcr`) as SVG.",
+                            )
+                            .clicked()
+                        {
+                            self.export_builtin_protocol_cartoon_svg_dialog(
+                                ProtocolCartoonKind::PcrAssayQpcr,
+                                "qpcr_assay_protocol_cartoon",
+                            );
+                        }
+                        ui.monospace("protocol-cartoon render-svg pcr.assay.qpcr OUTPUT.svg");
+                    });
+                });
                 ui.small(
                     "qPCR builds on the same template/ROI context as pair-PCR, then adds probe-side filtering and assay ranking. Pair-PCR queue/batch tools remain in the Pair PCR mode for now.",
                 );

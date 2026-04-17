@@ -2761,6 +2761,11 @@ qPCR form:
   - lineage/report reopen on qPCR reports now lands on the qPCR mode
   - the left-hand paint/selection ROI workflow is shared, while queued
     batch-region helpers remain pair-PCR-only for now
+  - qPCR mode now also exposes the built-in protocol-cartoon route directly:
+    - `Export qPCR Cartoon SVG...` writes the shared `pcr.assay.qpcr` strip
+      without needing a separate shell/CLI round-trip
+    - the same built-in protocol id remains usable from shared shell / direct
+      CLI as `protocol-cartoon render-svg pcr.assay.qpcr OUTPUT.svg`
 
 Buttons:
 

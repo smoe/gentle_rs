@@ -162,6 +162,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json --output /tmp/gentle_qpcr_graphics
 ```
 
 Notes:
@@ -1606,6 +1607,8 @@ Shared shell command:
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
+    - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
+    - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
       - includes `simple_pcr_pairs` with per-pair left/right distance from the
@@ -1809,6 +1812,16 @@ Shared shell command:
       - includes ready-to-run operations:
         `operations.design_primer_pairs` (`DesignPrimerPairs`) and
         `operations.design_qpcr_assays` (`DesignQpcrAssays`)
+    - qPCR-only seed helper notes
+      (`primers seed-qpcr-from-feature` /
+      `primers seed-qpcr-from-splicing`):
+      - returns non-mutating schema `gentle.qpcr_seed_request.v1`
+      - includes `template`, source metadata, `roi_start_0based`,
+        `roi_end_0based_exclusive`
+      - includes one ready-to-run `operation` (`DesignQpcrAssays`)
+      - includes built-in protocol-cartoon metadata for `pcr.assay.qpcr`, so
+        shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
+        coding that protocol id elsewhere
     - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
       - expects an `Operation` payload whose root variant is
         `PrepareRestrictionCloningPcrHandoff`

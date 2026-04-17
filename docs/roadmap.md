@@ -1128,9 +1128,18 @@ order. Durable architecture constraints and decisions remain in
     `primers export-report`, `primers design-qpcr`,
     `primers list-qpcr-reports`, `primers show-qpcr-report`,
     `primers export-qpcr-report`
+  - qPCR setup/promotion helpers are now available for machine-facing callers:
+    - `primers seed-qpcr-from-feature`
+    - `primers seed-qpcr-from-splicing`
+    - both return `gentle.qpcr_seed_request.v1` plus built-in
+      `pcr.assay.qpcr` protocol-cartoon metadata for command-line and
+      ClawBio/OpenClaw reuse
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
+  - PCR Designer qPCR mode now also exposes direct export of the built-in
+    `pcr.assay.qpcr` protocol cartoon so the same probe-bearing strip is easy
+    to reuse in handoffs and showcase material
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional

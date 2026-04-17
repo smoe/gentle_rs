@@ -1937,7 +1937,7 @@ fn parse_restriction_cloning_handoff_mode(
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -2221,6 +2221,34 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })?;
             Ok(ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id })
         }
+        "seed-qpcr-from-feature" => {
+            if tokens.len() != 4 {
+                return Err("primers seed-qpcr-from-feature requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-qpcr-from-feature: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedQpcrFromFeature { seq_id, feature_id })
+        }
+        "seed-qpcr-from-splicing" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "primers seed-qpcr-from-splicing requires SEQ_ID FEATURE_ID".to_string()
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-qpcr-from-splicing: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedQpcrFromSplicing { seq_id, feature_id })
+        }
         "list-reports" => {
             if tokens.len() != 2 {
                 return Err("primers list-reports takes no options".to_string());
@@ -2268,7 +2296,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

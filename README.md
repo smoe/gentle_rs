@@ -409,7 +409,7 @@ Build note:
 | Primer-pair design for one ROI | Shipped | `DesignPrimerPairs` | Engine Ops, CLI/shared-shell report routes |
 | Insertion-first anchored pair design | Shipped (engine contract) | `DesignInsertionPrimerPairs` | CLI/shared-shell `op`/workflow payloads (GUI form pending) |
 | Selection-first batch primer-pair design | Shipped | repeated `DesignPrimerPairs` | DNA-window PCR queue + Engine Ops batch results |
-| qPCR assay design | Shipped | `DesignQpcrAssays` | Engine Ops, CLI/shared-shell qPCR report routes |
+| qPCR assay design | Shipped | `DesignQpcrAssays` | PCR Designer qPCR mode, Engine Ops, CLI/shared-shell qPCR report routes |
 | PCR protocol cartoons | Shipped baseline | `RenderProtocolCartoonSvg` | `pcr.assay.pair`, `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, `pcr.assay.qpcr` |
 | Nested PCR | Planned | future `DesignPrimerPairs` family extension | tracked in roadmap |
 | Inverse PCR | Planned | future PCR modality extension | tracked in roadmap |
@@ -429,6 +429,23 @@ layering above, that means:
 - PCR explanation lives in shared protocol-cartoon outputs such as
   `pcr.assay.pair`, `pcr.assay.pair.no_product`,
   `pcr.assay.pair.with_tail`, and `pcr.assay.qpcr`
+
+The qPCR strip below is included as a supporting figure rather than a hero
+image. It is strongest as an assay-planning cartoon: panels 1 to 3 show the
+sequence-grounded setup GENtle models directly, while panel 4 should be read
+more lightly as quantification context than as a detailed fluorescence-physics
+model.
+
+![GENtle qPCR protocol cartoon](docs/figures/qpcr_assay_protocol_cartoon.svg)
+
+qPCR now has two clear command-line entry points:
+
+- use `primers seed-qpcr-from-feature ...` or `primers seed-qpcr-from-splicing ...`
+  to derive a deterministic `DesignQpcrAssays` setup payload from existing
+  sequence context
+- use `protocol-cartoon render-svg pcr.assay.qpcr ...` to export the
+  built-in probe-bearing qPCR strip for reports, ClawBio/OpenClaw bundles, or
+  README-style promotion
 
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For

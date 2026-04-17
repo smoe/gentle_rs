@@ -4016,6 +4016,26 @@ fn parse_primers_seed_from_feature_and_splicing() {
             feature_id
         } if seq_id == "seq_a" && feature_id == 11
     ));
+
+    let qpcr_feature = parse_shell_line("primers seed-qpcr-from-feature seq_a 13")
+        .expect("parse seed-qpcr-from-feature");
+    assert!(matches!(
+        qpcr_feature,
+        ShellCommand::PrimersSeedQpcrFromFeature {
+            seq_id,
+            feature_id
+        } if seq_id == "seq_a" && feature_id == 13
+    ));
+
+    let qpcr_splicing = parse_shell_line("primers seed-qpcr-from-splicing seq_a 17")
+        .expect("parse seed-qpcr-from-splicing");
+    assert!(matches!(
+        qpcr_splicing,
+        ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id,
+            feature_id
+        } if seq_id == "seq_a" && feature_id == 17
+    ));
 }
 
 #[test]
@@ -9475,6 +9495,50 @@ fn execute_primers_seed_from_feature_and_splicing() {
     assert_eq!(
         seeded_splicing.output["operations"]["design_qpcr_assays"]["DesignQpcrAssays"]["template"]
             .as_str(),
+        Some("seq_a")
+    );
+
+    let seeded_qpcr_feature = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedQpcrFromFeature {
+            seq_id: "seq_a".to_string(),
+            feature_id,
+        },
+    )
+    .expect("seed qpcr from feature");
+    assert!(!seeded_qpcr_feature.state_changed);
+    assert_eq!(
+        seeded_qpcr_feature.output["schema"].as_str(),
+        Some("gentle.qpcr_seed_request.v1")
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["operation"]["DesignQpcrAssays"]["template"].as_str(),
+        Some("seq_a")
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["protocol_cartoon"]["protocol"].as_str(),
+        Some("pcr.assay.qpcr")
+    );
+
+    let seeded_qpcr_splicing = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id: "seq_a".to_string(),
+            feature_id,
+        },
+    )
+    .expect("seed qpcr from splicing");
+    assert!(!seeded_qpcr_splicing.state_changed);
+    assert_eq!(
+        seeded_qpcr_splicing.output["schema"].as_str(),
+        Some("gentle.qpcr_seed_request.v1")
+    );
+    assert_eq!(
+        seeded_qpcr_splicing.output["source"]["kind"].as_str(),
+        Some("splicing")
+    );
+    assert_eq!(
+        seeded_qpcr_splicing.output["operation"]["DesignQpcrAssays"]["template"].as_str(),
         Some("seq_a")
     );
 }

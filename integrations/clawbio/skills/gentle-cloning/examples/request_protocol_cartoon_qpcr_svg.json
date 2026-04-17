@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
+  "expected_artifacts": [
+    "artifacts/qpcr.assay.protocol.svg"
+  ],
+  "timeout_secs": 180
+}

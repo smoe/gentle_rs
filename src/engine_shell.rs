@@ -1441,6 +1441,14 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
     },
+    PrimersSeedQpcrFromFeature {
+        seq_id: String,
+        feature_id: usize,
+    },
+    PrimersSeedQpcrFromSplicing {
+        seq_id: String,
+        feature_id: usize,
+    },
     TranscriptsDerive {
         seq_id: String,
         feature_ids: Vec<usize>,
@@ -6827,6 +6835,14 @@ impl ShellCommand {
             ),
             Self::PrimersSeedFromSplicing { seq_id, feature_id } => format!(
                 "seed primer/qPCR design ROI payloads from splicing group for feature n-{} on '{}'",
+                feature_id, seq_id
+            ),
+            Self::PrimersSeedQpcrFromFeature { seq_id, feature_id } => format!(
+                "seed qPCR design ROI payload from feature n-{} on '{}'",
+                feature_id, seq_id
+            ),
+            Self::PrimersSeedQpcrFromSplicing { seq_id, feature_id } => format!(
+                "seed qPCR design ROI payload from splicing group for feature n-{} on '{}'",
                 feature_id, seq_id
             ),
             Self::TranscriptsDerive {
@@ -18761,6 +18777,32 @@ fn execute_primers_command(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    fn qpcr_seed_output(
+        template: &str,
+        source: serde_json::Value,
+        roi_start_0based: usize,
+        roi_end_0based_exclusive: usize,
+    ) -> ShellRunResult {
+        let operation =
+            build_seeded_qpcr_operation(template, roi_start_0based, roi_end_0based_exclusive);
+        ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.qpcr_seed_request.v1",
+                "template": template,
+                "source": source,
+                "roi_start_0based": roi_start_0based,
+                "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                "operation": operation,
+                "protocol_cartoon": {
+                    "protocol": "pcr.assay.qpcr",
+                    "summary": "Built-in probe-bearing qPCR assay strip aligned to the same deterministic PCR family.",
+                    "default_output_svg": "qpcr_assay_protocol_cartoon.svg"
+                }
+            }),
+        }
+    }
+
     match command {
         ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
             let dna = engine
@@ -18851,6 +18893,66 @@ fn execute_primers_command(
                     }
                 }),
             })
+        }
+        ShellCommand::PrimersSeedQpcrFromFeature { seq_id, feature_id } => {
+            let dna = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
+            let (roi_start_0based, roi_end_0based_exclusive) =
+                sequence_feature_roi_range_0based(dna, *feature_id)?;
+            Ok(qpcr_seed_output(
+                seq_id,
+                json!({
+                    "kind": "feature",
+                    "feature_id": feature_id,
+                }),
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            ))
+        }
+        ShellCommand::PrimersSeedQpcrFromSplicing { seq_id, feature_id } => {
+            let expert = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::SplicingFeature {
+                        feature_id: *feature_id,
+                        scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            let splicing = match expert {
+                FeatureExpertView::Splicing(view) => view,
+                _ => {
+                    return Err(format!(
+                        "Feature n-{} on '{}' does not resolve to a splicing expert view",
+                        feature_id, seq_id
+                    ));
+                }
+            };
+            if splicing.region_start_1based == 0
+                || splicing.region_end_1based < splicing.region_start_1based
+            {
+                return Err(format!(
+                    "Splicing region bounds are invalid for feature n-{} on '{}'",
+                    feature_id, seq_id
+                ));
+            }
+            let roi_start_0based = splicing.region_start_1based.saturating_sub(1);
+            let roi_end_0based_exclusive = splicing.region_end_1based;
+            Ok(qpcr_seed_output(
+                seq_id,
+                json!({
+                    "kind": "splicing",
+                    "feature_id": feature_id,
+                    "group_label": splicing.group_label,
+                    "transcript_count": splicing.transcript_count,
+                    "unique_exon_count": splicing.unique_exon_count,
+                }),
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            ))
         }
         ShellCommand::PrimersDesign {
             request_json,
@@ -21711,6 +21813,8 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::PrimersSeedFromFeature { .. }
             | ShellCommand::PrimersSeedFromSplicing { .. }
+            | ShellCommand::PrimersSeedQpcrFromFeature { .. }
+            | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
@@ -23746,6 +23850,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GuidesProtocolExport { .. } => execute_guides_command(engine, command)?,
         ShellCommand::PrimersSeedFromFeature { .. }
         | ShellCommand::PrimersSeedFromSplicing { .. }
+        | ShellCommand::PrimersSeedQpcrFromFeature { .. }
+        | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }

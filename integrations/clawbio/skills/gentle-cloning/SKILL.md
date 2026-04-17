@@ -8,7 +8,7 @@ description: >-
 version: 0.1.0
 author: GENtle project
 license: MIT
-tags: [cloning, dna-design, primer-design, gibson, pcr, genome-context, reproducibility]
+tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility]
 metadata:
   openclaw:
     requires:
@@ -28,6 +28,7 @@ metadata:
       - gibson assembly
       - primer design
       - pcr design
+      - qpcr design
       - prepare genome
       - blast sequence
       - genome anchor
@@ -417,6 +418,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json \
   --output /tmp/gentle_clawbio_tp53_splicing_text
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json \
+  --output /tmp/gentle_clawbio_qpcr_graphics
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json \
   --output /tmp/gentle_clawbio_gibson_graphics

@@ -3580,6 +3580,8 @@ Primer-design shell command family (implemented):
   - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
+  - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
+  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -3606,6 +3608,10 @@ Primer-design shell command family (implemented):
 - `primers seed-from-feature` and `primers seed-from-splicing` are
   non-mutating helper commands that resolve an ROI and emit seeded operation
   payloads for both pair-PCR and qPCR design.
+- `primers seed-qpcr-from-feature` and `primers seed-qpcr-from-splicing` are
+  qPCR-only non-mutating helper commands that resolve an ROI and emit one
+  seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
+  (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
 - `primers design` and `primers show-report` additionally include
   `simple_pcr_pairs`, a derived helper array that summarizes each accepted pair
   in simple-PCR terms:
@@ -3617,6 +3623,7 @@ Primer-design shell command family (implemented):
   - `tm_delta_c` and score
 - Response schemas:
   - `gentle.primer_seed_request.v1`
+  - `gentle.qpcr_seed_request.v1`
   - `gentle.primer_design_report.v1`
   - `gentle.primer_design_report_list.v1`
   - `gentle.qpcr_design_report.v1`
@@ -3631,6 +3638,16 @@ Primer-design shell command family (implemented):
   - `roi_end_0based_exclusive`
   - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
   - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
+- `gentle.qpcr_seed_request.v1` payload fields:
+  - `template`
+  - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
+  - `roi_start_0based`
+  - `roi_end_0based_exclusive`
+  - `operation` (`{"DesignQpcrAssays": ...}`)
+  - `protocol_cartoon`
+    - `protocol` (`pcr.assay.qpcr`)
+    - `summary`
+    - `default_output_svg`
 - `gentle.restriction_cloning_vector_enzyme_suggestions.v1` payload fields:
   - `suggestions.seq_id`
   - `suggestions.selected_mcs[]` (preferred MCS-annotated cutters that are
