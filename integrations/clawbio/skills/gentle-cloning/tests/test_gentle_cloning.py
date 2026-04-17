@@ -448,6 +448,41 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "render-svg pgex_fasta circular artifacts/pgex_fasta.circular.svg",
             180,
         ),
+        "request_tfbs_summary_pgex_fasta.json": (
+            "shell",
+            "features tfbs-summary pgex_fasta --focus 1..1500 --context 1..4904 --limit 10",
+            180,
+        ),
+        "request_inspect_feature_expert_pgex_fasta_tfbs.json": (
+            "shell",
+            "inspect-feature-expert pgex_fasta tfbs 0",
+            180,
+        ),
+        "request_render_feature_expert_pgex_fasta_tfbs_svg.json": (
+            "shell",
+            "render-feature-expert-svg pgex_fasta tfbs 0 artifacts/pgex_fasta.tfbs.expert.svg",
+            180,
+        ),
+        "request_inspect_feature_expert_pgex_fasta_restriction_ecori.json": (
+            "shell",
+            "inspect-feature-expert pgex_fasta restriction 944 --enzyme EcoRI --start 944 --end 949",
+            180,
+        ),
+        "request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json": (
+            "shell",
+            "render-feature-expert-svg pgex_fasta restriction 944 --enzyme EcoRI --start 944 --end 949 artifacts/pgex_fasta.restriction.ecori.expert.svg",
+            180,
+        ),
+        "request_inspect_feature_expert_tp53_isoform.json": (
+            "shell",
+            "inspect-feature-expert grch38_tp53 isoform tp53_isoforms_v1",
+            180,
+        ),
+        "request_inspect_feature_expert_tp53_splicing.json": (
+            "shell",
+            "inspect-feature-expert tp53_panel_source splicing 2",
+            180,
+        ),
         "request_export_bed_grch38_tp53_gene_models.json": (
             "shell",
             "features export-bed grch38_tp53 artifacts/grch38_tp53.gene_models.bed --coordinate-mode auto --kind gene --kind mRNA --kind exon --kind CDS --sort start --include-source --include-qualifiers",
@@ -473,6 +508,13 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_render_svg_rs9923231_vkorc1_linear.json",
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
+            "request_tfbs_summary_pgex_fasta.json",
+            "request_inspect_feature_expert_pgex_fasta_tfbs.json",
+            "request_render_feature_expert_pgex_fasta_tfbs_svg.json",
+            "request_inspect_feature_expert_pgex_fasta_restriction_ecori.json",
+            "request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json",
+            "request_inspect_feature_expert_tp53_isoform.json",
+            "request_inspect_feature_expert_tp53_splicing.json",
             "request_export_bed_grch38_tp53_gene_models.json",
             "request_render_svg_pgex_fasta_circular.json",
         }:
@@ -488,6 +530,14 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_render_svg_rs9923231_vkorc1_linear.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/rs9923231_vkorc1.context.linear.svg"
+            ]
+        if name == "request_render_feature_expert_pgex_fasta_tfbs_svg.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/pgex_fasta.tfbs.expert.svg"
+            ]
+        if name == "request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/pgex_fasta.restriction.ecori.expert.svg"
             ]
         if name == "request_export_bed_rs9923231_vkorc1_context_features.json":
             assert payload["expected_artifacts"] == [
@@ -588,6 +638,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     )
     assert splicing_workflow_payload["schema"] == "gentle.clawbio_skill_request.v1"
     assert splicing_workflow_payload["mode"] == "workflow"
+    assert splicing_workflow_payload["state_path"] == ".gentle_state.json"
     assert (
         splicing_workflow_payload["workflow_path"]
         == "docs/examples/workflows/tp53_splicing_expert_svg_offline.json"

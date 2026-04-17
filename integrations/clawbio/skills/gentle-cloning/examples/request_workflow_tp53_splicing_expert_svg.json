@@ -1,6 +1,7 @@
 {
   "schema": "gentle.clawbio_skill_request.v1",
   "mode": "workflow",
+  "state_path": ".gentle_state.json",
   "workflow_path": "docs/examples/workflows/tp53_splicing_expert_svg_offline.json",
   "expected_artifacts": [
     "exports/tp53_tp53_201.splicing.expert.svg"

@@ -149,10 +149,17 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_pgex_fasta_tfbs_restriction.json --output /tmp/gentle_pgex_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_tfbs.json --output /tmp/gentle_pgex_tfbs_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_tfbs_summary_pgex_fasta.json --output /tmp/gentle_pgex_tfbs_summary
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_pgex_fasta_tfbs.json --output /tmp/gentle_pgex_tfbs_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_pgex_fasta_tfbs_svg.json --output /tmp/gentle_pgex_tfbs_expert_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_linear_restriction.json --output /tmp/gentle_pgex_restriction_map
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_pgex_fasta_restriction_ecori.json --output /tmp/gentle_pgex_restriction_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json --output /tmp/gentle_pgex_restriction_expert_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_isoform_architecture_online.json --output /tmp/gentle_tp53_isoform_workflow
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_isoform.json --output /tmp/gentle_tp53_isoform_text
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 ```
@@ -171,6 +178,13 @@ Notes:
 - `request_render_svg_pgex_fasta_linear_tfbs.json` and
   `request_render_svg_pgex_fasta_linear_restriction.json` are matching
   follow-on DNA-window graphics routes on that same `pgex_fasta` state
+- `request_tfbs_summary_pgex_fasta.json`,
+  `request_inspect_feature_expert_pgex_fasta_tfbs.json`, and
+  `request_render_feature_expert_pgex_fasta_tfbs_svg.json` are follow-on TFBS
+  routes after `request_render_svg_pgex_fasta_linear_tfbs.json`
+- `request_inspect_feature_expert_pgex_fasta_restriction_ecori.json` and
+  `request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json` are
+  follow-on restriction expert routes after `request_workflow_file.json`
 - `request_export_bed_grch38_tp53_gene_models.json` is a follow-on annotation
   export after `request_genomes_extract_gene_tp53.json`
 - `request_genomes_blast_grch38_short.json` is a follow-on search route after
@@ -267,19 +281,37 @@ Included follow-on analysis/planning/graphics examples:
 - `request_render_svg_pgex_fasta_linear_tfbs.json`
   - same `pgex_fasta` follow-on route, but with explicit JASPAR/TFBS display
   filtering before linear SVG export
+- `request_tfbs_summary_pgex_fasta.json`
+  - same `pgex_fasta` follow-on route, but emits grouped TFBS summary text
+- `request_inspect_feature_expert_pgex_fasta_tfbs.json`
+  - same `pgex_fasta` follow-on route, but opens one generated TFBS feature in
+    textual expert form
+- `request_render_feature_expert_pgex_fasta_tfbs_svg.json`
+  - same `pgex_fasta` follow-on route, but renders one generated TFBS feature
+    to expert SVG
 - `request_render_svg_pgex_fasta_linear_restriction.json`
   - same `pgex_fasta` follow-on route, but with explicit restriction display
     settings before linear SVG export
+- `request_inspect_feature_expert_pgex_fasta_restriction_ecori.json`
+  - same `pgex_fasta` follow-on route, but inspects the EcoRI cleavage context
+    in textual expert form
+- `request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json`
+  - same `pgex_fasta` follow-on route, but renders the EcoRI cleavage context
+    to expert SVG
 - `request_workflow_vkorc1_planning.json`
 - `request_workflow_tp53_isoform_architecture_online.json`
   - runs the canonical TP53 isoform workflow example and collects the rendered
     architecture SVG into the ClawBio bundle
+- `request_inspect_feature_expert_tp53_isoform.json`
+  - follow-on text companion after `request_workflow_tp53_isoform_architecture_online.json`
 - `request_render_feature_expert_tp53_isoform_svg.json`
   - renders the same TP53 isoform architecture through the shared
     `render-feature-expert-svg ... isoform ...` expert route
 - `request_workflow_tp53_splicing_expert_svg.json`
   - replays a deterministic offline splicing-expert workflow from the bundled
     TP53 Ensembl 116 panel-source GenBank asset and collects the rendered SVG
+- `request_inspect_feature_expert_tp53_splicing.json`
+  - follow-on text companion after `request_workflow_tp53_splicing_expert_svg.json`
 - `request_workflow_p53_family_query_anchor_dotplot.json`
   - replays the anchored p53-family comparison with TP73 on the shared
     reference axis and TP63 plus TP53 aligned by the conserved motif
