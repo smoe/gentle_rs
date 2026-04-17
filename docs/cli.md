@@ -333,6 +333,9 @@ Included follow-on analysis/planning/graphics examples:
   - both ride the shared routes directly:
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME ...] [feature-query filters ...]`
     - `ExportFeaturesBed { query, path, coordinate_mode, include_restriction_sites, restriction_enzymes[] }`
+    - `InspectSequenceContextView { seq_id, mode?, viewport_start_0based?, viewport_end_0based_exclusive?, include_visible_classes[], coordinate_mode?, limit? }`
+      for one compact chat-facing summary of the currently interesting genomic
+      environment before attaching a larger SVG/BED bundle
 
 ClawBio troubleshooting note:
 

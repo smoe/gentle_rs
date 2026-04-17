@@ -1,0 +1,22 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "op",
+  "state_path": ".gentle_state.json",
+  "operation": {
+    "InspectSequenceContextView": {
+      "seq_id": "rs9923231_vkorc1",
+      "mode": "linear",
+      "viewport_start_0based": 2400,
+      "viewport_end_0based_exclusive": 3501,
+      "include_visible_classes": [
+        "gene",
+        "mrna",
+        "variation",
+        "tfbs"
+      ],
+      "coordinate_mode": "genomic",
+      "limit": 20
+    }
+  },
+  "timeout_secs": 180
+}

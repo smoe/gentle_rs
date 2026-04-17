@@ -417,6 +417,79 @@ pub struct TfbsScoreTrackReport {
     pub tracks: Vec<TfbsScoreTrackRow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One visible feature-class lane summarized in a sequence-context view.
+pub struct SequenceContextVisibleClass {
+    pub class_id: String,
+    #[serde(default)]
+    pub feature_kinds: Vec<String>,
+    pub matched_count: usize,
+    pub returned_count: usize,
+    #[serde(default)]
+    pub prominent_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One feature row surfaced in a compact sequence-context summary.
+pub struct SequenceContextFeatureRow {
+    pub feature_id: usize,
+    pub kind: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub strand: String,
+    pub label: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable summary of one DNA-sequence viewer context.
+///
+/// This report is intentionally chat-friendly and bundle-friendly: it exposes
+/// the current viewport, the active visible feature classes, a compact feature
+/// table, and short summary lines that ClawBio or other automation layers can
+/// relay without having to infer biology from a raw SVG alone.
+pub struct SequenceContextViewReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub mode: String,
+    pub coordinate_mode: String,
+    pub viewport_start_0based: usize,
+    pub viewport_end_0based_exclusive: usize,
+    pub viewport_span_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_view_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_view_end_1based: Option<usize>,
+    #[serde(default)]
+    pub visible_classes: Vec<SequenceContextVisibleClass>,
+    pub matched_feature_count: usize,
+    pub returned_feature_count: usize,
+    pub limit: usize,
+    #[serde(default)]
+    pub rows: Vec<SequenceContextFeatureRow>,
+    #[serde(default)]
+    pub summary_lines: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// How transcript-derived promoter windows are collapsed before annotation or
@@ -1364,6 +1437,8 @@ pub struct OpResult {
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_context_view: Option<SequenceContextViewReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

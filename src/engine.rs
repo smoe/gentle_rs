@@ -445,6 +445,7 @@ const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
+const SEQUENCE_CONTEXT_VIEW_SCHEMA: &str = "gentle.sequence_context_view.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
@@ -3598,6 +3599,21 @@ pub enum Operation {
         #[serde(default)]
         restriction_enzymes: Vec<String>,
     },
+    InspectSequenceContextView {
+        seq_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<RenderSvgMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        viewport_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        viewport_end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        include_visible_classes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        coordinate_mode: Option<FeatureBedCoordinateMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+    },
     ScoreCandidateSetExpression {
         set_name: String,
         metric: String,
@@ -4618,6 +4634,7 @@ impl GentleEngine {
                 "ExportGuideOligos".to_string(),
                 "ExportGuideProtocolText".to_string(),
                 "ExportFeaturesBed".to_string(),
+                "InspectSequenceContextView".to_string(),
                 "ScoreCandidateSetExpression".to_string(),
                 "ScoreCandidateSetDistance".to_string(),
                 "FilterCandidateSet".to_string(),
@@ -6437,6 +6454,7 @@ impl GentleEngine {
                 | Operation::ExportPool { .. }
                 | Operation::ExportProcessRunBundle { .. }
                 | Operation::ExportFeaturesBed { .. }
+                | Operation::InspectSequenceContextView { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
@@ -9345,6 +9363,403 @@ impl GentleEngine {
         } else {
             Some(trimmed.to_ascii_uppercase())
         }
+    }
+
+    fn normalize_sequence_context_visible_class_token(raw: &str) -> Option<String> {
+        let normalized = raw.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "" => None,
+            "gene" | "genes" => Some("gene".to_string()),
+            "mrna" | "transcript" | "transcripts" => Some("mrna".to_string()),
+            "exon" | "exons" => Some("exon".to_string()),
+            "cds" => Some("cds".to_string()),
+            "promoter" | "promoters" => Some("promoter".to_string()),
+            "variation" | "variant" | "variants" | "snp" | "snps" => Some("variation".to_string()),
+            "tfbs" | "motif" | "motifs" => Some("tfbs".to_string()),
+            _ => None,
+        }
+    }
+
+    fn sequence_context_feature_kinds_for_class(class_id: &str) -> &'static [&'static str] {
+        match class_id {
+            "gene" => &["GENE"],
+            "mrna" => &["MRNA"],
+            "exon" => &["EXON"],
+            "cds" => &["CDS"],
+            "promoter" => &["PROMOTER"],
+            "variation" => &["VARIATION"],
+            "tfbs" => &["TFBS"],
+            _ => &[],
+        }
+    }
+
+    fn default_sequence_context_visible_classes(&self) -> Vec<String> {
+        let display = &self.state.display;
+        let mut classes: Vec<String> = vec![];
+        if display.show_features {
+            if display.show_gene_features {
+                classes.push("gene".to_string());
+            }
+            if display.show_mrna_features {
+                classes.push("mrna".to_string());
+            }
+            classes.push("exon".to_string());
+            if display.show_cds_features {
+                classes.push("cds".to_string());
+            }
+            classes.push("promoter".to_string());
+            classes.push("variation".to_string());
+            if display.show_tfbs {
+                classes.push("tfbs".to_string());
+            }
+        }
+        classes
+    }
+
+    fn genomic_interval_from_anchor(
+        anchor: &SequenceGenomeAnchorSummary,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        if end_0based_exclusive <= start_0based {
+            return None;
+        }
+        let span = end_0based_exclusive - start_0based;
+        if span == 0 {
+            return None;
+        }
+        match anchor.strand.unwrap_or('+') {
+            '-' => {
+                let genomic_end = anchor.end_1based.checked_sub(start_0based)?;
+                let genomic_start = anchor.end_1based.checked_sub(end_0based_exclusive - 1)?;
+                Some((
+                    genomic_start.min(genomic_end),
+                    genomic_start.max(genomic_end),
+                ))
+            }
+            _ => {
+                let genomic_start = anchor.start_1based.checked_add(start_0based)?;
+                let genomic_end = anchor.start_1based.checked_add(end_0based_exclusive - 1)?;
+                Some((
+                    genomic_start.min(genomic_end),
+                    genomic_start.max(genomic_end),
+                ))
+            }
+        }
+    }
+
+    fn sequence_context_row_genomic_coordinates(
+        row: &SequenceFeatureQueryRow,
+        genome_anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> (Option<String>, Option<usize>, Option<usize>) {
+        let chromosome = row
+            .qualifiers
+            .get("chromosome")
+            .and_then(|values| values.first())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let qualifier_start = row
+            .qualifiers
+            .get("genomic_start_1based")
+            .and_then(|values| values.first())
+            .and_then(|value| value.trim().parse::<usize>().ok());
+        let qualifier_end = row
+            .qualifiers
+            .get("genomic_end_1based")
+            .and_then(|values| values.first())
+            .and_then(|value| value.trim().parse::<usize>().ok());
+        if chromosome.is_some() && qualifier_start.is_some() && qualifier_end.is_some() {
+            return (chromosome, qualifier_start, qualifier_end);
+        }
+        let Some(anchor) = genome_anchor else {
+            return (None, None, None);
+        };
+        let Some((genomic_start, genomic_end)) =
+            Self::genomic_interval_from_anchor(anchor, row.start_0based, row.end_0based_exclusive)
+        else {
+            return (None, None, None);
+        };
+        (
+            Some(anchor.chromosome.clone()),
+            Some(genomic_start),
+            Some(genomic_end),
+        )
+    }
+
+    pub fn inspect_sequence_context_view(
+        &self,
+        seq_id: &str,
+        mode: Option<RenderSvgMode>,
+        viewport_start_0based: Option<usize>,
+        viewport_end_0based_exclusive: Option<usize>,
+        include_visible_classes: &[String],
+        coordinate_mode: Option<FeatureBedCoordinateMode>,
+        limit: Option<usize>,
+    ) -> Result<SequenceContextViewReport, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "inspect_sequence_context_view requires non-empty seq_id".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let sequence_length_bp = dna.len();
+        let mode = mode.unwrap_or(RenderSvgMode::Linear);
+        if viewport_start_0based.is_some() != viewport_end_0based_exclusive.is_some() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Sequence-context inspection requires both viewport_start_0based and viewport_end_0based_exclusive"
+                    .to_string(),
+            });
+        }
+        let (viewport_start_0based, viewport_end_0based_exclusive) = if let (
+            Some(start),
+            Some(end),
+        ) =
+            (viewport_start_0based, viewport_end_0based_exclusive)
+        {
+            if end <= start {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid sequence-context viewport: start ({start}) must be < end ({end})"
+                    ),
+                });
+            }
+            if end > sequence_length_bp {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Sequence-context viewport {}..{} is outside sequence length {}",
+                        start, end, sequence_length_bp
+                    ),
+                });
+            }
+            (start, end)
+        } else if matches!(mode, RenderSvgMode::Linear)
+            && self.state.display.linear_view_span_bp > 0
+            && sequence_length_bp > 0
+        {
+            let max_start = sequence_length_bp.saturating_sub(1);
+            let start = self.state.display.linear_view_start_bp.min(max_start);
+            let span = self
+                .state
+                .display
+                .linear_view_span_bp
+                .clamp(1, sequence_length_bp.saturating_sub(start).max(1));
+            (start, start + span)
+        } else {
+            (0, sequence_length_bp)
+        };
+        let viewport_span_bp = viewport_end_0based_exclusive.saturating_sub(viewport_start_0based);
+        let coordinate_mode = coordinate_mode.unwrap_or(FeatureBedCoordinateMode::Auto);
+        let coordinate_mode_label = match coordinate_mode {
+            FeatureBedCoordinateMode::Auto => "auto",
+            FeatureBedCoordinateMode::Local => "local",
+            FeatureBedCoordinateMode::Genomic => "genomic",
+        };
+        let mode_label = match mode {
+            RenderSvgMode::Linear => "linear",
+            RenderSvgMode::Circular => "circular",
+        };
+
+        let visible_classes = if include_visible_classes.is_empty() {
+            self.default_sequence_context_visible_classes()
+        } else {
+            include_visible_classes
+                .iter()
+                .filter_map(|value| Self::normalize_sequence_context_visible_class_token(value))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+
+        let genome_anchor = self.sequence_genome_anchor_summary(seq_id).ok();
+        let (genomic_view_start_1based, genomic_view_end_1based) = genome_anchor
+            .as_ref()
+            .and_then(|anchor| {
+                Self::genomic_interval_from_anchor(
+                    anchor,
+                    viewport_start_0based,
+                    viewport_end_0based_exclusive,
+                )
+            })
+            .map(|(start, end)| (Some(start), Some(end)))
+            .unwrap_or((None, None));
+
+        let limit = limit
+            .unwrap_or(FEATURE_QUERY_DEFAULT_LIMIT.min(25))
+            .clamp(1, FEATURE_QUERY_MAX_LIMIT);
+        let union_kinds = visible_classes
+            .iter()
+            .flat_map(|class_id| Self::sequence_context_feature_kinds_for_class(class_id))
+            .map(|kind| kind.to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let mut report = SequenceContextViewReport {
+            schema: SEQUENCE_CONTEXT_VIEW_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            sequence_length_bp,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            mode: mode_label.to_string(),
+            coordinate_mode: coordinate_mode_label.to_string(),
+            viewport_start_0based,
+            viewport_end_0based_exclusive,
+            viewport_span_bp,
+            genome_anchor,
+            genomic_view_start_1based,
+            genomic_view_end_1based,
+            visible_classes: vec![],
+            matched_feature_count: 0,
+            returned_feature_count: 0,
+            limit,
+            rows: vec![],
+            summary_lines: vec![],
+        };
+
+        for class_id in &visible_classes {
+            let class_kinds = Self::sequence_context_feature_kinds_for_class(class_id);
+            let class_result = self.query_sequence_features(SequenceFeatureQuery {
+                seq_id: seq_id.to_string(),
+                kind_in: class_kinds.iter().map(|kind| kind.to_string()).collect(),
+                start_0based: (viewport_span_bp > 0).then_some(viewport_start_0based),
+                end_0based_exclusive: (viewport_span_bp > 0)
+                    .then_some(viewport_end_0based_exclusive),
+                range_relation: SequenceFeatureRangeRelation::Overlap,
+                sort_by: SequenceFeatureSortBy::Start,
+                include_qualifiers: true,
+                limit: Some(limit.min(5)),
+                ..SequenceFeatureQuery::default()
+            })?;
+            let prominent_labels = class_result
+                .rows
+                .iter()
+                .map(|row| row.label.trim().to_string())
+                .filter(|label| !label.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .take(3)
+                .collect::<Vec<_>>();
+            report.visible_classes.push(SequenceContextVisibleClass {
+                class_id: class_id.clone(),
+                feature_kinds: class_kinds.iter().map(|kind| kind.to_string()).collect(),
+                matched_count: class_result.matched_count,
+                returned_count: class_result.returned_count,
+                prominent_labels,
+            });
+        }
+
+        if !union_kinds.is_empty() {
+            let query_result = self.query_sequence_features(SequenceFeatureQuery {
+                seq_id: seq_id.to_string(),
+                kind_in: union_kinds,
+                start_0based: (viewport_span_bp > 0).then_some(viewport_start_0based),
+                end_0based_exclusive: (viewport_span_bp > 0)
+                    .then_some(viewport_end_0based_exclusive),
+                range_relation: SequenceFeatureRangeRelation::Overlap,
+                sort_by: SequenceFeatureSortBy::Start,
+                include_qualifiers: true,
+                limit: Some(limit),
+                ..SequenceFeatureQuery::default()
+            })?;
+            report.matched_feature_count = query_result.matched_count;
+            report.returned_feature_count = query_result.returned_count;
+            report.rows = query_result
+                .rows
+                .into_iter()
+                .map(|row| {
+                    let (chromosome, genomic_start_1based, genomic_end_1based) =
+                        Self::sequence_context_row_genomic_coordinates(
+                            &row,
+                            report.genome_anchor.as_ref(),
+                        );
+                    SequenceContextFeatureRow {
+                        feature_id: row.feature_id,
+                        kind: row.kind,
+                        start_0based: row.start_0based,
+                        end_0based_exclusive: row.end_0based_exclusive,
+                        length_bp: row.length_bp,
+                        strand: row.strand,
+                        label: row.label,
+                        labels: row.labels,
+                        chromosome,
+                        genomic_start_1based,
+                        genomic_end_1based,
+                    }
+                })
+                .collect();
+        }
+
+        report.summary_lines.push(format!(
+            "{} view {}..{} ({} bp) of {} bp",
+            report.mode,
+            report.viewport_start_0based + 1,
+            report.viewport_end_0based_exclusive,
+            report.viewport_span_bp,
+            report.sequence_length_bp
+        ));
+        if let (Some(anchor), Some(genomic_start), Some(genomic_end)) = (
+            report.genome_anchor.as_ref(),
+            report.genomic_view_start_1based,
+            report.genomic_view_end_1based,
+        ) {
+            report.summary_lines.push(format!(
+                "genome anchor: {}:{}-{} ({}, strand {}, {})",
+                anchor.chromosome,
+                genomic_start,
+                genomic_end,
+                anchor.genome_id,
+                anchor.strand.unwrap_or('+'),
+                match anchor.anchor_verified {
+                    Some(true) => "verified",
+                    Some(false) => "unverified",
+                    None => "verification n/a",
+                }
+            ));
+        }
+        if !report.visible_classes.is_empty() {
+            report.summary_lines.push(format!(
+                "visible classes: {}",
+                report
+                    .visible_classes
+                    .iter()
+                    .map(|class| format!("{}({})", class.class_id, class.matched_count))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        } else {
+            report
+                .summary_lines
+                .push("visible classes: none currently enabled".to_string());
+        }
+        let top_labels = report
+            .rows
+            .iter()
+            .map(|row| row.label.trim().to_string())
+            .filter(|label| !label.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .take(5)
+            .collect::<Vec<_>>();
+        if !top_labels.is_empty() {
+            report
+                .summary_lines
+                .push(format!("top labels: {}", top_labels.join(", ")));
+        }
+
+        Ok(report)
     }
 
     fn tfbs_summary_group_name(feature: &gb_io::seq::Feature, feature_id: usize) -> String {

@@ -5731,6 +5731,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
+            sequence_context_view: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
@@ -12105,6 +12106,36 @@ impl GentleEngine {
                     report.clip_negative
                 ));
                 result.tfbs_score_tracks = Some(report);
+            }
+            Operation::InspectSequenceContextView {
+                seq_id,
+                mode,
+                viewport_start_0based,
+                viewport_end_0based_exclusive,
+                include_visible_classes,
+                coordinate_mode,
+                limit,
+            } => {
+                let mut report = self.inspect_sequence_context_view(
+                    &seq_id,
+                    mode,
+                    viewport_start_0based,
+                    viewport_end_0based_exclusive,
+                    &include_visible_classes,
+                    coordinate_mode,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                result.messages.push(format!(
+                    "Sequence-context view for '{}' summarized {} visible class(es) and {} feature row(s) over {}..{}",
+                    report.seq_id,
+                    report.visible_classes.len(),
+                    report.returned_feature_count,
+                    report.viewport_start_0based,
+                    report.viewport_end_0based_exclusive
+                ));
+                result.sequence_context_view = Some(report);
             }
             Operation::AnnotatePromoterWindows {
                 input,

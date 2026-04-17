@@ -74,6 +74,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_prepare_puc19.json --output /tmp/gentle_prepare_puc19
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_sequence_context_rs9923231_vkorc1.json --output /tmp/gentle_rs9923231_context_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json --output /tmp/gentle_rs9923231_context_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json --output /tmp/gentle_rs9923231_context_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
@@ -108,6 +109,10 @@ Notes:
 - `request_render_svg_rs9923231_vkorc1_linear.json` is a matching genomic-context
   follow-on route after `request_dbsnp_fetch_rs9923231.json`; it renders the
   fetched VKORC1 / rs9923231 locus as a linear DNA-window SVG
+- `request_inspect_sequence_context_rs9923231_vkorc1.json` is the compact
+  summary follow-on after `request_dbsnp_fetch_rs9923231.json`; it returns the
+  shared `InspectSequenceContextView` report so chat layers can answer with one
+  concise viewport/context summary before attaching larger figures
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
@@ -218,6 +223,9 @@ Included follow-on analysis/planning/graphics requests:
 
 - `examples/request_genbank_fetch_pbr322.json`
 - `examples/request_dbsnp_fetch_rs9923231.json`
+- `examples/request_inspect_sequence_context_rs9923231_vkorc1.json`
+  - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+  - returns one compact viewport-aware context summary for chat/report layers
 - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context SVG

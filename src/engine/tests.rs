@@ -24986,6 +24986,152 @@ fn query_sequence_features_applies_qualifier_filters_and_pagination() {
 }
 
 #[test]
+fn inspect_sequence_context_view_uses_display_viewport_and_visible_classes() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(50, 140),
+        qualifiers: vec![("label".into(), Some("TERT".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(60, 165),
+        qualifiers: vec![("label".into(), Some("TERT-201".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(110, 111),
+        qualifiers: vec![("label".into(), Some("rs9923231".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(130, 136),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some("SP1".to_string())),
+            ("label".into(), Some("SP1".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.display.linear_view_start_bp = 40;
+    state.display.linear_view_span_bp = 120;
+    state.display.show_tfbs = true;
+    state.display.show_mrna_features = false;
+    state.sequences.insert("tert".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .inspect_sequence_context_view("tert", None, None, None, &[], None, Some(10))
+        .expect("inspect sequence context view");
+
+    assert_eq!(report.schema, "gentle.sequence_context_view.v1");
+    assert_eq!(report.viewport_start_0based, 40);
+    assert_eq!(report.viewport_end_0based_exclusive, 160);
+    assert_eq!(report.viewport_span_bp, 120);
+    assert!(
+        report
+            .visible_classes
+            .iter()
+            .any(|class| class.class_id == "gene")
+    );
+    assert!(
+        report
+            .visible_classes
+            .iter()
+            .any(|class| class.class_id == "variation")
+    );
+    assert!(
+        report
+            .visible_classes
+            .iter()
+            .any(|class| class.class_id == "tfbs")
+    );
+    assert!(
+        report
+            .visible_classes
+            .iter()
+            .all(|class| class.class_id != "mrna")
+    );
+    assert_eq!(report.matched_feature_count, 3);
+    assert!(
+        report
+            .rows
+            .iter()
+            .all(|row| row.kind.to_ascii_uppercase() != "MRNA"),
+        "rows were: {:?}",
+        report
+            .rows
+            .iter()
+            .map(|row| row.kind.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        report
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("top labels")
+                && line.contains("TERT")
+                && line.contains("rs9923231"))
+    );
+}
+
+#[test]
+fn apply_inspect_sequence_context_view_operation_returns_context_payload() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(60)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 50),
+        qualifiers: vec![
+            ("label".into(), Some("TP73".to_string())),
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("genomic_start_1based".into(), Some("1001".to_string())),
+            ("genomic_end_1based".into(), Some("1040".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(32, 33),
+        qualifiers: vec![("label".into(), Some("rs-demo".to_string()))],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73_ctx".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::InspectSequenceContextView {
+            seq_id: "tp73_ctx".to_string(),
+            mode: Some(RenderSvgMode::Linear),
+            viewport_start_0based: Some(0),
+            viewport_end_0based_exclusive: Some(80),
+            include_visible_classes: vec!["gene".to_string(), "variation".to_string()],
+            coordinate_mode: Some(FeatureBedCoordinateMode::Genomic),
+            limit: Some(8),
+        })
+        .expect("apply InspectSequenceContextView");
+
+    let report = result
+        .sequence_context_view
+        .expect("sequence_context_view payload");
+    assert_eq!(report.seq_id, "tp73_ctx");
+    assert_eq!(report.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(report.coordinate_mode, "genomic");
+    assert_eq!(report.returned_feature_count, 2);
+    let gene_row = report
+        .rows
+        .iter()
+        .find(|row| row.kind.eq_ignore_ascii_case("gene"))
+        .expect("gene row");
+    assert_eq!(gene_row.chromosome.as_deref(), Some("chr1"));
+    assert_eq!(gene_row.genomic_start_1based, Some(1001));
+    assert_eq!(gene_row.genomic_end_1based, Some(1040));
+    assert!(result.messages.iter().any(|message| {
+        message.contains("Sequence-context view for 'tp73_ctx'")
+            && message.contains("feature row(s)")
+    }));
+}
+
+#[test]
 fn export_sequence_features_bed_covers_genome_annotation_tfbs_and_restriction_sites() {
     let td = tempdir().expect("tempdir");
     let output = td.path().join("feature_export.bed");

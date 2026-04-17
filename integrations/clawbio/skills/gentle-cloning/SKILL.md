@@ -130,6 +130,7 @@ Use this when the user wants the DNA sequence window in headless form:
 
 Current shared GENtle routes behind this capability:
 
+- `InspectSequenceContextView`
 - `RenderSequenceSvg`
 - `SetLinearViewport`
 - `SetDisplayVisibility`
@@ -139,6 +140,7 @@ Current shared GENtle routes behind this capability:
 
 Expected outputs:
 
+- one compact textual/JSON context summary for chat-first replies
 - one SVG map
 - one BED/tabular coordinate export
 - one reproducibility bundle from the ClawBio wrapper

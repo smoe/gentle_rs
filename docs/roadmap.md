@@ -985,10 +985,25 @@ order. Durable architecture constraints and decisions remain in
         - it now has a short dedicated GUI tutorial for the current
           ClawBio-facing story:
           `docs/tutorial/vkorc1_variant_followup_expert_gui.md`
+      - immediate ClawBio/chat-friendly output aims now also start from the
+        engine side rather than the messenger side:
+        - GENtle should stay Telegram-agnostic
+        - ClawBio should keep the Telegram/chat layer
+        - the first new shared operation on this track is now
+          `InspectSequenceContextView`, so ClawBio can ask for one compact,
+          viewport-aware genomic-environment summary instead of inferring one
+          from separate SVG + BED outputs
+        - next on the same track is
+          `ExportSequenceContextBundle`, which should package the current
+          sequence-view SVG plus the coordinate-bearing companion text/table
+          into one deterministic artifact set for chat/bundle consumers
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
           flow, not only code/controller verified
+        - finish the broader sequence-context bundle/manifest layer so
+          ClawBio can pick one "best first figure" and one compact textual
+          summary without inventing presentation logic from raw files alone
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text
@@ -1723,10 +1738,11 @@ order. Durable architecture constraints and decisions remain in
       - isoform expert text/SVG
     - still missing as first-class engine operations:
       - `InspectSequenceContextView { seq_id, mode?, viewport?, include_visible_classes?, coordinate_mode? }`
-        - textual/JSON summary contract for the current DNA sequence-view
-          context (viewport + visible classes + anchor/coordinate summary)
-          instead of requiring ClawBio to synthesize that from separate
-          query/export calls
+        - first baseline is now implemented as a shared read-only engine
+          report for compact viewport + visible-class + feature-row summaries
+        - next follow-up on that same contract:
+          add companion shell/skill examples and use it as the preferred
+          chat-facing summary source in ClawBio
       - `ExportSequenceContextBundle { seq_id, mode?, viewport?, coordinate_mode?, include_feature_bed?, include_text_summary?, include_restriction_sites?, restriction_enzymes[]?, output_dir }`
         - unified "sequence context bundle" export that emits the DNA-window
           SVG plus a coordinate-bearing tabular/text companion in one

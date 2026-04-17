@@ -3752,6 +3752,37 @@ Feature BED export contract (implemented):
     - `skipped_missing_genomic_coordinates`
     - `bed_columns[]`
 
+Sequence-context view summary contract (implemented baseline):
+
+- Raw/shared operation:
+  - `{"InspectSequenceContextView":{"seq_id":"rs9923231_16_31093368_31099368","mode":"linear","viewport_start_0based":2400,"viewport_end_0based_exclusive":3501,"include_visible_classes":["gene","mrna","variation","tfbs"],"coordinate_mode":"genomic","limit":20}}`
+- Execution semantics:
+  - non-mutating compact summary for one DNA-sequence-view context
+  - reuses the shared feature-query pipeline instead of inventing a second
+    frontend-only inspection path
+  - defaults to the current stored linear viewport when no explicit viewport is
+    supplied and the engine display state already carries one
+  - defaults to the currently enabled visible feature classes when
+    `include_visible_classes[]` is omitted
+  - surfaces a short chat-friendly/text-friendly summary alongside a compact
+    feature table so callers like ClawBio can answer first and attach larger
+    SVG/BED artifacts second
+- Response/report schema:
+  - `gentle.sequence_context_view.v1`
+  - fields include:
+    - `seq_id`, `sequence_length_bp`
+    - `mode`, `coordinate_mode`
+    - `viewport_start_0based`, `viewport_end_0based_exclusive`,
+      `viewport_span_bp`
+    - optional `genome_anchor` plus optional genomic viewport bounds when the
+      sequence is genome-anchored
+    - `visible_classes[]` with class ids, feature-kind coverage, counts, and
+      prominent labels
+    - `matched_feature_count`, `returned_feature_count`, `limit`
+    - `rows[]` with local bounds, label metadata, and optional genomic feature
+      coordinates when qualifiers or anchor geometry make them available
+    - `summary_lines[]` for compact relay into chat/report layers
+
 Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:

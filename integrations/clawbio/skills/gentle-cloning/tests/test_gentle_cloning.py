@@ -423,6 +423,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "render-svg rs9923231_vkorc1 linear artifacts/rs9923231_vkorc1.context.linear.svg",
             180,
         ),
+        "request_inspect_sequence_context_rs9923231_vkorc1.json": (
+            "op",
+            None,
+            180,
+        ),
         "request_export_bed_rs9923231_vkorc1_context_features.json": (
             "shell",
             "features export-bed rs9923231_vkorc1 artifacts/rs9923231_vkorc1.context.features.bed --coordinate-mode genomic --kind gene --kind mRNA --kind variation --sort start --include-source --include-qualifiers",
@@ -499,12 +504,14 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         payload = json.loads((examples_dir / name).read_text(encoding="utf-8"))
         assert payload["schema"] == "gentle.clawbio_skill_request.v1"
         assert payload["mode"] == mode
-        assert payload["shell_line"] == shell_line
+        if shell_line is not None:
+            assert payload["shell_line"] == shell_line
         assert payload["timeout_secs"] == timeout_secs
         if name in {
             "request_shell_state_summary.json",
             "request_genbank_fetch_pbr322.json",
             "request_dbsnp_fetch_rs9923231.json",
+            "request_inspect_sequence_context_rs9923231_vkorc1.json",
             "request_render_svg_rs9923231_vkorc1_linear.json",
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
@@ -531,6 +538,23 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/rs9923231_vkorc1.context.linear.svg"
             ]
+        if name == "request_inspect_sequence_context_rs9923231_vkorc1.json":
+            assert payload["operation"] == {
+                "InspectSequenceContextView": {
+                    "seq_id": "rs9923231_vkorc1",
+                    "mode": "linear",
+                    "viewport_start_0based": 2400,
+                    "viewport_end_0based_exclusive": 3501,
+                    "include_visible_classes": [
+                        "gene",
+                        "mrna",
+                        "variation",
+                        "tfbs",
+                    ],
+                    "coordinate_mode": "genomic",
+                    "limit": 20,
+                }
+            }
         if name == "request_render_feature_expert_pgex_fasta_tfbs_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.tfbs.expert.svg"
