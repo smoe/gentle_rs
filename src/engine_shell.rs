@@ -21287,6 +21287,31 @@ fn execute_rna_reads_command(
 }
 
 #[inline(never)]
+fn execute_configuration_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::SetParameter { name, value_json } => {
+            let raw = parse_json_payload(value_json)?;
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("Invalid JSON value for set-param '{}': {e}", name))?;
+            let op_result = engine
+                .apply(Operation::SetParameter {
+                    name: name.clone(),
+                    value,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        _ => unreachable!("non-configuration command passed to configuration helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
@@ -21931,6 +21956,9 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. }
     ) {
         return execute_rna_reads_command(engine, command);
+    }
+    if matches!(command, ShellCommand::SetParameter { .. }) {
+        return execute_configuration_command(engine, command);
     }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
@@ -23895,21 +23923,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. } => {
             execute_rna_reads_command(engine, command)?
         }
-        ShellCommand::SetParameter { name, value_json } => {
-            let raw = parse_json_payload(value_json)?;
-            let value: serde_json::Value = serde_json::from_str(&raw)
-                .map_err(|e| format!("Invalid JSON value for set-param '{}': {e}", name))?;
-            let op_result = engine
-                .apply(Operation::SetParameter {
-                    name: name.clone(),
-                    value,
-                })
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            }
-        }
+        ShellCommand::SetParameter { .. } => execute_configuration_command(engine, command)?,
         ShellCommand::Op { payload } => execute_op_command(engine, payload)?,
         ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
     };
