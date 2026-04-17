@@ -4362,7 +4362,9 @@ Post-baseline follow-ups:
     description panel plus `Annotation candidates` inspector section can both
     accept/reject/reset candidates without inventing GUI-only state. Accepted
     spans now gain a green review outline while rejected spans remain visible
-    in a muted form.
+    in a muted form. The same mutation route is now also exposed through the
+    JS/Lua wrappers and the MCP tool surface so adapter parity holds for
+    reviewed annotation-candidate status as well.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

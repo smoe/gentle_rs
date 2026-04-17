@@ -1415,6 +1415,19 @@ MCP query/introspection tool contracts (current):
     - full portable graph payload plus the compact shared summary block used by
       CLI/GUI adapter-facing inspection surfaces
 
+- `construct_reasoning_set_annotation_status`
+  - arguments:
+    - required: `graph_id`, `annotation_id`, `editable_status`
+    - optional: `state_path`
+  - behavior:
+    - runs the same mutating shared shell command as
+      `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID STATUS`
+    - persists the updated project state when the command changes it
+  - result:
+    - updated graph payload
+    - updated `annotation_candidate`
+    - same compact shared summary block used by `construct_reasoning_graph`
+
 - `ensembl_installable_genomes`
   - arguments:
     - optional: `collection`, `filter`

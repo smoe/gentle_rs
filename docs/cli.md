@@ -399,9 +399,9 @@ Reference genome capability status:
 Construct-reasoning inspection capability status:
 
 - `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning export-graph`)
-- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
-- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`)
-- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`)
+- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`)
+- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`)
+- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_set_annotation_status`)
 
 Agent-assistant capability status:
 
@@ -927,7 +927,9 @@ Exit methods:
     - `seq_id` is optional and limits rows to one active sequence.
 19. `show_construct_reasoning_graph(state, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
-20. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+20. `set_construct_reasoning_annotation_status(state, graph_id, annotation_id, status)`
+    - Updates one stored annotation-candidate review status and returns the updated state plus shared-shell mutation output.
+21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
 21. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
@@ -1233,7 +1235,9 @@ Exit methods:
     - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
 19. `show_construct_reasoning_graph(project, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
-20. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+20. `set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status)`
+    - Updates one stored annotation-candidate review status and returns the updated project state plus shared-shell mutation output.
+21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
 21. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.

@@ -395,6 +395,34 @@ fn tool_list() -> Value {
             }
         },
         {
+            "name": "construct_reasoning_set_annotation_status",
+            "title": "Set Construct Reasoning Annotation Status",
+            "description": "Update one stored construct-reasoning annotation candidate to draft, accepted, rejected, or locked through the shared `construct-reasoning set-annotation-status` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to mutate."
+                    },
+                    "annotation_id": {
+                        "type": "string",
+                        "description": "Stored annotation-candidate id to update."
+                    },
+                    "editable_status": {
+                        "type": "string",
+                        "description": "Target review status: draft, accepted, rejected, or locked."
+                    }
+                },
+                "required": ["graph_id", "annotation_id", "editable_status"],
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "helper_interpretation",
             "title": "Helper Interpretation",
             "description": "Return the normalized helper-construct interpretation for one helper id or alias.",
@@ -1044,6 +1072,40 @@ fn construct_reasoning_graph_tool_result(default_state_path: &str, arguments: &V
     }
 }
 
+fn construct_reasoning_set_annotation_status_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let annotation_id = match required_string_arg(&args, "annotation_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let editable_status = match required_string_arg(&args, "editable_status") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        vec![
+            "construct-reasoning".to_string(),
+            "set-annotation-status".to_string(),
+            graph_id,
+            annotation_id,
+            editable_status,
+        ],
+        "construct_reasoning_set_annotation_status",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn helper_interpretation_tool_result(arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     let helper_id = match required_string_arg(&args, "helper_id") {
@@ -1593,6 +1655,12 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         }
         "construct_reasoning_graph" => {
             construct_reasoning_graph_tool_result(default_state_path, &params.arguments)
+        }
+        "construct_reasoning_set_annotation_status" => {
+            construct_reasoning_set_annotation_status_tool_result(
+                default_state_path,
+                &params.arguments,
+            )
         }
         "helper_interpretation" => helper_interpretation_tool_result(&params.arguments),
         "op" => op_tool_result(default_state_path, &params.arguments),
@@ -2592,11 +2660,20 @@ mod tests {
         let state_path = td.path().join("construct_reasoning_state.json");
         let state_path_str = state_path.to_string_lossy().to_string();
 
+        let mut dna = DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "exon".into(),
+            location: gb_io::seq::Location::simple_range(2, 10),
+            qualifiers: vec![
+                ("label".into(), Some("Confirmed exon".to_string())),
+                ("evidence".into(), Some("supported by cDNA".to_string())),
+            ],
+        });
+        dna.update_computed_features();
         let mut state = ProjectState::default();
-        state.sequences.insert(
-            "adapter_capture_mcp".to_string(),
-            DNAsequence::from_sequence("GAATTCTCTAGAGCGGCCGCTTT").expect("sequence"),
-        );
+        state
+            .sequences
+            .insert("adapter_capture_mcp".to_string(), dna);
         let mut engine = GentleEngine::from_state(state);
         let objective = engine
             .upsert_construct_objective(ConstructObjective {
@@ -2679,6 +2756,49 @@ mod tests {
                 .output
         };
         assert_eq!(mcp_show["result"]["structuredContent"], expected_show);
+
+        let annotation_id = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.role == crate::engine::ConstructRole::Exon)
+            .map(|candidate| candidate.annotation_id.clone())
+            .or_else(|| {
+                graph
+                    .annotation_candidates
+                    .first()
+                    .map(|candidate| candidate.annotation_id.clone())
+            })
+            .expect("annotation candidate id");
+        let expected_set = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "construct-reasoning".to_string(),
+                "set-annotation-status".to_string(),
+                graph.graph_id.clone(),
+                annotation_id.clone(),
+                "accepted".to_string(),
+            ])
+            .expect("parse shell set status");
+            execute_shell_command(&mut engine, &command)
+                .expect("execute shell set status")
+                .output
+        };
+        let mcp_set = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "construct_reasoning_set_annotation_status",
+            json!({
+                "state_path": state_path_str,
+                "graph_id": graph.graph_id.clone(),
+                "annotation_id": annotation_id.clone(),
+                "editable_status": "accepted"
+            }),
+        );
+        assert_eq!(
+            mcp_set.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(mcp_set["result"]["structuredContent"], expected_set);
     }
 
     #[test]

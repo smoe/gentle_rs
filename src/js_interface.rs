@@ -223,6 +223,42 @@ fn show_construct_reasoning_graph_impl(
     Ok(run.output)
 }
 
+fn set_construct_reasoning_annotation_status_impl(
+    state: ProjectState,
+    graph_id: &str,
+    annotation_id: &str,
+    editable_status: &str,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    let graph_id = graph_id.trim().to_string();
+    let annotation_id = annotation_id.trim().to_string();
+    let editable_status = match editable_status.trim().to_ascii_lowercase().as_str() {
+        "draft" => crate::engine::EditableStatus::Draft,
+        "accepted" => crate::engine::EditableStatus::Accepted,
+        "rejected" => crate::engine::EditableStatus::Rejected,
+        "locked" => crate::engine::EditableStatus::Locked,
+        other => {
+            return Err(deno_core::anyhow::anyhow!(
+                "Unsupported construct-reasoning annotation status '{other}' (expected draft|accepted|rejected|locked)"
+            )
+            .into())
+        }
+    };
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::ConstructReasoningSetAnnotationStatus {
+        graph_id,
+        annotation_id,
+        editable_status,
+    };
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        deno_core::anyhow::anyhow!("construct-reasoning set-annotation-status failed: {e}")
+    })?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn ask_agent_system_impl(
     state: ProjectState,
@@ -457,6 +493,17 @@ fn show_construct_reasoning_graph(
 
 #[op2]
 #[serde]
+fn set_construct_reasoning_annotation_status(
+    #[serde] state: ProjectState,
+    #[string] graph_id: &str,
+    #[string] annotation_id: &str,
+    #[string] editable_status: &str,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    set_construct_reasoning_annotation_status_impl(state, graph_id, annotation_id, editable_status)
+}
+
+#[op2]
+#[serde]
 fn list_agent_systems(#[string] catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
@@ -645,6 +692,8 @@ impl JavaScriptInterface {
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
         const SHOW_CONSTRUCT_REASONING_GRAPH: OpDecl = show_construct_reasoning_graph();
+        const SET_CONSTRUCT_REASONING_ANNOTATION_STATUS: OpDecl =
+            set_construct_reasoning_annotation_status();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
@@ -677,6 +726,7 @@ impl JavaScriptInterface {
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
                 LIST_CONSTRUCT_REASONING_GRAPHS,
                 SHOW_CONSTRUCT_REASONING_GRAPH,
+                SET_CONSTRUCT_REASONING_ANNOTATION_STATUS,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
                 IS_REFERENCE_GENOME_PREPARED,
@@ -744,6 +794,14 @@ impl JavaScriptInterface {
                       }
                       function show_construct_reasoning_graph(state, graph_id) {
                         return Deno.core.ops.show_construct_reasoning_graph(state, graph_id);
+                      }
+                      function set_construct_reasoning_annotation_status(state, graph_id, annotation_id, editable_status) {
+                        return Deno.core.ops.set_construct_reasoning_annotation_status(
+                          state,
+                          graph_id,
+                          annotation_id,
+                          editable_status
+                        );
                       }
                       function list_agent_systems(catalog_path) {
                         return Deno.core.ops.list_agent_systems(catalog_path ?? "");
@@ -1329,6 +1387,9 @@ mod tests {
                 if (typeof show_construct_reasoning_graph !== "function") {
                     throw new Error("show_construct_reasoning_graph wrapper is missing");
                 }
+                if (typeof set_construct_reasoning_annotation_status !== "function") {
+                    throw new Error("set_construct_reasoning_annotation_status wrapper is missing");
+                }
             "#
             .to_string(),
         )
@@ -1492,6 +1553,62 @@ mod tests {
                 }))
                 .unwrap_or(false)
         );
+    }
+
+    #[test]
+    fn js_construct_reasoning_annotation_status_wrapper_matches_shared_shell_output() {
+        let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "exon".into(),
+            location: gb_io::seq::Location::simple_range(2, 10),
+            qualifiers: vec![
+                ("label".into(), Some("Confirmed exon".to_string())),
+                ("evidence".into(), Some("supported by cDNA".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("construct_reasoning_js_status".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state.clone());
+        let graph = engine
+            .build_construct_reasoning_graph(
+                "construct_reasoning_js_status",
+                None,
+                Some("construct_reasoning_js_status_graph"),
+            )
+            .expect("build graph");
+        let annotation_id = graph
+            .annotation_candidates
+            .iter()
+            .find(|candidate| candidate.role == crate::engine::ConstructRole::Exon)
+            .map(|candidate| candidate.annotation_id.clone())
+            .expect("annotation candidate id");
+        state = engine.state().clone();
+
+        let wrapper = set_construct_reasoning_annotation_status_impl(
+            state.clone(),
+            &graph.graph_id,
+            &annotation_id,
+            "accepted",
+        )
+        .expect("js status wrapper");
+
+        let mut shell_engine = GentleEngine::from_state(state);
+        let shell_run = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningSetAnnotationStatus {
+                graph_id: graph.graph_id.clone(),
+                annotation_id,
+                editable_status: crate::engine::EditableStatus::Accepted,
+            },
+        )
+        .expect("shell status command");
+
+        assert_eq!(wrapper.state_changed, shell_run.state_changed);
+        assert_eq!(wrapper.output, shell_run.output);
     }
 
     #[test]
