@@ -15,7 +15,7 @@ use crate::ensembl_protein::{
     normalize_entry_id as normalize_ensembl_protein_entry_id,
     resolve_query as resolve_ensembl_query,
 };
-use crate::uniprot::UniprotFeatureProjection;
+use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::SplicingIntronSignal;
 
@@ -1660,6 +1660,1291 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         rows.sort_by(|a, b| a.projection_id.cmp(&b.projection_id));
         rows
+    }
+
+    fn normalize_uniprot_variant_feature_key(feature: &UniprotFeature) -> Option<String> {
+        let key = feature.key.trim().to_ascii_uppercase();
+        matches!(key.as_str(), "VARIANT" | "VAR_SEQ" | "CONFLICT").then_some(key)
+    }
+
+    fn uniprot_init_met_declared(entry: &UniprotEntry) -> bool {
+        entry.features.iter().any(|feature| {
+            feature.key.eq_ignore_ascii_case("INIT_MET")
+                && feature.interval.start_aa == Some(1)
+                && feature.interval.end_aa.unwrap_or(1) >= 1
+        })
+    }
+
+    fn derive_uniprot_projection_transcript_context(
+        &self,
+        seq_id: &str,
+        transcript_projection: &UniprotTranscriptProjection,
+    ) -> Result<DerivedProteinExpertTranscript, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let features = dna.features();
+        let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
+        if let Some(feature_id) = transcript_projection.transcript_feature_id
+            && let Some(feature) = features.get(feature_id)
+            && Self::is_transcript_feature_for_derivation(feature)
+        {
+            return Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                feature_id,
+                seq_id,
+            );
+        }
+        let normalized_probe =
+            Self::normalize_transcript_probe(&transcript_projection.transcript_id);
+        for (feature_id, feature) in features.iter().enumerate() {
+            if !Self::is_transcript_feature_for_derivation(feature) {
+                continue;
+            }
+            let keys = Self::feature_transcript_match_keys(feature, feature_id);
+            if !keys.iter().any(|key| key == &normalized_probe) {
+                continue;
+            }
+            return Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                feature_id,
+                seq_id,
+            );
+        }
+        Err(EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Projected transcript '{}' was not found as a derivable transcript in sequence '{}'",
+                transcript_projection.transcript_id, seq_id
+            ),
+        })
+    }
+
+    fn overlap_1based(left: (usize, usize), right: (usize, usize)) -> Option<(usize, usize)> {
+        let start = left.0.max(right.0);
+        let end = left.1.min(right.1);
+        (start > 0 && end >= start).then_some((start, end))
+    }
+
+    fn build_transcript_exon_contributions(
+        transcript_exons_1based: &[(usize, usize)],
+        cds_ranges_1based: &[(usize, usize)],
+        is_reverse: bool,
+    ) -> Vec<UniprotTranscriptExonContribution> {
+        let ordered_exons =
+            Self::order_ranges_for_transcript(transcript_exons_1based.to_vec(), is_reverse);
+        ordered_exons
+            .into_iter()
+            .enumerate()
+            .map(|(idx, exon)| {
+                let overlaps = cds_ranges_1based
+                    .iter()
+                    .filter_map(|coding| Self::overlap_1based(exon, *coding))
+                    .collect::<Vec<_>>();
+                let coding_start_1based = overlaps.iter().map(|(start, _)| *start).min();
+                let coding_end_1based = overlaps.iter().map(|(_, end)| *end).max();
+                let coding_nt = overlaps
+                    .iter()
+                    .map(|(start, end)| end.saturating_sub(*start).saturating_add(1))
+                    .sum::<usize>();
+                UniprotTranscriptExonContribution {
+                    ordinal: idx + 1,
+                    exon_start_1based: exon.0,
+                    exon_end_1based: exon.1,
+                    exon_nt: exon.1.saturating_sub(exon.0).saturating_add(1),
+                    coding_start_1based,
+                    coding_end_1based,
+                    coding_nt,
+                }
+            })
+            .collect()
+    }
+
+    fn summarize_translation_accounting(
+        transcript_id: &str,
+        transcript_label: &str,
+        transcript_feature_id: Option<usize>,
+        is_reverse: bool,
+        derivation: Option<&TranscriptProteinDerivation>,
+        transcript_exons_1based: &[(usize, usize)],
+        entry: &UniprotEntry,
+    ) -> UniprotProjectionTranscriptAccountingRow {
+        let strand = if is_reverse { "-" } else { "+" }.to_string();
+        let cds_ranges_1based = derivation
+            .map(|value| value.cds_ranges_1based.clone())
+            .unwrap_or_default();
+        let contributions = Self::build_transcript_exon_contributions(
+            transcript_exons_1based,
+            &cds_ranges_1based,
+            is_reverse,
+        );
+        let contributing = contributions
+            .iter()
+            .filter(|exon| exon.coding_nt > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        let total_exon_nt = contributions.iter().map(|exon| exon.exon_nt).sum::<usize>();
+        let translated_nt = contributing
+            .iter()
+            .map(|exon| exon.coding_nt)
+            .sum::<usize>();
+        let untranslated_5prime_nt = if let Some(first) = contributing.first() {
+            let nt_before = contributions
+                .iter()
+                .take_while(|exon| exon.ordinal < first.ordinal)
+                .map(|exon| exon.exon_nt)
+                .sum::<usize>();
+            let within = match (first.coding_start_1based, first.coding_end_1based) {
+                (Some(_coding_start), Some(coding_end)) if is_reverse => {
+                    first.exon_end_1based.saturating_sub(coding_end)
+                }
+                (Some(coding_start), Some(_)) => {
+                    coding_start.saturating_sub(first.exon_start_1based)
+                }
+                _ => 0,
+            };
+            nt_before.saturating_add(within)
+        } else {
+            total_exon_nt
+        };
+        let untranslated_3prime_nt = total_exon_nt
+            .saturating_sub(untranslated_5prime_nt)
+            .saturating_sub(translated_nt);
+        let expected_aa_count = translated_nt / 3;
+        let init_met_declared = Self::uniprot_init_met_declared(entry);
+        UniprotProjectionTranscriptAccountingRow {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            transcript_feature_id,
+            strand,
+            contributing_exons: contributing,
+            contributing_exon_nt_sum: contributions
+                .iter()
+                .filter(|exon| exon.coding_nt > 0)
+                .map(|exon| exon.exon_nt)
+                .sum(),
+            untranslated_5prime_nt,
+            untranslated_3prime_nt,
+            translated_nt,
+            translated_nt_divisible_by_3: translated_nt % 3 == 0,
+            expected_aa_count,
+            derived_protein_length_aa: derivation.map(|value| value.protein_length_aa).unwrap_or(0),
+            derived_protein_sequence: derivation
+                .map(|value| value.protein_sequence.clone())
+                .unwrap_or_default(),
+            uniprot_aa_count: entry.sequence_length,
+            init_met_declared,
+            warnings: derivation
+                .map(|value| value.warnings.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    fn build_uniprot_link_resolution_row(
+        entry: &UniprotEntry,
+        transcript_projection: &UniprotTranscriptProjection,
+    ) -> UniprotEnsemblLinkResolutionRow {
+        let normalized_transcript =
+            Self::normalize_transcript_probe(&transcript_projection.transcript_id);
+        let matched = entry
+            .ensembl_xrefs
+            .iter()
+            .filter(|xref| {
+                xref.transcript_id
+                    .as_deref()
+                    .map(Self::normalize_transcript_probe)
+                    .is_some_and(|candidate| candidate == normalized_transcript)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let normalized_xref_transcript_ids = matched
+            .iter()
+            .filter_map(|xref| xref.transcript_id.as_deref())
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let normalized_xref_protein_ids = matched
+            .iter()
+            .filter_map(|xref| xref.protein_id.as_deref())
+            .map(normalize_ensembl_protein_entry_id)
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let normalized_xref_gene_ids = matched
+            .iter()
+            .filter_map(|xref| xref.gene_id.as_deref())
+            .map(normalize_ensembl_protein_entry_id)
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let matched_xrefs = matched
+            .iter()
+            .map(|xref| UniprotEnsemblLinkedXref {
+                transcript_id: xref.transcript_id.clone(),
+                protein_id: xref.protein_id.clone(),
+                gene_id: xref.gene_id.clone(),
+                isoform_id: xref.isoform_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut diagnostics = vec![];
+        let status = if matched_xrefs.is_empty() {
+            let available = entry
+                .ensembl_xrefs
+                .iter()
+                .filter_map(|xref| xref.transcript_id.clone())
+                .collect::<Vec<_>>();
+            if !available.is_empty() {
+                diagnostics.push(format!(
+                    "No UniProt Ensembl xref matched transcript '{}'; available transcript xrefs: {}",
+                    transcript_projection.transcript_id,
+                    available.join(", ")
+                ));
+            }
+            "missing".to_string()
+        } else if normalized_xref_protein_ids.len() > 1 || normalized_xref_gene_ids.len() > 1 {
+            diagnostics.push(format!(
+                "Matched UniProt Ensembl links for '{}' are ambiguous across protein/gene IDs.",
+                transcript_projection.transcript_id
+            ));
+            "ambiguous".to_string()
+        } else {
+            "matched".to_string()
+        };
+        UniprotEnsemblLinkResolutionRow {
+            transcript_id: transcript_projection.transcript_id.clone(),
+            transcript_feature_id: transcript_projection.transcript_feature_id,
+            matched_xrefs,
+            normalized_xref_transcript_ids,
+            normalized_xref_protein_ids,
+            normalized_xref_gene_ids,
+            status,
+            diagnostics,
+        }
+    }
+
+    fn resolve_ensembl_entry_for_projection_transcript(
+        &self,
+        explicit_entry_id: Option<&str>,
+        link_row: &UniprotEnsemblLinkResolutionRow,
+    ) -> Result<Option<EnsemblProteinEntry>, EngineError> {
+        let store = self.read_ensembl_protein_entry_store();
+        if let Some(entry_id) = explicit_entry_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Self::get_ensembl_protein_entry_from_store(&store, entry_id)
+                .map(Some)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Ensembl protein entry '{}' not found in project metadata",
+                        entry_id
+                    ),
+                });
+        }
+        let mut candidates = store
+            .entries
+            .values()
+            .filter(|entry| {
+                let transcript_match =
+                    link_row
+                        .normalized_xref_transcript_ids
+                        .iter()
+                        .any(|candidate| {
+                            Self::normalize_transcript_probe(&entry.transcript_id) == *candidate
+                        });
+                let protein_match = link_row
+                    .normalized_xref_protein_ids
+                    .iter()
+                    .any(|candidate| {
+                        normalize_ensembl_protein_entry_id(&entry.protein_id) == *candidate
+                    });
+                transcript_match || protein_match
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.entry_id.cmp(&right.entry_id));
+        if candidates.len() <= 1 {
+            Ok(candidates.into_iter().next())
+        } else {
+            Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Multiple imported Ensembl protein entries match transcript '{}': {}",
+                    link_row.transcript_id,
+                    candidates
+                        .iter()
+                        .map(|entry| entry.entry_id.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            })
+        }
+    }
+
+    fn build_ensembl_accounting_row(
+        transcript_id: &str,
+        entry: &EnsemblProteinEntry,
+        uniprot_entry: &UniprotEntry,
+    ) -> Option<UniprotProjectionTranscriptAccountingRow> {
+        let translation = entry.transcript_translation.as_ref()?;
+        let transcript_exons = entry
+            .transcript_exons
+            .iter()
+            .map(|exon| (exon.start_1based, exon.end_1based))
+            .collect::<Vec<_>>();
+        let cds_range = (
+            translation.genomic_start_1based?,
+            translation.genomic_end_1based?,
+        );
+        let is_reverse = entry
+            .transcript_exons
+            .first()
+            .map(|exon| exon.strand < 0)
+            .unwrap_or(false);
+        Some(Self::summarize_translation_accounting(
+            transcript_id,
+            entry
+                .transcript_display_name
+                .as_deref()
+                .unwrap_or(transcript_id),
+            None,
+            is_reverse,
+            Some(&TranscriptProteinDerivation {
+                transcript_id: transcript_id.to_string(),
+                transcript_label: entry
+                    .transcript_display_name
+                    .clone()
+                    .unwrap_or_else(|| transcript_id.to_string()),
+                source_seq_id: entry.entry_id.clone(),
+                source_feature_id: 0,
+                derivation_mode: TranscriptProteinDerivationMode::AnnotatedCds,
+                cds_ranges_1based: vec![cds_range],
+                cds_length_bp: if cds_range.1 >= cds_range.0 {
+                    cds_range.1 - cds_range.0 + 1
+                } else {
+                    0
+                },
+                protein_sequence: entry.sequence.clone(),
+                protein_length_aa: entry.sequence_length,
+                translation_table: 1,
+                translation_table_label: "Standard".to_string(),
+                translation_table_source: TranscriptProteinTranslationTableSource::StandardDefault,
+                codon_start: 1,
+                organism: entry.species.clone(),
+                organelle: None,
+                translation_speed_profile_hint: None,
+                translation_speed_profile_source: None,
+                translation_speed_reference_species: None,
+                terminal_stop_trimmed: false,
+                warnings: vec![],
+            }),
+            &transcript_exons,
+            uniprot_entry,
+        ))
+    }
+
+    fn build_exon_compare_row(
+        current: &UniprotProjectionTranscriptAccountingRow,
+        ensembl_entry: Option<&EnsemblProteinEntry>,
+        ensembl_accounting: Option<&UniprotProjectionTranscriptAccountingRow>,
+    ) -> UniprotEnsemblExonCompareRow {
+        if let (Some(entry), Some(ensembl)) = (ensembl_entry, ensembl_accounting) {
+            let current_by_ordinal = current
+                .contributing_exons
+                .iter()
+                .map(|row| (row.ordinal, row))
+                .collect::<BTreeMap<_, _>>();
+            let ensembl_by_ordinal = ensembl
+                .contributing_exons
+                .iter()
+                .map(|row| (row.ordinal, row))
+                .collect::<BTreeMap<_, _>>();
+            let matched_exon_ordinals = current_by_ordinal
+                .iter()
+                .filter_map(|(ordinal, current_row)| {
+                    ensembl_by_ordinal.get(ordinal).and_then(|ensembl_row| {
+                        (current_row.coding_nt == ensembl_row.coding_nt).then_some(*ordinal)
+                    })
+                })
+                .collect::<Vec<_>>();
+            let missing_in_ensembl_ordinals = current_by_ordinal
+                .keys()
+                .filter(|ordinal| !ensembl_by_ordinal.contains_key(ordinal))
+                .copied()
+                .collect::<Vec<_>>();
+            let excess_in_ensembl_ordinals = ensembl_by_ordinal
+                .keys()
+                .filter(|ordinal| !current_by_ordinal.contains_key(ordinal))
+                .copied()
+                .collect::<Vec<_>>();
+            let mut boundary_differences = vec![];
+            for ordinal in current_by_ordinal
+                .keys()
+                .filter(|ordinal| ensembl_by_ordinal.contains_key(ordinal))
+            {
+                let current_row = current_by_ordinal[ordinal];
+                let ensembl_row = ensembl_by_ordinal[ordinal];
+                if current_row.coding_start_1based != ensembl_row.coding_start_1based {
+                    boundary_differences.push(UniprotEnsemblExonBoundaryDifference {
+                        ordinal: *ordinal,
+                        side: "start".to_string(),
+                        current_coordinate_1based: current_row.coding_start_1based.unwrap_or(0),
+                        ensembl_coordinate_1based: ensembl_row.coding_start_1based.unwrap_or(0),
+                        note: "coding start differs".to_string(),
+                    });
+                }
+                if current_row.coding_end_1based != ensembl_row.coding_end_1based {
+                    boundary_differences.push(UniprotEnsemblExonBoundaryDifference {
+                        ordinal: *ordinal,
+                        side: "end".to_string(),
+                        current_coordinate_1based: current_row.coding_end_1based.unwrap_or(0),
+                        ensembl_coordinate_1based: ensembl_row.coding_end_1based.unwrap_or(0),
+                        note: "coding end differs".to_string(),
+                    });
+                }
+            }
+            let status = if missing_in_ensembl_ordinals.is_empty()
+                && excess_in_ensembl_ordinals.is_empty()
+                && boundary_differences.is_empty()
+            {
+                "matched".to_string()
+            } else {
+                "mismatch".to_string()
+            };
+            UniprotEnsemblExonCompareRow {
+                transcript_id: current.transcript_id.clone(),
+                transcript_label: current.transcript_label.clone(),
+                transcript_feature_id: current.transcript_feature_id,
+                ensembl_entry_id: Some(entry.entry_id.clone()),
+                ensembl_transcript_id: Some(entry.transcript_id.clone()),
+                current_contributing_exons: current.contributing_exons.clone(),
+                ensembl_contributing_exons: ensembl.contributing_exons.clone(),
+                matched_exon_ordinals,
+                missing_in_ensembl_ordinals,
+                excess_in_ensembl_ordinals,
+                boundary_differences,
+                status,
+                warnings: vec![],
+            }
+        } else {
+            UniprotEnsemblExonCompareRow {
+                transcript_id: current.transcript_id.clone(),
+                transcript_label: current.transcript_label.clone(),
+                transcript_feature_id: current.transcript_feature_id,
+                ensembl_entry_id: ensembl_entry.map(|entry| entry.entry_id.clone()),
+                ensembl_transcript_id: ensembl_entry.map(|entry| entry.transcript_id.clone()),
+                current_contributing_exons: current.contributing_exons.clone(),
+                ensembl_contributing_exons: vec![],
+                matched_exon_ordinals: vec![],
+                missing_in_ensembl_ordinals: current
+                    .contributing_exons
+                    .iter()
+                    .map(|exon| exon.ordinal)
+                    .collect(),
+                excess_in_ensembl_ordinals: vec![],
+                boundary_differences: vec![],
+                status: "missing_ensembl_evidence".to_string(),
+                warnings: vec![
+                    "No imported Ensembl exon/CDS evidence was available for this transcript."
+                        .to_string(),
+                ],
+            }
+        }
+    }
+
+    fn build_peptide_compare_row(
+        &self,
+        current: &UniprotProjectionTranscriptAccountingRow,
+        ensembl_entry: Option<&EnsemblProteinEntry>,
+        entry: &UniprotEntry,
+    ) -> Result<UniprotEnsemblPeptideCompareRow, EngineError> {
+        let derived_sequence = current.derived_protein_sequence.clone();
+        let uniprot_sequence = entry.sequence.clone();
+        let ensembl_sequence = ensembl_entry.map(|value| value.sequence.clone());
+        let init_met_declared = current.init_met_declared;
+        let comparison_mode = if derived_sequence.len() == uniprot_sequence.len() {
+            UniprotPeptideComparisonMode::DirectCompare
+        } else {
+            UniprotPeptideComparisonMode::GlobalAlignment
+        };
+        let mut direct_mismatches = vec![];
+        let mut global_alignment = None;
+        let mut status = "matched".to_string();
+        if matches!(comparison_mode, UniprotPeptideComparisonMode::DirectCompare) {
+            let ensembl_bytes = ensembl_sequence.as_ref().map(|value| value.as_bytes());
+            for (idx, (derived, uniprot)) in derived_sequence
+                .as_bytes()
+                .iter()
+                .zip(uniprot_sequence.as_bytes().iter())
+                .enumerate()
+            {
+                if derived != uniprot {
+                    direct_mismatches.push(UniprotPeptideDirectMismatch {
+                        position_1based: idx + 1,
+                        gentle_residue: (*derived as char).to_string(),
+                        uniprot_residue: (*uniprot as char).to_string(),
+                        ensembl_residue: ensembl_bytes
+                            .and_then(|bytes| bytes.get(idx).copied())
+                            .map(|value| (value as char).to_string()),
+                    });
+                }
+            }
+            if !direct_mismatches.is_empty() {
+                status = "mismatch".to_string();
+            }
+        } else if !derived_sequence.is_empty() && !uniprot_sequence.is_empty() {
+            let alignment = Self::compute_pairwise_alignment_report(
+                &format!("{}_derived", current.transcript_id),
+                &derived_sequence,
+                None,
+                None,
+                &entry.entry_id,
+                &uniprot_sequence,
+                None,
+                None,
+                PairwiseAlignmentMode::Global,
+                1,
+                -1,
+                -5,
+                -1,
+            )?
+            .report;
+            global_alignment = Some(alignment);
+            status = "length_mismatch".to_string();
+        }
+        let variant_feature_evidence = entry
+            .features
+            .iter()
+            .filter_map(|feature| {
+                let feature_key = Self::normalize_uniprot_variant_feature_key(feature)?;
+                let start_aa = feature.interval.start_aa;
+                let end_aa = feature.interval.end_aa;
+                let status = match (comparison_mode, start_aa, end_aa) {
+                    (_, Some(start), Some(end)) if start == 0 || end < start => {
+                        UniprotVariantFeatureEvidenceStatus::OutsideComparableCoverage
+                    }
+                    (UniprotPeptideComparisonMode::DirectCompare, Some(start), Some(end)) => {
+                        let start_idx = start.saturating_sub(1);
+                        let end_idx = end.min(derived_sequence.len());
+                        if end_idx > derived_sequence.len()
+                            || end_idx > uniprot_sequence.len()
+                            || start_idx >= end_idx
+                        {
+                            UniprotVariantFeatureEvidenceStatus::OutsideComparableCoverage
+                        } else {
+                            let derived_slice = &derived_sequence[start_idx..end_idx];
+                            let uniprot_slice = &uniprot_sequence[start_idx..end_idx];
+                            let ensembl_slice = ensembl_sequence
+                                .as_deref()
+                                .and_then(|value| value.get(start_idx..end_idx));
+                            if derived_slice != uniprot_slice
+                                || ensembl_slice
+                                    .map(|value| value != uniprot_slice)
+                                    .unwrap_or(false)
+                            {
+                                UniprotVariantFeatureEvidenceStatus::Supported
+                            } else {
+                                UniprotVariantFeatureEvidenceStatus::Contradicted
+                            }
+                        }
+                    }
+                    (UniprotPeptideComparisonMode::GlobalAlignment, Some(start), Some(end))
+                        if start <= current.derived_protein_length_aa
+                            && end <= entry.sequence_length =>
+                    {
+                        UniprotVariantFeatureEvidenceStatus::Unaligned
+                    }
+                    _ => UniprotVariantFeatureEvidenceStatus::OutsideComparableCoverage,
+                };
+                let detail = match status {
+                    UniprotVariantFeatureEvidenceStatus::Supported => {
+                        "GENtle-derived or Ensembl peptide sequence differs from the UniProt reference across this feature interval.".to_string()
+                    }
+                    UniprotVariantFeatureEvidenceStatus::Contradicted => {
+                        "GENtle-derived and available Ensembl peptide sequence match the UniProt reference across this feature interval.".to_string()
+                    }
+                    UniprotVariantFeatureEvidenceStatus::Unaligned => {
+                        "Protein lengths differ, so this sequence-changing feature remains alignment-dependent in v1.".to_string()
+                    }
+                    UniprotVariantFeatureEvidenceStatus::OutsideComparableCoverage => {
+                        "The annotated feature interval falls outside currently comparable peptide coverage.".to_string()
+                    }
+                };
+                Some(UniprotVariantFeatureEvidenceRow {
+                    feature_key,
+                    feature_note: feature.note.clone(),
+                    start_aa,
+                    end_aa,
+                    status,
+                    detail,
+                })
+            })
+            .collect::<Vec<_>>();
+        Ok(UniprotEnsemblPeptideCompareRow {
+            transcript_id: current.transcript_id.clone(),
+            transcript_label: current.transcript_label.clone(),
+            transcript_feature_id: current.transcript_feature_id,
+            ensembl_entry_id: ensembl_entry.map(|value| value.entry_id.clone()),
+            derived_protein_length_aa: current.derived_protein_length_aa,
+            uniprot_protein_length_aa: entry.sequence_length,
+            ensembl_protein_length_aa: ensembl_entry.map(|value| value.sequence_length),
+            comparison_mode,
+            init_met_declared,
+            direct_mismatches,
+            global_alignment,
+            variant_feature_evidence,
+            status,
+            warnings: vec![],
+        })
+    }
+
+    fn audit_row_status_from_parts(
+        link_row: &UniprotEnsemblLinkResolutionRow,
+        accounting: &UniprotProjectionTranscriptAccountingRow,
+        exon_compare: &UniprotEnsemblExonCompareRow,
+        peptide_compare: &UniprotEnsemblPeptideCompareRow,
+    ) -> (UniprotProjectionAuditRowStatus, Vec<String>) {
+        let mut reasons = vec![];
+        if link_row.status != "matched" {
+            reasons.push(format!("link_{}", link_row.status));
+        }
+        if !accounting.translated_nt_divisible_by_3 {
+            reasons.push("translated_nt_not_divisible_by_3".to_string());
+        }
+        let count_matches = accounting.expected_aa_count == accounting.uniprot_aa_count
+            || (accounting.init_met_declared
+                && (accounting.expected_aa_count + 1 == accounting.uniprot_aa_count
+                    || accounting.uniprot_aa_count + 1 == accounting.expected_aa_count));
+        if !count_matches {
+            reasons.push("aa_count_mismatch".to_string());
+        }
+        if exon_compare.status != "matched" {
+            reasons.push(format!("ensembl_exon_{}", exon_compare.status));
+        }
+        if peptide_compare.status != "matched" {
+            reasons.push(format!("peptide_{}", peptide_compare.status));
+        }
+        let status = if reasons.is_empty() {
+            UniprotProjectionAuditRowStatus::Consistent
+        } else if reasons.iter().all(|reason| {
+            reason.starts_with("link_missing")
+                || reason.starts_with("ensembl_exon_missing_ensembl_evidence")
+        }) {
+            UniprotProjectionAuditRowStatus::MissingEvidence
+        } else if reasons.iter().any(|reason| {
+            matches!(
+                reason.as_str(),
+                "translated_nt_not_divisible_by_3" | "aa_count_mismatch"
+            ) || reason.starts_with("peptide_")
+                || reason.starts_with("ensembl_exon_mismatch")
+        }) {
+            UniprotProjectionAuditRowStatus::Mismatch
+        } else {
+            UniprotProjectionAuditRowStatus::Warning
+        };
+        (status, reasons)
+    }
+
+    fn compose_uniprot_projection_audit_report(
+        report_id: &str,
+        projection: &UniprotGenomeProjection,
+        entry: &UniprotEntry,
+        ensembl_entry_id: Option<&str>,
+        op_id: Option<String>,
+        run_id: Option<String>,
+        link_report: &UniprotEnsemblLinkReport,
+        accounting_report: &UniprotProjectionTranscriptAccountingReport,
+        exon_compare_report: &UniprotEnsemblExonCompareReport,
+        peptide_compare_report: &UniprotEnsemblPeptideCompareReport,
+    ) -> UniprotProjectionAuditReport {
+        let rows = accounting_report
+            .rows
+            .iter()
+            .map(|accounting| {
+                let link_row = link_report
+                    .rows
+                    .iter()
+                    .find(|row| row.transcript_id == accounting.transcript_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let exon_compare = exon_compare_report
+                    .rows
+                    .iter()
+                    .find(|row| row.transcript_id == accounting.transcript_id)
+                    .cloned();
+                let peptide_compare = peptide_compare_report
+                    .rows
+                    .iter()
+                    .find(|row| row.transcript_id == accounting.transcript_id)
+                    .cloned();
+                let fallback_exon_compare =
+                    exon_compare.unwrap_or_else(|| UniprotEnsemblExonCompareRow {
+                        transcript_id: accounting.transcript_id.clone(),
+                        transcript_label: accounting.transcript_label.clone(),
+                        transcript_feature_id: accounting.transcript_feature_id,
+                        ensembl_entry_id: ensembl_entry_id.map(|value| value.to_string()),
+                        ensembl_transcript_id: None,
+                        current_contributing_exons: accounting.contributing_exons.clone(),
+                        ensembl_contributing_exons: vec![],
+                        matched_exon_ordinals: vec![],
+                        missing_in_ensembl_ordinals: accounting
+                            .contributing_exons
+                            .iter()
+                            .map(|exon| exon.ordinal)
+                            .collect(),
+                        excess_in_ensembl_ordinals: vec![],
+                        boundary_differences: vec![],
+                        status: "missing_ensembl_evidence".to_string(),
+                        warnings: vec![],
+                    });
+                let fallback_peptide_compare =
+                    peptide_compare.unwrap_or_else(|| UniprotEnsemblPeptideCompareRow {
+                        transcript_id: accounting.transcript_id.clone(),
+                        transcript_label: accounting.transcript_label.clone(),
+                        transcript_feature_id: accounting.transcript_feature_id,
+                        ensembl_entry_id: ensembl_entry_id.map(|value| value.to_string()),
+                        derived_protein_length_aa: accounting.derived_protein_length_aa,
+                        uniprot_protein_length_aa: entry.sequence_length,
+                        ensembl_protein_length_aa: None,
+                        comparison_mode: UniprotPeptideComparisonMode::Unavailable,
+                        init_met_declared: accounting.init_met_declared,
+                        direct_mismatches: vec![],
+                        global_alignment: None,
+                        variant_feature_evidence: vec![],
+                        status: "missing_ensembl_evidence".to_string(),
+                        warnings: vec![],
+                    });
+                let (status, mismatch_reasons) = Self::audit_row_status_from_parts(
+                    &link_row,
+                    accounting,
+                    &fallback_exon_compare,
+                    &fallback_peptide_compare,
+                );
+                UniprotProjectionAuditRow {
+                    transcript_id: accounting.transcript_id.clone(),
+                    transcript_label: accounting.transcript_label.clone(),
+                    transcript_feature_id: accounting.transcript_feature_id,
+                    status,
+                    mismatch_reasons,
+                    link_resolution: link_row,
+                    accounting: accounting.clone(),
+                    ensembl_exon_compare: Some(fallback_exon_compare),
+                    peptide_compare: Some(fallback_peptide_compare),
+                }
+            })
+            .collect::<Vec<_>>();
+        let email_draft = Self::build_uniprot_projection_audit_email_draft(entry, &rows);
+        UniprotProjectionAuditReport {
+            schema: UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA.to_string(),
+            report_id: report_id.to_string(),
+            projection_id: projection.projection_id.clone(),
+            entry_id: projection.entry_id.clone(),
+            seq_id: projection.seq_id.clone(),
+            transcript_id_filter: projection.transcript_id_filter.clone(),
+            ensembl_entry_id: ensembl_entry_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id,
+            run_id,
+            rows,
+            warnings: link_report
+                .warnings
+                .iter()
+                .chain(accounting_report.warnings.iter())
+                .chain(exon_compare_report.warnings.iter())
+                .chain(peptide_compare_report.warnings.iter())
+                .cloned()
+                .collect(),
+            maintainer_email_draft: email_draft,
+        }
+    }
+
+    fn build_uniprot_projection_audit_email_draft(
+        entry: &UniprotEntry,
+        rows: &[UniprotProjectionAuditRow],
+    ) -> Option<UniprotProjectionAuditEmailDraft> {
+        let failing = rows
+            .iter()
+            .filter(|row| row.status != UniprotProjectionAuditRowStatus::Consistent)
+            .collect::<Vec<_>>();
+        if failing.is_empty() {
+            return None;
+        }
+        let mut body = String::new();
+        body.push_str("Dear UniProt maintainers,\n\n");
+        body.push_str(&format!(
+            "GENtle flagged a presumed inconsistency in the transcript-to-protein mapping for UniProt entry {} ({}) during a local cross-check against projected transcript structure and imported Ensembl evidence. This is an unsent local draft for human review.\n\n",
+            entry.entry_id, entry.accession
+        ));
+        for row in &failing {
+            let peptide_mode = row
+                .peptide_compare
+                .as_ref()
+                .map(|value| value.comparison_mode.as_str())
+                .unwrap_or("unavailable");
+            body.push_str(&format!(
+                "- Transcript {} ({}): exon_nt_sum={}, untranslated_5prime_nt={}, untranslated_3prime_nt={}, translated_nt={}, divisible_by_3={}, expected_aa_count={}, uniprot_aa_count={}, comparison_mode={}. Reasons: {}.\n",
+                row.transcript_id,
+                row.transcript_label,
+                row.accounting.contributing_exon_nt_sum,
+                row.accounting.untranslated_5prime_nt,
+                row.accounting.untranslated_3prime_nt,
+                row.accounting.translated_nt,
+                row.accounting.translated_nt_divisible_by_3,
+                row.accounting.expected_aa_count,
+                row.accounting.uniprot_aa_count,
+                peptide_mode,
+                if row.mismatch_reasons.is_empty() {
+                    "none".to_string()
+                } else {
+                    row.mismatch_reasons.join(", ")
+                }
+            ));
+        }
+        body.push_str(
+            "\nThis may reflect a presumed inconsistency in transcript projection, exon/CDS selection, or associated protein annotation rather than a definite UniProt error. We are only surfacing the local comparison numbers here for review.\n",
+        );
+        Some(UniprotProjectionAuditEmailDraft {
+            subject: format!(
+                "Draft: presumed transcript/protein inconsistency for UniProt entry {}",
+                entry.entry_id
+            ),
+            body,
+            failing_transcript_ids: failing
+                .iter()
+                .map(|row| row.transcript_id.clone())
+                .collect(),
+        })
+    }
+
+    fn build_uniprot_projection_audit_parity_report(
+        report_id: &str,
+        direct_report: UniprotProjectionAuditReport,
+        composed_report: UniprotProjectionAuditReport,
+        op_id: Option<String>,
+        run_id: Option<String>,
+    ) -> UniprotProjectionAuditParityReport {
+        let direct_rows = direct_report
+            .rows
+            .iter()
+            .map(|row| (row.transcript_id.clone(), row))
+            .collect::<BTreeMap<_, _>>();
+        let composed_rows = composed_report
+            .rows
+            .iter()
+            .map(|row| (row.transcript_id.clone(), row))
+            .collect::<BTreeMap<_, _>>();
+        let transcript_ids = direct_rows
+            .keys()
+            .chain(composed_rows.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let rows = transcript_ids
+            .into_iter()
+            .map(|transcript_id| {
+                let direct = direct_rows.get(&transcript_id);
+                let composed = composed_rows.get(&transcript_id);
+                let direct_status = direct.map(|row| row.status).unwrap_or_default();
+                let composed_status = composed.map(|row| row.status).unwrap_or_default();
+                let statuses_match = direct_status == composed_status;
+                let accounting_match = match (direct, composed) {
+                    (Some(left), Some(right)) => {
+                        left.accounting.contributing_exon_nt_sum
+                            == right.accounting.contributing_exon_nt_sum
+                            && left.accounting.untranslated_5prime_nt
+                                == right.accounting.untranslated_5prime_nt
+                            && left.accounting.untranslated_3prime_nt
+                                == right.accounting.untranslated_3prime_nt
+                            && left.accounting.translated_nt == right.accounting.translated_nt
+                            && left.accounting.expected_aa_count
+                                == right.accounting.expected_aa_count
+                    }
+                    _ => false,
+                };
+                let mismatch_reason_match = match (direct, composed) {
+                    (Some(left), Some(right)) => {
+                        let mut left_reasons = left.mismatch_reasons.clone();
+                        let mut right_reasons = right.mismatch_reasons.clone();
+                        left_reasons.sort();
+                        right_reasons.sort();
+                        left_reasons == right_reasons
+                    }
+                    _ => false,
+                };
+                let comparison_mode_match = match (direct, composed) {
+                    (Some(left), Some(right)) => {
+                        left.peptide_compare
+                            .as_ref()
+                            .map(|value| value.comparison_mode)
+                            == right
+                                .peptide_compare
+                                .as_ref()
+                                .map(|value| value.comparison_mode)
+                    }
+                    _ => false,
+                };
+                let mut differences = vec![];
+                if !statuses_match {
+                    differences.push("status".to_string());
+                }
+                if !accounting_match {
+                    differences.push("accounting".to_string());
+                }
+                if !mismatch_reason_match {
+                    differences.push("mismatch_reasons".to_string());
+                }
+                if !comparison_mode_match {
+                    differences.push("comparison_mode".to_string());
+                }
+                UniprotProjectionAuditParityRow {
+                    transcript_id,
+                    direct_status,
+                    composed_status,
+                    statuses_match,
+                    accounting_match,
+                    mismatch_reason_match,
+                    comparison_mode_match,
+                    differences,
+                }
+            })
+            .collect::<Vec<_>>();
+        let direct_failing = direct_report
+            .maintainer_email_draft
+            .as_ref()
+            .map(|draft| {
+                draft
+                    .failing_transcript_ids
+                    .iter()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        let composed_failing = composed_report
+            .maintainer_email_draft
+            .as_ref()
+            .map(|draft| {
+                draft
+                    .failing_transcript_ids
+                    .iter()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        UniprotProjectionAuditParityReport {
+            schema: UNIPROT_PROJECTION_AUDIT_PARITY_REPORT_SCHEMA.to_string(),
+            report_id: report_id.to_string(),
+            projection_id: direct_report.projection_id.clone(),
+            entry_id: direct_report.entry_id.clone(),
+            seq_id: direct_report.seq_id.clone(),
+            transcript_id_filter: direct_report.transcript_id_filter.clone(),
+            ensembl_entry_id: direct_report.ensembl_entry_id.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id,
+            run_id,
+            direct_report,
+            composed_report,
+            rows,
+            email_draft_transcripts_match: direct_failing == composed_failing,
+            warnings: vec![],
+        }
+    }
+
+    pub fn resolve_uniprot_ensembl_links(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+    ) -> Result<UniprotEnsemblLinkReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let normalized_filter = transcript_id
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty());
+        let rows = projection
+            .transcript_projections
+            .iter()
+            .filter(|transcript| {
+                normalized_filter.as_ref().is_none_or(|needle| {
+                    Self::normalize_transcript_probe(&transcript.transcript_id) == *needle
+                })
+            })
+            .map(|transcript| Self::build_uniprot_link_resolution_row(&entry, transcript))
+            .collect::<Vec<_>>();
+        Ok(UniprotEnsemblLinkReport {
+            schema: UNIPROT_ENSEMBL_LINKS_SCHEMA.to_string(),
+            projection_id: projection.projection_id,
+            entry_id: projection.entry_id,
+            seq_id: projection.seq_id,
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            rows,
+            warnings: projection.warnings,
+        })
+    }
+
+    pub fn summarize_uniprot_projection_transcript_accounting(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+    ) -> Result<UniprotProjectionTranscriptAccountingReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let normalized_filter = transcript_id
+            .map(Self::normalize_transcript_probe)
+            .filter(|value| !value.is_empty());
+        let mut rows = vec![];
+        let mut warnings = projection.warnings.clone();
+        for transcript in projection
+            .transcript_projections
+            .iter()
+            .filter(|transcript| {
+                normalized_filter.as_ref().is_none_or(|needle| {
+                    Self::normalize_transcript_probe(&transcript.transcript_id) == *needle
+                })
+            })
+        {
+            match self.derive_uniprot_projection_transcript_context(&projection.seq_id, transcript)
+            {
+                Ok(derived) => rows.push(Self::summarize_translation_accounting(
+                    &derived.transcript_id,
+                    &derived.transcript_label,
+                    Some(derived.transcript_feature_id),
+                    derived.is_reverse,
+                    derived.derivation.as_ref(),
+                    &derived.transcript_exons_1based,
+                    &entry,
+                )),
+                Err(err) => warnings.push(format!(
+                    "Transcript '{}' could not be prepared for accounting: {}",
+                    transcript.transcript_id, err.message
+                )),
+            }
+        }
+        Ok(UniprotProjectionTranscriptAccountingReport {
+            schema: UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA.to_string(),
+            projection_id: projection.projection_id,
+            entry_id: projection.entry_id,
+            seq_id: projection.seq_id,
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            rows,
+            warnings,
+        })
+    }
+
+    pub fn compare_uniprot_projection_to_ensembl_exons(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+        ensembl_entry_id: Option<&str>,
+    ) -> Result<UniprotEnsemblExonCompareReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let accounting =
+            self.summarize_uniprot_projection_transcript_accounting(projection_id, transcript_id)?;
+        let links = self.resolve_uniprot_ensembl_links(projection_id, transcript_id)?;
+        let mut rows = vec![];
+        let mut warnings = vec![];
+        for current in &accounting.rows {
+            let link_row = links
+                .rows
+                .iter()
+                .find(|row| row.transcript_id == current.transcript_id)
+                .cloned()
+                .unwrap_or_default();
+            let resolved_entry = match self
+                .resolve_ensembl_entry_for_projection_transcript(ensembl_entry_id, &link_row)
+            {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warnings.push(err.message.clone());
+                    None
+                }
+            };
+            let ensembl_accounting = resolved_entry.as_ref().and_then(|resolved| {
+                Self::build_ensembl_accounting_row(&current.transcript_id, resolved, &entry)
+            });
+            rows.push(Self::build_exon_compare_row(
+                current,
+                resolved_entry.as_ref(),
+                ensembl_accounting.as_ref(),
+            ));
+        }
+        Ok(UniprotEnsemblExonCompareReport {
+            schema: UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA.to_string(),
+            projection_id: projection.projection_id,
+            entry_id: projection.entry_id,
+            seq_id: projection.seq_id,
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            ensembl_entry_id: ensembl_entry_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            rows,
+            warnings,
+        })
+    }
+
+    pub fn compare_uniprot_variant_features_to_ensembl_peptide(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+        ensembl_entry_id: Option<&str>,
+    ) -> Result<UniprotEnsemblPeptideCompareReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let accounting =
+            self.summarize_uniprot_projection_transcript_accounting(projection_id, transcript_id)?;
+        let links = self.resolve_uniprot_ensembl_links(projection_id, transcript_id)?;
+        let mut rows = vec![];
+        let mut warnings = vec![];
+        for current in &accounting.rows {
+            let link_row = links
+                .rows
+                .iter()
+                .find(|row| row.transcript_id == current.transcript_id)
+                .cloned()
+                .unwrap_or_default();
+            let resolved_entry = match self
+                .resolve_ensembl_entry_for_projection_transcript(ensembl_entry_id, &link_row)
+            {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warnings.push(err.message.clone());
+                    None
+                }
+            };
+            rows.push(self.build_peptide_compare_row(current, resolved_entry.as_ref(), &entry)?);
+        }
+        Ok(UniprotEnsemblPeptideCompareReport {
+            schema: UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA.to_string(),
+            projection_id: projection.projection_id,
+            entry_id: projection.entry_id,
+            seq_id: projection.seq_id,
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            ensembl_entry_id: ensembl_entry_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            rows,
+            warnings,
+        })
+    }
+
+    pub fn audit_uniprot_projection_consistency_from_primitives(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+        report_id: &str,
+        ensembl_entry_id: Option<&str>,
+        op_id: Option<String>,
+        run_id: Option<String>,
+    ) -> Result<UniprotProjectionAuditReport, EngineError> {
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let links = self.resolve_uniprot_ensembl_links(projection_id, transcript_id)?;
+        let accounting =
+            self.summarize_uniprot_projection_transcript_accounting(projection_id, transcript_id)?;
+        let exon_compare = self.compare_uniprot_projection_to_ensembl_exons(
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        )?;
+        let peptide_compare = self.compare_uniprot_variant_features_to_ensembl_peptide(
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        )?;
+        Ok(Self::compose_uniprot_projection_audit_report(
+            report_id,
+            &projection,
+            &entry,
+            ensembl_entry_id,
+            op_id,
+            run_id,
+            &links,
+            &accounting,
+            &exon_compare,
+            &peptide_compare,
+        ))
+    }
+
+    pub fn audit_uniprot_projection_parity_from_primitives(
+        &self,
+        projection_id: &str,
+        transcript_id: Option<&str>,
+        report_id: &str,
+        ensembl_entry_id: Option<&str>,
+        op_id: Option<String>,
+        run_id: Option<String>,
+    ) -> Result<UniprotProjectionAuditParityReport, EngineError> {
+        let direct_report = self.audit_uniprot_projection_consistency_from_primitives(
+            projection_id,
+            transcript_id,
+            report_id,
+            ensembl_entry_id,
+            op_id.clone(),
+            run_id.clone(),
+        )?;
+        let projection = self.get_uniprot_genome_projection(projection_id)?;
+        let entry = self.get_uniprot_entry(&projection.entry_id)?;
+        let links = self.resolve_uniprot_ensembl_links(projection_id, transcript_id)?;
+        let accounting =
+            self.summarize_uniprot_projection_transcript_accounting(projection_id, transcript_id)?;
+        let exon_compare = self.compare_uniprot_projection_to_ensembl_exons(
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        )?;
+        let peptide_compare = self.compare_uniprot_variant_features_to_ensembl_peptide(
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        )?;
+        let composed_report = Self::compose_uniprot_projection_audit_report(
+            report_id,
+            &projection,
+            &entry,
+            ensembl_entry_id,
+            op_id.clone(),
+            run_id.clone(),
+            &links,
+            &accounting,
+            &exon_compare,
+            &peptide_compare,
+        );
+        Ok(Self::build_uniprot_projection_audit_parity_report(
+            report_id,
+            direct_report,
+            composed_report,
+            op_id,
+            run_id,
+        ))
     }
 
     fn uniprot_feature_query_profile_species_label(

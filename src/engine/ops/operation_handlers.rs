@@ -5732,6 +5732,8 @@ impl GentleEngine {
             tfbs_region_summary: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
         };
 
         match op {
@@ -8393,6 +8395,94 @@ impl GentleEngine {
                 result.messages.push(format!(
                     "Projected UniProt entry '{}' onto '{}' as '{}' (transcripts={})",
                     entry_id, seq_id, projection_id, transcript_count
+                ));
+            }
+            Operation::AuditUniprotProjectionConsistency {
+                projection_id,
+                transcript_id,
+                report_id,
+                ensembl_entry_id,
+            } => {
+                let projection_id = projection_id.trim();
+                if projection_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "AuditUniprotProjectionConsistency requires a non-empty projection_id"
+                                .to_string(),
+                    });
+                }
+                let resolved_report_id = report_id
+                    .as_deref()
+                    .map(Self::normalize_uniprot_projection_audit_report_id)
+                    .transpose()?
+                    .unwrap_or_else(|| format!("{projection_id}__audit"));
+                let report = self.audit_uniprot_projection_consistency_from_primitives(
+                    projection_id,
+                    transcript_id.as_deref(),
+                    &resolved_report_id,
+                    ensembl_entry_id.as_deref(),
+                    Some(result.op_id.clone()),
+                    Some(run_id.to_string()),
+                )?;
+                self.upsert_uniprot_projection_audit_report(report.clone())?;
+                result.uniprot_projection_audit = Some(report.clone());
+                result.messages.push(format!(
+                    "Audited UniProt projection '{}' into report '{}' (transcripts={}, failing={})",
+                    projection_id,
+                    report.report_id,
+                    report.rows.len(),
+                    report
+                        .rows
+                        .iter()
+                        .filter(|row| row.status != UniprotProjectionAuditRowStatus::Consistent)
+                        .count()
+                ));
+            }
+            Operation::AuditUniprotProjectionParity {
+                projection_id,
+                transcript_id,
+                report_id,
+                ensembl_entry_id,
+            } => {
+                let projection_id = projection_id.trim();
+                if projection_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "AuditUniprotProjectionParity requires a non-empty projection_id"
+                            .to_string(),
+                    });
+                }
+                let resolved_report_id = report_id
+                    .as_deref()
+                    .map(Self::normalize_uniprot_projection_audit_report_id)
+                    .transpose()?
+                    .unwrap_or_else(|| format!("{projection_id}__audit_parity"));
+                let report = self.audit_uniprot_projection_parity_from_primitives(
+                    projection_id,
+                    transcript_id.as_deref(),
+                    &resolved_report_id,
+                    ensembl_entry_id.as_deref(),
+                    Some(result.op_id.clone()),
+                    Some(run_id.to_string()),
+                )?;
+                self.upsert_uniprot_projection_audit_parity_report(report.clone())?;
+                result.uniprot_projection_audit_parity = Some(report.clone());
+                result.messages.push(format!(
+                    "Built UniProt projection audit parity report '{}' for '{}' (transcripts={}, divergent={})",
+                    report.report_id,
+                    projection_id,
+                    report.rows.len(),
+                    report
+                        .rows
+                        .iter()
+                        .filter(|row| {
+                            !row.statuses_match
+                                || !row.accounting_match
+                                || !row.mismatch_reason_match
+                                || !row.comparison_mode_match
+                        })
+                        .count()
                 ));
             }
             Operation::ImportBlastHitsTrack {

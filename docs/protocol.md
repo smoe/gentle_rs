@@ -1190,6 +1190,14 @@ external coding agent runtime, see:
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
   - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
+  - `uniprot resolve-ensembl-links PROJECTION_ID [--transcript ID]`
+  - `uniprot transcript-accounting PROJECTION_ID [--transcript ID]`
+  - `uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
+  - `uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
+  - `uniprot audit-list|show|export ...`
+  - `uniprot audit-parity-list|show|export ...`
 - shared-shell Ensembl protein routes:
   - `ensembl-protein fetch QUERY [--entry-id ID]`
   - `ensembl-protein list`

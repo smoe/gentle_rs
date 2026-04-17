@@ -1310,6 +1310,12 @@ order. Durable architecture constraints and decisions remain in
     - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
       `uniprot projection-show`, `uniprot feature-coding-dna`
+      plus reusable audit primitives and stored-report lifecycle routes:
+      `uniprot resolve-ensembl-links`, `uniprot transcript-accounting`,
+      `uniprot compare-ensembl-exons`, `uniprot compare-ensembl-peptide`,
+      `uniprot audit-projection`, `uniprot audit-parity`,
+      `uniprot audit-list|show|export`,
+      `uniprot audit-parity-list|show|export`
   - GUI follow-up now implemented:
     - `Protein Evidence...` offers `Open Protein Expert` for the active
       projection and recent stored projections
@@ -1332,6 +1338,9 @@ order. Durable architecture constraints and decisions remain in
       - genomic coding DNA exactly as encoded in the genome
       - optional translation-speed optimized codon choice
       - exon/exon-pair attribution for the selected feature span
+    - the same specialist now also offers high-level UniProt projection audit
+      and parity actions backed by one shared engine contract, plus reloadable
+      stored audit/parity reports and a local unsent maintainer-email draft
     - the same specialist now also offers direct reverse translation of any
       first-class project protein into synthetic coding DNA, with a compact
       result panel showing:

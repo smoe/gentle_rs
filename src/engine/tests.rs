@@ -9,7 +9,9 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
-use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
+use crate::ensembl_protein::{
+    EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
+};
 use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
@@ -72,6 +74,22 @@ fn synthetic_ensembl_entry(
         gene_symbol: Some(gene_symbol.to_string()),
         transcript_display_name: Some(format!("{gene_symbol}-201")),
         species: Some("homo_sapiens".to_string()),
+        transcript_exons: vec![EnsemblTranscriptExon {
+            exon_id: format!("{transcript_id}_exon_1"),
+            start_1based: 1,
+            end_1based: 180,
+            strand: 1,
+            seq_region_name: Some("1".to_string()),
+            version: Some(1),
+        }],
+        transcript_translation: Some(EnsemblTranscriptTranslation {
+            protein_id: protein_id.to_string(),
+            protein_version: Some(1),
+            length_aa: Some(60),
+            genomic_start_1based: Some(1),
+            genomic_end_1based: Some(180),
+            species: Some("homo_sapiens".to_string()),
+        }),
         sequence: "M".repeat(60),
         sequence_length: 60,
         features: vec![EnsemblProteinFeature {
@@ -126,6 +144,26 @@ fn formula_test_sequence() -> DNAsequence {
         kind: "gene".into(),
         location: gb_io::seq::Location::simple_range(80, 140),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
+    });
+    dna
+}
+
+fn uniprot_projection_test_sequence() -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(99, 360),
+        qualifiers: vec![
+            ("gene".into(), Some("TOY1".to_string())),
+            ("transcript_id".into(), Some("TX1".to_string())),
+            ("label".into(), Some("TX1".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("100-180,300-360".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect(),
     });
     dna
 }
@@ -5638,6 +5676,184 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         !view.transcript_lanes[0].cds_to_protein_segments.is_empty(),
         "UniProt projection expert should expose transcript/CDS-to-protein guide segments"
     );
+}
+
+#[test]
+fn test_uniprot_projection_audit_primitives_and_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let swiss_path = dir.path().join("toy_uniprot_audit.txt");
+    let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   VARIANT         2
+FT                   /note="synthetic variant"
+FT   CONFLICT        10
+FT                   /note="synthetic conflict"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPENA
+//
+"#;
+    std::fs::write(&swiss_path, swiss_text).unwrap();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("toy_seq".to_string(), uniprot_projection_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.display().to_string(),
+            entry_id: None,
+        })
+        .expect("import audit swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "toy_seq".to_string(),
+            entry_id: "PTEST1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("project audit uniprot");
+
+    let mut ensembl_entry = synthetic_ensembl_entry(
+        "ENSPTOY1",
+        "ENSPTOY1",
+        "TX1",
+        "TOY1",
+        "PF02196",
+        "synthetic Ensembl domain",
+    );
+    ensembl_entry.transcript_display_name = Some("TX1".to_string());
+    ensembl_entry.transcript_exons = vec![
+        EnsemblTranscriptExon {
+            exon_id: "TX1_exon_1".to_string(),
+            start_1based: 100,
+            end_1based: 180,
+            strand: 1,
+            seq_region_name: Some("1".to_string()),
+            version: Some(1),
+        },
+        EnsemblTranscriptExon {
+            exon_id: "TX1_exon_2".to_string(),
+            start_1based: 300,
+            end_1based: 360,
+            strand: 1,
+            seq_region_name: Some("1".to_string()),
+            version: Some(1),
+        },
+    ];
+    ensembl_entry.transcript_translation = Some(EnsemblTranscriptTranslation {
+        protein_id: "ENSPTOY1".to_string(),
+        protein_version: Some(1),
+        length_aa: Some(47),
+        genomic_start_1based: Some(100),
+        genomic_end_1based: Some(360),
+        species: Some("homo_sapiens".to_string()),
+    });
+    ensembl_entry.sequence = "M".repeat(47);
+    ensembl_entry.sequence_length = 47;
+    engine
+        .upsert_ensembl_protein_entry(ensembl_entry)
+        .expect("upsert ensembl audit entry");
+
+    let links = engine
+        .resolve_uniprot_ensembl_links("PTEST1@toy_seq", Some("TX1"))
+        .expect("resolve links");
+    assert_eq!(links.schema, UNIPROT_ENSEMBL_LINKS_SCHEMA);
+    assert_eq!(links.rows.len(), 1);
+    assert_eq!(links.rows[0].status, "matched");
+
+    let accounting = engine
+        .summarize_uniprot_projection_transcript_accounting("PTEST1@toy_seq", Some("TX1"))
+        .expect("accounting");
+    assert_eq!(
+        accounting.schema,
+        UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA
+    );
+    assert_eq!(accounting.rows.len(), 1);
+    assert!(accounting.rows[0].translated_nt > 0);
+
+    let exon_compare = engine
+        .compare_uniprot_projection_to_ensembl_exons(
+            "PTEST1@toy_seq",
+            Some("TX1"),
+            Some("ENSPTOY1"),
+        )
+        .expect("exon compare");
+    assert_eq!(exon_compare.schema, UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA);
+    assert_eq!(exon_compare.rows.len(), 1);
+
+    let peptide_compare = engine
+        .compare_uniprot_variant_features_to_ensembl_peptide(
+            "PTEST1@toy_seq",
+            Some("TX1"),
+            Some("ENSPTOY1"),
+        )
+        .expect("peptide compare");
+    assert_eq!(
+        peptide_compare.schema,
+        UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA
+    );
+    assert_eq!(peptide_compare.rows.len(), 1);
+    assert!(
+        matches!(
+            peptide_compare.rows[0].comparison_mode,
+            UniprotPeptideComparisonMode::GlobalAlignment
+        ),
+        "expected length mismatch to take the global alignment branch"
+    );
+
+    let audit = engine
+        .apply(Operation::AuditUniprotProjectionConsistency {
+            projection_id: "PTEST1@toy_seq".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            report_id: Some("toy_audit".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+        })
+        .expect("audit projection");
+    let audit_report = audit
+        .uniprot_projection_audit
+        .as_ref()
+        .expect("audit report attached");
+    assert_eq!(audit_report.schema, UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA);
+    assert_eq!(audit_report.rows.len(), 1);
+    assert!(
+        audit_report
+            .maintainer_email_draft
+            .as_ref()
+            .map(|draft| draft.body.contains("presumed inconsistency"))
+            .unwrap_or(false)
+    );
+    assert!(
+        audit_report
+            .maintainer_email_draft
+            .as_ref()
+            .map(|draft| draft.body.contains("exon_nt_sum="))
+            .unwrap_or(false)
+    );
+
+    let parity = engine
+        .apply(Operation::AuditUniprotProjectionParity {
+            projection_id: "PTEST1@toy_seq".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            report_id: Some("toy_audit_parity".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+        })
+        .expect("audit parity");
+    let parity_report = parity
+        .uniprot_projection_audit_parity
+        .as_ref()
+        .expect("parity report attached");
+    assert_eq!(
+        parity_report.schema,
+        UNIPROT_PROJECTION_AUDIT_PARITY_REPORT_SCHEMA
+    );
+    assert_eq!(parity_report.rows.len(), 1);
+    assert!(parity_report.email_draft_transcripts_match);
 }
 
 #[test]

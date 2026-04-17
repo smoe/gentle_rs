@@ -1320,6 +1320,10 @@ pub struct OpResult {
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_projection_audit: Option<UniprotProjectionAuditReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniprot_projection_audit_parity: Option<UniprotProjectionAuditParityReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2131,6 +2135,412 @@ pub struct RestrictionCloningPcrHandoffReportSummary {
     pub forward_enzyme: String,
     pub reverse_enzyme: String,
     pub compatibility_status: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UniprotPeptideComparisonMode {
+    DirectCompare,
+    GlobalAlignment,
+    #[default]
+    Unavailable,
+}
+
+impl UniprotPeptideComparisonMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectCompare => "direct_compare",
+            Self::GlobalAlignment => "global_alignment",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UniprotVariantFeatureEvidenceStatus {
+    Supported,
+    Contradicted,
+    Unaligned,
+    #[default]
+    OutsideComparableCoverage,
+}
+
+impl UniprotVariantFeatureEvidenceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Supported => "supported",
+            Self::Contradicted => "contradicted",
+            Self::Unaligned => "unaligned",
+            Self::OutsideComparableCoverage => "outside_comparable_coverage",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UniprotProjectionAuditRowStatus {
+    #[default]
+    Consistent,
+    Warning,
+    Mismatch,
+    MissingEvidence,
+}
+
+impl UniprotProjectionAuditRowStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Consistent => "consistent",
+            Self::Warning => "warning",
+            Self::Mismatch => "mismatch",
+            Self::MissingEvidence => "missing_evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblLinkedXref {
+    pub transcript_id: Option<String>,
+    pub protein_id: Option<String>,
+    pub gene_id: Option<String>,
+    pub isoform_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblLinkResolutionRow {
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    #[serde(default)]
+    pub matched_xrefs: Vec<UniprotEnsemblLinkedXref>,
+    #[serde(default)]
+    pub normalized_xref_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub normalized_xref_protein_ids: Vec<String>,
+    #[serde(default)]
+    pub normalized_xref_gene_ids: Vec<String>,
+    pub status: String,
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblLinkReport {
+    pub schema: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<UniprotEnsemblLinkResolutionRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotTranscriptExonContribution {
+    pub ordinal: usize,
+    pub exon_start_1based: usize,
+    pub exon_end_1based: usize,
+    pub exon_nt: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coding_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coding_end_1based: Option<usize>,
+    pub coding_nt: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionTranscriptAccountingRow {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub strand: String,
+    #[serde(default)]
+    pub contributing_exons: Vec<UniprotTranscriptExonContribution>,
+    pub contributing_exon_nt_sum: usize,
+    pub untranslated_5prime_nt: usize,
+    pub untranslated_3prime_nt: usize,
+    pub translated_nt: usize,
+    pub translated_nt_divisible_by_3: bool,
+    pub expected_aa_count: usize,
+    pub derived_protein_length_aa: usize,
+    pub derived_protein_sequence: String,
+    pub uniprot_aa_count: usize,
+    pub init_met_declared: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionTranscriptAccountingReport {
+    pub schema: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<UniprotProjectionTranscriptAccountingRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotEnsemblExonBoundaryDifference {
+    pub ordinal: usize,
+    pub side: String,
+    pub current_coordinate_1based: usize,
+    pub ensembl_coordinate_1based: usize,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblExonCompareRow {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_transcript_id: Option<String>,
+    #[serde(default)]
+    pub current_contributing_exons: Vec<UniprotTranscriptExonContribution>,
+    #[serde(default)]
+    pub ensembl_contributing_exons: Vec<UniprotTranscriptExonContribution>,
+    #[serde(default)]
+    pub matched_exon_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub missing_in_ensembl_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub excess_in_ensembl_ordinals: Vec<usize>,
+    #[serde(default)]
+    pub boundary_differences: Vec<UniprotEnsemblExonBoundaryDifference>,
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblExonCompareReport {
+    pub schema: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<UniprotEnsemblExonCompareRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotPeptideDirectMismatch {
+    pub position_1based: usize,
+    pub gentle_residue: String,
+    pub uniprot_residue: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_residue: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotVariantFeatureEvidenceRow {
+    pub feature_key: String,
+    pub feature_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_aa: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_aa: Option<usize>,
+    pub status: UniprotVariantFeatureEvidenceStatus,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblPeptideCompareRow {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    pub derived_protein_length_aa: usize,
+    pub uniprot_protein_length_aa: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_protein_length_aa: Option<usize>,
+    pub comparison_mode: UniprotPeptideComparisonMode,
+    pub init_met_declared: bool,
+    #[serde(default)]
+    pub direct_mismatches: Vec<UniprotPeptideDirectMismatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_alignment: Option<SequenceAlignmentReport>,
+    #[serde(default)]
+    pub variant_feature_evidence: Vec<UniprotVariantFeatureEvidenceRow>,
+    pub status: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotEnsemblPeptideCompareReport {
+    pub schema: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<UniprotEnsemblPeptideCompareRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditEmailDraft {
+    pub subject: String,
+    pub body: String,
+    #[serde(default)]
+    pub failing_transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditRow {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub status: UniprotProjectionAuditRowStatus,
+    #[serde(default)]
+    pub mismatch_reasons: Vec<String>,
+    pub link_resolution: UniprotEnsemblLinkResolutionRow,
+    pub accounting: UniprotProjectionTranscriptAccountingRow,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_exon_compare: Option<UniprotEnsemblExonCompareRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peptide_compare: Option<UniprotEnsemblPeptideCompareRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditReport {
+    pub schema: String,
+    pub report_id: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<UniprotProjectionAuditRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maintainer_email_draft: Option<UniprotProjectionAuditEmailDraft>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditReportSummary {
+    pub report_id: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub transcript_count: usize,
+    pub failing_transcript_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditParityRow {
+    pub transcript_id: String,
+    pub direct_status: UniprotProjectionAuditRowStatus,
+    pub composed_status: UniprotProjectionAuditRowStatus,
+    pub statuses_match: bool,
+    pub accounting_match: bool,
+    pub mismatch_reason_match: bool,
+    pub comparison_mode_match: bool,
+    #[serde(default)]
+    pub differences: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditParityReport {
+    pub schema: String,
+    pub report_id: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub direct_report: UniprotProjectionAuditReport,
+    pub composed_report: UniprotProjectionAuditReport,
+    #[serde(default)]
+    pub rows: Vec<UniprotProjectionAuditParityRow>,
+    pub email_draft_transcripts_match: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UniprotProjectionAuditParityReportSummary {
+    pub report_id: String,
+    pub projection_id: String,
+    pub entry_id: String,
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ensembl_entry_id: Option<String>,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub transcript_count: usize,
+    pub divergent_transcript_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

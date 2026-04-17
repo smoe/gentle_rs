@@ -1,5 +1,5 @@
 {
-   "command_count": 320,
+   "command_count": 332,
    "commands": [
       {
          "aliases": [
@@ -976,6 +976,154 @@
          "path": "uniprot feature-coding-dna",
          "summary": "Query coding DNA and exon attribution for one mapped UniProt protein feature.",
          "usage": "uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot resolve-ensembl-links",
+         "summary": "Resolve normalized UniProt-to-Ensembl transcript/protein links for one stored projection.",
+         "usage": "uniprot resolve-ensembl-links PROJECTION_ID [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot transcript-accounting",
+         "summary": "Summarize exon/CDS nucleotide accounting and derived peptide length for one stored projection.",
+         "usage": "uniprot transcript-accounting PROJECTION_ID [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot compare-ensembl-exons",
+         "summary": "Compare projected coding exons against imported Ensembl exon/CDS evidence.",
+         "usage": "uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot compare-ensembl-peptide",
+         "summary": "Compare GENtle-derived, UniProt, and optional Ensembl peptide evidence for one stored projection.",
+         "usage": "uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AuditUniprotProjectionConsistency"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-projection",
+         "summary": "Run and persist the integrated UniProt/Ensembl projection audit plus local unsent maintainer-email draft.",
+         "usage": "uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AuditUniprotProjectionParity"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity",
+         "summary": "Compare the direct integrated audit against the same result reconstructed from the public UniProt/Ensembl primitives.",
+         "usage": "uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-list",
+         "summary": "List stored UniProt projection audit reports.",
+         "usage": "uniprot audit-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-show",
+         "summary": "Show one stored UniProt projection audit report.",
+         "usage": "uniprot audit-show REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-export",
+         "summary": "Export one stored UniProt projection audit report to JSON.",
+         "usage": "uniprot audit-export REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-list",
+         "summary": "List stored UniProt audit parity reports.",
+         "usage": "uniprot audit-parity-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-show",
+         "summary": "Show one stored UniProt audit parity report.",
+         "usage": "uniprot audit-parity-show REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-export",
+         "summary": "Export one stored UniProt audit parity report to JSON.",
+         "usage": "uniprot audit-parity-export REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],

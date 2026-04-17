@@ -3782,6 +3782,28 @@ Protein-evidence behavior:
       splice junction
   - exon numbering follows transcript order, so reverse-strand transcript exon
     `1` is the transcript 5' exon rather than the lowest genomic coordinate
+- The same specialist now also includes a `UniProt projection audit` section:
+  - `Audit Mapped Isoforms`
+    - runs the integrated shared audit and stores a
+      `gentle.uniprot_projection_audit.v1` report
+  - `Audit Parity`
+    - compares the direct integrated audit against the same result rebuilt
+      from the reusable lower-level UniProt/Ensembl primitives and stores a
+      `gentle.uniprot_projection_audit_parity.v1` report
+  - `audit transcript`
+    - optional transcript filter (empty = all projected transcripts)
+  - `audit report_id` / `parity report_id`
+    - optional persisted report-id overrides
+  - recent report tables:
+    - recent audits and recent parity reports are listed for the active
+      `seq_id` / `entry_id` context
+    - `Show` loads one stored report back into the specialist without rerunning
+      the operation
+  - loaded audit display:
+    - per-transcript exon/CDS accounting summary
+    - mismatch reasons
+    - one read-only local unsent maintainer-email draft when failing isoforms
+      were found
 - The same specialist now also includes a `Reverse translate protein` section:
   - choose any first-class protein sequence already present in the project
   - optional controls:

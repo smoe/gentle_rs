@@ -7784,6 +7784,8 @@ impl GentleEngine {
             tfbs_region_summary: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());
@@ -7836,6 +7838,8 @@ impl GentleEngine {
             tfbs_region_summary: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
         };
         report.op_id = Some(result.op_id.clone());
         report.run_id = Some(run_id.clone());

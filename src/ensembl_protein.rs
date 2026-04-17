@@ -37,6 +37,10 @@ pub struct EnsemblProteinEntry {
     pub gene_symbol: Option<String>,
     pub transcript_display_name: Option<String>,
     pub species: Option<String>,
+    #[serde(default)]
+    pub transcript_exons: Vec<EnsemblTranscriptExon>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_translation: Option<EnsemblTranscriptTranslation>,
     pub sequence: String,
     pub sequence_length: usize,
     pub features: Vec<EnsemblProteinFeature>,
@@ -95,8 +99,37 @@ pub struct EnsemblTranscriptLookup {
     pub transcript_version: Option<usize>,
     pub translation_id: Option<String>,
     pub translation_version: Option<usize>,
+    pub translation_length_aa: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation_genomic_end_1based: Option<usize>,
     pub gene_id: Option<String>,
     pub transcript_display_name: Option<String>,
+    pub species: Option<String>,
+    pub strand: Option<i8>,
+    pub seq_region_name: Option<String>,
+    #[serde(default)]
+    pub exons: Vec<EnsemblTranscriptExon>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct EnsemblTranscriptExon {
+    pub exon_id: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: i8,
+    pub seq_region_name: Option<String>,
+    pub version: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct EnsemblTranscriptTranslation {
+    pub protein_id: String,
+    pub protein_version: Option<usize>,
+    pub length_aa: Option<usize>,
+    pub genomic_start_1based: Option<usize>,
+    pub genomic_end_1based: Option<usize>,
     pub species: Option<String>,
 }
 
@@ -135,6 +168,13 @@ struct RawEnsemblTranscriptLookup {
     display_name: Option<String>,
     #[serde(default)]
     species: Option<String>,
+    #[serde(default)]
+    strand: Option<i8>,
+    #[serde(default)]
+    seq_region_name: Option<String>,
+    #[serde(rename = "Exon")]
+    #[serde(default)]
+    exons: Vec<RawEnsemblTranscriptExon>,
     #[serde(rename = "Translation")]
     #[serde(default)]
     translation: Option<RawEnsemblEmbeddedTranslation>,
@@ -145,6 +185,27 @@ struct RawEnsemblEmbeddedTranslation {
     id: String,
     #[serde(default)]
     version: Option<usize>,
+    #[serde(default)]
+    length: Option<usize>,
+    #[serde(default)]
+    start: Option<usize>,
+    #[serde(default)]
+    end: Option<usize>,
+    #[serde(default)]
+    _species: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawEnsemblTranscriptExon {
+    id: String,
+    start: usize,
+    end: usize,
+    #[serde(default)]
+    strand: Option<i8>,
+    #[serde(default)]
+    version: Option<usize>,
+    #[serde(default)]
+    seq_region_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -284,6 +345,24 @@ pub fn parse_transcript_lookup_json(text: &str) -> Result<EnsemblTranscriptLooku
     if transcript_id.is_empty() {
         return Err("Ensembl transcript lookup is missing a transcript stable ID".to_string());
     }
+    let exons = raw
+        .exons
+        .into_iter()
+        .filter_map(|exon| {
+            let exon_id = normalize_entry_id(&exon.id);
+            if exon_id.is_empty() || exon.end < exon.start || exon.start == 0 {
+                return None;
+            }
+            Some(EnsemblTranscriptExon {
+                exon_id,
+                start_1based: exon.start,
+                end_1based: exon.end,
+                strand: exon.strand.unwrap_or(0),
+                seq_region_name: normalize_optional_text(exon.seq_region_name),
+                version: exon.version,
+            })
+        })
+        .collect::<Vec<_>>();
     Ok(EnsemblTranscriptLookup {
         transcript_id,
         transcript_version: raw.version,
@@ -296,12 +375,27 @@ pub fn parse_transcript_lookup_json(text: &str) -> Result<EnsemblTranscriptLooku
             .translation
             .as_ref()
             .and_then(|translation| translation.version),
+        translation_length_aa: raw
+            .translation
+            .as_ref()
+            .and_then(|translation| translation.length),
+        translation_genomic_start_1based: raw
+            .translation
+            .as_ref()
+            .and_then(|translation| translation.start),
+        translation_genomic_end_1based: raw
+            .translation
+            .as_ref()
+            .and_then(|translation| translation.end),
         gene_id: raw
             .parent
             .map(|value| normalize_entry_id(&value))
             .filter(|value| !value.is_empty()),
         transcript_display_name: normalize_optional_text(raw.display_name),
         species: normalize_optional_text(raw.species),
+        strand: raw.strand,
+        seq_region_name: normalize_optional_text(raw.seq_region_name),
+        exons,
     })
 }
 
@@ -456,6 +550,23 @@ pub fn build_entry_from_rest_payloads(
             aliases.insert(normalized);
         }
     }
+    let transcript_translation =
+        transcript_lookup
+            .translation_id
+            .as_ref()
+            .map(|protein_id| EnsemblTranscriptTranslation {
+                protein_id: protein_id.clone(),
+                protein_version: transcript_lookup.translation_version,
+                length_aa: transcript_lookup.translation_length_aa,
+                genomic_start_1based: transcript_lookup.translation_genomic_start_1based,
+                genomic_end_1based: transcript_lookup.translation_genomic_end_1based,
+                species: transcript_lookup.species.clone(),
+            });
+    let species = transcript_lookup.species.clone().or_else(|| {
+        protein_lookup
+            .as_ref()
+            .and_then(|lookup| lookup.species.clone())
+    });
     Ok(EnsemblProteinEntry {
         schema: "gentle.ensembl_protein_entry.v1".to_string(),
         entry_id,
@@ -473,9 +584,9 @@ pub fn build_entry_from_rest_payloads(
         gene_id: transcript_lookup.gene_id,
         gene_symbol,
         transcript_display_name: transcript_lookup.transcript_display_name,
-        species: transcript_lookup
-            .species
-            .or_else(|| protein_lookup.and_then(|lookup| lookup.species)),
+        species,
+        transcript_exons: transcript_lookup.exons,
+        transcript_translation,
         sequence: sequence.sequence.clone(),
         sequence_length: sequence.sequence.len(),
         features,
@@ -525,7 +636,34 @@ mod tests {
           "Parent":"ENSG00000157764",
           "display_name":"BRAF-201",
           "species":"homo_sapiens",
-          "Translation":{"id":"ENSP00000288602","version":7}
+          "strand":-1,
+          "seq_region_name":"7",
+          "Translation":{
+            "id":"ENSP00000288602",
+            "version":7,
+            "length":806,
+            "start":140734597,
+            "end":140924703,
+            "species":"homo_sapiens"
+          },
+          "Exon":[
+            {
+              "id":"ENSE00001034876",
+              "start":140734486,
+              "end":140734770,
+              "strand":-1,
+              "version":11,
+              "seq_region_name":"7"
+            },
+            {
+              "id":"ENSE00003826734",
+              "start":140924566,
+              "end":140924732,
+              "strand":-1,
+              "version":1,
+              "seq_region_name":"7"
+            }
+          ]
         }"#;
         let protein_lookup_json = r#"{
           "id":"ENSP00000288602",
@@ -575,6 +713,22 @@ mod tests {
         assert_eq!(entry.gene_symbol.as_deref(), Some("BRAF"));
         assert_eq!(entry.sequence_length, 29);
         assert_eq!(entry.features.len(), 1);
+        assert_eq!(entry.transcript_exons.len(), 2);
+        assert_eq!(entry.transcript_exons[0].exon_id, "ENSE00001034876");
+        assert_eq!(
+            entry
+                .transcript_translation
+                .as_ref()
+                .and_then(|translation| translation.genomic_start_1based),
+            Some(140734597)
+        );
+        assert_eq!(
+            entry
+                .transcript_translation
+                .as_ref()
+                .and_then(|translation| translation.genomic_end_1based),
+            Some(140924703)
+        );
         assert_eq!(entry.features[0].feature_key, "PF02196");
         assert_eq!(entry.features[0].feature_type, "Pfam");
         assert_eq!(

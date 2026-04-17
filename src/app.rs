@@ -82,7 +82,8 @@ use crate::{
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
         TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        UniprotFeatureCodingDnaQueryReport,
+        UniprotFeatureCodingDnaQueryReport, UniprotProjectionAuditParityReport,
+        UniprotProjectionAuditReport,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -865,6 +866,11 @@ pub struct GENtleApp {
     uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode,
     uniprot_feature_speed_profile: Option<TranslationSpeedProfile>,
     uniprot_feature_report: Option<UniprotFeatureCodingDnaQueryReport>,
+    uniprot_audit_transcript_id: String,
+    uniprot_audit_report_id: String,
+    uniprot_audit_parity_report_id: String,
+    uniprot_audit_report: Option<UniprotProjectionAuditReport>,
+    uniprot_audit_parity_report: Option<UniprotProjectionAuditParityReport>,
     reverse_translate_protein_seq_id: String,
     reverse_translate_output_id: String,
     reverse_translate_speed_profile: Option<TranslationSpeedProfile>,
@@ -2457,6 +2463,11 @@ impl Default for GENtleApp {
             uniprot_feature_query_mode: UniprotFeatureCodingDnaQueryMode::Both,
             uniprot_feature_speed_profile: None,
             uniprot_feature_report: None,
+            uniprot_audit_transcript_id: String::new(),
+            uniprot_audit_report_id: String::new(),
+            uniprot_audit_parity_report_id: String::new(),
+            uniprot_audit_report: None,
+            uniprot_audit_parity_report: None,
             reverse_translate_protein_seq_id: String::new(),
             reverse_translate_output_id: String::new(),
             reverse_translate_speed_profile: None,
@@ -14918,6 +14929,8 @@ Error: `{err}`"
                 tfbs_region_summary: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
+                uniprot_projection_audit: None,
+                uniprot_projection_audit_parity: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -16698,6 +16711,54 @@ Error: `{err}`"
         rows
     }
 
+    fn recent_uniprot_audit_reports_for_dialog(
+        &self,
+        limit: usize,
+    ) -> Vec<crate::engine::UniprotProjectionAuditReportSummary> {
+        let seq_filter = Self::uniprot_optional_trimmed(&self.uniprot_map_seq_id);
+        let entry_filter = Self::uniprot_optional_trimmed(&self.uniprot_entry_id);
+        let mut rows = self
+            .engine
+            .read()
+            .unwrap()
+            .list_uniprot_projection_audit_reports(seq_filter.as_deref());
+        if let Some(entry_id) = entry_filter.as_deref() {
+            rows.retain(|row| row.entry_id == entry_id);
+        }
+        rows.sort_by(|left, right| {
+            right
+                .generated_at_unix_ms
+                .cmp(&left.generated_at_unix_ms)
+                .then_with(|| left.report_id.cmp(&right.report_id))
+        });
+        rows.truncate(limit.max(1));
+        rows
+    }
+
+    fn recent_uniprot_audit_parity_reports_for_dialog(
+        &self,
+        limit: usize,
+    ) -> Vec<crate::engine::UniprotProjectionAuditParityReportSummary> {
+        let seq_filter = Self::uniprot_optional_trimmed(&self.uniprot_map_seq_id);
+        let entry_filter = Self::uniprot_optional_trimmed(&self.uniprot_entry_id);
+        let mut rows = self
+            .engine
+            .read()
+            .unwrap()
+            .list_uniprot_projection_audit_parity_reports(seq_filter.as_deref());
+        if let Some(entry_id) = entry_filter.as_deref() {
+            rows.retain(|row| row.entry_id == entry_id);
+        }
+        rows.sort_by(|left, right| {
+            right
+                .generated_at_unix_ms
+                .cmp(&left.generated_at_unix_ms)
+                .then_with(|| left.report_id.cmp(&right.report_id))
+        });
+        rows.truncate(limit.max(1));
+        rows
+    }
+
     fn open_sequence_window_for_uniprot_projection_expert(
         &mut self,
         seq_id: &str,
@@ -17956,6 +18017,135 @@ Error: `{err}`"
         }
     }
 
+    fn run_uniprot_projection_audit_from_dialog(&mut self) {
+        let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields() else {
+            self.uniprot_status = "Project an entry first or provide seq_id + entry_id to resolve a projection before running the UniProt audit.".to_string();
+            return;
+        };
+        let transcript_id = Self::uniprot_optional_trimmed(&self.uniprot_audit_transcript_id)
+            .or_else(|| Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id));
+        let report_id = Self::uniprot_optional_trimmed(&self.uniprot_audit_report_id);
+        let ensembl_entry_id = Self::uniprot_optional_trimmed(&self.ensembl_protein_entry_id);
+        let result =
+            self.engine
+                .write()
+                .unwrap()
+                .apply(Operation::AuditUniprotProjectionConsistency {
+                    projection_id,
+                    transcript_id,
+                    report_id,
+                    ensembl_entry_id,
+                });
+        match result {
+            Ok(result) => {
+                self.uniprot_audit_report = result.uniprot_projection_audit.clone();
+                if let Some(report) = self.uniprot_audit_report.as_ref() {
+                    self.uniprot_audit_report_id = report.report_id.clone();
+                    self.uniprot_audit_transcript_id =
+                        report.transcript_id_filter.clone().unwrap_or_default();
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt audit: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt audit failed: {}", err.message);
+            }
+        }
+    }
+
+    fn run_uniprot_projection_audit_parity_from_dialog(&mut self) {
+        let Some(projection_id) = self.resolve_uniprot_projection_id_from_dialog_fields() else {
+            self.uniprot_status = "Project an entry first or provide seq_id + entry_id to resolve a projection before running the UniProt audit parity report.".to_string();
+            return;
+        };
+        let transcript_id = Self::uniprot_optional_trimmed(&self.uniprot_audit_transcript_id)
+            .or_else(|| Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id));
+        let report_id = Self::uniprot_optional_trimmed(&self.uniprot_audit_parity_report_id);
+        let ensembl_entry_id = Self::uniprot_optional_trimmed(&self.ensembl_protein_entry_id);
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::AuditUniprotProjectionParity {
+                projection_id,
+                transcript_id,
+                report_id,
+                ensembl_entry_id,
+            });
+        match result {
+            Ok(result) => {
+                self.uniprot_audit_parity_report = result.uniprot_projection_audit_parity.clone();
+                if let Some(report) = self.uniprot_audit_parity_report.as_ref() {
+                    self.uniprot_audit_parity_report_id = report.report_id.clone();
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt audit parity: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt audit parity failed: {}", err.message);
+            }
+        }
+    }
+
+    fn load_uniprot_audit_report_from_dialog(&mut self, report_id: &str) {
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .get_uniprot_projection_audit_report(report_id)
+        {
+            Ok(report) => {
+                self.uniprot_audit_report_id = report.report_id.clone();
+                self.uniprot_map_seq_id = report.seq_id.clone();
+                self.uniprot_entry_id = report.entry_id.clone();
+                self.uniprot_audit_transcript_id =
+                    report.transcript_id_filter.clone().unwrap_or_default();
+                self.uniprot_audit_report = Some(report);
+                self.uniprot_status = format!("Loaded stored UniProt audit report '{}'", report_id);
+            }
+            Err(err) => {
+                self.uniprot_status = format!(
+                    "Could not load UniProt audit report '{}': {}",
+                    report_id, err.message
+                );
+            }
+        }
+    }
+
+    fn load_uniprot_audit_parity_report_from_dialog(&mut self, report_id: &str) {
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .get_uniprot_projection_audit_parity_report(report_id)
+        {
+            Ok(report) => {
+                self.uniprot_audit_parity_report_id = report.report_id.clone();
+                self.uniprot_map_seq_id = report.seq_id.clone();
+                self.uniprot_entry_id = report.entry_id.clone();
+                self.uniprot_audit_transcript_id =
+                    report.transcript_id_filter.clone().unwrap_or_default();
+                self.uniprot_audit_parity_report = Some(report);
+                self.uniprot_status =
+                    format!("Loaded stored UniProt audit parity report '{}'", report_id);
+            }
+            Err(err) => {
+                self.uniprot_status = format!(
+                    "Could not load UniProt audit parity report '{}': {}",
+                    report_id, err.message
+                );
+            }
+        }
+    }
+
     fn render_uniprot_feature_coding_report(&self, ui: &mut Ui) {
         let Some(report) = self.uniprot_feature_report.as_ref() else {
             return;
@@ -18590,6 +18780,160 @@ Error: `{err}`"
             "Exon numbering follows transcript order. On reverse-strand transcripts, exon 1 is the transcript 5' exon rather than the lowest genomic coordinate.",
         );
         self.render_uniprot_feature_coding_report(ui);
+        ui.separator();
+        ui.label("UniProt projection audit");
+        ui.small(
+            "Run the shared audit that compares projected transcript accounting against stored UniProt and imported Ensembl evidence. The audit stores a reusable report plus a local unsent maintainer-email draft.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("audit transcript");
+            ui.text_edit_singleline(&mut self.uniprot_audit_transcript_id)
+                .on_hover_text(
+                    "Optional transcript filter for the audit (empty = all projected transcripts)",
+                );
+            ui.label("audit report_id");
+            ui.text_edit_singleline(&mut self.uniprot_audit_report_id)
+                .on_hover_text("Optional stored audit report id override");
+            if ui
+                .button("Audit Mapped Isoforms")
+                .on_hover_text("Run the high-level UniProt projection audit and store its report")
+                .clicked()
+            {
+                self.run_uniprot_projection_audit_from_dialog();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("parity report_id");
+            ui.text_edit_singleline(&mut self.uniprot_audit_parity_report_id)
+                .on_hover_text("Optional stored audit parity report id override");
+            if ui
+                .button("Audit Parity")
+                .on_hover_text(
+                    "Compare the direct integrated audit against the same result reconstructed from the reusable primitives",
+                )
+                .clicked()
+            {
+                self.run_uniprot_projection_audit_parity_from_dialog();
+            }
+        });
+        let recent_audits = self.recent_uniprot_audit_reports_for_dialog(8);
+        if !recent_audits.is_empty() {
+            ui.small(format!("Recent audits ({})", recent_audits.len()));
+            egui::Grid::new("uniprot_audit_reports_grid")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("report_id");
+                    ui.strong("projection");
+                    ui.strong("generated_ms");
+                    ui.strong("failing");
+                    ui.strong("action");
+                    ui.end_row();
+                    for row in &recent_audits {
+                        ui.monospace(&row.report_id);
+                        ui.monospace(&row.projection_id);
+                        ui.label(row.generated_at_unix_ms.to_string());
+                        ui.label(row.failing_transcript_count.to_string());
+                        if ui
+                            .small_button("Show")
+                            .on_hover_text("Load this stored UniProt audit report")
+                            .clicked()
+                        {
+                            self.load_uniprot_audit_report_from_dialog(&row.report_id);
+                        }
+                        ui.end_row();
+                    }
+                });
+        }
+        if let Some(report) = self.uniprot_audit_report.as_ref() {
+            ui.separator();
+            ui.label(format!("Loaded audit: {}", report.report_id));
+            ui.small(format!(
+                "projection={} | rows={} | warnings={}",
+                report.projection_id,
+                report.rows.len(),
+                report.warnings.len()
+            ));
+            for row in &report.rows {
+                ui.collapsing(
+                    format!(
+                        "{} ({}) [{}]",
+                        row.transcript_id,
+                        row.transcript_label,
+                        row.status.as_str()
+                    ),
+                    |ui| {
+                        ui.small(format!(
+                            "exon_nt_sum={} | untranslated_5'={} | untranslated_3'={} | translated_nt={} | divisible_by_3={} | expected_aa={} | uniprot_aa={}",
+                            row.accounting.contributing_exon_nt_sum,
+                            row.accounting.untranslated_5prime_nt,
+                            row.accounting.untranslated_3prime_nt,
+                            row.accounting.translated_nt,
+                            row.accounting.translated_nt_divisible_by_3,
+                            row.accounting.expected_aa_count,
+                            row.accounting.uniprot_aa_count
+                        ));
+                        if !row.mismatch_reasons.is_empty() {
+                            ui.small(format!("reasons: {}", row.mismatch_reasons.join(" | ")));
+                        }
+                    },
+                );
+            }
+            if let Some(draft) = report.maintainer_email_draft.as_ref() {
+                ui.label("Unsent maintainer email draft");
+                let mut draft_body = draft.body.clone();
+                ui.add(
+                    egui::TextEdit::multiline(&mut draft_body)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_rows(8)
+                        .interactive(false),
+                );
+            }
+        }
+        let recent_parity = self.recent_uniprot_audit_parity_reports_for_dialog(6);
+        if !recent_parity.is_empty() {
+            ui.separator();
+            ui.small(format!(
+                "Recent audit parity reports ({})",
+                recent_parity.len()
+            ));
+            egui::Grid::new("uniprot_audit_parity_reports_grid")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("report_id");
+                    ui.strong("projection");
+                    ui.strong("generated_ms");
+                    ui.strong("rows");
+                    ui.strong("action");
+                    ui.end_row();
+                    for row in &recent_parity {
+                        ui.monospace(&row.report_id);
+                        ui.monospace(&row.projection_id);
+                        ui.label(row.generated_at_unix_ms.to_string());
+                        ui.label(format!(
+                            "{} / {}",
+                            row.divergent_transcript_count, row.transcript_count
+                        ));
+                        if ui
+                            .small_button("Show")
+                            .on_hover_text("Load this stored UniProt audit parity report")
+                            .clicked()
+                        {
+                            self.load_uniprot_audit_parity_report_from_dialog(&row.report_id);
+                        }
+                        ui.end_row();
+                    }
+                });
+        }
+        if let Some(report) = self.uniprot_audit_parity_report.as_ref() {
+            ui.separator();
+            ui.label(format!("Loaded audit parity: {}", report.report_id));
+            ui.small(format!(
+                "rows={} | email_draft_transcripts_match={}",
+                report.rows.len(),
+                report.email_draft_transcripts_match
+            ));
+        }
         ui.separator();
         ui.label("Linked nucleotide retrieval (EMBL/GenBank crossref)");
         ui.horizontal(|ui| {
@@ -50193,6 +50537,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
+                uniprot_projection_audit: None,
+                uniprot_projection_audit_parity: None,
             }),
         })
         .expect("send prepare done");
@@ -50257,6 +50603,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
+                uniprot_projection_audit: None,
+                uniprot_projection_audit_parity: None,
             }),
         })
         .expect("send track import done");
@@ -50306,6 +50654,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
+                uniprot_projection_audit: None,
+                uniprot_projection_audit_parity: None,
             }),
         })
         .expect("send track import done");
@@ -50360,6 +50710,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             tfbs_region_summary: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

@@ -367,6 +367,21 @@ const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projection
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 const UNIPROT_FEATURE_CODING_DNA_QUERY_SCHEMA: &str = "gentle.uniprot_feature_coding_dna_query.v1";
+pub const UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY: &str = "uniprot_projection_audit_reports";
+const UNIPROT_PROJECTION_AUDIT_REPORTS_SCHEMA: &str = "gentle.uniprot_projection_audit_reports.v1";
+pub const UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA: &str = "gentle.uniprot_projection_audit.v1";
+pub const UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_METADATA_KEY: &str =
+    "uniprot_projection_audit_parity_reports";
+const UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_SCHEMA: &str =
+    "gentle.uniprot_projection_audit_parity_reports.v1";
+pub const UNIPROT_PROJECTION_AUDIT_PARITY_REPORT_SCHEMA: &str =
+    "gentle.uniprot_projection_audit_parity.v1";
+pub const UNIPROT_ENSEMBL_LINKS_SCHEMA: &str = "gentle.uniprot_ensembl_links.v1";
+pub const UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA: &str =
+    "gentle.uniprot_projection_transcript_accounting.v1";
+pub const UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA: &str = "gentle.uniprot_ensembl_exon_compare.v1";
+pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
+    "gentle.uniprot_ensembl_peptide_compare.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
@@ -2120,6 +2135,22 @@ struct ProteinDerivationReportStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+struct UniprotProjectionAuditReportStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: BTreeMap<String, UniprotProjectionAuditReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct UniprotProjectionAuditParityReportStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: BTreeMap<String, UniprotProjectionAuditParityReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 struct ReverseTranslationReportStore {
     schema: String,
     updated_at_unix_ms: u128,
@@ -2815,6 +2846,24 @@ pub enum Operation {
         entry_id: String,
         projection_id: Option<String>,
         transcript_id: Option<String>,
+    },
+    AuditUniprotProjectionConsistency {
+        projection_id: String,
+        #[serde(default)]
+        transcript_id: Option<String>,
+        #[serde(default)]
+        report_id: Option<String>,
+        #[serde(default)]
+        ensembl_entry_id: Option<String>,
+    },
+    AuditUniprotProjectionParity {
+        projection_id: String,
+        #[serde(default)]
+        transcript_id: Option<String>,
+        #[serde(default)]
+        report_id: Option<String>,
+        #[serde(default)]
+        ensembl_entry_id: Option<String>,
     },
     ImportBlastHitsTrack {
         seq_id: SeqId,
@@ -4483,6 +4532,8 @@ impl GentleEngine {
                 "ImportUniprotEntrySequence".to_string(),
                 "ImportEnsemblProteinSequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
+                "AuditUniprotProjectionConsistency".to_string(),
+                "AuditUniprotProjectionParity".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
@@ -8459,6 +8510,316 @@ impl GentleEngine {
             });
         }
         Ok(trimmed.to_string())
+    }
+
+    fn read_uniprot_projection_audit_report_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> UniprotProjectionAuditReportStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<UniprotProjectionAuditReportStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = UNIPROT_PROJECTION_AUDIT_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_uniprot_projection_audit_report_store(&self) -> UniprotProjectionAuditReportStore {
+        Self::read_uniprot_projection_audit_report_store_from_metadata(
+            self.state
+                .metadata
+                .get(UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY),
+        )
+    }
+
+    fn write_uniprot_projection_audit_report_store(
+        &mut self,
+        mut store: UniprotProjectionAuditReportStore,
+    ) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state
+                .metadata
+                .remove(UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = UNIPROT_PROJECTION_AUDIT_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize UniProt projection audit metadata: {e}"),
+        })?;
+        self.state.metadata.insert(
+            UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY.to_string(),
+            value,
+        );
+        Ok(())
+    }
+
+    fn read_uniprot_projection_audit_parity_report_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> UniprotProjectionAuditParityReportStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<UniprotProjectionAuditParityReportStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_uniprot_projection_audit_parity_report_store(
+        &self,
+    ) -> UniprotProjectionAuditParityReportStore {
+        Self::read_uniprot_projection_audit_parity_report_store_from_metadata(
+            self.state
+                .metadata
+                .get(UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_METADATA_KEY),
+        )
+    }
+
+    fn write_uniprot_projection_audit_parity_report_store(
+        &mut self,
+        mut store: UniprotProjectionAuditParityReportStore,
+    ) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state
+                .metadata
+                .remove(UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize UniProt projection audit parity metadata: {e}"),
+        })?;
+        self.state.metadata.insert(
+            UNIPROT_PROJECTION_AUDIT_PARITY_REPORTS_METADATA_KEY.to_string(),
+            value,
+        );
+        Ok(())
+    }
+
+    fn normalize_uniprot_projection_audit_report_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "report_id cannot be empty".to_string(),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                    .to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    fn upsert_uniprot_projection_audit_report(
+        &mut self,
+        report: UniprotProjectionAuditReport,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_uniprot_projection_audit_report_store();
+        store.reports.insert(report.report_id.clone(), report);
+        self.write_uniprot_projection_audit_report_store(store)
+    }
+
+    fn upsert_uniprot_projection_audit_parity_report(
+        &mut self,
+        report: UniprotProjectionAuditParityReport,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_uniprot_projection_audit_parity_report_store();
+        store.reports.insert(report.report_id.clone(), report);
+        self.write_uniprot_projection_audit_parity_report_store(store)
+    }
+
+    pub fn list_uniprot_projection_audit_reports(
+        &self,
+        seq_id_filter: Option<&str>,
+    ) -> Vec<UniprotProjectionAuditReportSummary> {
+        let filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_uniprot_projection_audit_report_store()
+            .reports
+            .values()
+            .filter(|report| {
+                filter
+                    .as_ref()
+                    .is_none_or(|needle| report.seq_id.to_ascii_lowercase() == *needle)
+            })
+            .map(|report| UniprotProjectionAuditReportSummary {
+                report_id: report.report_id.clone(),
+                projection_id: report.projection_id.clone(),
+                entry_id: report.entry_id.clone(),
+                seq_id: report.seq_id.clone(),
+                ensembl_entry_id: report.ensembl_entry_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                transcript_count: report.rows.len(),
+                failing_transcript_count: report
+                    .rows
+                    .iter()
+                    .filter(|row| row.status != UniprotProjectionAuditRowStatus::Consistent)
+                    .count(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_uniprot_projection_audit_report(
+        &self,
+        report_id: &str,
+    ) -> Result<UniprotProjectionAuditReport, EngineError> {
+        let report_id = Self::normalize_uniprot_projection_audit_report_id(report_id)?;
+        self.read_uniprot_projection_audit_report_store()
+            .reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("UniProt projection audit report '{}' not found", report_id),
+            })
+    }
+
+    pub fn export_uniprot_projection_audit_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<UniprotProjectionAuditReport, EngineError> {
+        let report = self.get_uniprot_projection_audit_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize UniProt projection audit report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write UniProt projection audit report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_uniprot_projection_audit_parity_reports(
+        &self,
+        seq_id_filter: Option<&str>,
+    ) -> Vec<UniprotProjectionAuditParityReportSummary> {
+        let filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_uniprot_projection_audit_parity_report_store()
+            .reports
+            .values()
+            .filter(|report| {
+                filter
+                    .as_ref()
+                    .is_none_or(|needle| report.seq_id.to_ascii_lowercase() == *needle)
+            })
+            .map(|report| UniprotProjectionAuditParityReportSummary {
+                report_id: report.report_id.clone(),
+                projection_id: report.projection_id.clone(),
+                entry_id: report.entry_id.clone(),
+                seq_id: report.seq_id.clone(),
+                ensembl_entry_id: report.ensembl_entry_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                transcript_count: report.rows.len(),
+                divergent_transcript_count: report
+                    .rows
+                    .iter()
+                    .filter(|row| {
+                        !row.statuses_match
+                            || !row.accounting_match
+                            || !row.mismatch_reason_match
+                            || !row.comparison_mode_match
+                    })
+                    .count(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_uniprot_projection_audit_parity_report(
+        &self,
+        report_id: &str,
+    ) -> Result<UniprotProjectionAuditParityReport, EngineError> {
+        let report_id = Self::normalize_uniprot_projection_audit_report_id(report_id)?;
+        self.read_uniprot_projection_audit_parity_report_store()
+            .reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt projection audit parity report '{}' not found",
+                    report_id
+                ),
+            })
+    }
+
+    pub fn export_uniprot_projection_audit_parity_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<UniprotProjectionAuditParityReport, EngineError> {
+        let report = self.get_uniprot_projection_audit_parity_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize UniProt projection audit parity report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write UniProt projection audit parity report to '{path}': {e}"
+            ),
+        })?;
+        Ok(report)
     }
 
     fn summarize_protein_derivation_modes(rows: &[ProteinDerivationReportRow]) -> String {

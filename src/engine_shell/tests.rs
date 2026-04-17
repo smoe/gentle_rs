@@ -19,7 +19,9 @@ use crate::engine::{
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
     RestrictionCloningPcrHandoffMode,
 };
-use crate::ensembl_protein::{EnsemblProteinEntry, EnsemblProteinFeature};
+use crate::ensembl_protein::{
+    EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
+};
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
     write_demo_pool_json, write_demo_workflow_json, write_demo_workflow_with_shebang,
@@ -12805,6 +12807,42 @@ fn parse_uniprot_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let resolve =
+        parse_shell_line("uniprot resolve-ensembl-links tp53_map --transcript ENST00000269305.9")
+            .expect("parse resolve-ensembl-links");
+    assert!(matches!(
+        resolve,
+        ShellCommand::UniprotResolveEnsemblLinks { .. }
+    ));
+
+    let audit = parse_shell_line(
+        "uniprot audit-projection tp53_map --transcript ENST00000269305.9 --ensembl-entry ENSP00000269305 --report-id tp53_audit",
+    )
+    .expect("parse audit-projection");
+    match audit {
+        ShellCommand::UniprotAuditProjection {
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+            report_id,
+        } => {
+            assert_eq!(projection_id, "tp53_map");
+            assert_eq!(transcript_id.as_deref(), Some("ENST00000269305.9"));
+            assert_eq!(ensembl_entry_id.as_deref(), Some("ENSP00000269305"));
+            assert_eq!(report_id.as_deref(), Some("tp53_audit"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let parity_export = parse_shell_line(
+        "uniprot audit-parity-export tp53_audit_parity /tmp/tp53_audit_parity.json",
+    )
+    .expect("parse audit-parity-export");
+    assert!(matches!(
+        parity_export,
+        ShellCommand::UniprotAuditParityExport { .. }
+    ));
 }
 
 #[test]
@@ -12893,6 +12931,22 @@ fn synthetic_ensembl_entry() -> EnsemblProteinEntry {
         gene_symbol: Some("TPROT".to_string()),
         transcript_display_name: Some("TPROT-201".to_string()),
         species: Some("homo_sapiens".to_string()),
+        transcript_exons: vec![EnsemblTranscriptExon {
+            exon_id: "TX_TPROT_exon_1".to_string(),
+            start_1based: 100,
+            end_1based: 360,
+            strand: 1,
+            seq_region_name: Some("1".to_string()),
+            version: Some(1),
+        }],
+        transcript_translation: Some(EnsemblTranscriptTranslation {
+            protein_id: "ENSPTOY1".to_string(),
+            protein_version: Some(1),
+            length_aa: Some(60),
+            genomic_start_1based: Some(100),
+            genomic_end_1based: Some(279),
+            species: Some("homo_sapiens".to_string()),
+        }),
         sequence: "M".repeat(60),
         sequence_length: 60,
         features: vec![EnsemblProteinFeature {
@@ -12928,6 +12982,46 @@ fn synthetic_ensembl_entry() -> EnsemblProteinEntry {
         raw_protein_lookup_json: Some("{}".to_string()),
         raw_sequence_json: "{}".to_string(),
         raw_feature_json: "[]".to_string(),
+    }
+}
+
+fn synthetic_audit_ensembl_entry() -> EnsemblProteinEntry {
+    EnsemblProteinEntry {
+        entry_id: "ENSPTOY1".to_string(),
+        protein_id: "ENSPTOY1".to_string(),
+        transcript_id: "TX1".to_string(),
+        transcript_display_name: Some("TX1".to_string()),
+        gene_id: Some("ENSGTOY1".to_string()),
+        gene_symbol: Some("TOY1".to_string()),
+        transcript_exons: vec![
+            EnsemblTranscriptExon {
+                exon_id: "TX1_exon_1".to_string(),
+                start_1based: 100,
+                end_1based: 180,
+                strand: 1,
+                seq_region_name: Some("1".to_string()),
+                version: Some(1),
+            },
+            EnsemblTranscriptExon {
+                exon_id: "TX1_exon_2".to_string(),
+                start_1based: 300,
+                end_1based: 360,
+                strand: 1,
+                seq_region_name: Some("1".to_string()),
+                version: Some(1),
+            },
+        ],
+        transcript_translation: Some(EnsemblTranscriptTranslation {
+            protein_id: "ENSPTOY1".to_string(),
+            protein_version: Some(1),
+            length_aa: Some(47),
+            genomic_start_1based: Some(100),
+            genomic_end_1based: Some(360),
+            species: Some("homo_sapiens".to_string()),
+        }),
+        sequence: "M".repeat(47),
+        sequence_length: 47,
+        ..synthetic_ensembl_entry()
     }
 }
 
@@ -13162,6 +13256,220 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .map(str::len),
         Some(18)
     );
+}
+
+#[test]
+fn execute_uniprot_projection_audit_commands() {
+    let td = tempdir().expect("tempdir");
+    let swiss_path = td.path().join("toy_uniprot_audit.txt");
+    let export_path = td.path().join("toy_uniprot_audit.json");
+    let parity_export_path = td.path().join("toy_uniprot_audit_parity.json");
+    let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   VARIANT         2
+FT                   /note="synthetic variant"
+FT   CONFLICT        10
+FT                   /note="synthetic conflict"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPENA
+//
+"#;
+    fs::write(&swiss_path, swiss_text).expect("write swiss audit file");
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_u".to_string(), uniprot_projection_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ImportUniprotSwissProt {
+            path: swiss_path.to_string_lossy().to_string(),
+            entry_id: None,
+        })
+        .expect("import swiss");
+    engine
+        .apply(Operation::ProjectUniprotToGenome {
+            seq_id: "seq_u".to_string(),
+            entry_id: "PTEST1".to_string(),
+            projection_id: None,
+            transcript_id: None,
+        })
+        .expect("map projection");
+    engine.state_mut().metadata.insert(
+        "ensembl_protein_entries".to_string(),
+        serde_json::json!({
+            "schema": "gentle.ensembl_protein_entries.v1",
+            "updated_at_unix_ms": 1u128,
+            "entries": {
+                "ENSPTOY1": synthetic_audit_ensembl_entry()
+            }
+        }),
+    );
+
+    let resolved = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotResolveEnsemblLinks {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+        },
+    )
+    .expect("resolve links");
+    assert!(!resolved.state_changed);
+    assert_eq!(
+        resolved.output["schema"].as_str(),
+        Some("gentle.uniprot_ensembl_links.v1")
+    );
+    assert_eq!(resolved.output["rows"].as_array().map(Vec::len), Some(1));
+
+    let accounting = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotTranscriptAccounting {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+        },
+    )
+    .expect("transcript accounting");
+    assert_eq!(
+        accounting.output["schema"].as_str(),
+        Some("gentle.uniprot_projection_transcript_accounting.v1")
+    );
+
+    let exon_compare = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotCompareEnsemblExons {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+        },
+    )
+    .expect("compare exons");
+    assert_eq!(
+        exon_compare.output["schema"].as_str(),
+        Some("gentle.uniprot_ensembl_exon_compare.v1")
+    );
+
+    let peptide_compare = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotCompareEnsemblPeptide {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+        },
+    )
+    .expect("compare peptide");
+    assert_eq!(
+        peptide_compare.output["schema"].as_str(),
+        Some("gentle.uniprot_ensembl_peptide_compare.v1")
+    );
+
+    let audit = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditProjection {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+            report_id: Some("toy_audit".to_string()),
+        },
+    )
+    .expect("audit projection");
+    assert!(audit.state_changed);
+    assert_eq!(
+        audit.output["report"]["schema"].as_str(),
+        Some("gentle.uniprot_projection_audit.v1")
+    );
+    assert!(
+        audit.output["report"]["maintainer_email_draft"]["body"]
+            .as_str()
+            .map(|body| body.contains("presumed inconsistency"))
+            .unwrap_or(false)
+    );
+
+    let listed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditList {
+            seq_id: Some("seq_u".to_string()),
+        },
+    )
+    .expect("list audits");
+    assert_eq!(listed.output.as_array().map(Vec::len), Some(1));
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditShow {
+            report_id: "toy_audit".to_string(),
+        },
+    )
+    .expect("show audit");
+    assert_eq!(shown.output["report_id"].as_str(), Some("toy_audit"));
+
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditExport {
+            report_id: "toy_audit".to_string(),
+            path: export_path.display().to_string(),
+        },
+    )
+    .expect("export audit");
+    assert_eq!(
+        exported.output["schema"].as_str(),
+        Some("gentle.uniprot_projection_audit_export.v1")
+    );
+    assert!(export_path.exists());
+
+    let parity = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditParity {
+            projection_id: "PTEST1@seq_u".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            ensembl_entry_id: Some("ENSPTOY1".to_string()),
+            report_id: Some("toy_audit_parity".to_string()),
+        },
+    )
+    .expect("audit parity");
+    assert!(parity.state_changed);
+    assert_eq!(
+        parity.output["report"]["schema"].as_str(),
+        Some("gentle.uniprot_projection_audit_parity.v1")
+    );
+
+    let parity_list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditParityList {
+            seq_id: Some("seq_u".to_string()),
+        },
+    )
+    .expect("list audit parity");
+    assert_eq!(parity_list.output.as_array().map(Vec::len), Some(1));
+
+    let parity_show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditParityShow {
+            report_id: "toy_audit_parity".to_string(),
+        },
+    )
+    .expect("show audit parity");
+    assert_eq!(
+        parity_show.output["report_id"].as_str(),
+        Some("toy_audit_parity")
+    );
+
+    let parity_export = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotAuditParityExport {
+            report_id: "toy_audit_parity".to_string(),
+            path: parity_export_path.display().to_string(),
+        },
+    )
+    .expect("export audit parity");
+    assert_eq!(
+        parity_export.output["schema"].as_str(),
+        Some("gentle.uniprot_projection_audit_parity_export.v1")
+    );
+    assert!(parity_export_path.exists());
 }
 
 #[test]

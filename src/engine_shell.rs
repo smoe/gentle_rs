@@ -660,6 +660,56 @@ pub enum ShellCommand {
         mode: UniprotFeatureCodingDnaQueryMode,
         translation_speed_profile: Option<TranslationSpeedProfile>,
     },
+    UniprotResolveEnsemblLinks {
+        projection_id: String,
+        transcript_id: Option<String>,
+    },
+    UniprotTranscriptAccounting {
+        projection_id: String,
+        transcript_id: Option<String>,
+    },
+    UniprotCompareEnsemblExons {
+        projection_id: String,
+        transcript_id: Option<String>,
+        ensembl_entry_id: Option<String>,
+    },
+    UniprotCompareEnsemblPeptide {
+        projection_id: String,
+        transcript_id: Option<String>,
+        ensembl_entry_id: Option<String>,
+    },
+    UniprotAuditProjection {
+        projection_id: String,
+        transcript_id: Option<String>,
+        ensembl_entry_id: Option<String>,
+        report_id: Option<String>,
+    },
+    UniprotAuditParity {
+        projection_id: String,
+        transcript_id: Option<String>,
+        ensembl_entry_id: Option<String>,
+        report_id: Option<String>,
+    },
+    UniprotAuditList {
+        seq_id: Option<String>,
+    },
+    UniprotAuditShow {
+        report_id: String,
+    },
+    UniprotAuditExport {
+        report_id: String,
+        path: String,
+    },
+    UniprotAuditParityList {
+        seq_id: Option<String>,
+    },
+    UniprotAuditParityShow {
+        report_id: String,
+    },
+    UniprotAuditParityExport {
+        report_id: String,
+        path: String,
+    },
     RenderRnaSvg {
         seq_id: String,
         output: String,
@@ -6802,6 +6852,130 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::UniprotResolveEnsemblLinks {
+                projection_id,
+                transcript_id,
+            } => format!(
+                "resolve UniProt/Ensembl links for projection '{}' (transcript={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+            ),
+            Self::UniprotTranscriptAccounting {
+                projection_id,
+                transcript_id,
+            } => format!(
+                "summarize UniProt projection transcript accounting for '{}' (transcript={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+            ),
+            Self::UniprotCompareEnsemblExons {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+            } => format!(
+                "compare UniProt projection '{}' against Ensembl exon/CDS evidence (transcript={}, ensembl_entry={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+                ensembl_entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::UniprotCompareEnsemblPeptide {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+            } => format!(
+                "compare UniProt projection '{}' against Ensembl peptide evidence (transcript={}, ensembl_entry={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+                ensembl_entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::UniprotAuditProjection {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+                report_id,
+            } => format!(
+                "audit UniProt projection '{}' (transcript={}, ensembl_entry={}, report_id={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+                ensembl_entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+                report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::UniprotAuditParity {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+                report_id,
+            } => format!(
+                "compare direct vs composed UniProt audit for '{}' (transcript={}, ensembl_entry={}, report_id={})",
+                projection_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+                ensembl_entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+                report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::UniprotAuditList { seq_id } => format!(
+                "list stored UniProt audit reports (seq={})",
+                seq_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+            ),
+            Self::UniprotAuditShow { report_id } => {
+                format!("show stored UniProt audit report '{}'", report_id)
+            }
+            Self::UniprotAuditExport { report_id, path } => format!(
+                "export stored UniProt audit report '{}' to '{}'",
+                report_id, path
+            ),
+            Self::UniprotAuditParityList { seq_id } => format!(
+                "list stored UniProt audit parity reports (seq={})",
+                seq_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
+            ),
+            Self::UniprotAuditParityShow { report_id } => {
+                format!("show stored UniProt audit parity report '{}'", report_id)
+            }
+            Self::UniprotAuditParityExport { report_id, path } => format!(
+                "export stored UniProt audit parity report '{}' to '{}'",
+                report_id, path
+            ),
             Self::PrimersDesignQpcr {
                 request_json,
                 backend,
@@ -7662,6 +7836,8 @@ impl ShellCommand {
                 | Self::UniprotImportSwissProt { .. }
                 | Self::EnsemblProteinImportSequence { .. }
                 | Self::UniprotMap { .. }
+                | Self::UniprotAuditProjection { .. }
+                | Self::UniprotAuditParity { .. }
                 | Self::MacrosRun { .. }
                 | Self::MacrosTemplateUpsert { .. }
                 | Self::MacrosTemplateDelete { .. }
@@ -11066,7 +11242,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna"
+            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export"
                 .to_string(),
         );
     }
@@ -11312,8 +11488,374 @@ fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 translation_speed_profile,
             })
         }
+        "resolve-ensembl-links" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot resolve-ensembl-links requires PROJECTION_ID [--transcript ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err(
+                    "uniprot resolve-ensembl-links PROJECTION_ID must not be empty".to_string(),
+                );
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot resolve-ensembl-links",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot resolve-ensembl-links"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotResolveEnsemblLinks {
+                projection_id,
+                transcript_id,
+            })
+        }
+        "transcript-accounting" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot transcript-accounting requires PROJECTION_ID [--transcript ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err(
+                    "uniprot transcript-accounting PROJECTION_ID must not be empty".to_string(),
+                );
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot transcript-accounting",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot transcript-accounting"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotTranscriptAccounting {
+                projection_id,
+                transcript_id,
+            })
+        }
+        "compare-ensembl-exons" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot compare-ensembl-exons requires PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err(
+                    "uniprot compare-ensembl-exons PROJECTION_ID must not be empty".to_string(),
+                );
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut ensembl_entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot compare-ensembl-exons",
+                        )?);
+                    }
+                    "--ensembl-entry" => {
+                        ensembl_entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ensembl-entry",
+                            "uniprot compare-ensembl-exons",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot compare-ensembl-exons"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotCompareEnsemblExons {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+            })
+        }
+        "compare-ensembl-peptide" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot compare-ensembl-peptide requires PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err(
+                    "uniprot compare-ensembl-peptide PROJECTION_ID must not be empty".to_string(),
+                );
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut ensembl_entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot compare-ensembl-peptide",
+                        )?);
+                    }
+                    "--ensembl-entry" => {
+                        ensembl_entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ensembl-entry",
+                            "uniprot compare-ensembl-peptide",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot compare-ensembl-peptide"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotCompareEnsemblPeptide {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+            })
+        }
+        "audit-projection" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot audit-projection requires PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err("uniprot audit-projection PROJECTION_ID must not be empty".to_string());
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut ensembl_entry_id: Option<String> = None;
+            let mut report_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot audit-projection",
+                        )?);
+                    }
+                    "--ensembl-entry" => {
+                        ensembl_entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ensembl-entry",
+                            "uniprot audit-projection",
+                        )?);
+                    }
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "uniprot audit-projection",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot audit-projection"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotAuditProjection {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+                report_id,
+            })
+        }
+        "audit-parity" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "uniprot audit-parity requires PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+                        .to_string(),
+                );
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err("uniprot audit-parity PROJECTION_ID must not be empty".to_string());
+            }
+            let mut transcript_id: Option<String> = None;
+            let mut ensembl_entry_id: Option<String> = None;
+            let mut report_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot audit-parity",
+                        )?);
+                    }
+                    "--ensembl-entry" => {
+                        ensembl_entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ensembl-entry",
+                            "uniprot audit-parity",
+                        )?);
+                    }
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "uniprot audit-parity",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for uniprot audit-parity"));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotAuditParity {
+                projection_id,
+                transcript_id,
+                ensembl_entry_id,
+                report_id,
+            })
+        }
+        "audit-list" => {
+            let mut seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq",
+                            "uniprot audit-list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for uniprot audit-list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotAuditList { seq_id })
+        }
+        "audit-show" => {
+            if tokens.len() != 3 {
+                return Err("uniprot audit-show requires REPORT_ID".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("uniprot audit-show REPORT_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotAuditShow { report_id })
+        }
+        "audit-export" => {
+            if tokens.len() != 4 {
+                return Err("uniprot audit-export requires REPORT_ID OUTPUT".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            let path = tokens[3].trim().to_string();
+            if report_id.is_empty() {
+                return Err("uniprot audit-export REPORT_ID must not be empty".to_string());
+            }
+            if path.is_empty() {
+                return Err("uniprot audit-export OUTPUT must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotAuditExport { report_id, path })
+        }
+        "audit-parity-list" => {
+            let mut seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq",
+                            "uniprot audit-parity-list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot audit-parity-list"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotAuditParityList { seq_id })
+        }
+        "audit-parity-show" => {
+            if tokens.len() != 3 {
+                return Err("uniprot audit-parity-show requires REPORT_ID".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("uniprot audit-parity-show REPORT_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotAuditParityShow { report_id })
+        }
+        "audit-parity-export" => {
+            if tokens.len() != 4 {
+                return Err("uniprot audit-parity-export requires REPORT_ID OUTPUT".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            let path = tokens[3].trim().to_string();
+            if report_id.is_empty() {
+                return Err("uniprot audit-parity-export REPORT_ID must not be empty".to_string());
+            }
+            if path.is_empty() {
+                return Err("uniprot audit-parity-export OUTPUT must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotAuditParityExport { report_id, path })
+        }
         other => Err(format!(
-            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna)"
+            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show, feature-coding-dna, resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, compare-ensembl-peptide, audit-projection, audit-parity, audit-list, audit-show, audit-export, audit-parity-list, audit-parity-show, audit-parity-export)"
         )),
     }
 }
@@ -19874,6 +20416,187 @@ fn execute_protein_sequence_command(
                 })?,
             })
         }
+        ShellCommand::UniprotResolveEnsemblLinks {
+            projection_id,
+            transcript_id,
+        } => {
+            let report = engine
+                .resolve_uniprot_ensembl_links(projection_id, transcript_id.as_deref())
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize UniProt/Ensembl links: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotTranscriptAccounting {
+            projection_id,
+            transcript_id,
+        } => {
+            let report = engine
+                .summarize_uniprot_projection_transcript_accounting(
+                    projection_id,
+                    transcript_id.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize UniProt transcript accounting report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::UniprotCompareEnsemblExons {
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        } => {
+            let report = engine
+                .compare_uniprot_projection_to_ensembl_exons(
+                    projection_id,
+                    transcript_id.as_deref(),
+                    ensembl_entry_id.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize UniProt/Ensembl exon comparison report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::UniprotCompareEnsemblPeptide {
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+        } => {
+            let report = engine
+                .compare_uniprot_variant_features_to_ensembl_peptide(
+                    projection_id,
+                    transcript_id.as_deref(),
+                    ensembl_entry_id.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize UniProt/Ensembl peptide comparison report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::UniprotAuditProjection {
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+            report_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::AuditUniprotProjectionConsistency {
+                    projection_id: projection_id.clone(),
+                    transcript_id: transcript_id.clone(),
+                    report_id: report_id.clone(),
+                    ensembl_entry_id: ensembl_entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.uniprot_projection_audit.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::UniprotAuditParity {
+            projection_id,
+            transcript_id,
+            ensembl_entry_id,
+            report_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::AuditUniprotProjectionParity {
+                    projection_id: projection_id.clone(),
+                    transcript_id: transcript_id.clone(),
+                    report_id: report_id.clone(),
+                    ensembl_entry_id: ensembl_entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.uniprot_projection_audit_parity.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::UniprotAuditList { seq_id } => {
+            let rows = engine.list_uniprot_projection_audit_reports(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize UniProt audit report list: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotAuditShow { report_id } => {
+            let report = engine
+                .get_uniprot_projection_audit_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize UniProt audit report: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotAuditExport { report_id, path } => {
+            let report = engine
+                .export_uniprot_projection_audit_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.uniprot_projection_audit_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "projection_id": report.projection_id,
+                    "entry_id": report.entry_id,
+                }),
+            })
+        }
+        ShellCommand::UniprotAuditParityList { seq_id } => {
+            let rows = engine.list_uniprot_projection_audit_parity_reports(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows).map_err(|e| {
+                    format!("Could not serialize UniProt audit parity report list: {e}")
+                })?,
+            })
+        }
+        ShellCommand::UniprotAuditParityShow { report_id } => {
+            let report = engine
+                .get_uniprot_projection_audit_parity_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize UniProt audit parity report: {e}"))?,
+            })
+        }
+        ShellCommand::UniprotAuditParityExport { report_id, path } => {
+            let report = engine
+                .export_uniprot_projection_audit_parity_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.uniprot_projection_audit_parity_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "projection_id": report.projection_id,
+                    "entry_id": report.entry_id,
+                }),
+            })
+        }
         ShellCommand::ReverseTranslateRun {
             seq_id,
             output_id,
@@ -21062,6 +21785,18 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::UniprotProjectionList { .. }
             | ShellCommand::UniprotProjectionShow { .. }
             | ShellCommand::UniprotFeatureCodingDna { .. }
+            | ShellCommand::UniprotResolveEnsemblLinks { .. }
+            | ShellCommand::UniprotTranscriptAccounting { .. }
+            | ShellCommand::UniprotCompareEnsemblExons { .. }
+            | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+            | ShellCommand::UniprotAuditProjection { .. }
+            | ShellCommand::UniprotAuditParity { .. }
+            | ShellCommand::UniprotAuditList { .. }
+            | ShellCommand::UniprotAuditShow { .. }
+            | ShellCommand::UniprotAuditExport { .. }
+            | ShellCommand::UniprotAuditParityList { .. }
+            | ShellCommand::UniprotAuditParityShow { .. }
+            | ShellCommand::UniprotAuditParityExport { .. }
             | ShellCommand::ReverseTranslateRun { .. }
             | ShellCommand::ReverseTranslateListReports { .. }
             | ShellCommand::ReverseTranslateShowReport { .. }
@@ -21328,6 +22063,18 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UniprotProjectionList { .. }
         | ShellCommand::UniprotProjectionShow { .. }
         | ShellCommand::UniprotFeatureCodingDna { .. }
+        | ShellCommand::UniprotResolveEnsemblLinks { .. }
+        | ShellCommand::UniprotTranscriptAccounting { .. }
+        | ShellCommand::UniprotCompareEnsemblExons { .. }
+        | ShellCommand::UniprotCompareEnsemblPeptide { .. }
+        | ShellCommand::UniprotAuditProjection { .. }
+        | ShellCommand::UniprotAuditParity { .. }
+        | ShellCommand::UniprotAuditList { .. }
+        | ShellCommand::UniprotAuditShow { .. }
+        | ShellCommand::UniprotAuditExport { .. }
+        | ShellCommand::UniprotAuditParityList { .. }
+        | ShellCommand::UniprotAuditParityShow { .. }
+        | ShellCommand::UniprotAuditParityExport { .. }
         | ShellCommand::ReverseTranslateRun { .. }
         | ShellCommand::ReverseTranslateListReports { .. }
         | ShellCommand::ReverseTranslateShowReport { .. }

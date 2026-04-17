@@ -1598,6 +1598,8 @@ mod tests {
             tfbs_region_summary: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
         });
 
         assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -4183,6 +4185,8 @@ mod tests {
                 tfbs_region_summary: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
+                uniprot_projection_audit: None,
+                uniprot_projection_audit_parity: None,
             },
             Instant::now(),
         );
