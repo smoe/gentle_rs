@@ -3666,6 +3666,10 @@ Primer-design shell command family (implemented):
   qPCR-only non-mutating helper commands that resolve an ROI and emit one
   seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
   (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
+- those qPCR-only seed helpers now also emit a deterministic `rationale`
+  payload so agent callers can explain why the ROI was chosen and reuse
+  GENtle's expected default assay limits without reverse-engineering them from
+  the operation body.
 - the qPCR designer can now use the same seeded report geometry to drive an
   in-window preview summary, so the shared shell payload and the GUI stay on
   one deterministic qPCR setup story.
@@ -3700,6 +3704,15 @@ Primer-design shell command family (implemented):
   - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
   - `roi_start_0based`
   - `roi_end_0based_exclusive`
+  - `rationale`
+    - `summary`
+    - `why_this_roi`
+    - `recommended_defaults`
+      - `min_amplicon_bp`
+      - `max_amplicon_bp`
+      - `max_tm_delta_c`
+      - `max_probe_tm_delta_c`
+      - `max_assays`
   - `operation` (`{"DesignQpcrAssays": ...}`)
   - `protocol_cartoon`
     - `protocol` (`pcr.assay.qpcr`)

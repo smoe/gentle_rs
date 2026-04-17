@@ -555,6 +555,7 @@ struct QpcrDesignOpsUiState {
     max_probe_tm_delta_c: String,
     max_assays: String,
     report_id: String,
+    selected_assay_rank_1based: String,
 }
 
 impl Default for QpcrDesignOpsUiState {
@@ -572,6 +573,7 @@ impl Default for QpcrDesignOpsUiState {
             max_probe_tm_delta_c: "10.0".to_string(),
             max_assays: "200".to_string(),
             report_id: "qpcr_report_gui".to_string(),
+            selected_assay_rank_1based: "1".to_string(),
         }
     }
 }
@@ -629,6 +631,13 @@ impl QpcrCartoonPreviewGeometry {
             self.reverse_window_margin_bp
         )
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct QpcrSplicingContextSummary {
+    assay_class_label: String,
+    explanation: String,
+    covered_junction_labels: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -5047,7 +5056,7 @@ mod tests {
     }
 
     #[test]
-    fn qpcr_preview_geometry_from_report_tracks_top_assay_lengths() {
+    fn qpcr_preview_geometry_from_assay_tracks_top_assay_lengths() {
         let report = crate::engine::QpcrDesignReport {
             report_id: "qpcr_preview_geometry".to_string(),
             template: "tpl".to_string(),
@@ -5086,14 +5095,119 @@ mod tests {
         };
         let top = report.assays.first().expect("top assay");
 
-        let geometry = MainAreaDna::qpcr_preview_geometry_from_report(&report)
-            .expect("preview geometry from report");
+        let geometry = MainAreaDna::qpcr_preview_geometry_from_assay(&report, top)
+            .expect("preview geometry from assay");
 
         assert!(geometry.source_label.contains("qpcr_preview_geometry"));
         assert_eq!(geometry.forward_primer_site_bp, top.forward.length_bp);
         assert_eq!(geometry.reverse_primer_site_bp, top.reverse.length_bp);
         assert_eq!(geometry.probe_site_bp, top.probe.length_bp);
         assert!(geometry.bindings_feature_override_count() > 0);
+    }
+
+    #[test]
+    fn selected_qpcr_assay_rank_defaults_to_first_for_invalid_rank() {
+        let dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.selected_assay_rank_1based = "99".to_string();
+        let report = crate::engine::QpcrDesignReport {
+            report_id: "qpcr_preview_geometry".to_string(),
+            template: "tpl".to_string(),
+            assays: vec![
+                crate::engine::QpcrAssayRecord {
+                    rank: 1,
+                    ..Default::default()
+                },
+                crate::engine::QpcrAssayRecord {
+                    rank: 2,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let rank = area
+            .selected_qpcr_assay_rank_1based_for_report(&report)
+            .expect("normalized selected assay rank");
+
+        assert_eq!(rank, 1);
+        assert_eq!(area.qpcr_design_ui.selected_assay_rank_1based, "1");
+    }
+
+    #[test]
+    fn qpcr_splicing_context_summary_flags_junction_crossing_probe() {
+        let view = SplicingExpertView {
+            seq_id: "seq".to_string(),
+            target_feature_id: 1,
+            group_label: "GENE1".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 80,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![
+                SplicingExonSummary {
+                    start_1based: 1,
+                    end_1based: 20,
+                    support_transcript_count: 1,
+                    constitutive: true,
+                },
+                SplicingExonSummary {
+                    start_1based: 31,
+                    end_1based: 60,
+                    support_transcript_count: 1,
+                    constitutive: true,
+                },
+            ],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![SplicingJunctionArc {
+                donor_1based: 20,
+                acceptor_1based: 31,
+                support_transcript_count: 1,
+                transcript_feature_ids: vec![11],
+            }],
+            events: vec![],
+        };
+        let assay = crate::engine::QpcrAssayRecord {
+            rank: 1,
+            forward: crate::engine::PrimerDesignPrimerRecord {
+                start_0based: 5,
+                end_0based_exclusive: 15,
+                length_bp: 10,
+                ..Default::default()
+            },
+            probe: crate::engine::PrimerDesignPrimerRecord {
+                start_0based: 17,
+                end_0based_exclusive: 31,
+                length_bp: 14,
+                ..Default::default()
+            },
+            reverse: crate::engine::PrimerDesignPrimerRecord {
+                start_0based: 40,
+                end_0based_exclusive: 50,
+                length_bp: 10,
+                ..Default::default()
+            },
+            amplicon_start_0based: 5,
+            amplicon_end_0based_exclusive: 50,
+            amplicon_length_bp: 45,
+            ..Default::default()
+        };
+
+        let summary = MainAreaDna::qpcr_splicing_context_summary(&view, &assay)
+            .expect("splicing-aware qPCR summary");
+
+        assert_eq!(summary.assay_class_label, "junction-crossing probe");
+        assert!(
+            summary
+                .explanation
+                .contains("probe overlaps a modeled exon junction")
+        );
+        assert_eq!(summary.covered_junction_labels, vec!["20→31".to_string()]);
     }
 
     #[test]
@@ -5258,11 +5372,13 @@ mod tests {
             .expect("template sequence");
         let engine = Arc::new(RwLock::new(engine));
         let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.qpcr_design_ui.selected_assay_rank_1based = "7".to_string();
 
         area.focus_qpcr_design_report("qpcr_ui_focus");
 
         assert!(area.show_engine_ops);
         assert_eq!(area.qpcr_design_ui.report_id, "qpcr_ui_focus");
+        assert_eq!(area.qpcr_design_ui.selected_assay_rank_1based, "1");
         assert_eq!(area.pcr_designer_mode, PcrDesignerMode::QpcrAssays);
         assert!(area.op_status.contains("qPCR report 'qpcr_ui_focus'"));
     }
@@ -11282,6 +11398,7 @@ impl MainAreaDna {
         if !normalized_id.is_empty() {
             self.qpcr_design_ui.report_id = normalized_id.to_string();
         }
+        self.qpcr_design_ui.selected_assay_rank_1based = "1".to_string();
         self.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
         self.show_engine_ops = true;
         self.show_qpcr_design_report(normalized_id);
@@ -31573,10 +31690,43 @@ impl MainAreaDna {
             .map_err(|err| format!("Could not load qPCR report '{report_id}': {}", err.message))
     }
 
-    fn qpcr_preview_geometry_from_report(
+    fn selected_qpcr_assay_rank_1based_for_report(
+        &mut self,
         report: &QpcrDesignReport,
+    ) -> Option<usize> {
+        let first_rank = report.assays.first().map(|assay| assay.rank)?;
+        let selected_rank = self
+            .qpcr_design_ui
+            .selected_assay_rank_1based
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .and_then(|rank| {
+                report
+                    .assays
+                    .iter()
+                    .any(|assay| assay.rank == rank)
+                    .then_some(rank)
+            })
+            .unwrap_or(first_rank);
+        let normalized = selected_rank.to_string();
+        if self.qpcr_design_ui.selected_assay_rank_1based.trim() != normalized {
+            self.qpcr_design_ui.selected_assay_rank_1based = normalized;
+        }
+        Some(selected_rank)
+    }
+
+    fn qpcr_assay_by_rank(
+        report: &QpcrDesignReport,
+        rank_1based: usize,
+    ) -> Option<&crate::engine::QpcrAssayRecord> {
+        report.assays.iter().find(|assay| assay.rank == rank_1based)
+    }
+
+    fn qpcr_preview_geometry_from_assay(
+        report: &QpcrDesignReport,
+        assay: &crate::engine::QpcrAssayRecord,
     ) -> Option<QpcrCartoonPreviewGeometry> {
-        let assay = report.assays.first()?;
         let forward_window_margin_bp = report
             .roi_start_0based
             .saturating_sub(assay.forward.end_0based_exclusive)
@@ -31597,10 +31747,7 @@ impl MainAreaDna {
             .max(1);
         let probe_window_margin_seed = assay.probe.length_bp.saturating_div(3).max(1);
         Some(QpcrCartoonPreviewGeometry {
-            source_label: format!(
-                "saved report {} top assay #{}",
-                report.report_id, assay.rank
-            ),
+            source_label: format!("saved report {} assay #{}", report.report_id, assay.rank),
             roi_left_bp,
             probe_window_left_margin_bp: probe_window_margin_seed,
             probe_site_bp: assay.probe.length_bp.max(1),
@@ -31610,6 +31757,116 @@ impl MainAreaDna {
             forward_primer_site_bp: assay.forward.length_bp.max(1),
             reverse_window_margin_bp,
             reverse_primer_site_bp: assay.reverse.length_bp.max(1),
+        })
+    }
+
+    fn relevant_qpcr_splicing_view_for_template(
+        &mut self,
+        template: &str,
+    ) -> Option<SplicingExpertView> {
+        if let Some(view) = self.current_splicing_expert_view_for_primary_map()
+            && view.seq_id == template
+        {
+            return Some(view);
+        }
+        if let Some(view) = self
+            .splicing_expert_window_view
+            .as_ref()
+            .filter(|view| view.seq_id == template)
+        {
+            return Some((**view).clone());
+        }
+        self.rna_read_mapping_window_view
+            .as_ref()
+            .filter(|view| view.seq_id == template)
+            .map(|view| (**view).clone())
+    }
+
+    fn qpcr_splicing_context_summary(
+        view: &SplicingExpertView,
+        assay: &crate::engine::QpcrAssayRecord,
+    ) -> Option<QpcrSplicingContextSummary> {
+        let merged_exons = Self::merged_splicing_exon_ranges(view);
+        if merged_exons.is_empty() {
+            return None;
+        }
+        let amplicon_start_1based = assay.amplicon_start_0based.saturating_add(1);
+        let amplicon_end_1based = assay.amplicon_end_0based_exclusive;
+        let probe_start_1based = assay.probe.start_0based.saturating_add(1);
+        let probe_end_1based = assay.probe.end_0based_exclusive;
+        let amplicon_segments = Self::project_genomic_interval_to_exonic(
+            &merged_exons,
+            amplicon_start_1based,
+            amplicon_end_1based,
+        );
+        let probe_segments = Self::project_genomic_interval_to_exonic(
+            &merged_exons,
+            probe_start_1based,
+            probe_end_1based,
+        );
+        let covered_junction_labels = view
+            .junctions
+            .iter()
+            .filter(|junction| {
+                amplicon_start_1based <= junction.donor_1based
+                    && amplicon_end_1based >= junction.acceptor_1based
+            })
+            .map(|junction| format!("{}→{}", junction.donor_1based, junction.acceptor_1based))
+            .collect::<Vec<_>>();
+        let probe_crosses_junction = view.junctions.iter().any(|junction| {
+            probe_start_1based <= junction.donor_1based
+                && probe_end_1based >= junction.acceptor_1based
+        });
+        let assay_class_label = if probe_crosses_junction {
+            "junction-crossing probe"
+        } else if !covered_junction_labels.is_empty() {
+            "junction-spanning amplicon"
+        } else if amplicon_segments.len() > 1 {
+            "multi-exon context"
+        } else if amplicon_segments.len() == 1 {
+            "single-exon context"
+        } else {
+            "splicing-region context"
+        };
+        let explanation = if probe_crosses_junction {
+            format!(
+                "{}: probe overlaps a modeled exon junction in splicing group '{}'.",
+                assay_class_label, view.group_label
+            )
+        } else if !covered_junction_labels.is_empty() {
+            format!(
+                "{}: amplicon covers {} modeled junction(s) in group '{}'.",
+                assay_class_label,
+                covered_junction_labels.len(),
+                view.group_label
+            )
+        } else if amplicon_segments.len() > 1 {
+            format!(
+                "{}: amplicon touches {} exon segments in group '{}'.",
+                assay_class_label,
+                amplicon_segments.len(),
+                view.group_label
+            )
+        } else if amplicon_segments.len() == 1 {
+            format!(
+                "{}: amplicon stays inside one merged exon segment in group '{}'.",
+                assay_class_label, view.group_label
+            )
+        } else if probe_segments.is_empty() {
+            format!(
+                "{}: assay stays inside the broader splicing ROI for '{}' but outside merged exon bodies.",
+                assay_class_label, view.group_label
+            )
+        } else {
+            format!(
+                "{}: assay remains inside the saved splicing ROI for group '{}'.",
+                assay_class_label, view.group_label
+            )
+        };
+        Some(QpcrSplicingContextSummary {
+            assay_class_label: assay_class_label.to_string(),
+            explanation,
+            covered_junction_labels,
         })
     }
 
@@ -32196,6 +32453,12 @@ impl MainAreaDna {
                 return;
             }
         };
+        let selected_rank = self.selected_qpcr_assay_rank_1based_for_report(&report);
+        let selected_assay = selected_rank
+            .and_then(|rank| Self::qpcr_assay_by_rank(&report, rank))
+            .or_else(|| report.assays.first());
+        let splicing_view = self.relevant_qpcr_splicing_view_for_template(report.template.as_str());
+        let prior_selected_rank = self.qpcr_design_ui.selected_assay_rank_1based.clone();
         ui.group(|ui| {
             ui.label("qPCR report preview");
             ui.small(format!(
@@ -32225,11 +32488,11 @@ impl MainAreaDna {
                 return;
             }
             ui.small(
-                "Top saved assays with forward/reverse/probe geometry, amplicon span, and qPCR-specific ΔT checks.",
+                "Saved assays with forward / reverse / probe geometry. Click a row to drive the live qPCR preview and inspect splicing-aware context when available.",
             );
             egui::Grid::new("qpcr_report_preview_grid")
                 .striped(true)
-                .num_columns(9)
+                .num_columns(if splicing_view.is_some() { 10 } else { 9 })
                 .show(ui, |ui| {
                     ui.strong("#");
                     ui.strong("amplicon");
@@ -32240,55 +32503,167 @@ impl MainAreaDna {
                     ui.strong("ΔTm primers");
                     ui.strong("ΔTm probe");
                     ui.strong("score");
+                    if splicing_view.is_some() {
+                        ui.strong("context");
+                    }
                     ui.end_row();
-                    for assay in report.assays.iter().take(5) {
-                        ui.monospace(format!("{}", assay.rank));
-                        ui.monospace(format!(
-                            "{}..{}",
-                            assay.amplicon_start_0based, assay.amplicon_end_0based_exclusive
-                        ));
-                        ui.monospace(format!("{}", assay.amplicon_length_bp));
-                        ui.monospace(format!(
-                            "{}..{} ({} bp)",
-                            assay.forward.start_0based,
-                            assay.forward.end_0based_exclusive,
-                            assay.forward.length_bp
-                        ));
-                        ui.monospace(format!(
-                            "{}..{} ({} bp)",
-                            assay.probe.start_0based,
-                            assay.probe.end_0based_exclusive,
-                            assay.probe.length_bp
-                        ));
-                        ui.monospace(format!(
-                            "{}..{} ({} bp)",
-                            assay.reverse.start_0based,
-                            assay.reverse.end_0based_exclusive,
-                            assay.reverse.length_bp
-                        ));
-                        ui.monospace(format!("{:.1}", assay.primer_tm_delta_c));
-                        ui.monospace(format!("{:.1}", assay.probe_tm_delta_c));
-                        ui.monospace(format!("{:.1}", assay.score));
+                    for assay in report.assays.iter().take(8) {
+                        let selected = Some(assay.rank) == selected_rank;
+                        let context_summary = splicing_view
+                            .as_ref()
+                            .and_then(|view| Self::qpcr_splicing_context_summary(view, assay));
+                        if ui
+                            .selectable_label(selected, format!("{}", assay.rank))
+                            .on_hover_text("Select this assay and drive the live qPCR preview from it.")
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!(
+                                    "{}..{}",
+                                    assay.amplicon_start_0based, assay.amplicon_end_0based_exclusive
+                                ),
+                            )
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(selected, format!("{}", assay.amplicon_length_bp))
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!(
+                                    "{}..{} ({} bp)",
+                                    assay.forward.start_0based,
+                                    assay.forward.end_0based_exclusive,
+                                    assay.forward.length_bp
+                                ),
+                            )
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!(
+                                    "{}..{} ({} bp)",
+                                    assay.probe.start_0based,
+                                    assay.probe.end_0based_exclusive,
+                                    assay.probe.length_bp
+                                ),
+                            )
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!(
+                                    "{}..{} ({} bp)",
+                                    assay.reverse.start_0based,
+                                    assay.reverse.end_0based_exclusive,
+                                    assay.reverse.length_bp
+                                ),
+                            )
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(selected, format!("{:.1}", assay.primer_tm_delta_c))
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(selected, format!("{:.1}", assay.probe_tm_delta_c))
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if ui
+                            .selectable_label(selected, format!("{:.1}", assay.score))
+                            .clicked()
+                        {
+                            self.qpcr_design_ui.selected_assay_rank_1based = assay.rank.to_string();
+                        }
+                        if let Some(summary) = context_summary {
+                            if ui
+                                .selectable_label(selected, summary.assay_class_label)
+                                .on_hover_text(summary.explanation)
+                                .clicked()
+                            {
+                                self.qpcr_design_ui.selected_assay_rank_1based =
+                                    assay.rank.to_string();
+                            }
+                        } else if splicing_view.is_some() {
+                            ui.small("-");
+                        }
                         ui.end_row();
                     }
                 });
-            if let Some(top) = report.assays.first() {
+            if let Some(selected_assay) = selected_assay {
+                ui.separator();
+                ui.label(format!("Selected assay #{}", selected_assay.rank));
                 ui.small(format!(
-                    "Top assay rule flags: roi={} amplicon={} primer ΔT={} probe-inside={} probe ΔT={}",
-                    top.rule_flags.roi_covered,
-                    top.rule_flags.amplicon_size_in_range,
-                    top.rule_flags.primer_tm_delta_in_range,
-                    top.rule_flags.probe_inside_amplicon,
-                    top.rule_flags.probe_tm_delta_in_range
+                    "amplicon={}..{} ({} bp) | forward={}..{} | probe={}..{} | reverse={}..{} | score={:.1}",
+                    selected_assay.amplicon_start_0based,
+                    selected_assay.amplicon_end_0based_exclusive,
+                    selected_assay.amplicon_length_bp,
+                    selected_assay.forward.start_0based,
+                    selected_assay.forward.end_0based_exclusive,
+                    selected_assay.probe.start_0based,
+                    selected_assay.probe.end_0based_exclusive,
+                    selected_assay.reverse.start_0based,
+                    selected_assay.reverse.end_0based_exclusive,
+                    selected_assay.score
+                ));
+                ui.small(format!(
+                    "Current best-assay rationale: highest retained score among assays that keep the probe inside the amplicon and satisfy both primer/probe ΔTm gates."
+                ));
+                if let Some(view) = splicing_view.as_ref()
+                    && let Some(summary) = Self::qpcr_splicing_context_summary(view, selected_assay)
+                {
+                    ui.small(format!(
+                        "Splicing context [{}]: {}",
+                        summary.assay_class_label, summary.explanation
+                    ));
+                    if !summary.covered_junction_labels.is_empty() {
+                        ui.small(format!(
+                            "Covered modeled junctions: {}",
+                            summary.covered_junction_labels.join(", ")
+                        ));
+                    }
+                }
+                ui.small(format!(
+                    "Selected assay rule flags: roi={} amplicon={} primer ΔT={} probe-inside={} probe ΔT={}",
+                    selected_assay.rule_flags.roi_covered,
+                    selected_assay.rule_flags.amplicon_size_in_range,
+                    selected_assay.rule_flags.primer_tm_delta_in_range,
+                    selected_assay.rule_flags.probe_inside_amplicon,
+                    selected_assay.rule_flags.probe_tm_delta_in_range
                 ));
             }
-            if report.assays.len() > 5 {
+            if report.assays.len() > 8 {
                 ui.small(format!(
-                    "Showing 5 of {} accepted qPCR assays. Use `Export report_id...` for the full saved report.",
+                    "Showing 8 of {} accepted qPCR assays. Use `Export report_id...` for the full saved report.",
                     report.assays.len()
                 ));
             }
         });
+        if self.qpcr_design_ui.selected_assay_rank_1based != prior_selected_rank {
+            self.save_engine_ops_state();
+        }
     }
 
     fn render_live_qpcr_cartoon_preview(&mut self, ui: &mut egui::Ui) {
@@ -32297,7 +32672,13 @@ impl MainAreaDna {
             let geometry = self
                 .load_qpcr_design_report(&self.qpcr_design_ui.report_id)
                 .ok()
-                .and_then(|report| Self::qpcr_preview_geometry_from_report(&report))
+                .and_then(|report| {
+                    let selected_rank = self.selected_qpcr_assay_rank_1based_for_report(&report);
+                    selected_rank
+                        .and_then(|rank| Self::qpcr_assay_by_rank(&report, rank))
+                        .or_else(|| report.assays.first())
+                        .and_then(|assay| Self::qpcr_preview_geometry_from_assay(&report, assay))
+                })
                 .or_else(|| self.qpcr_preview_geometry_from_ui().ok());
             let Some(geometry) = geometry else {
                 ui.small(
@@ -33191,12 +33572,14 @@ impl MainAreaDna {
             }
         };
         self.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
-        let top = report
-            .assays
-            .first()
+        let selected = self
+            .selected_qpcr_assay_rank_1based_for_report(&report)
+            .and_then(|rank| Self::qpcr_assay_by_rank(&report, rank))
+            .or_else(|| report.assays.first())
             .map(|assay| {
                 format!(
-                    "top amplicon={}..{} len={} score={:.3}",
+                    "selected assay #{} amplicon={}..{} len={} score={:.3}",
+                    assay.rank,
                     assay.amplicon_start_0based,
                     assay.amplicon_end_0based_exclusive,
                     assay.amplicon_length_bp,
@@ -33213,7 +33596,7 @@ impl MainAreaDna {
             report.assay_count,
             report.backend.requested,
             report.backend.used,
-            top
+            selected
         );
     }
 

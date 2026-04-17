@@ -1836,6 +1836,8 @@ Shared shell command:
       - returns non-mutating schema `gentle.qpcr_seed_request.v1`
       - includes `template`, source metadata, `roi_start_0based`,
         `roi_end_0based_exclusive`
+      - includes `rationale.summary`, `rationale.why_this_roi`, and
+        `rationale.recommended_defaults`
       - includes one ready-to-run `operation` (`DesignQpcrAssays`)
       - includes built-in protocol-cartoon metadata for `pcr.assay.qpcr`, so
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-

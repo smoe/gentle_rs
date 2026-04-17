@@ -1181,6 +1181,9 @@ order. Durable architecture constraints and decisions remain in
     - both return `gentle.qpcr_seed_request.v1` plus built-in
       `pcr.assay.qpcr` protocol-cartoon metadata for command-line and
       ClawBio/OpenClaw reuse
+    - the qPCR seed payload now also carries deterministic ROI rationale plus
+      recommended default assay limits so agent callers can explain and reuse
+      GENtle's expected next-step settings instead of guessing them
     - ClawBio now also carries a TP53 splicing-group shell example that emits
       the qPCR seed payload directly from saved splicing context
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
@@ -1193,6 +1196,10 @@ order. Durable architecture constraints and decisions remain in
     geometry summary for the built-in qPCR cartoon, derived from the selected
     report when available and otherwise from the current ROI + constraint
     defaults
+  - qPCR preview rows are now selectable, the chosen assay drives the live
+    qPCR cartoon summary, and the preview adds splicing-aware labels/explained
+    context (`single-exon`, `junction-spanning`, `junction-crossing`) whenever
+    a matching splicing expert view is active on the same template
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional

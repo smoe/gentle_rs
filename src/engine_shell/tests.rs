@@ -9593,6 +9593,15 @@ fn execute_primers_seed_from_feature_and_splicing() {
         seeded_qpcr_feature.output["protocol_cartoon"]["protocol"].as_str(),
         Some("pcr.assay.qpcr")
     );
+    assert!(
+        seeded_qpcr_feature.output["rationale"]["summary"]
+            .as_str()
+            .is_some_and(|value| value.contains("Feature span reused"))
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["rationale"]["recommended_defaults"]["max_assays"].as_u64(),
+        Some(200)
+    );
 
     let seeded_qpcr_splicing = execute_shell_command(
         &mut engine,
@@ -9614,6 +9623,16 @@ fn execute_primers_seed_from_feature_and_splicing() {
     assert_eq!(
         seeded_qpcr_splicing.output["operation"]["DesignQpcrAssays"]["template"].as_str(),
         Some("seq_a")
+    );
+    assert!(
+        seeded_qpcr_splicing.output["rationale"]["summary"]
+            .as_str()
+            .is_some_and(|value| value.contains("Splicing-group region reused"))
+    );
+    assert!(
+        seeded_qpcr_splicing.output["rationale"]["why_this_roi"]
+            .as_str()
+            .is_some_and(|value| value.contains("group"))
     );
 }
 

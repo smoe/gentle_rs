@@ -499,7 +499,8 @@ Notes:
   bundle
 - `request_seed_qpcr_tp53_splicing.json` is a matching follow-on shell route
   after the TP53 splicing example state is present; it emits the non-mutating
-  `gentle.qpcr_seed_request.v1` payload from splicing group `2`
+  `gentle.qpcr_seed_request.v1` payload from splicing group `2`, including
+  deterministic ROI rationale plus recommended qPCR default limits
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
