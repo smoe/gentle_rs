@@ -160,6 +160,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json --output /tmp/gentle_tp53_qpcr_seed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json --output /tmp/gentle_qpcr_graphics
@@ -183,6 +184,9 @@ Notes:
   `request_inspect_feature_expert_pgex_fasta_tfbs.json`, and
   `request_render_feature_expert_pgex_fasta_tfbs_svg.json` are follow-on TFBS
   routes after `request_render_svg_pgex_fasta_linear_tfbs.json`
+- `request_seed_qpcr_tp53_splicing.json` is a follow-on shell route on the
+  TP53 splicing example state; it emits the non-mutating
+  `gentle.qpcr_seed_request.v1` payload for the saved splicing group
 - `request_inspect_feature_expert_pgex_fasta_restriction_ecori.json` and
   `request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json` are
   follow-on restriction expert routes after `request_workflow_file.json`
