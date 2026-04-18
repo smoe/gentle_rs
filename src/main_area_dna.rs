@@ -64,12 +64,13 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
-        AnnotationCandidateSummary, AttractRegionClass, AttractSplicingEvidenceSettings,
-        AttractSplicingEvidenceView, CandidateFeatureStrandRelation, CandidateRecord,
-        CandidateSetOperator, ConstructReasoningGraph, ConstructRole, DecisionMethod,
-        DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
-        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
-        EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        AnnotationCandidateSummary, AttractPwmMappingPolicy, AttractRegionClass,
+        AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
+        CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
+        ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
+        DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
+        EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
@@ -11066,6 +11067,7 @@ struct AttractEvidenceUiState {
     minimum_quality_score: String,
     minimum_match_quantile: String,
     boundary_flank_bp: String,
+    pwm_mapping_policy: AttractPwmMappingPolicy,
     transcript_strand_only: bool,
     allow_species_fallback: bool,
     factor_filter: String,
@@ -11082,6 +11084,7 @@ impl Default for AttractEvidenceUiState {
             minimum_quality_score: format!("{:.1}", defaults.minimum_quality_score),
             minimum_match_quantile: format!("{:.2}", defaults.minimum_match_quantile),
             boundary_flank_bp: defaults.boundary_flank_bp.to_string(),
+            pwm_mapping_policy: defaults.pwm_mapping_policy,
             transcript_strand_only: defaults.transcript_strand_only,
             allow_species_fallback: defaults.allow_species_fallback,
             factor_filter: String::new(),
@@ -23371,6 +23374,7 @@ impl MainAreaDna {
                 .unwrap_or_else(|_| {
                     AttractSplicingEvidenceSettings::default().minimum_match_quantile
                 }),
+            pwm_mapping_policy: self.attract_evidence_ui.pwm_mapping_policy,
         }
     }
 
@@ -23448,6 +23452,27 @@ impl MainAreaDna {
                         )
                         .desired_width(52.0),
                     );
+                    egui::ComboBox::from_id_salt((
+                        "attract_pwm_mapping_policy",
+                        view.seq_id.as_str(),
+                        view.target_feature_id,
+                    ))
+                    .selected_text(match self.attract_evidence_ui.pwm_mapping_policy {
+                        AttractPwmMappingPolicy::StrictSameLength => "PWM: strict",
+                        AttractPwmMappingPolicy::WindowedSubmatrix => "PWM: windowed",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.attract_evidence_ui.pwm_mapping_policy,
+                            AttractPwmMappingPolicy::StrictSameLength,
+                            "PWM: strict same-length",
+                        );
+                        ui.selectable_value(
+                            &mut self.attract_evidence_ui.pwm_mapping_policy,
+                            AttractPwmMappingPolicy::WindowedSubmatrix,
+                            "PWM: windowed submatrix",
+                        );
+                    });
                     ui.label("Flank bp");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.attract_evidence_ui.boundary_flank_bp)
@@ -23477,7 +23502,7 @@ impl MainAreaDna {
                     }
                 };
                 ui.small(format!(
-                    "Snapshot={} motifs={} (pwm={} consensus={}){} | scanned transcripts={} windows={} | hits={} (pwm={} consensus={}) unique RBPs={} | species={} | mode={} | min-match-q={:.2}",
+                    "Snapshot={} motifs={} (pwm={} consensus={}){} | scanned transcripts={} windows={} | hits={} (exact={} windowed={} consensus={}) unique RBPs={} | species={} | mode={} | pwm-map={} | min-match-q={:.2}",
                     evidence.active_resource_source,
                     evidence.active_resource_item_count,
                     evidence.active_resource_pwm_row_count,
@@ -23493,7 +23518,8 @@ impl MainAreaDna {
                     evidence.scanned_transcript_count,
                     evidence.scanned_window_count,
                     evidence.hit_count,
-                    evidence.pwm_scored_hit_count,
+                    evidence.exact_length_pwm_hit_count,
+                    evidence.windowed_pwm_hit_count,
                     evidence.consensus_hit_count,
                     evidence.unique_rbp_count,
                     evidence
@@ -23501,6 +23527,7 @@ impl MainAreaDna {
                         .as_deref()
                         .unwrap_or("unspecified"),
                     evidence.species_match_mode.as_str(),
+                    evidence.settings.pwm_mapping_policy.as_str(),
                     evidence.settings.minimum_match_quantile
                 ));
                 for warning in evidence.warnings.iter().take(2) {
@@ -23583,6 +23610,7 @@ impl MainAreaDna {
                             ui.small("Model");
                             ui.small("Hits");
                             ui.small("Best match");
+                            ui.small("PWM prov");
                             ui.small("Regions");
                             ui.small("Transcripts");
                             ui.end_row();
@@ -23620,6 +23648,12 @@ impl MainAreaDna {
                                         row.strongest_score, row.strongest_score_kind
                                     ),
                                 });
+                                ui.small(format!(
+                                    "E{} W{} C{}",
+                                    row.exact_length_pwm_hits,
+                                    row.windowed_pwm_hits,
+                                    row.consensus_only_hits
+                                ));
                                 ui.small(format!(
                                     "E{} D{} A{} I{}",
                                     row.exon_body_hits,
@@ -23698,6 +23732,7 @@ impl MainAreaDna {
                             ui.small("Coords");
                             ui.small("Motif");
                             ui.small("Match");
+                            ui.small("Prov");
                             ui.small("Quality");
                             ui.end_row();
                             for row in filtered_hits {
@@ -23723,6 +23758,22 @@ impl MainAreaDna {
                                     None => format!(
                                         "{:.2} {}",
                                         row.match_score, row.match_score_kind
+                                    ),
+                                });
+                                ui.small(match (
+                                    row.pfm_subwindow_start_1based,
+                                    row.pfm_subwindow_end_1based,
+                                ) {
+                                    (Some(start), Some(end)) => format!(
+                                        "{} / {} [{}..{}]",
+                                        row.mapping_policy_used,
+                                        row.pwm_mapping_status,
+                                        start,
+                                        end
+                                    ),
+                                    _ => format!(
+                                        "{} / {}",
+                                        row.mapping_policy_used, row.pwm_mapping_status
                                     ),
                                 });
                                 ui.small(format!("{:.2}", row.quality_score));

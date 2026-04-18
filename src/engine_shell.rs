@@ -28,11 +28,12 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        AttractSplicingEvidenceSettings, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
-        CANDIDATE_SETS_METADATA_KEY, CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
-        CandidateFeatureStrandRelation, CandidateMacroTemplateParam, CandidateObjectiveDirection,
-        CandidateObjectiveSpec, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
@@ -9109,7 +9110,7 @@ fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> 
 fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]"
+            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--all-transcripts] [--no-fallback]"
                 .to_string(),
         );
     }
@@ -9177,6 +9178,23 @@ fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             raw.replace(',', ".").parse::<f64>().map_err(|e| {
                                 format!("Invalid --min-match-quantile value '{raw}': {e}")
                             })?;
+                    }
+                    "--pwm-mapping" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--pwm-mapping",
+                            "attract inspect-splicing",
+                        )?;
+                        settings.pwm_mapping_policy = match raw.trim() {
+                            "strict_same_length" => AttractPwmMappingPolicy::StrictSameLength,
+                            "windowed_submatrix" => AttractPwmMappingPolicy::WindowedSubmatrix,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --pwm-mapping value '{other}' (expected strict_same_length or windowed_submatrix)"
+                                ));
+                            }
+                        };
                     }
                     "--all-transcripts" => {
                         settings.transcript_strand_only = false;

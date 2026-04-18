@@ -576,6 +576,12 @@ Feature tree grouping:
   - settings exposed in-panel:
     - requested organism
     - minimum ATtRACT quality score
+    - PWM mapping policy:
+      - `PWM: strict same-length` keeps PWM ranking limited to rows whose motif
+        length exactly matches the linked PWM width
+      - `PWM: windowed submatrix` can additionally reuse one unique
+        consensus-compatible PWM subwindow when the linked PWM is longer than
+        the motif; retained hits show the chosen subwindow in the hit table
     - donor/acceptor flank size
     - transcript-strand-only toggle
     - explicit species-fallback toggle
@@ -592,6 +598,7 @@ Feature tree grouping:
   - `RBP summary` table groups by factor / organism / motif model and reports:
     - hit count
     - strongest match score
+    - PWM provenance counts (`E` exact-length, `W` windowed, `C` consensus)
     - region-class distribution
     - supporting transcript ids
   - `Hit rows` table lists:
@@ -601,14 +608,22 @@ Feature tree grouping:
     - genomic and local coordinates
     - motif and matched sequence
     - match score plus motif quality
+    - provenance column:
+      - mapping policy used
+      - linked PWM status
+      - optional PWM subwindow range when the windowed mode was used
   - the header summary now also spells out:
     - how many active ATtRACT rows are PWM-backed vs consensus-only
-    - how many retained hits were PWM-scored vs consensus-only
+    - how many retained hits were exact-length PWM, windowed PWM, or
+      consensus-only
   - current v1 scan is deliberately conservative:
     - normalized consensus/IUPAC motifs from `ATtRACT_db.txt` remain the
       candidate gate
-    - when `pwm.txt` blocks could be mapped by `Matrix_id`, those rows now show
-      PWM-backed `llr_bits` ranking filtered by `Min match q`
+    - `strict same-length` is the default because ATtRACT documents the
+      `Matrix_id -> pwm.txt` linkage but does not document a gapped or
+      subwindow-mapping rule
+    - the optional `windowed submatrix` mode is a GENtle heuristic and is
+      always labeled as such in per-hit provenance
     - rows without mapped PWM data keep exact consensus/IUPAC matching only
     - no dense lane overlay or exon-exon junction scan yet
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`

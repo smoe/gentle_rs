@@ -1188,6 +1188,23 @@ impl AttractRegionClass {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AttractPwmMappingPolicy {
+    #[default]
+    StrictSameLength,
+    WindowedSubmatrix,
+}
+
+impl AttractPwmMappingPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StrictSameLength => "strict_same_length",
+            Self::WindowedSubmatrix => "windowed_submatrix",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AttractSplicingEvidenceSettings {
@@ -1199,6 +1216,7 @@ pub struct AttractSplicingEvidenceSettings {
     pub allow_species_fallback: bool,
     pub minimum_quality_score: f64,
     pub minimum_match_quantile: f64,
+    pub pwm_mapping_policy: AttractPwmMappingPolicy,
 }
 
 impl Default for AttractSplicingEvidenceSettings {
@@ -1211,6 +1229,7 @@ impl Default for AttractSplicingEvidenceSettings {
             allow_species_fallback: true,
             minimum_quality_score: 0.0,
             minimum_match_quantile: 0.99,
+            pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
         }
     }
 }
@@ -1234,6 +1253,12 @@ pub struct AttractSplicingEvidenceSummaryRow {
     pub donor_flank_hits: usize,
     pub acceptor_flank_hits: usize,
     pub intron_body_hits: usize,
+    #[serde(default)]
+    pub exact_length_pwm_hits: usize,
+    #[serde(default)]
+    pub windowed_pwm_hits: usize,
+    #[serde(default)]
+    pub consensus_only_hits: usize,
     #[serde(default)]
     pub supporting_transcript_ids: Vec<String>,
 }
@@ -1265,6 +1290,14 @@ pub struct AttractSplicingEvidenceHitRow {
     #[serde(default)]
     pub exact_species_match: bool,
     #[serde(default)]
+    pub pwm_mapping_status: String,
+    #[serde(default)]
+    pub mapping_policy_used: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pfm_subwindow_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pfm_subwindow_end_1based: Option<usize>,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 
@@ -1288,6 +1321,10 @@ pub struct AttractSplicingEvidenceView {
     pub unique_rbp_count: usize,
     pub hit_count: usize,
     pub pwm_scored_hit_count: usize,
+    #[serde(default)]
+    pub exact_length_pwm_hit_count: usize,
+    #[serde(default)]
+    pub windowed_pwm_hit_count: usize,
     pub consensus_hit_count: usize,
     pub active_resource_source: String,
     pub active_resource_item_count: usize,

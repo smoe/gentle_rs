@@ -53,12 +53,18 @@ pub struct AttractMotifRecord {
     pub model_kind: String,
     #[serde(default)]
     pub pwm_present: bool,
+    #[serde(default = "default_pfm_match_status")]
+    pub pfm_match_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pfm: Option<AttractPfmRows>,
 }
 
 fn default_model_kind() -> String {
     "consensus_iupac".to_string()
+}
+
+fn default_pfm_match_status() -> String {
+    "none".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

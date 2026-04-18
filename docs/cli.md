@@ -2465,7 +2465,7 @@ Resource sync commands:
     consensus/IUPAC motif records, and when `pwm.txt` blocks can be mapped by
     `Matrix_id`, stores those PFM rows so splice-aware inspection can add
     PWM-backed ranking on top of the same candidate hits.
-- `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]`
+- `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--all-transcripts] [--no-fallback]`
   - Runs the shared engine-owned splice-aware ATtRACT inspection route over the
     selected Splicing Expert group.
   - Default behavior:

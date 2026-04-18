@@ -177,8 +177,14 @@ fn load_synthetic_attract_snapshot(records: Vec<AttractMotifRecord>) -> tempfile
         fetched_at_unix_ms: 0,
         snapshot_fingerprint: None,
         motif_count: records.len(),
-        pwm_row_count: records.iter().filter(|row| row.pfm.is_some()).count(),
-        consensus_only_row_count: records.iter().filter(|row| row.pfm.is_none()).count(),
+        pwm_row_count: records
+            .iter()
+            .filter(|row| row.pfm_match_status == "exact_length")
+            .count(),
+        consensus_only_row_count: records
+            .iter()
+            .filter(|row| row.pfm_match_status != "exact_length")
+            .count(),
         archive_members: vec!["ATtRACT_db.txt".to_string()],
         warnings: vec![],
         motifs: records,
@@ -23382,6 +23388,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             source_database: None,
             model_kind: "pwm_counts".to_string(),
             pwm_present: true,
+            pfm_match_status: "exact_length".to_string(),
             pfm: Some(AttractPfmRows {
                 a: vec![5.0, 0.0, 0.0, 0.0, 5.0, 5.0],
                 c: vec![0.0, 5.0, 0.0, 0.0, 0.0, 0.0],
@@ -23405,6 +23412,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             source_database: None,
             model_kind: "consensus_iupac".to_string(),
             pwm_present: false,
+            pfm_match_status: "none".to_string(),
             pfm: None,
         },
         AttractMotifRecord {
@@ -23423,6 +23431,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             source_database: None,
             model_kind: "consensus_iupac".to_string(),
             pwm_present: false,
+            pfm_match_status: "none".to_string(),
             pfm: None,
         },
     ]);
@@ -23460,6 +23469,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
                 allow_species_fallback: true,
                 minimum_quality_score: 0.0,
                 minimum_match_quantile: 0.99,
+                pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
             },
         )
         .expect("inspect attract evidence");
@@ -23520,6 +23530,7 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
         source_database: None,
         model_kind: "consensus_iupac".to_string(),
         pwm_present: false,
+        pfm_match_status: "none".to_string(),
         pfm: None,
     }]);
     let mut dna = DNAsequence::from_sequence("TTTTGAAGAACCCTCTTGGGAAAAAAAAAA").expect("valid dna");
@@ -23569,6 +23580,96 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
             .iter()
             .any(|warning| warning.contains("falling back"))
     );
+}
+
+#[test]
+fn test_inspect_splicing_attract_evidence_windowed_submatrix_provenance_is_explicit() {
+    let _serial = attract_test_lock().lock().expect("attract test lock");
+    struct ReloadResetGuard;
+    impl Drop for ReloadResetGuard {
+        fn drop(&mut self) {
+            crate::attract_motifs::reload();
+        }
+    }
+    let _guard = ReloadResetGuard;
+    let _snapshot = load_synthetic_attract_snapshot(vec![AttractMotifRecord {
+        entry_id: "rbp_windowed_hs".to_string(),
+        matrix_id: "M777".to_string(),
+        gene_name: "RBPW".to_string(),
+        gene_id: None,
+        organism: "Homo sapiens".to_string(),
+        motif_iupac: "CTTA".to_string(),
+        length: 4,
+        experiment: None,
+        family: None,
+        domain: None,
+        pubmed_id: None,
+        quality_score: Some(4.0),
+        source_database: None,
+        model_kind: "consensus_iupac".to_string(),
+        pwm_present: true,
+        pfm_match_status: "matrix_id_length_mismatch".to_string(),
+        pfm: Some(AttractPfmRows {
+            a: vec![5.0, 0.0, 0.0, 0.0, 5.0, 5.0],
+            c: vec![0.0, 5.0, 0.0, 0.0, 0.0, 0.0],
+            g: vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            t: vec![0.0, 0.0, 5.0, 5.0, 0.0, 0.0],
+        }),
+    }]);
+    let mut dna = DNAsequence::from_sequence("AAACTTATTT").expect("valid dna");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "SOURCE".into(),
+        location: gb_io::seq::Location::simple_range(0, 10),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 10),
+        qualifiers: vec![
+            ("gene".into(), Some("TEST".to_string())),
+            ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+            ("label".into(), Some("NM_TEST_1".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("windowed".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let strict = engine
+        .inspect_splicing_attract_evidence(
+            "windowed",
+            1,
+            &AttractSplicingEvidenceSettings {
+                pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
+                ..AttractSplicingEvidenceSettings::default()
+            },
+        )
+        .expect("strict inspect");
+    let strict_hit = strict.hit_rows.first().expect("strict hit");
+    assert_eq!(strict_hit.match_score_kind, "exact_match_bp");
+    assert_eq!(strict_hit.mapping_policy_used, "strict_same_length");
+    assert_eq!(strict_hit.pwm_mapping_status, "matrix_id_length_mismatch");
+    assert!(strict_hit.pfm_subwindow_start_1based.is_none());
+
+    let windowed = engine
+        .inspect_splicing_attract_evidence(
+            "windowed",
+            1,
+            &AttractSplicingEvidenceSettings {
+                pwm_mapping_policy: AttractPwmMappingPolicy::WindowedSubmatrix,
+                ..AttractSplicingEvidenceSettings::default()
+            },
+        )
+        .expect("windowed inspect");
+    let windowed_hit = windowed.hit_rows.first().expect("windowed hit");
+    assert_eq!(windowed_hit.match_score_kind, "llr_bits_windowed");
+    assert_eq!(windowed_hit.mapping_policy_used, "windowed_submatrix");
+    assert_eq!(windowed_hit.pwm_mapping_status, "matrix_id_length_mismatch");
+    assert_eq!(windowed_hit.pfm_subwindow_start_1based, Some(2));
+    assert_eq!(windowed_hit.pfm_subwindow_end_1based, Some(5));
+    assert_eq!(windowed.windowed_pwm_hit_count, 1);
+    assert_eq!(windowed.exact_length_pwm_hit_count, 0);
+    assert_eq!(windowed.consensus_hit_count, 0);
 }
 
 #[test]

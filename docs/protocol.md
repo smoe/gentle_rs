@@ -4465,6 +4465,9 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - `allow_species_fallback`
       - `minimum_quality_score`
       - `minimum_match_quantile`
+      - `pwm_mapping_policy`:
+        - `strict_same_length` (default)
+        - `windowed_submatrix`
     - `AttractSpeciesMatchMode`:
       - `exact_organism`
       - `fallback_all_compatible`
@@ -4476,7 +4479,9 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - summary rows:
       - grouped by factor / organism / matrix id
       - include strongest match score, its score kind/quantile, motif-quality
-        maximum, hit count, region-class counts, and supporting transcript ids
+        maximum, hit count, region-class counts, PWM provenance counts
+        (`exact_length_pwm_hits`, `windowed_pwm_hits`, `consensus_only_hits`),
+        and supporting transcript ids
     - hit rows:
       - transcript identity/strand
       - factor / organism / matrix id / motif
@@ -4489,6 +4494,11 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - optional `match_score_quantile`
       - motif `quality_score`
       - exact-species flag
+      - PWM provenance:
+        - `pwm_mapping_status`
+        - `mapping_policy_used`
+        - optional `pfm_subwindow_start_1based`
+        - optional `pfm_subwindow_end_1based`
     - provenance:
       - active ATtRACT source label
       - active resource item count
@@ -4500,6 +4510,8 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - scan warnings
     - aggregate hit counters:
       - `pwm_scored_hit_count`
+      - `exact_length_pwm_hit_count`
+      - `windowed_pwm_hit_count`
       - `consensus_hit_count`
   - current v1 scan semantics:
     - transcript-strand aware by default
@@ -4510,8 +4522,11 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       recorded in the payload
     - normalized consensus/IUPAC matching remains the conservative candidate
       gate
-    - when a row has a mapped PWM block, its retained hits are additionally
-      ranked by PWM `llr_bits` and filtered by `minimum_match_quantile`
+    - under `strict_same_length`, only rows whose motif length exactly matches
+      the linked PWM width use PWM `llr_bits` ranking
+    - under `windowed_submatrix`, rows whose linked PWM is longer than the
+      motif may reuse one unique consensus-compatible PWM subwindow; those hits
+      are labeled as `llr_bits_windowed` with the chosen subwindow range
     - rows without a mapped PWM block continue to use deterministic
       consensus/IUPAC exact matching only
   - contract boundary:
@@ -4529,7 +4544,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
 - Shared-shell command family:
   - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
-  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]`
+  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--all-transcripts] [--no-fallback]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 

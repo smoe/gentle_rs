@@ -630,6 +630,25 @@ fn parse_attract_pwm_row(raw: &str) -> Option<(char, Vec<f64>)> {
     (!values.is_empty()).then_some((base, values))
 }
 
+fn parse_attract_pwm_position_row(raw: &str) -> Option<[f64; 4]> {
+    let values = parse_pwm_numeric_values(raw);
+    if values.len() == 4 {
+        Some([values[0], values[1], values[2], values[3]])
+    } else {
+        None
+    }
+}
+
+fn parse_attract_pwm_header_id(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let without_prefix = trimmed.trim_start_matches('>');
+    let token = without_prefix.split_whitespace().next()?.trim();
+    (!token.is_empty()).then_some(normalized_matrix_key(token))
+}
+
 fn build_attract_pfm_rows(
     matrix_id: &str,
     rows: &HashMap<char, Vec<f64>>,
@@ -671,19 +690,38 @@ fn parse_attract_pwm_text(
     let mut warnings = Vec::<String>::new();
     let mut current_id: Option<String> = None;
     let mut current_rows = HashMap::<char, Vec<f64>>::new();
+    let mut current_position_rows = Vec::<[f64; 4]>::new();
 
     let finalize_current = |matrices: &mut HashMap<String, AttractPfmRows>,
                             warnings: &mut Vec<String>,
                             current_id: &mut Option<String>,
-                            current_rows: &mut HashMap<char, Vec<f64>>| {
+                            current_rows: &mut HashMap<char, Vec<f64>>,
+                            current_position_rows: &mut Vec<[f64; 4]>| {
         let Some(matrix_id) = current_id.take() else {
             current_rows.clear();
+            current_position_rows.clear();
             return;
         };
-        if current_rows.is_empty() {
+        if current_rows.is_empty() && current_position_rows.is_empty() {
             return;
         }
-        match build_attract_pfm_rows(&matrix_id, current_rows) {
+        let parsed = if !current_position_rows.is_empty() {
+            let len = current_position_rows.len();
+            let mut a = Vec::with_capacity(len);
+            let mut c = Vec::with_capacity(len);
+            let mut g = Vec::with_capacity(len);
+            let mut t = Vec::with_capacity(len);
+            for col in current_position_rows.iter() {
+                a.push(col[0]);
+                c.push(col[1]);
+                g.push(col[2]);
+                t.push(col[3]);
+            }
+            Ok(AttractPfmRows { a, c, g, t })
+        } else {
+            build_attract_pfm_rows(&matrix_id, current_rows)
+        };
+        match parsed {
             Ok(pfm) => {
                 matrices.entry(matrix_id.clone()).or_insert(pfm);
             }
@@ -693,6 +731,7 @@ fn parse_attract_pwm_text(
             )),
         }
         current_rows.clear();
+        current_position_rows.clear();
     };
 
     for raw in text.lines() {
@@ -703,7 +742,12 @@ fn parse_attract_pwm_text(
                 &mut warnings,
                 &mut current_id,
                 &mut current_rows,
+                &mut current_position_rows,
             );
+            continue;
+        }
+        if let Some(position_row) = parse_attract_pwm_position_row(trimmed) {
+            current_position_rows.push(position_row);
             continue;
         }
         if let Some((base, values)) = parse_attract_pwm_row(trimmed) {
@@ -715,14 +759,16 @@ fn parse_attract_pwm_text(
             &mut warnings,
             &mut current_id,
             &mut current_rows,
+            &mut current_position_rows,
         );
-        current_id = Some(normalized_matrix_key(trimmed.trim_start_matches('>')));
+        current_id = parse_attract_pwm_header_id(trimmed);
     }
     finalize_current(
         &mut matrices,
         &mut warnings,
         &mut current_id,
         &mut current_rows,
+        &mut current_position_rows,
     );
 
     if matrices.is_empty() {
@@ -808,13 +854,13 @@ fn parse_attract_db_text(
             .and_then(|value| value.replace(',', ".").parse::<f64>().ok());
         let source_database = column_value(&record, map.source_database);
         let normalized_matrix_id = normalized_matrix_key(&matrix_id);
-        let pfm = pwm_by_matrix.get(&normalized_matrix_id).cloned();
-        let pwm_present = pfm.is_some();
-        let effective_length = pfm
-            .as_ref()
-            .map(|pfm| pfm.a.len())
-            .filter(|len| *len > 0)
-            .unwrap_or(len);
+        let motif_length = motif_iupac.len();
+        let candidate_pfm = pwm_by_matrix.get(&normalized_matrix_id).cloned();
+        let pfm_match_status = match candidate_pfm.as_ref() {
+            Some(pfm) if !pfm.a.is_empty() && pfm.a.len() == motif_length => "exact_length",
+            Some(pfm) if !pfm.a.is_empty() => "matrix_id_length_mismatch",
+            _ => "none",
+        };
         let base_entry_id = format!(
             "{}__{}__{}",
             sanitize_snapshot_token(&gene_name),
@@ -834,30 +880,43 @@ fn parse_attract_db_text(
             gene_id,
             organism,
             motif_iupac,
-            length: effective_length,
+            length: motif_length,
             experiment,
             family,
             domain,
             pubmed_id,
             quality_score,
             source_database,
-            model_kind: if pfm.is_some() {
+            model_kind: if pfm_match_status == "exact_length" {
                 "pwm_counts".to_string()
             } else {
                 "consensus_iupac".to_string()
             },
-            pwm_present,
-            pfm,
+            pwm_present: pwm_file_detected,
+            pfm_match_status: pfm_match_status.to_string(),
+            pfm: candidate_pfm.clone(),
         });
-        if effective_length != len {
+        if len != motif_length {
             warnings.push(format!(
-                "ATtRACT row {} ('{}' / '{}') reported length {} but the retained model length is {}.",
+                "ATtRACT row {} ('{}' / '{}') reported length {} but the normalized motif length is {}.",
                 row_idx + 2,
                 gene_name,
                 matrix_id,
                 len,
-                effective_length
+                motif_length
             ));
+        }
+        if let Some(candidate_pfm) = candidate_pfm {
+            if candidate_pfm.a.len() != motif_length {
+                warnings.push(format!(
+                    "ATtRACT row {} ('{}' / '{}') keeps consensus-only matching because motif length {} does not match PWM length {}.",
+                    row_idx + 2,
+                    gene_name,
+                    matrix_id,
+                    motif_length,
+                    candidate_pfm.a.len()
+                ));
+            }
         }
     }
 
@@ -868,7 +927,10 @@ fn parse_attract_db_text(
         ));
     }
     if pwm_file_detected {
-        let mapped_pwm_count = motifs.iter().filter(|row| row.pfm.is_some()).count();
+        let mapped_pwm_count = motifs
+            .iter()
+            .filter(|row| row.pfm_match_status == "exact_length")
+            .count();
         if mapped_pwm_count == 0 {
             warnings.push(
                 "ATtRACT PWM members were detected in the ZIP archive, but no PWM blocks could be mapped to the normalized Matrix_id entries; consensus/IUPAC scanning remains active for all rows."
@@ -892,8 +954,14 @@ fn parse_attract_db_text(
         source: source_label.to_string(),
         fetched_at_unix_ms: now_unix_ms(),
         motif_count: motifs.len(),
-        pwm_row_count: motifs.iter().filter(|row| row.pfm.is_some()).count(),
-        consensus_only_row_count: motifs.iter().filter(|row| row.pfm.is_none()).count(),
+        pwm_row_count: motifs
+            .iter()
+            .filter(|row| row.pfm_match_status == "exact_length")
+            .count(),
+        consensus_only_row_count: motifs
+            .iter()
+            .filter(|row| row.pfm_match_status != "exact_length")
+            .count(),
         snapshot_fingerprint: None,
         archive_members: archive_members.to_vec(),
         warnings,
@@ -1152,5 +1220,23 @@ T [0 0 0]
             "warnings: {:?}",
             snapshot.warnings
         );
+    }
+
+    #[test]
+    fn parses_attract_pwm_position_row_format() {
+        let text = "\
+>M001_0.6\t3
+0.97\t0.01\t0.01\t0.01
+0.01\t0.97\t0.01\t0.01
+0.01\t0.01\t0.97\t0.01
+";
+        let (parsed, warnings) =
+            parse_attract_pwm_text(text, "synthetic pwm").expect("parse pwm text");
+        assert!(warnings.is_empty(), "warnings: {:?}", warnings);
+        let pfm = parsed.get("M001_0.6").expect("matrix M001_0.6");
+        assert_eq!(pfm.a, vec![0.97, 0.01, 0.01]);
+        assert_eq!(pfm.c, vec![0.01, 0.97, 0.01]);
+        assert_eq!(pfm.g, vec![0.01, 0.01, 0.97]);
+        assert_eq!(pfm.t, vec![0.01, 0.01, 0.01]);
     }
 }

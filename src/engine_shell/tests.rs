@@ -13,11 +13,12 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, AttractSplicingEvidenceSettings, ConstructObjective, ConstructRole, Container,
-    ContainerKind, EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, SequenceScanTarget,
+    ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings, ConstructObjective,
+    ConstructRole, Container, ContainerKind, EditableStatus, PrimerDesignProgress,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    RestrictionCloningPcrHandoffMode, SequenceScanTarget,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -11442,7 +11443,7 @@ fn parse_services_status() {
 #[test]
 fn parse_attract_inspect_splicing() {
     let cmd = parse_shell_line(
-        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --all-transcripts --no-fallback",
+        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --pwm-mapping windowed_submatrix --all-transcripts --no-fallback",
     )
     .expect("parse attract inspect-splicing");
     match cmd {
@@ -11458,6 +11459,10 @@ fn parse_attract_inspect_splicing() {
             assert_eq!(settings.boundary_flank_bp, 12);
             assert_eq!(settings.minimum_quality_score, 3.0);
             assert_eq!(settings.minimum_match_quantile, 0.975);
+            assert_eq!(
+                settings.pwm_mapping_policy,
+                AttractPwmMappingPolicy::WindowedSubmatrix
+            );
             assert!(!settings.transcript_strand_only);
             assert!(!settings.allow_species_fallback);
         }
@@ -11791,6 +11796,7 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
                 allow_species_fallback: true,
                 minimum_quality_score: 0.0,
                 minimum_match_quantile: 0.99,
+                pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
             },
         },
     )

@@ -708,10 +708,18 @@ order. Durable architecture constraints and decisions remain in
         `exon_body`, `donor_flank`, `acceptor_flank`, `intron_body`
       - mapped PWM rows now expose matrix-backed match scores plus quantiles
         while rows without a mapped PWM block keep exact consensus matching
+      - ATtRACT PWM provenance is now explicit end-to-end:
+        - default `strict_same_length` policy remains the conservative mode
+        - optional `windowed_submatrix` mode is available as an explicitly
+          labeled GENtle heuristic for linked longer PWMs
+        - per-hit payloads now record mapping policy, linked-PWM status, and
+          any chosen PWM subwindow range
       - runtime/resource summaries now expose PWM-backed vs consensus-only row
         counts, plus PWM-scored vs consensus-only retained-hit counts, so a
         real ATtRACT ZIP can be sanity-checked quickly before reading biology
     - immediate follow-up gaps on this track:
+      - evaluate whether the new `windowed_submatrix` heuristic is biologically
+        useful enough on real loci to keep exposed, tighten, or retire
       - consider widening PWM scanning beyond consensus-compatible windows only
         once noise behavior is characterized on real loci
       - consider lightweight lane overlays/density badges once payload counts

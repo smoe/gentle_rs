@@ -19,9 +19,9 @@ use crate::ensembl_protein::{
 use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::{
-    AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
-    AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, SplicingIntronSignal,
+    AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
+    AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
+    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, SplicingIntronSignal,
 };
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
@@ -7373,6 +7373,73 @@ impl GentleEngine {
         best.map(|(_, class)| class).unwrap_or(default_region)
     }
 
+    fn attract_pfm_counts(pfm: &crate::attract_motifs::AttractPfmRows) -> Option<Vec<[f64; 4]>> {
+        let len = pfm.a.len();
+        if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
+            return None;
+        }
+        Some(
+            (0..len)
+                .map(|idx| [pfm.a[idx], pfm.c[idx], pfm.g[idx], pfm.t[idx]])
+                .collect(),
+        )
+    }
+
+    fn attract_pfm_consensus_bytes(pfm: &crate::attract_motifs::AttractPfmRows) -> Option<Vec<u8>> {
+        let counts = Self::attract_pfm_counts(pfm)?;
+        Some(
+            counts
+                .into_iter()
+                .map(|row| {
+                    let (best_idx, _) = row
+                        .iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.total_cmp(b.1))
+                        .unwrap_or((0, &row[0]));
+                    [b'A', b'C', b'G', b'T'][best_idx]
+                })
+                .collect(),
+        )
+    }
+
+    fn attract_windowed_submatrix_for_motif(
+        motif_iupac: &str,
+        pfm: &crate::attract_motifs::AttractPfmRows,
+    ) -> Result<Option<(usize, Vec<[f64; 4]>)>, String> {
+        let counts = Self::attract_pfm_counts(pfm).ok_or_else(|| {
+            "linked PWM rows were malformed and could not be converted into a scoring matrix"
+                .to_string()
+        })?;
+        let motif_len = motif_iupac.len();
+        if motif_len == 0 || counts.len() <= motif_len {
+            return Ok(None);
+        }
+        let consensus = Self::attract_pfm_consensus_bytes(pfm).ok_or_else(|| {
+            "linked PWM rows were malformed and could not be summarized into a consensus"
+                .to_string()
+        })?;
+        let motif_bytes = motif_iupac.as_bytes();
+        let compatible_offsets = (0..=(consensus.len() - motif_len))
+            .filter(|offset| Self::iupac_match_at(&consensus, motif_bytes, *offset))
+            .collect::<Vec<_>>();
+        match compatible_offsets.as_slice() {
+            [offset] => Ok(Some((
+                *offset,
+                counts[*offset..(*offset + motif_len)].to_vec(),
+            ))),
+            [] => Err(format!(
+                "linked PWM could not be anchored onto motif '{}' because no consensus-compatible subwindow was found",
+                motif_iupac
+            )),
+            offsets => Err(format!(
+                "linked PWM for motif '{}' had {} consensus-compatible subwindows ({:?}); keeping consensus-only matching to preserve provenance",
+                motif_iupac,
+                offsets.len(),
+                offsets.iter().map(|offset| offset + 1).collect::<Vec<_>>()
+            )),
+        }
+    }
+
     fn scan_attract_hits_in_segment(
         &self,
         dna: &DNAsequence,
@@ -7411,17 +7478,91 @@ impl GentleEngine {
                 .map(|token| Self::normalized_species_token(&motif.organism) == token)
                 .unwrap_or(false);
             let consensus_pattern = motif.motif_iupac.as_bytes();
-            let matrix_counts = motif.pfm.as_ref().and_then(|pfm| {
-                let len = pfm.a.len();
-                if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
-                    return None;
-                }
-                Some(
-                    (0..len)
-                        .map(|idx| [pfm.a[idx], pfm.c[idx], pfm.g[idx], pfm.t[idx]])
-                        .collect::<Vec<_>>(),
-                )
-            });
+            let motif_len = motif.motif_iupac.len();
+            let mut row_warnings = Vec::<String>::new();
+            let (matrix_counts, match_score_kind, mapping_policy_used, pfm_subwindow) =
+                match settings.pwm_mapping_policy {
+                    AttractPwmMappingPolicy::StrictSameLength
+                        if motif.pfm_match_status == "exact_length" =>
+                    {
+                        (
+                            motif.pfm.as_ref().and_then(Self::attract_pfm_counts),
+                            "llr_bits",
+                            AttractPwmMappingPolicy::StrictSameLength
+                                .as_str()
+                                .to_string(),
+                            None,
+                        )
+                    }
+                    AttractPwmMappingPolicy::WindowedSubmatrix
+                        if motif.pfm_match_status == "exact_length" =>
+                    {
+                        (
+                            motif.pfm.as_ref().and_then(Self::attract_pfm_counts),
+                            "llr_bits",
+                            AttractPwmMappingPolicy::WindowedSubmatrix
+                                .as_str()
+                                .to_string(),
+                            Some((1usize, motif_len)),
+                        )
+                    }
+                    AttractPwmMappingPolicy::WindowedSubmatrix
+                        if motif.pfm_match_status == "matrix_id_length_mismatch" =>
+                    {
+                        match motif.pfm.as_ref().map(|pfm| {
+                            Self::attract_windowed_submatrix_for_motif(&motif.motif_iupac, pfm)
+                        }) {
+                            Some(Ok(Some((start_offset, counts)))) => (
+                                Some(counts),
+                                "llr_bits_windowed",
+                                AttractPwmMappingPolicy::WindowedSubmatrix
+                                    .as_str()
+                                    .to_string(),
+                                Some((start_offset + 1, start_offset + motif_len)),
+                            ),
+                            Some(Ok(None)) => {
+                                row_warnings.push(
+                                    "windowed PWM mapping was requested but the linked matrix was not longer than the motif; falling back to consensus-only matching".to_string(),
+                                );
+                                (
+                                    None,
+                                    "exact_match_bp",
+                                    AttractPwmMappingPolicy::WindowedSubmatrix
+                                        .as_str()
+                                        .to_string(),
+                                    None,
+                                )
+                            }
+                            Some(Err(err)) => {
+                                row_warnings.push(format!(
+                                    "windowed PWM mapping fell back to consensus-only matching: {err}"
+                                ));
+                                (
+                                    None,
+                                    "exact_match_bp",
+                                    AttractPwmMappingPolicy::WindowedSubmatrix
+                                        .as_str()
+                                        .to_string(),
+                                    None,
+                                )
+                            }
+                            None => (
+                                None,
+                                "exact_match_bp",
+                                AttractPwmMappingPolicy::WindowedSubmatrix
+                                    .as_str()
+                                    .to_string(),
+                                None,
+                            ),
+                        }
+                    }
+                    _ => (
+                        None,
+                        "exact_match_bp",
+                        settings.pwm_mapping_policy.as_str().to_string(),
+                        None,
+                    ),
+                };
             let scored_offsets = if let Some(matrix_counts) = matrix_counts {
                 let (llr_matrix, _true_log_odds_matrix) =
                     Self::prepare_scoring_matrices(&matrix_counts);
@@ -7445,12 +7586,11 @@ impl GentleEngine {
                             let quantile = Self::empirical_quantile(&all_scores, score);
                             (Self::iupac_match_at(&oriented_bytes, consensus_pattern, offset)
                                 && quantile >= settings.minimum_match_quantile)
-                                .then_some((offset, motif_len, score, Some(quantile), "llr_bits"))
+                                .then_some((offset, motif_len, score, Some(quantile)))
                         })
                         .collect::<Vec<_>>()
                 }
             } else {
-                let motif_len = motif.motif_iupac.len();
                 if oriented_bytes.len() < motif_len {
                     vec![]
                 } else {
@@ -7458,13 +7598,11 @@ impl GentleEngine {
                         .filter(|offset| {
                             Self::iupac_match_at(&oriented_bytes, consensus_pattern, *offset)
                         })
-                        .map(|offset| (offset, motif_len, motif_len as f64, None, "exact_match_bp"))
+                        .map(|offset| (offset, motif_len, motif_len as f64, None))
                         .collect::<Vec<_>>()
                 }
             };
-            for (offset, motif_len, match_score, match_score_quantile, match_score_kind) in
-                scored_offsets
-            {
+            for (offset, motif_len, match_score, match_score_quantile) in scored_offsets {
                 let (genomic_start_1based, genomic_end_1based) = if transcript.strand.trim() == "-"
                 {
                     let genomic_end = end_1based.saturating_sub(offset);
@@ -7507,7 +7645,11 @@ impl GentleEngine {
                     match_score_quantile,
                     quality_score: motif.quality_score.unwrap_or(0.0),
                     exact_species_match,
-                    warnings: vec![],
+                    pwm_mapping_status: motif.pfm_match_status.clone(),
+                    mapping_policy_used: mapping_policy_used.clone(),
+                    pfm_subwindow_start_1based: pfm_subwindow.map(|(start, _)| start),
+                    pfm_subwindow_end_1based: pfm_subwindow.map(|(_, end)| end),
+                    warnings: row_warnings.clone(),
                 });
             }
         }
@@ -7657,6 +7799,9 @@ impl GentleEngine {
             donor_flank_hits: usize,
             acceptor_flank_hits: usize,
             intron_body_hits: usize,
+            exact_length_pwm_hits: usize,
+            windowed_pwm_hits: usize,
+            consensus_only_hits: usize,
             supporting_transcript_ids: BTreeSet<String>,
         }
 
@@ -7685,6 +7830,11 @@ impl GentleEngine {
             entry
                 .supporting_transcript_ids
                 .insert(hit.transcript_id.clone());
+            match hit.match_score_kind.as_str() {
+                "llr_bits" => entry.exact_length_pwm_hits += 1,
+                "llr_bits_windowed" => entry.windowed_pwm_hits += 1,
+                _ => entry.consensus_only_hits += 1,
+            }
             match hit.region_class {
                 AttractRegionClass::ExonBody => entry.exon_body_hits += 1,
                 AttractRegionClass::DonorFlank => entry.donor_flank_hits += 1,
@@ -7709,13 +7859,26 @@ impl GentleEngine {
                 donor_flank_hits: row.donor_flank_hits,
                 acceptor_flank_hits: row.acceptor_flank_hits,
                 intron_body_hits: row.intron_body_hits,
+                exact_length_pwm_hits: row.exact_length_pwm_hits,
+                windowed_pwm_hits: row.windowed_pwm_hits,
+                consensus_only_hits: row.consensus_only_hits,
                 supporting_transcript_ids: row.supporting_transcript_ids.into_iter().collect(),
             })
             .collect::<Vec<_>>();
         let resource_status = crate::resource_status::resource_catalog_status();
         let pwm_scored_hit_count = hit_rows
             .iter()
+            .filter(|row| {
+                row.match_score_kind == "llr_bits" || row.match_score_kind == "llr_bits_windowed"
+            })
+            .count();
+        let exact_length_pwm_hit_count = hit_rows
+            .iter()
             .filter(|row| row.match_score_kind == "llr_bits")
+            .count();
+        let windowed_pwm_hit_count = hit_rows
+            .iter()
+            .filter(|row| row.match_score_kind == "llr_bits_windowed")
             .count();
         let consensus_hit_count = hit_rows.len().saturating_sub(pwm_scored_hit_count);
         Ok(AttractSplicingEvidenceView {
@@ -7734,6 +7897,8 @@ impl GentleEngine {
             unique_rbp_count: summary_rows.len(),
             hit_count: hit_rows.len(),
             pwm_scored_hit_count,
+            exact_length_pwm_hit_count,
+            windowed_pwm_hit_count,
             consensus_hit_count,
             active_resource_source: resource_status.attract.active_source,
             active_resource_item_count: resource_status.attract.active_item_count,
