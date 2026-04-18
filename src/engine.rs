@@ -551,6 +551,8 @@ mod import_anchors;
 mod jaspar;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
+#[path = "engine/analysis/motif_statistics.rs"]
+mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
 #[path = "engine/analysis/promoter_design.rs"]

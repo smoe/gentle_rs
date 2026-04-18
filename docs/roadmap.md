@@ -63,6 +63,7 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
   - `src/engine/analysis/candidate_metrics.rs` (candidate metrics, feature-distance helpers, and expression scoring)
   - `src/engine/analysis/feature_expert_ops.rs` (feature-expert, splicing, and isoform helper routines)
+  - `src/engine/analysis/motif_statistics.rs` (shared motif/PSSM probability smoothing, scoring-matrix preparation, quantile scoring, and scan helpers reused by JASPAR summaries and TFBS score tracks)
   - `src/engine/io/genome_tracks.rs` (genome track parsing/import helpers for BED/BigWig/VCF/BLAST overlays)
   - `src/engine/io/import_anchors.rs` (GenBank-derived anchor parsing and import-origin helpers)
   - `src/engine/state/lineage_containers.rs` (lineage-node and container/arrangement helper routines)
@@ -632,9 +633,10 @@ order. Durable architecture constraints and decisions remain in
     `known_external_only`, `runtime_snapshot`, and `session_override` for
     ATtRACT instead of treating it as URL-only metadata
   - v1 integration is deliberately conservative and explicit:
-    normalized consensus/IUPAC motifs from `ATtRACT_db.txt` are scanned
-    deterministically, while `pwm.txt` presence is recorded as provenance and
-    a warning rather than silently claiming PWM scoring
+    normalized consensus/IUPAC motifs from `ATtRACT_db.txt` still define the
+    splice-aware candidate hits, while mapped `pwm.txt` blocks now upgrade
+    those rows to PWM-backed `llr_bits` ranking instead of remaining
+    provenance-only
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor
@@ -665,11 +667,11 @@ order. Durable architecture constraints and decisions remain in
       - exact organism match first, explicit fallback second
       - region classes:
         `exon_body`, `donor_flank`, `acceptor_flank`, `intron_body`
+      - mapped PWM rows now expose matrix-backed match scores plus quantiles
+        while rows without a mapped PWM block keep exact consensus matching
     - immediate follow-up gaps on this track:
-      - reuse the shared motif/PSSM math layer once PWM-backed ATtRACT scoring
-        is implemented, instead of creating a second unrelated motif-statistics
-        stack
-      - add direct PWM scoring when ATtRACT PWM payloads are available
+      - consider widening PWM scanning beyond consensus-compatible windows only
+        once noise behavior is characterized on real loci
       - consider lightweight lane overlays/density badges once payload counts
         and CPU behavior are well characterized
       - keep tightening provenance/export surfaces so the ATtRACT snapshot

@@ -9039,7 +9039,7 @@ fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> 
 fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]"
+            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]"
                 .to_string(),
         );
     }
@@ -9095,6 +9095,18 @@ fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             .replace(',', ".")
                             .parse::<f64>()
                             .map_err(|e| format!("Invalid --min-score value '{raw}': {e}"))?;
+                    }
+                    "--min-match-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-match-quantile",
+                            "attract inspect-splicing",
+                        )?;
+                        settings.minimum_match_quantile =
+                            raw.replace(',', ".").parse::<f64>().map_err(|e| {
+                                format!("Invalid --min-match-quantile value '{raw}': {e}")
+                            })?;
                     }
                     "--all-transcripts" => {
                         settings.transcript_strand_only = false;

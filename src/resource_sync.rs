@@ -2,7 +2,7 @@
 //! writing.
 
 use crate::attract_motifs::{
-    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot,
+    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
     DEFAULT_ATTRACT_RESOURCE_PATH,
 };
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,16 @@ struct AttractDbHeaderMap {
     pubmed: Option<usize>,
     quality_score: Option<usize>,
     source_database: Option<usize>,
+}
+
+fn archive_has_named_member(archive_members: &[String], file_name: &str) -> bool {
+    archive_members.iter().any(|member| {
+        Path::new(member)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case(file_name))
+            .unwrap_or(false)
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -572,10 +582,162 @@ fn attract_header_map(headers: &csv::StringRecord) -> AttractDbHeaderMap {
     map
 }
 
+fn normalized_matrix_key(raw: &str) -> String {
+    raw.trim().to_ascii_uppercase()
+}
+
+fn parse_pwm_numeric_values(raw: &str) -> Vec<f64> {
+    raw.chars()
+        .map(|ch| match ch {
+            '[' | ']' | ',' | ';' | ':' | '|' => ' ',
+            _ => ch,
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .filter_map(|token| token.parse::<f64>().ok())
+        .collect()
+}
+
+fn parse_attract_pwm_row(raw: &str) -> Option<(char, Vec<f64>)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = trimmed
+        .chars()
+        .map(|ch| match ch {
+            '[' | ']' | ',' | ';' | ':' | '|' => ' ',
+            _ => ch,
+        })
+        .collect::<String>();
+    let tokens = normalized.split_whitespace().collect::<Vec<_>>();
+    if tokens.len() < 2 {
+        return None;
+    }
+    let base = tokens[0]
+        .trim_matches(|ch: char| !ch.is_ascii_alphabetic())
+        .chars()
+        .next()?
+        .to_ascii_uppercase();
+    let base = match base {
+        'A' | 'C' | 'G' => base,
+        'T' | 'U' => 'T',
+        _ => return None,
+    };
+    let values = parse_pwm_numeric_values(&tokens[1..].join(" "));
+    (!values.is_empty()).then_some((base, values))
+}
+
+fn build_attract_pfm_rows(
+    matrix_id: &str,
+    rows: &HashMap<char, Vec<f64>>,
+) -> Result<AttractPfmRows, String> {
+    let a = rows
+        .get(&'A')
+        .cloned()
+        .ok_or_else(|| format!("ATtRACT PWM '{matrix_id}' is missing an A row"))?;
+    let c = rows
+        .get(&'C')
+        .cloned()
+        .ok_or_else(|| format!("ATtRACT PWM '{matrix_id}' is missing a C row"))?;
+    let g = rows
+        .get(&'G')
+        .cloned()
+        .ok_or_else(|| format!("ATtRACT PWM '{matrix_id}' is missing a G row"))?;
+    let t = rows
+        .get(&'T')
+        .cloned()
+        .ok_or_else(|| format!("ATtRACT PWM '{matrix_id}' is missing a T/U row"))?;
+    let len = a.len();
+    if len == 0 || c.len() != len || g.len() != len || t.len() != len {
+        return Err(format!(
+            "ATtRACT PWM '{matrix_id}' has unequal row lengths (A={}, C={}, G={}, T={})",
+            a.len(),
+            c.len(),
+            g.len(),
+            t.len()
+        ));
+    }
+    Ok(AttractPfmRows { a, c, g, t })
+}
+
+fn parse_attract_pwm_text(
+    text: &str,
+    source_label: &str,
+) -> Result<(HashMap<String, AttractPfmRows>, Vec<String>), String> {
+    let mut matrices = HashMap::<String, AttractPfmRows>::new();
+    let mut warnings = Vec::<String>::new();
+    let mut current_id: Option<String> = None;
+    let mut current_rows = HashMap::<char, Vec<f64>>::new();
+
+    let finalize_current = |matrices: &mut HashMap<String, AttractPfmRows>,
+                            warnings: &mut Vec<String>,
+                            current_id: &mut Option<String>,
+                            current_rows: &mut HashMap<char, Vec<f64>>| {
+        let Some(matrix_id) = current_id.take() else {
+            current_rows.clear();
+            return;
+        };
+        if current_rows.is_empty() {
+            return;
+        }
+        match build_attract_pfm_rows(&matrix_id, current_rows) {
+            Ok(pfm) => {
+                matrices.entry(matrix_id.clone()).or_insert(pfm);
+            }
+            Err(err) => warnings.push(format!(
+                "Skipped ATtRACT PWM block '{}' from '{}': {err}",
+                matrix_id, source_label
+            )),
+        }
+        current_rows.clear();
+    };
+
+    for raw in text.lines() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            finalize_current(
+                &mut matrices,
+                &mut warnings,
+                &mut current_id,
+                &mut current_rows,
+            );
+            continue;
+        }
+        if let Some((base, values)) = parse_attract_pwm_row(trimmed) {
+            current_rows.insert(base, values);
+            continue;
+        }
+        finalize_current(
+            &mut matrices,
+            &mut warnings,
+            &mut current_id,
+            &mut current_rows,
+        );
+        current_id = Some(normalized_matrix_key(trimmed.trim_start_matches('>')));
+    }
+    finalize_current(
+        &mut matrices,
+        &mut warnings,
+        &mut current_id,
+        &mut current_rows,
+    );
+
+    if matrices.is_empty() {
+        warnings.push(format!(
+            "No ATtRACT PWM matrices could be parsed from '{}'; consensus/IUPAC fallback will remain active.",
+            source_label
+        ));
+    }
+    Ok((matrices, warnings))
+}
+
 fn parse_attract_db_text(
     text: &str,
     source_label: &str,
     archive_members: &[String],
+    pwm_by_matrix: &HashMap<String, AttractPfmRows>,
+    pwm_warnings: &[String],
 ) -> Result<AttractMotifSnapshot, String> {
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(b'\t')
@@ -598,8 +760,9 @@ fn parse_attract_db_text(
     }
 
     let mut motifs = Vec::<AttractMotifRecord>::new();
-    let mut warnings = Vec::<String>::new();
+    let mut warnings = pwm_warnings.to_vec();
     let mut seen_entry_ids = BTreeSet::<String>::new();
+    let pwm_file_detected = archive_has_named_member(archive_members, "pwm.txt");
     for (row_idx, row) in reader.records().enumerate() {
         let record = row.map_err(|e| {
             format!(
@@ -642,6 +805,13 @@ fn parse_attract_db_text(
         let quality_score = column_value(&record, map.quality_score)
             .and_then(|value| value.replace(',', ".").parse::<f64>().ok());
         let source_database = column_value(&record, map.source_database);
+        let normalized_matrix_id = normalized_matrix_key(&matrix_id);
+        let pfm = pwm_by_matrix.get(&normalized_matrix_id).cloned();
+        let effective_length = pfm
+            .as_ref()
+            .map(|pfm| pfm.a.len())
+            .filter(|len| *len > 0)
+            .unwrap_or(len);
         let base_entry_id = format!(
             "{}__{}__{}",
             sanitize_snapshot_token(&gene_name),
@@ -656,27 +826,36 @@ fn parse_attract_db_text(
         }
         motifs.push(AttractMotifRecord {
             entry_id,
-            matrix_id,
-            gene_name,
+            matrix_id: matrix_id.clone(),
+            gene_name: gene_name.clone(),
             gene_id,
             organism,
             motif_iupac,
-            length: len,
+            length: effective_length,
             experiment,
             family,
             domain,
             pubmed_id,
             quality_score,
             source_database,
-            model_kind: "consensus_iupac".to_string(),
-            pwm_present: archive_members.iter().any(|member| {
-                Path::new(member)
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .map(|value| value.eq_ignore_ascii_case("pwm.txt"))
-                    .unwrap_or(false)
-            }),
+            model_kind: if pfm.is_some() {
+                "pwm_counts".to_string()
+            } else {
+                "consensus_iupac".to_string()
+            },
+            pwm_present: pwm_file_detected,
+            pfm,
         });
+        if effective_length != len {
+            warnings.push(format!(
+                "ATtRACT row {} ('{}' / '{}') reported length {} but the retained model length is {}.",
+                row_idx + 2,
+                gene_name,
+                matrix_id,
+                len,
+                effective_length
+            ));
+        }
     }
 
     if motifs.is_empty() {
@@ -685,17 +864,24 @@ fn parse_attract_db_text(
             source_label
         ));
     }
-    if archive_members.iter().any(|member| {
-        Path::new(member)
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(|value| value.eq_ignore_ascii_case("pwm.txt"))
-            .unwrap_or(false)
-    }) {
-        warnings.push(
-            "ATtRACT PWM members were detected in the ZIP archive, but this first integration normalizes and scans the published consensus/IUPAC motifs from ATtRACT_db.txt only."
-                .to_string(),
-        );
+    if pwm_file_detected {
+        let mapped_pwm_count = motifs.iter().filter(|row| row.pfm.is_some()).count();
+        if mapped_pwm_count == 0 {
+            warnings.push(
+                "ATtRACT PWM members were detected in the ZIP archive, but no PWM blocks could be mapped to the normalized Matrix_id entries; consensus/IUPAC scanning remains active for all rows."
+                    .to_string(),
+            );
+        } else if mapped_pwm_count < motifs.len() {
+            warnings.push(format!(
+                "ATtRACT PWM members were detected in the ZIP archive and mapped for {mapped_pwm_count}/{} normalized motif rows; remaining rows fall back to consensus/IUPAC scanning.",
+                motifs.len()
+            ));
+        } else {
+            warnings.push(format!(
+                "ATtRACT PWM members were detected in the ZIP archive and mapped for all {} normalized motif rows.",
+                motifs.len()
+            ));
+        }
     }
 
     Ok(AttractMotifSnapshot {
@@ -793,7 +979,26 @@ pub fn sync_attract(input: &str, output: Option<&str>) -> Result<SyncReport, Str
                 )
             })?;
         let db_text = read_zip_member_text(archive_path, &db_member)?;
-        parse_attract_db_text(&db_text, input, &archive_members)
+        let (pwm_by_matrix, pwm_warnings) = if let Some(pwm_member) =
+            archive_members.iter().find(|member| {
+                Path::new(member.as_str())
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.eq_ignore_ascii_case("pwm.txt"))
+                    .unwrap_or(false)
+            }) {
+            let pwm_text = read_zip_member_text(archive_path, pwm_member)?;
+            parse_attract_pwm_text(&pwm_text, input)?
+        } else {
+            (HashMap::new(), vec![])
+        };
+        parse_attract_db_text(
+            &db_text,
+            input,
+            &archive_members,
+            &pwm_by_matrix,
+            &pwm_warnings,
+        )
     })?;
     ensure_parent_dir(&output)?;
     let json = serde_json::to_string_pretty(&snapshot)
@@ -823,7 +1028,11 @@ mod tests {
             "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
         )
         .expect("write attract db");
-        fs::write(&pwm_path, "M001\nA\t1\n").expect("write pwm placeholder");
+        fs::write(
+            &pwm_path,
+            "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n\nM003\nA\t1\t1\t1\t1\nC\t1\t1\t1\t1\nG\t1\t1\t1\t1\nT\t1\t1\t1\t1\n",
+        )
+        .expect("write pwm placeholder");
         let archive_path = root.join("attract.zip");
         let output = Command::new("zip")
             .arg("-jq")
@@ -902,20 +1111,37 @@ T [0 0 0]
                     .cloned()
                     .expect("db member");
                 let db_text = read_zip_member_text(path, &db_member)?;
-                parse_attract_db_text(&db_text, archive_path.to_string_lossy().as_ref(), &members)
+                let pwm_member = members
+                    .iter()
+                    .find(|member| member.ends_with("pwm.txt"))
+                    .cloned()
+                    .expect("pwm member");
+                let pwm_text = read_zip_member_text(path, &pwm_member)?;
+                let (pwm_by_matrix, pwm_warnings) =
+                    parse_attract_pwm_text(&pwm_text, archive_path.to_string_lossy().as_ref())?;
+                parse_attract_db_text(
+                    &db_text,
+                    archive_path.to_string_lossy().as_ref(),
+                    &members,
+                    &pwm_by_matrix,
+                    &pwm_warnings,
+                )
             })
             .expect("parse attract archive");
         assert_eq!(snapshot.schema, ATTRACT_MOTIF_SNAPSHOT_SCHEMA);
         assert_eq!(snapshot.motif_count, 2);
         assert_eq!(snapshot.motifs[0].gene_name, "SRSF1");
         assert_eq!(snapshot.motifs[0].motif_iupac, "GAAGAA");
+        assert_eq!(snapshot.motifs[0].model_kind, "pwm_counts");
+        assert!(snapshot.motifs[0].pfm.is_some());
         assert_eq!(snapshot.motifs[1].motif_iupac, "TCTT");
+        assert_eq!(snapshot.motifs[1].model_kind, "consensus_iupac");
         assert!(snapshot.motifs.iter().all(|row| row.pwm_present));
         assert!(
             snapshot
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("consensus/IUPAC")),
+                .any(|warning| warning.contains("mapped for 1/2")),
             "warnings: {:?}",
             snapshot.warnings
         );

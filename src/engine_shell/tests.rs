@@ -119,7 +119,11 @@ fn write_synthetic_attract_zip(dir: &Path) -> std::path::PathBuf {
         "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
     )
     .expect("write attract db");
-    fs::write(&pwm_path, "M001\nA\t1\n").expect("write pwm placeholder");
+    fs::write(
+        &pwm_path,
+        "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n",
+    )
+    .expect("write pwm placeholder");
     let archive_path = dir.join(format!("attract_{unique}.zip"));
     let output = Command::new("zip")
         .arg("-jq")
@@ -11374,7 +11378,7 @@ fn parse_services_status() {
 #[test]
 fn parse_attract_inspect_splicing() {
     let cmd = parse_shell_line(
-        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --all-transcripts --no-fallback",
+        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --all-transcripts --no-fallback",
     )
     .expect("parse attract inspect-splicing");
     match cmd {
@@ -11389,6 +11393,7 @@ fn parse_attract_inspect_splicing() {
             assert_eq!(settings.requested_organism.as_deref(), Some("Homo sapiens"));
             assert_eq!(settings.boundary_flank_bp, 12);
             assert_eq!(settings.minimum_quality_score, 3.0);
+            assert_eq!(settings.minimum_match_quantile, 0.975);
             assert!(!settings.transcript_strand_only);
             assert!(!settings.allow_species_fallback);
         }
@@ -11650,6 +11655,7 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
                 requested_organism: None,
                 allow_species_fallback: true,
                 minimum_quality_score: 0.0,
+                minimum_match_quantile: 0.99,
             },
         },
     )
@@ -11669,6 +11675,13 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
         out.output["summary_rows"][0]["gene_name"].as_str(),
         Some("PTBP1")
     );
+    let hit_rows = out.output["hit_rows"].as_array().expect("hit rows array");
+    assert!(hit_rows.iter().any(|row| {
+        row.get("match_score_kind").and_then(|value| value.as_str()) == Some("llr_bits")
+    }));
+    assert!(hit_rows.iter().any(|row| {
+        row.get("match_score_kind").and_then(|value| value.as_str()) == Some("exact_match_bp")
+    }));
 }
 
 #[test]

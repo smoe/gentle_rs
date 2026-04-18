@@ -11058,6 +11058,7 @@ enum AttractRegionFilter {
 struct AttractEvidenceUiState {
     requested_organism: String,
     minimum_quality_score: String,
+    minimum_match_quantile: String,
     boundary_flank_bp: String,
     transcript_strand_only: bool,
     allow_species_fallback: bool,
@@ -11073,6 +11074,7 @@ impl Default for AttractEvidenceUiState {
         Self {
             requested_organism: String::new(),
             minimum_quality_score: format!("{:.1}", defaults.minimum_quality_score),
+            minimum_match_quantile: format!("{:.2}", defaults.minimum_match_quantile),
             boundary_flank_bp: defaults.boundary_flank_bp.to_string(),
             transcript_strand_only: defaults.transcript_strand_only,
             allow_species_fallback: defaults.allow_species_fallback,
@@ -23354,6 +23356,15 @@ impl MainAreaDna {
                 .replace(',', ".")
                 .parse::<f64>()
                 .unwrap_or(0.0),
+            minimum_match_quantile: self
+                .attract_evidence_ui
+                .minimum_match_quantile
+                .trim()
+                .replace(',', ".")
+                .parse::<f64>()
+                .unwrap_or_else(|_| {
+                    AttractSplicingEvidenceSettings::default().minimum_match_quantile
+                }),
         }
     }
 
@@ -23424,6 +23435,13 @@ impl MainAreaDna {
                         )
                         .desired_width(52.0),
                     );
+                    ui.label("Min match q");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.attract_evidence_ui.minimum_match_quantile,
+                        )
+                        .desired_width(52.0),
+                    );
                     ui.label("Flank bp");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.attract_evidence_ui.boundary_flank_bp)
@@ -23453,7 +23471,7 @@ impl MainAreaDna {
                     }
                 };
                 ui.small(format!(
-                    "Snapshot={} motifs={}{} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={}",
+                    "Snapshot={} motifs={}{} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={} | min-match-q={:.2}",
                     evidence.active_resource_source,
                     evidence.active_resource_item_count,
                     evidence
@@ -23472,7 +23490,8 @@ impl MainAreaDna {
                         .resolved_organism
                         .as_deref()
                         .unwrap_or("unspecified"),
-                    evidence.species_match_mode.as_str()
+                    evidence.species_match_mode.as_str(),
+                    evidence.settings.minimum_match_quantile
                 ));
                 for warning in evidence.warnings.iter().take(2) {
                     ui.small(
@@ -23532,7 +23551,7 @@ impl MainAreaDna {
                             || row.matrix_id.to_ascii_lowercase().contains(&factor_filter)
                             || row.motif_iupac.to_ascii_lowercase().contains(&factor_filter)
                     })
-                    .filter(|row| row.strongest_score >= min_quality)
+                    .filter(|row| row.max_quality_score >= min_quality)
                     .collect::<Vec<_>>();
                 ui.separator();
                 ui.label(egui::RichText::new("RBP summary").strong());
@@ -23553,7 +23572,7 @@ impl MainAreaDna {
                             ui.small("Organism");
                             ui.small("Model");
                             ui.small("Hits");
-                            ui.small("Best");
+                            ui.small("Best match");
                             ui.small("Regions");
                             ui.small("Transcripts");
                             ui.end_row();
@@ -23579,7 +23598,18 @@ impl MainAreaDna {
                                 ui.small(&row.organism);
                                 ui.small(format!("{} ({})", row.matrix_id, row.motif_iupac));
                                 ui.small(row.hit_count.to_string());
-                                ui.small(format!("{:.2}", row.strongest_score));
+                                ui.small(match row.strongest_score_quantile {
+                                    Some(quantile) => format!(
+                                        "{:.2} {} q{:.3}",
+                                        row.strongest_score,
+                                        row.strongest_score_kind,
+                                        quantile
+                                    ),
+                                    None => format!(
+                                        "{:.2} {}",
+                                        row.strongest_score, row.strongest_score_kind
+                                    ),
+                                });
                                 ui.small(format!(
                                     "E{} D{} A{} I{}",
                                     row.exon_body_hits,
@@ -23657,7 +23687,8 @@ impl MainAreaDna {
                             ui.small("Region");
                             ui.small("Coords");
                             ui.small("Motif");
-                            ui.small("Score");
+                            ui.small("Match");
+                            ui.small("Quality");
                             ui.end_row();
                             for row in filtered_hits {
                                 ui.small(&row.transcript_id);
@@ -23674,6 +23705,16 @@ impl MainAreaDna {
                                     "{} -> {}",
                                     row.motif_iupac, row.matched_sequence
                                 ));
+                                ui.small(match row.match_score_quantile {
+                                    Some(quantile) => format!(
+                                        "{:.2} {} q{:.3}",
+                                        row.match_score, row.match_score_kind, quantile
+                                    ),
+                                    None => format!(
+                                        "{:.2} {}",
+                                        row.match_score, row.match_score_kind
+                                    ),
+                                });
                                 ui.small(format!("{:.2}", row.quality_score));
                                 ui.end_row();
                             }

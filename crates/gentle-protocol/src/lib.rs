@@ -1198,6 +1198,7 @@ pub struct AttractSplicingEvidenceSettings {
     pub requested_organism: Option<String>,
     pub allow_species_fallback: bool,
     pub minimum_quality_score: f64,
+    pub minimum_match_quantile: f64,
 }
 
 impl Default for AttractSplicingEvidenceSettings {
@@ -1209,6 +1210,7 @@ impl Default for AttractSplicingEvidenceSettings {
             requested_organism: None,
             allow_species_fallback: true,
             minimum_quality_score: 0.0,
+            minimum_match_quantile: 0.99,
         }
     }
 }
@@ -1223,6 +1225,11 @@ pub struct AttractSplicingEvidenceSummaryRow {
     pub model_kind: String,
     pub hit_count: usize,
     pub strongest_score: f64,
+    #[serde(default)]
+    pub strongest_score_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strongest_score_quantile: Option<f64>,
+    pub max_quality_score: f64,
     pub exon_body_hits: usize,
     pub donor_flank_hits: usize,
     pub acceptor_flank_hits: usize,
@@ -1249,6 +1256,11 @@ pub struct AttractSplicingEvidenceHitRow {
     pub region_local_start_1based: usize,
     pub region_local_end_1based: usize,
     pub matched_sequence: String,
+    pub match_score: f64,
+    #[serde(default)]
+    pub match_score_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_score_quantile: Option<f64>,
     pub quality_score: f64,
     #[serde(default)]
     pub exact_species_match: bool,

@@ -2415,18 +2415,21 @@ Resource sync commands:
   - `INPUT` may be a local ZIP path or an `https://...` URL.
   - Default output: `data/resources/attract.motifs.json`.
   - Current v1 normalization reads `ATtRACT_db.txt`, keeps deterministic
-    consensus/IUPAC motif records, and records `pwm.txt` presence as provenance
-    and a warning rather than silently pretending PWM scoring exists already.
-- `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]`
+    consensus/IUPAC motif records, and when `pwm.txt` blocks can be mapped by
+    `Matrix_id`, stores those PFM rows so splice-aware inspection can add
+    PWM-backed ranking on top of the same candidate hits.
+- `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]`
   - Runs the shared engine-owned splice-aware ATtRACT inspection route over the
     selected Splicing Expert group.
   - Default behavior:
     - transcript-strand only
     - exact organism match first
-    - optional fallback to all normalized ATtRACT entries when no exact match
+      - optional fallback to all normalized ATtRACT entries when no exact match
       exists
-    - region classification returned as `exon_body`, `donor_flank`,
+      - region classification returned as `exon_body`, `donor_flank`,
       `acceptor_flank`, or `intron_body`
+    - `--min-match-quantile` defaults to `0.99` and applies to PWM-backed rows;
+      rows without a mapped PWM block keep exact consensus/IUPAC matching
   - Returns grouped RBP summary rows plus detailed hit rows from the same
     payload the GUI uses.
   - Payload provenance now also includes `active_resource_fingerprint` so CLI,

@@ -1,10 +1,11 @@
 //! ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 //!
 //! This module owns the normalized runtime representation of motifs imported
-//! from the published ATtRACT ZIP download. The first integration milestone is
-//! intentionally conservative: it loads exact/IUPAC consensus motifs with
-//! provenance intact so splice-aware interpretation can stay deterministic even
-//! before full PWM scoring is implemented.
+//! from the published ATtRACT ZIP download. The first integration milestone
+//! loaded exact/IUPAC consensus motifs with provenance intact; the current
+//! milestone optionally retains per-matrix PWM/PFM rows too so splice-aware
+//! interpretation can upgrade to PWM-backed scoring without inventing a second
+//! resource schema.
 
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -15,6 +16,15 @@ use std::{
 
 pub const ATTRACT_MOTIF_SNAPSHOT_SCHEMA: &str = "gentle.attract_motifs.v1";
 pub const DEFAULT_ATTRACT_RESOURCE_PATH: &str = "data/resources/attract.motifs.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AttractPfmRows {
+    pub a: Vec<f64>,
+    pub c: Vec<f64>,
+    pub g: Vec<f64>,
+    pub t: Vec<f64>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -43,6 +53,8 @@ pub struct AttractMotifRecord {
     pub model_kind: String,
     #[serde(default)]
     pub pwm_present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pfm: Option<AttractPfmRows>,
 }
 
 fn default_model_kind() -> String {

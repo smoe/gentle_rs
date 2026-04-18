@@ -7407,18 +7407,64 @@ impl GentleEngine {
             if motif.quality_score.unwrap_or(0.0) < settings.minimum_quality_score {
                 continue;
             }
-            let motif_len = motif.motif_iupac.len();
-            if oriented_bytes.len() < motif_len {
-                continue;
-            }
-            let pattern = motif.motif_iupac.as_bytes();
             let exact_species_match = exact_species_normalized
                 .map(|token| Self::normalized_species_token(&motif.organism) == token)
                 .unwrap_or(false);
-            for offset in 0..=(oriented_bytes.len() - motif_len) {
-                if !Self::iupac_match_at(&oriented_bytes, pattern, offset) {
-                    continue;
+            let consensus_pattern = motif.motif_iupac.as_bytes();
+            let matrix_counts = motif.pfm.as_ref().and_then(|pfm| {
+                let len = pfm.a.len();
+                if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
+                    return None;
                 }
+                Some(
+                    (0..len)
+                        .map(|idx| [pfm.a[idx], pfm.c[idx], pfm.g[idx], pfm.t[idx]])
+                        .collect::<Vec<_>>(),
+                )
+            });
+            let scored_offsets = if let Some(matrix_counts) = matrix_counts {
+                let (llr_matrix, _true_log_odds_matrix) =
+                    Self::prepare_scoring_matrices(&matrix_counts);
+                let motif_len = llr_matrix.len();
+                if oriented_bytes.len() < motif_len {
+                    vec![]
+                } else {
+                    let mut scores = Vec::<(usize, f64)>::new();
+                    let mut all_scores = Vec::<f64>::new();
+                    for offset in 0..=(oriented_bytes.len() - motif_len) {
+                        let window = &oriented_bytes[offset..offset + motif_len];
+                        if let Some(score) = Self::score_matrix_window(window, &llr_matrix) {
+                            scores.push((offset, score));
+                            all_scores.push(score);
+                        }
+                    }
+                    all_scores.sort_by(|a, b| a.total_cmp(b));
+                    scores
+                        .into_iter()
+                        .filter_map(|(offset, score)| {
+                            let quantile = Self::empirical_quantile(&all_scores, score);
+                            (Self::iupac_match_at(&oriented_bytes, consensus_pattern, offset)
+                                && quantile >= settings.minimum_match_quantile)
+                                .then_some((offset, motif_len, score, Some(quantile), "llr_bits"))
+                        })
+                        .collect::<Vec<_>>()
+                }
+            } else {
+                let motif_len = motif.motif_iupac.len();
+                if oriented_bytes.len() < motif_len {
+                    vec![]
+                } else {
+                    (0..=(oriented_bytes.len() - motif_len))
+                        .filter(|offset| {
+                            Self::iupac_match_at(&oriented_bytes, consensus_pattern, *offset)
+                        })
+                        .map(|offset| (offset, motif_len, motif_len as f64, None, "exact_match_bp"))
+                        .collect::<Vec<_>>()
+                }
+            };
+            for (offset, motif_len, match_score, match_score_quantile, match_score_kind) in
+                scored_offsets
+            {
                 let (genomic_start_1based, genomic_end_1based) = if transcript.strand.trim() == "-"
                 {
                     let genomic_end = end_1based.saturating_sub(offset);
@@ -7456,6 +7502,9 @@ impl GentleEngine {
                         &oriented_bytes[offset..offset + motif_len],
                     )
                     .to_string(),
+                    match_score,
+                    match_score_kind: match_score_kind.to_string(),
+                    match_score_quantile,
                     quality_score: motif.quality_score.unwrap_or(0.0),
                     exact_species_match,
                     warnings: vec![],
@@ -7601,6 +7650,9 @@ impl GentleEngine {
             model_kind: String,
             hit_count: usize,
             strongest_score: f64,
+            strongest_score_kind: String,
+            strongest_score_quantile: Option<f64>,
+            max_quality_score: f64,
             exon_body_hits: usize,
             donor_flank_hits: usize,
             acceptor_flank_hits: usize,
@@ -7624,7 +7676,12 @@ impl GentleEngine {
                 ..Default::default()
             });
             entry.hit_count += 1;
-            entry.strongest_score = entry.strongest_score.max(hit.quality_score);
+            if entry.hit_count == 1 || hit.match_score > entry.strongest_score {
+                entry.strongest_score = hit.match_score;
+                entry.strongest_score_kind = hit.match_score_kind.clone();
+                entry.strongest_score_quantile = hit.match_score_quantile;
+            }
+            entry.max_quality_score = entry.max_quality_score.max(hit.quality_score);
             entry
                 .supporting_transcript_ids
                 .insert(hit.transcript_id.clone());
@@ -7645,6 +7702,9 @@ impl GentleEngine {
                 model_kind: row.model_kind,
                 hit_count: row.hit_count,
                 strongest_score: row.strongest_score,
+                strongest_score_kind: row.strongest_score_kind,
+                strongest_score_quantile: row.strongest_score_quantile,
+                max_quality_score: row.max_quality_score,
                 exon_body_hits: row.exon_body_hits,
                 donor_flank_hits: row.donor_flank_hits,
                 acceptor_flank_hits: row.acceptor_flank_hits,
