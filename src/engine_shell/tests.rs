@@ -11784,6 +11784,18 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         Some("builtin")
     );
     assert_eq!(
+        out.output["jaspar"]["remote_metadata_snapshot"]["path"].as_str(),
+        Some("data/resources/jaspar.remote_metadata.json")
+    );
+    assert_eq!(
+        out.output["jaspar"]["remote_metadata_snapshot"]["exists"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        out.output["jaspar"]["remote_metadata_snapshot"]["valid"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
         out.output["attract"]["support_status"].as_str(),
         Some("known_external_only")
     );

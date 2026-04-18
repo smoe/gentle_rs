@@ -11,6 +11,7 @@ use crate::{
         list_motif_summaries as list_attract_motif_summaries, snapshot_fingerprint_from_text,
     },
     enzymes::load_restriction_enzymes_from_json_text,
+    resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
     tf_motifs::list_motif_summaries,
 };
 use serde::Serialize;
@@ -52,6 +53,17 @@ pub struct ResourceSnapshotStatus {
     pub runtime_error: Option<String>,
     pub active_source: String,
     pub active_item_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_metadata_snapshot: Option<DerivedSnapshotStatus>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DerivedSnapshotStatus {
+    pub path: String,
+    pub exists: bool,
+    pub valid: bool,
+    pub item_count: Option<usize>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +123,32 @@ fn count_jaspar_snapshot_items(text: &str) -> Result<usize, String> {
         .unwrap_or(0))
 }
 
+fn count_jaspar_remote_metadata_snapshot_items(text: &str) -> Result<usize, String> {
+    let parsed: Value = serde_json::from_str(text)
+        .map_err(|e| format!("Could not parse JASPAR remote-metadata JSON: {e}"))?;
+    let schema = parsed
+        .get("schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if !schema.starts_with("gentle.jaspar_remote_metadata_snapshot.v") {
+        return Err(format!(
+            "Unexpected JASPAR remote-metadata schema '{schema}'"
+        ));
+    }
+    if let Some(count) = parsed
+        .get("persisted_entry_count")
+        .and_then(|v| v.as_u64())
+    {
+        return Ok(count as usize);
+    }
+    Ok(parsed
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .map(|rows| rows.len())
+        .unwrap_or(0))
+}
+
 fn rebase_status() -> ResourceSnapshotStatus {
     let builtin_item_count =
         load_restriction_enzymes_from_json_text(BUILTIN_REBASE_JSON).map_or(0, |v| v.len());
@@ -155,6 +193,7 @@ fn rebase_status() -> ResourceSnapshotStatus {
         runtime_error,
         active_source,
         active_item_count,
+        remote_metadata_snapshot: None,
     }
 }
 
@@ -183,6 +222,26 @@ fn jaspar_status() -> ResourceSnapshotStatus {
     } else {
         "builtin".to_string()
     };
+    let remote_metadata_exists = std::path::Path::new(DEFAULT_JASPAR_REMOTE_METADATA_PATH).exists();
+    let (remote_metadata_valid, remote_metadata_item_count, remote_metadata_error) =
+        if remote_metadata_exists {
+            match fs::read_to_string(DEFAULT_JASPAR_REMOTE_METADATA_PATH)
+                .map_err(|e| {
+                    format!("Could not read JASPAR remote-metadata snapshot: {e}")
+                })
+                .and_then(|text| count_jaspar_remote_metadata_snapshot_items(&text))
+            {
+                Ok(count) if count > 0 => (true, Some(count), None),
+                Ok(count) => (
+                    false,
+                    Some(count),
+                    Some("JASPAR remote-metadata snapshot is empty".to_string()),
+                ),
+                Err(error) => (false, None, Some(error)),
+            }
+        } else {
+            (false, None, None)
+        };
     ResourceSnapshotStatus {
         resource_id: "jaspar".to_string(),
         builtin_label: BUILTIN_JASPAR_LABEL.to_string(),
@@ -195,6 +254,13 @@ fn jaspar_status() -> ResourceSnapshotStatus {
         runtime_error,
         active_source,
         active_item_count,
+        remote_metadata_snapshot: Some(DerivedSnapshotStatus {
+            path: DEFAULT_JASPAR_REMOTE_METADATA_PATH.to_string(),
+            exists: remote_metadata_exists,
+            valid: remote_metadata_valid,
+            item_count: remote_metadata_item_count,
+            error: remote_metadata_error,
+        }),
     }
 }
 

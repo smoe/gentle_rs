@@ -423,6 +423,9 @@ of living only in one GUI/app run:
   - and one compact derived summary for catalog/list views
 - the default runtime snapshot path is:
   - `data/resources/jaspar.remote_metadata.json`
+- `resources status` surfaces this snapshot separately from the local motif
+  registry status so operators can tell whether cached species metadata exists,
+  is valid, and how many persisted rows it currently holds
 
 Current shared-shell route:
 

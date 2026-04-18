@@ -635,6 +635,8 @@ order. Durable architecture constraints and decisions remain in
   `resources sync-jaspar-remote-metadata` refresh and persist
   `data/resources/jaspar.remote_metadata.json`, and the catalog/expert routes
   now reuse that snapshot before reaching for live REST metadata again.
+  `resources status` also reports whether that persisted snapshot exists, is
+  valid, and how many cached rows it currently holds.
 - Next operational step for that path:
   add a routine registry-wide snapshot/benchmark over all local JASPAR entries
   (default `10000 bp` random background, deterministic seed, cached/exportable
