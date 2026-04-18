@@ -4606,6 +4606,31 @@ Post-baseline follow-ups:
     - add enzyme-specific methylation-sensitivity catalogs so adapter/linker
       capture reasoning can graduate from “planned protection requires review”
       to enzyme-aware cut/protect predictions
+    - Reserved for Anze: strengthen repeat/mobile-element biology with a
+      curated repeat-family layer on top of the current internal predictors:
+      - support better grounded family calls such as `Alu`, `LINE`, `LTR`,
+        simple satellites, microsatellites, and low-complexity tracts
+      - keep the current heuristic spans/facts as generated/internal review
+        cues, then let curated family knowledge upgrade qualifying regions into
+        stronger repeat-family annotations without changing the shared graph
+        contract
+    - Reserved for Anze: make the similarity/repeat predictors more
+      assay-aware instead of keeping one broad review severity:
+      - PCR: distinguish primer-design risk from amplicon-through-repeat risk
+      - Nanopore: distinguish homopolymer/basecalling risk from repeat-driven
+        remapping ambiguity
+      - Mapping: add read-length- and family-copy-aware ambiguity summaries
+      - Cloning: distinguish inversion/recombination risk from broader
+        repeat-rich instability
+    - Reserved for Anze: integrate repeat/similarity predictors more directly
+      into action and annotation:
+      - allow accepted repeat/similarity candidates to mature into ordinary
+        sequence annotations through the same write-back pathway used by other
+        reviewed annotation candidates
+      - feed repeat/mobile-element predictor facts into routine/planning
+        suggestions and ClawBio/OpenClaw summaries
+      - keep the DNA-window presentation summary-first, with optional
+        drill-down into underlying repeat members on demand
     - expose non-sequence condition/host/helper reasoning clearly in the two
       primary interfaces:
       - GUI: deepen the new inspector from read-only fact/decision summaries
