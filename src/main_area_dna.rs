@@ -11068,6 +11068,7 @@ struct AttractEvidenceUiState {
     minimum_match_quantile: String,
     boundary_flank_bp: String,
     pwm_mapping_policy: AttractPwmMappingPolicy,
+    compare_alternate_policy: bool,
     transcript_strand_only: bool,
     allow_species_fallback: bool,
     factor_filter: String,
@@ -11085,6 +11086,7 @@ impl Default for AttractEvidenceUiState {
             minimum_match_quantile: format!("{:.2}", defaults.minimum_match_quantile),
             boundary_flank_bp: defaults.boundary_flank_bp.to_string(),
             pwm_mapping_policy: defaults.pwm_mapping_policy,
+            compare_alternate_policy: defaults.compare_alternate_policy,
             transcript_strand_only: defaults.transcript_strand_only,
             allow_species_fallback: defaults.allow_species_fallback,
             factor_filter: String::new(),
@@ -23375,6 +23377,7 @@ impl MainAreaDna {
                     AttractSplicingEvidenceSettings::default().minimum_match_quantile
                 }),
             pwm_mapping_policy: self.attract_evidence_ui.pwm_mapping_policy,
+            compare_alternate_policy: self.attract_evidence_ui.compare_alternate_policy,
         }
     }
 
@@ -23486,6 +23489,10 @@ impl MainAreaDna {
                         &mut self.attract_evidence_ui.allow_species_fallback,
                         "Fallback when no exact species match",
                     );
+                    ui.checkbox(
+                        &mut self.attract_evidence_ui.compare_alternate_policy,
+                        "Compare strict/windowed counts",
+                    );
                 });
 
                 let evidence = match self.cached_splicing_attract_evidence_for_view(view) {
@@ -23535,6 +23542,23 @@ impl MainAreaDna {
                         egui::RichText::new(warning)
                             .color(egui::Color32::from_rgb(180, 83, 9)),
                     );
+                }
+                if let Some(alternate) = evidence.alternate_policy_summary.as_ref() {
+                    let hit_delta = alternate.hit_count as isize - evidence.hit_count as isize;
+                    let rbp_delta =
+                        alternate.unique_rbp_count as isize - evidence.unique_rbp_count as isize;
+                    ui.small(format!(
+                        "Alt {}: hits={} ({:+}) unique RBPs={} ({:+}) | pwm={} (exact={} windowed={} consensus={})",
+                        alternate.pwm_mapping_policy.as_str(),
+                        alternate.hit_count,
+                        hit_delta,
+                        alternate.unique_rbp_count,
+                        rbp_delta,
+                        alternate.pwm_scored_hit_count,
+                        alternate.exact_length_pwm_hit_count,
+                        alternate.windowed_pwm_hit_count,
+                        alternate.consensus_hit_count
+                    ));
                 }
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Factor filter");

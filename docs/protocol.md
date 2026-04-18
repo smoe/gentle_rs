@@ -4468,6 +4468,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - `pwm_mapping_policy`:
         - `strict_same_length` (default)
         - `windowed_submatrix`
+      - `compare_alternate_policy`
     - `AttractSpeciesMatchMode`:
       - `exact_organism`
       - `fallback_all_compatible`
@@ -4505,6 +4506,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - active resource PWM-backed row count
       - active resource consensus-only row count
       - optional `active_resource_fingerprint`
+      - optional `alternate_policy_summary`
       - requested/resolved organism
       - species-match mode
       - scan warnings
@@ -4544,7 +4546,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
 - Shared-shell command family:
   - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
-  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--all-transcripts] [--no-fallback]`
+  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--compare-policies] [--all-transcripts] [--no-fallback]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 

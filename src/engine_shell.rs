@@ -9110,7 +9110,7 @@ fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> 
 fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--all-transcripts] [--no-fallback]"
+            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--compare-policies] [--all-transcripts] [--no-fallback]"
                 .to_string(),
         );
     }
@@ -9198,6 +9198,10 @@ fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     "--all-transcripts" => {
                         settings.transcript_strand_only = false;
+                        idx += 1;
+                    }
+                    "--compare-policies" => {
+                        settings.compare_alternate_policy = true;
                         idx += 1;
                     }
                     "--no-fallback" => {

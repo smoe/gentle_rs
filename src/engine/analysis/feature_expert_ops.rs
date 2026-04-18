@@ -20,8 +20,9 @@ use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::{
     AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
-    AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
-    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, SplicingIntronSignal,
+    AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
+    AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
+    AttractSplicingEvidenceView, SplicingIntronSignal,
 };
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
@@ -7662,6 +7663,16 @@ impl GentleEngine {
         feature_id: usize,
         settings: &AttractSplicingEvidenceSettings,
     ) -> Result<AttractSplicingEvidenceView, EngineError> {
+        self.inspect_splicing_attract_evidence_internal(seq_id, feature_id, settings, true)
+    }
+
+    fn inspect_splicing_attract_evidence_internal(
+        &self,
+        seq_id: &str,
+        feature_id: usize,
+        settings: &AttractSplicingEvidenceSettings,
+        allow_alternate_summary: bool,
+    ) -> Result<AttractSplicingEvidenceView, EngineError> {
         let motifs = attract_motifs::all_motifs();
         if motifs.is_empty() {
             return Err(EngineError {
@@ -7881,7 +7892,7 @@ impl GentleEngine {
             .filter(|row| row.match_score_kind == "llr_bits_windowed")
             .count();
         let consensus_hit_count = hit_rows.len().saturating_sub(pwm_scored_hit_count);
-        Ok(AttractSplicingEvidenceView {
+        let mut output = AttractSplicingEvidenceView {
             schema: ATTRACT_SPLICING_EVIDENCE_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
             target_feature_id: feature_id,
@@ -7907,10 +7918,40 @@ impl GentleEngine {
                 .attract
                 .active_consensus_only_row_count,
             active_resource_fingerprint: resource_status.attract.active_fingerprint,
+            alternate_policy_summary: None,
             summary_rows,
             hit_rows,
             warnings,
-        })
+        };
+        if allow_alternate_summary && settings.compare_alternate_policy {
+            let alternate_policy = match settings.pwm_mapping_policy {
+                AttractPwmMappingPolicy::StrictSameLength => {
+                    AttractPwmMappingPolicy::WindowedSubmatrix
+                }
+                AttractPwmMappingPolicy::WindowedSubmatrix => {
+                    AttractPwmMappingPolicy::StrictSameLength
+                }
+            };
+            let mut alternate_settings = settings.clone();
+            alternate_settings.compare_alternate_policy = false;
+            alternate_settings.pwm_mapping_policy = alternate_policy;
+            let alternate = self.inspect_splicing_attract_evidence_internal(
+                seq_id,
+                feature_id,
+                &alternate_settings,
+                false,
+            )?;
+            output.alternate_policy_summary = Some(AttractSplicingEvidencePolicySummary {
+                pwm_mapping_policy: alternate.settings.pwm_mapping_policy,
+                unique_rbp_count: alternate.unique_rbp_count,
+                hit_count: alternate.hit_count,
+                pwm_scored_hit_count: alternate.pwm_scored_hit_count,
+                exact_length_pwm_hit_count: alternate.exact_length_pwm_hit_count,
+                windowed_pwm_hit_count: alternate.windowed_pwm_hit_count,
+                consensus_hit_count: alternate.consensus_hit_count,
+            });
+        }
+        Ok(output)
     }
 
     pub fn inspect_feature_expert(

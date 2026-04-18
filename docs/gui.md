@@ -582,6 +582,8 @@ Feature tree grouping:
       - `PWM: windowed submatrix` can additionally reuse one unique
         consensus-compatible PWM subwindow when the linked PWM is longer than
         the motif; retained hits show the chosen subwindow in the hit table
+    - optional `Compare strict/windowed counts` toggle to show the alternate
+      policy’s aggregate counts without switching the active hit table
     - donor/acceptor flank size
     - transcript-strand-only toggle
     - explicit species-fallback toggle
@@ -616,6 +618,7 @@ Feature tree grouping:
     - how many active ATtRACT rows are PWM-backed vs consensus-only
     - how many retained hits were exact-length PWM, windowed PWM, or
       consensus-only
+    - optional alternate-policy count summary with hit and unique-RBP deltas
   - current v1 scan is deliberately conservative:
     - normalized consensus/IUPAC motifs from `ATtRACT_db.txt` remain the
       candidate gate

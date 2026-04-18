@@ -1217,6 +1217,7 @@ pub struct AttractSplicingEvidenceSettings {
     pub minimum_quality_score: f64,
     pub minimum_match_quantile: f64,
     pub pwm_mapping_policy: AttractPwmMappingPolicy,
+    pub compare_alternate_policy: bool,
 }
 
 impl Default for AttractSplicingEvidenceSettings {
@@ -1230,8 +1231,21 @@ impl Default for AttractSplicingEvidenceSettings {
             minimum_quality_score: 0.0,
             minimum_match_quantile: 0.99,
             pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
+            compare_alternate_policy: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AttractSplicingEvidencePolicySummary {
+    pub pwm_mapping_policy: AttractPwmMappingPolicy,
+    pub unique_rbp_count: usize,
+    pub hit_count: usize,
+    pub pwm_scored_hit_count: usize,
+    pub exact_length_pwm_hit_count: usize,
+    pub windowed_pwm_hit_count: usize,
+    pub consensus_hit_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1332,6 +1346,8 @@ pub struct AttractSplicingEvidenceView {
     pub active_resource_consensus_only_row_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_resource_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alternate_policy_summary: Option<AttractSplicingEvidencePolicySummary>,
     #[serde(default)]
     pub summary_rows: Vec<AttractSplicingEvidenceSummaryRow>,
     #[serde(default)]

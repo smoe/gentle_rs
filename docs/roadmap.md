@@ -714,6 +714,8 @@ order. Durable architecture constraints and decisions remain in
           labeled GENtle heuristic for linked longer PWMs
         - per-hit payloads now record mapping policy, linked-PWM status, and
           any chosen PWM subwindow range
+        - optional alternate-policy summaries can now compare strict vs
+          windowed aggregate counts without switching the active hit table
       - runtime/resource summaries now expose PWM-backed vs consensus-only row
         counts, plus PWM-scored vs consensus-only retained-hit counts, so a
         real ATtRACT ZIP can be sanity-checked quickly before reading biology

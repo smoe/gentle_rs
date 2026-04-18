@@ -11443,7 +11443,7 @@ fn parse_services_status() {
 #[test]
 fn parse_attract_inspect_splicing() {
     let cmd = parse_shell_line(
-        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --pwm-mapping windowed_submatrix --all-transcripts --no-fallback",
+        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --pwm-mapping windowed_submatrix --compare-policies --all-transcripts --no-fallback",
     )
     .expect("parse attract inspect-splicing");
     match cmd {
@@ -11463,6 +11463,7 @@ fn parse_attract_inspect_splicing() {
                 settings.pwm_mapping_policy,
                 AttractPwmMappingPolicy::WindowedSubmatrix
             );
+            assert!(settings.compare_alternate_policy);
             assert!(!settings.transcript_strand_only);
             assert!(!settings.allow_species_fallback);
         }
@@ -11797,6 +11798,7 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
                 minimum_quality_score: 0.0,
                 minimum_match_quantile: 0.99,
                 pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
+                compare_alternate_policy: true,
             },
         },
     )
@@ -11810,6 +11812,10 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
             .as_str()
             .map(|value| value.starts_with("sha1:"))
             .unwrap_or(false)
+    );
+    assert_eq!(
+        out.output["alternate_policy_summary"]["pwm_mapping_policy"].as_str(),
+        Some("windowed_submatrix")
     );
     assert_eq!(out.output["hit_count"].as_u64(), Some(2));
     assert_eq!(

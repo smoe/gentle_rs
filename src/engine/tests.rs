@@ -23470,6 +23470,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
                 minimum_quality_score: 0.0,
                 minimum_match_quantile: 0.99,
                 pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
+                compare_alternate_policy: false,
             },
         )
         .expect("inspect attract evidence");
@@ -23641,6 +23642,7 @@ fn test_inspect_splicing_attract_evidence_windowed_submatrix_provenance_is_expli
             1,
             &AttractSplicingEvidenceSettings {
                 pwm_mapping_policy: AttractPwmMappingPolicy::StrictSameLength,
+                compare_alternate_policy: true,
                 ..AttractSplicingEvidenceSettings::default()
             },
         )
@@ -23650,6 +23652,13 @@ fn test_inspect_splicing_attract_evidence_windowed_submatrix_provenance_is_expli
     assert_eq!(strict_hit.mapping_policy_used, "strict_same_length");
     assert_eq!(strict_hit.pwm_mapping_status, "matrix_id_length_mismatch");
     assert!(strict_hit.pfm_subwindow_start_1based.is_none());
+    assert_eq!(
+        strict
+            .alternate_policy_summary
+            .as_ref()
+            .map(|row| row.pwm_mapping_policy.as_str()),
+        Some("windowed_submatrix")
+    );
 
     let windowed = engine
         .inspect_splicing_attract_evidence(
@@ -23657,6 +23666,7 @@ fn test_inspect_splicing_attract_evidence_windowed_submatrix_provenance_is_expli
             1,
             &AttractSplicingEvidenceSettings {
                 pwm_mapping_policy: AttractPwmMappingPolicy::WindowedSubmatrix,
+                compare_alternate_policy: true,
                 ..AttractSplicingEvidenceSettings::default()
             },
         )
@@ -23670,6 +23680,13 @@ fn test_inspect_splicing_attract_evidence_windowed_submatrix_provenance_is_expli
     assert_eq!(windowed.windowed_pwm_hit_count, 1);
     assert_eq!(windowed.exact_length_pwm_hit_count, 0);
     assert_eq!(windowed.consensus_hit_count, 0);
+    assert_eq!(
+        windowed
+            .alternate_policy_summary
+            .as_ref()
+            .map(|row| row.pwm_mapping_policy.as_str()),
+        Some("strict_same_length")
+    );
 }
 
 #[test]
