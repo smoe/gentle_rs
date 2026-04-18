@@ -14,6 +14,29 @@ use super::*;
 use serde_json::Value;
 
 impl GentleEngine {
+    pub(crate) fn jaspar_remote_metadata_summary(
+        metadata: &JasparRemoteMetadata,
+    ) -> JasparCatalogRemoteSummary {
+        let mut species_preview = metadata
+            .species_assignments
+            .iter()
+            .map(|row| row.scientific_name.trim().to_string())
+            .filter(|row| !row.is_empty())
+            .collect::<Vec<_>>();
+        species_preview.sort_by_key(|value| value.to_ascii_uppercase());
+        species_preview.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        species_preview.truncate(3);
+        JasparCatalogRemoteSummary {
+            collection: metadata.collection.clone(),
+            tax_group: metadata.tax_group.clone(),
+            tf_class: metadata.tf_class.clone(),
+            tf_family: metadata.tf_family.clone(),
+            data_type: metadata.data_type.clone(),
+            species_count: metadata.species_assignments.len(),
+            species_preview,
+        }
+    }
+
     fn jaspar_extreme_sequence(score_matrix: &[[f64; 4]], pick_max: bool) -> String {
         const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
         let mut out = String::with_capacity(score_matrix.len());
@@ -525,6 +548,71 @@ impl GentleEngine {
         })
     }
 
+    pub(crate) fn list_jaspar_catalog(
+        &self,
+        filter: Option<&str>,
+        limit: Option<usize>,
+        include_remote_metadata: bool,
+    ) -> Result<JasparCatalogReport, EngineError> {
+        let requested_filter = filter.map(str::trim).filter(|value| !value.is_empty());
+        let normalized_filter = requested_filter.map(|value| value.to_ascii_uppercase());
+        let all_rows = tf_motifs::list_motif_summaries();
+        let registry_entry_count = all_rows.len();
+        let mut warnings = vec![];
+        let mut rows = vec![];
+        for row in all_rows.into_iter().filter(|row| {
+            let Some(filter) = normalized_filter.as_deref() else {
+                return true;
+            };
+            row.id.to_ascii_uppercase().contains(filter)
+                || row
+                    .name
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_ascii_uppercase()
+                    .contains(filter)
+                || row.consensus_iupac.to_ascii_uppercase().contains(filter)
+        }) {
+            let remote_summary = if include_remote_metadata {
+                match self.fetch_jaspar_remote_metadata(&row.id) {
+                    Ok(metadata) => Some(Self::jaspar_remote_metadata_summary(&metadata)),
+                    Err(err) => {
+                        warnings.push(format!("{}: {}", row.id, err.message));
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            rows.push(JasparCatalogRow {
+                motif_id: row.id,
+                motif_name: row.name,
+                consensus_iupac: row.consensus_iupac,
+                motif_length_bp: row.motif_length_bp,
+                remote_summary,
+            });
+            if let Some(limit) = limit {
+                if rows.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(JasparCatalogReport {
+            schema: JASPAR_CATALOG_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            filter: requested_filter.map(str::to_string),
+            limit,
+            include_remote_metadata,
+            registry_entry_count,
+            returned_entry_count: rows.len(),
+            rows,
+            warnings,
+        })
+    }
+
     pub(crate) fn summarize_jaspar_entries(
         &self,
         motifs: &[String],
@@ -665,6 +753,14 @@ impl GentleEngine {
         path: &str,
     ) -> Result<(), EngineError> {
         self.write_pretty_json_file(report, path, "JASPAR entry presentation report")
+    }
+
+    pub(crate) fn write_jaspar_catalog_report_json(
+        &self,
+        report: &JasparCatalogReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        self.write_pretty_json_file(report, path, "JASPAR catalog report")
     }
 
     pub(crate) fn write_jaspar_entry_expert_view_json(

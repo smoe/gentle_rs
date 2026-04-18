@@ -5774,6 +5774,7 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             restriction_site_scan: None,
+            jaspar_catalog_report: None,
             jaspar_entry_expert_view: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
@@ -12555,6 +12556,39 @@ impl GentleEngine {
                     report.random_sequence_length_bp
                 ));
                 result.jaspar_entry_presentation = Some(report);
+            }
+            Operation::ListJasparCatalog {
+                filter,
+                limit,
+                include_remote_metadata,
+                path,
+            } => {
+                let mut report =
+                    self.list_jaspar_catalog(filter.as_deref(), limit, include_remote_metadata)?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_catalog_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR catalog report for {} entry/entries to '{}'",
+                        report.returned_entry_count, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "JASPAR catalog listed {} entry/entries{}{}",
+                    report.returned_entry_count,
+                    report
+                        .filter
+                        .as_deref()
+                        .map(|value| format!(" for filter '{}'", value))
+                        .unwrap_or_default(),
+                    if report.include_remote_metadata {
+                        " with optional remote metadata"
+                    } else {
+                        ""
+                    }
+                ));
+                result.jaspar_catalog_report = Some(report);
             }
             Operation::InspectJasparEntry {
                 motif,

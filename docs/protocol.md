@@ -364,6 +364,40 @@ Behavior notes:
   - min/max/mean/stddev plus `p01/p05/p25/p50/p75/p95/p99` summaries for both
     bit-based score families
 
+## JASPAR catalog contract
+
+GENtle also exposes a lighter-weight portable JASPAR catalog report for
+registry browsing without having to compute full per-entry score
+distributions:
+
+- the active local JASPAR snapshot remains the source of truth for which motif
+  entries exist
+- each catalog row includes:
+  - motif id
+  - optional TF name
+  - consensus IUPAC sequence
+  - motif length
+  - and optionally a compact remote metadata summary
+- when remote enrichment is requested, GENtle adds compact collection/class/
+  family/tax-group fields plus species-count previews for only the returned
+  subset instead of requiring every consumer to hand-roll JASPAR REST lookups
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json'
+```
+
+First-class operation route:
+
+```json
+{"ListJasparCatalog":{"filter":"TP","limit":50,"include_remote_metadata":false,"path":"jaspar.catalog.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_catalog.v1`
+
 ## JASPAR expert contract
 
 GENtle also exposes a portable single-entry JASPAR expert contract for the

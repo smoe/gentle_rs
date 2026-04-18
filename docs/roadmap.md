@@ -621,6 +621,15 @@ order. Durable architecture constraints and decisions remain in
   - optional remote JASPAR metadata/species assignments
   - a dedicated app-level `File -> JASPAR Expert...` window that reuses the
     same engine-owned payload instead of inventing GUI-only motif logic
+- Shared JASPAR catalog browsing now exists too:
+  `ListJasparCatalog` plus `resources list-jaspar` expose one lighter-weight
+  portable registry report with:
+  - motif id / optional TF name
+  - consensus IUPAC sequence
+  - motif length
+  - optional compact remote metadata summaries for the returned subset
+  - and the `JASPAR Expert...` left-hand catalog table now reuses that shared
+    report instead of rebuilding the registry view ad hoc in the GUI
 - Next operational step for that path:
   add a routine registry-wide snapshot/benchmark over all local JASPAR entries
   (default `10000 bp` random background, deterministic seed, cached/exportable

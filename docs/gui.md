@@ -4043,8 +4043,14 @@ Resource import behavior:
   - TF motif lookups for anchored extraction use the refreshed motif registry.
 - `JASPAR Expert...`
   - Opens an app-level motif expert for the active local JASPAR registry.
-  - The left side filters and lists the locally available motif entries by ID
-    and name.
+  - The left side now shows a catalog table with motif ID, optional TF name,
+    motif length, consensus IUPAC sequence, and cached species-count /
+    collection summaries when remote metadata has already been fetched for that
+    row.
+  - `Reload catalog` refreshes the local registry table from the shared engine.
+  - `Fetch visible species` enriches only the currently visible filtered subset
+    through the shared engine catalog route, so GUI species summaries come from
+    the same payload that shell/CLI/agents can inspect.
   - The detail pane shows:
     - the count matrix,
     - a sequence logo derived from local per-column frequencies/information

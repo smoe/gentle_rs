@@ -45,6 +45,8 @@ pub struct TfMotif {
 pub struct TfMotifSummary {
     pub id: String,
     pub name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -194,6 +196,8 @@ pub fn list_motif_summaries() -> Vec<TfMotifSummary> {
                 .map(|m| TfMotifSummary {
                     id: m.id.clone(),
                     name: m.name.clone(),
+                    consensus_iupac: m.consensus_iupac.clone(),
+                    motif_length_bp: m.matrix_counts.len(),
                 })
                 .collect::<Vec<_>>()
         })

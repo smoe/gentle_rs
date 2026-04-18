@@ -10,26 +10,118 @@
 //! - simple in-window sequence-logo and histogram painters
 
 use super::*;
-use crate::engine::JasparScoreDistributionPanel;
+use crate::engine::{JasparCatalogRow, JasparScoreDistributionPanel};
 
 impl GENtleApp {
-    fn filtered_jaspar_motif_entries(&self) -> Vec<tf_motifs::TfMotifSummary> {
-        let filter = self.jaspar_expert_filter.trim().to_ascii_uppercase();
+    fn jaspar_catalog_rows_local_fallback(&self) -> Vec<JasparCatalogRow> {
         tf_motifs::list_motif_summaries()
+            .into_iter()
+            .map(|row| JasparCatalogRow {
+                motif_id: row.id,
+                motif_name: row.name,
+                consensus_iupac: row.consensus_iupac,
+                motif_length_bp: row.motif_length_bp,
+                remote_summary: None,
+            })
+            .collect()
+    }
+
+    fn filtered_jaspar_catalog_rows(&self) -> Vec<JasparCatalogRow> {
+        let filter = self.jaspar_expert_filter.trim().to_ascii_uppercase();
+        self.jaspar_catalog_report
+            .as_ref()
+            .map(|report| report.rows.clone())
+            .unwrap_or_else(|| self.jaspar_catalog_rows_local_fallback())
             .into_iter()
             .filter(|row| {
                 if filter.is_empty() {
                     return true;
                 }
-                row.id.to_ascii_uppercase().contains(&filter)
+                row.motif_id.to_ascii_uppercase().contains(&filter)
                     || row
-                        .name
+                        .motif_name
                         .as_deref()
                         .unwrap_or("")
                         .to_ascii_uppercase()
                         .contains(&filter)
+                    || row.consensus_iupac.to_ascii_uppercase().contains(&filter)
             })
             .collect()
+    }
+
+    fn merge_jaspar_catalog_report(&mut self, report: JasparCatalogReport) {
+        if !report.include_remote_metadata {
+            self.jaspar_catalog_report = Some(report);
+            return;
+        }
+        let registry_entry_count = report.registry_entry_count;
+        let existing_rows = self
+            .jaspar_catalog_report
+            .as_ref()
+            .map(|report| report.rows.clone())
+            .unwrap_or_else(|| self.jaspar_catalog_rows_local_fallback());
+        let mut by_id = existing_rows
+            .into_iter()
+            .map(|row| (row.motif_id.clone(), row))
+            .collect::<BTreeMap<_, _>>();
+        for row in report.rows.clone() {
+            by_id.insert(row.motif_id.clone(), row);
+        }
+        let rows = by_id.into_values().collect::<Vec<_>>();
+        self.jaspar_catalog_report = Some(JasparCatalogReport {
+            rows: rows.clone(),
+            returned_entry_count: rows.len(),
+            registry_entry_count: registry_entry_count.max(rows.len()),
+            ..report
+        });
+    }
+
+    fn refresh_jaspar_catalog(&mut self, include_remote_metadata: bool) {
+        let result = self.engine.write().expect("Engine lock poisoned").apply(
+            Operation::ListJasparCatalog {
+                filter: if include_remote_metadata {
+                    Some(self.jaspar_expert_filter.trim().to_string())
+                } else {
+                    None
+                },
+                limit: None,
+                include_remote_metadata,
+                path: None,
+            },
+        );
+        match result {
+            Ok(result) => {
+                if let Some(report) = result.jaspar_catalog_report {
+                    let fetched_count = report.returned_entry_count;
+                    let warning_count = report.warnings.len();
+                    self.merge_jaspar_catalog_report(report);
+                    self.jaspar_expert_status = if include_remote_metadata {
+                        if warning_count == 0 {
+                            format!(
+                                "Fetched remote JASPAR metadata for {} visible catalog entr{}.",
+                                fetched_count,
+                                if fetched_count == 1 { "y" } else { "ies" }
+                            )
+                        } else {
+                            format!(
+                                "Fetched remote JASPAR metadata for {} visible catalog entr{} with {} warning(s).",
+                                fetched_count,
+                                if fetched_count == 1 { "y" } else { "ies" },
+                                warning_count
+                            )
+                        }
+                    } else {
+                        format!(
+                            "Loaded local JASPAR catalog with {} entries.",
+                            fetched_count
+                        )
+                    };
+                }
+            }
+            Err(err) => {
+                self.jaspar_expert_status = err.to_string();
+            }
+        }
     }
 
     fn refresh_jaspar_expert_view(&mut self) {
@@ -72,6 +164,52 @@ impl GENtleApp {
         match result {
             Ok(result) => {
                 self.jaspar_expert_view = result.jaspar_entry_expert_view;
+                if let Some(view) = self.jaspar_expert_view.as_ref() {
+                    if let Some(remote_metadata) = view.remote_metadata.clone() {
+                        let mut row = self
+                            .jaspar_catalog_report
+                            .as_ref()
+                            .and_then(|report| {
+                                report
+                                    .rows
+                                    .iter()
+                                    .find(|row| row.motif_id == view.motif_id)
+                                    .cloned()
+                            })
+                            .unwrap_or(JasparCatalogRow {
+                                motif_id: view.motif_id.clone(),
+                                motif_name: view.motif_name.clone(),
+                                consensus_iupac: view.consensus_iupac.clone(),
+                                motif_length_bp: view.motif_length_bp,
+                                remote_summary: None,
+                            });
+                        row.remote_summary = Some(GentleEngine::jaspar_remote_metadata_summary(
+                            &remote_metadata,
+                        ));
+                        let base =
+                            self.jaspar_catalog_report
+                                .as_ref()
+                                .cloned()
+                                .unwrap_or_else(|| JasparCatalogReport {
+                                    schema: "gentle.jaspar_catalog.v1".to_string(),
+                                    generated_at_unix_ms: 0,
+                                    op_id: None,
+                                    run_id: None,
+                                    filter: None,
+                                    limit: None,
+                                    include_remote_metadata: true,
+                                    registry_entry_count: tf_motifs::list_motif_summaries().len(),
+                                    returned_entry_count: 0,
+                                    rows: self.jaspar_catalog_rows_local_fallback(),
+                                    warnings: vec![],
+                                });
+                        self.merge_jaspar_catalog_report(JasparCatalogReport {
+                            rows: vec![row],
+                            returned_entry_count: 1,
+                            ..base
+                        });
+                    }
+                }
                 let mut status_parts = vec![];
                 if !result.messages.is_empty() {
                     status_parts.push(result.messages.join(" "));
@@ -272,20 +410,23 @@ impl GENtleApp {
             return;
         }
 
-        let entries = self.filtered_jaspar_motif_entries();
+        if self.jaspar_catalog_report.is_none() {
+            self.refresh_jaspar_catalog(false);
+        }
+        let entries = self.filtered_jaspar_catalog_rows();
         if self.jaspar_expert_selected_motif_id.trim().is_empty() {
             self.jaspar_expert_selected_motif_id = entries
                 .first()
-                .map(|row| row.id.clone())
+                .map(|row| row.motif_id.clone())
                 .unwrap_or_default();
         }
         let selected_still_visible = entries
             .iter()
-            .any(|row| row.id == self.jaspar_expert_selected_motif_id);
+            .any(|row| row.motif_id == self.jaspar_expert_selected_motif_id);
         if !selected_still_visible {
             self.jaspar_expert_selected_motif_id = entries
                 .first()
-                .map(|row| row.id.clone())
+                .map(|row| row.motif_id.clone())
                 .unwrap_or_default();
         }
         if self.jaspar_expert_view.is_none() && !self.jaspar_expert_selected_motif_id.is_empty() {
@@ -318,6 +459,18 @@ impl GENtleApp {
                         &mut self.jaspar_expert_fetch_remote_metadata,
                         "Fetch JASPAR species metadata",
                     );
+                    if ui.button("Reload catalog").clicked() {
+                        self.refresh_jaspar_catalog(false);
+                    }
+                    if ui
+                        .button("Fetch visible species")
+                        .on_hover_text(
+                            "Request remote JASPAR metadata for the currently visible filtered subset and merge species summaries into the catalog table.",
+                        )
+                        .clicked()
+                    {
+                        self.refresh_jaspar_catalog(true);
+                    }
                     if ui.button("Inspect selected").clicked() {
                         self.refresh_jaspar_expert_view();
                     }
@@ -328,22 +481,78 @@ impl GENtleApp {
                 ui.separator();
                 ui.columns(2, |columns| {
                     columns[0].vertical(|ui| {
-                        ui.heading(format!("Available entries ({})", entries.len()));
-                        egui::ScrollArea::vertical()
+                        let total_entries = self
+                            .jaspar_catalog_report
+                            .as_ref()
+                            .map(|report| report.registry_entry_count)
+                            .unwrap_or(entries.len());
+                        ui.heading(format!(
+                            "Available entries (showing {} / {})",
+                            entries.len(),
+                            total_entries
+                        ));
+                        egui::ScrollArea::both()
                             .auto_shrink([false, false])
                             .max_height(720.0)
                             .show(ui, |ui| {
-                                for row in &entries {
-                                    let label = match row.name.as_deref() {
-                                        Some(name) if !name.trim().is_empty() => {
-                                            format!("{} — {}", row.id, name.trim())
+                                egui::Grid::new("jaspar_catalog_grid")
+                                    .striped(true)
+                                    .min_col_width(52.0)
+                                    .show(ui, |ui| {
+                                        ui.strong("ID");
+                                        ui.strong("Name");
+                                        ui.strong("Len");
+                                        ui.strong("Consensus");
+                                        ui.strong("Species");
+                                        ui.strong("Collection");
+                                        ui.end_row();
+                                        for row in &entries {
+                                            let selected = self.jaspar_expert_selected_motif_id
+                                                == row.motif_id;
+                                            if ui
+                                                .selectable_label(selected, row.motif_id.clone())
+                                                .clicked()
+                                            {
+                                                self.jaspar_expert_selected_motif_id =
+                                                    row.motif_id.clone();
+                                                self.refresh_jaspar_expert_view();
+                                            }
+                                            ui.label(
+                                                row.motif_name
+                                                    .as_deref()
+                                                    .filter(|value| !value.trim().is_empty())
+                                                    .unwrap_or(""),
+                                            );
+                                            ui.label(row.motif_length_bp.to_string());
+                                            ui.monospace(row.consensus_iupac.clone());
+                                            ui.label(
+                                                row.remote_summary
+                                                    .as_ref()
+                                                    .map(|remote| {
+                                                        if remote.species_count == 0 {
+                                                            "0".to_string()
+                                                        } else {
+                                                            remote.species_count.to_string()
+                                                        }
+                                                    })
+                                                    .unwrap_or_else(|| "—".to_string()),
+                                            );
+                                            ui.label(
+                                                row.remote_summary
+                                                    .as_ref()
+                                                    .and_then(|remote| remote.collection.as_deref())
+                                                    .unwrap_or(""),
+                                            );
+                                            ui.end_row();
                                         }
-                                        _ => row.id.clone(),
-                                    };
-                                    let selected = self.jaspar_expert_selected_motif_id == row.id;
-                                    if ui.selectable_label(selected, label).clicked() {
-                                        self.jaspar_expert_selected_motif_id = row.id.clone();
-                                        self.refresh_jaspar_expert_view();
+                                    });
+                                if let Some(report) = self.jaspar_catalog_report.as_ref() {
+                                    if !report.warnings.is_empty() {
+                                        ui.separator();
+                                        ui.small(format!(
+                                            "Catalog warnings: {}",
+                                            report.warnings.join(" | ")
+                                        ));
                                     }
                                 }
                             });
@@ -515,6 +724,23 @@ mod tests {
                 .as_ref()
                 .and_then(|view| view.motif_name.as_deref()),
             Some("SP1")
+        );
+    }
+
+    #[test]
+    fn refresh_jaspar_catalog_loads_local_rows() {
+        let mut app = GENtleApp::default();
+        app.refresh_jaspar_catalog(false);
+        let report = app
+            .jaspar_catalog_report
+            .as_ref()
+            .expect("catalog report should load");
+        assert!(report.returned_entry_count > 0);
+        assert!(
+            report
+                .rows
+                .iter()
+                .any(|row| row.motif_name.as_deref() == Some("SP1"))
         );
     }
 }

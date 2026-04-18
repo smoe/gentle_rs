@@ -714,6 +714,7 @@ fn usage() {
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
+  gentle_cli resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli services status\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
@@ -2566,7 +2567,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, summarize-jaspar or inspect-jaspar"
+                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, summarize-jaspar, list-jaspar or inspect-jaspar"
                         .to_string(),
                 );
             }
@@ -2755,6 +2756,63 @@ fn run() -> Result<(), String> {
                         .map_err(|e| e.to_string())?;
                     print_json(&json!({ "result": op_result }))
                 }
+                "list-jaspar" => {
+                    let mut filter: Option<String> = None;
+                    let mut limit: Option<usize> = None;
+                    let mut fetch_remote = false;
+                    let mut output: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing TOKEN after --filter".to_string());
+                                }
+                                filter = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --limit".to_string());
+                                }
+                                limit = Some(args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --limit '{}' for resources list-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            "--fetch-remote" => {
+                                fetch_remote = true;
+                                idx += 1;
+                            }
+                            "--output" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for resources list-jaspar",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let mut engine = GentleEngine::new();
+                    let op_result = engine
+                        .apply(Operation::ListJasparCatalog {
+                            filter,
+                            limit,
+                            include_remote_metadata: fetch_remote,
+                            path: output,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    print_json(&json!({ "result": op_result }))
+                }
                 "inspect-jaspar" => {
                     if args.len() <= cmd_idx + 2 {
                         return Err(
@@ -2826,7 +2884,7 @@ fn run() -> Result<(), String> {
                     print_json(&json!({ "result": op_result }))
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, summarize-jaspar or inspect-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, summarize-jaspar, list-jaspar or inspect-jaspar)"
                 )),
             }
         }
@@ -4065,6 +4123,20 @@ mod tests {
             ShellCommand::ResourcesSummarizeJaspar { .. }
         ));
 
+        let list = parse_shell_tokens(&[
+            "resources".to_string(),
+            "list-jaspar".to_string(),
+            "--filter".to_string(),
+            "TP".to_string(),
+            "--limit".to_string(),
+            "25".to_string(),
+            "--fetch-remote".to_string(),
+            "--output".to_string(),
+            "jaspar.catalog.json".to_string(),
+        ])
+        .expect("parse resources list-jaspar");
+        assert!(matches!(list, ShellCommand::ResourcesListJaspar { .. }));
+
         let inspect = parse_shell_tokens(&[
             "resources".to_string(),
             "inspect-jaspar".to_string(),
@@ -4713,6 +4785,53 @@ mod tests {
 
         assert_eq!(forwarded_changed, shared_changed);
         assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_resources_list_jaspar_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("jaspar.catalog.json");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "list-jaspar".to_string(),
+            "--filter".to_string(),
+            "SP1".to_string(),
+            "--limit".to_string(),
+            "10".to_string(),
+            "--output".to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        let forwarded_report = &forwarded_output["result"]["jaspar_catalog_report"];
+        let shared_report = &shared_output["result"]["jaspar_catalog_report"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(forwarded_report["filter"], shared_report["filter"]);
+        assert_eq!(
+            forwarded_report["returned_entry_count"],
+            shared_report["returned_entry_count"]
+        );
+        assert_eq!(forwarded_report["rows"], shared_report["rows"]);
         assert_eq!(
             forwarded_state
                 .sequences
