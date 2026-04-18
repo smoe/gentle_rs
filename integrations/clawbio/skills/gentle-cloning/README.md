@@ -96,6 +96,15 @@ The shortest investigation path is:
    re-test with a wording that strongly invites the skill, for example:
    - `Please use the GENtle cloning skill to tell me whether Ensembl-backed human reference data is available or can be prepared locally.`
 
+If a direct run now fails with a message like `Unknown shell command
+'services'`, treat that as a GENtle version mismatch first:
+
+- the copied skill scaffold is newer than the installed `gentle_cli` binary on
+  PATH
+- update the installed binary, or point `GENTLE_CLI_CMD` at
+  `gentle_local_checkout_cli.sh` for an updated checkout
+- then re-run the same example request before debugging anything deeper
+
 This investigation separates three cases cleanly:
 
 - GENtle skill not invoked

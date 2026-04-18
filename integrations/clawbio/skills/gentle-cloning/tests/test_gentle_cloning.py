@@ -677,6 +677,57 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
     assert "Failure stage: `main_command`" in report
 
 
+def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services status",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf \"Unknown shell command 'services'. Try: help\\n\" >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode != 0
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "command_failed"
+    note = result["failure_summary"]["note"]
+    assert "older than the current ClawBio skill scaffold" in note
+    assert "gentle_local_checkout_cli.sh" in note
+    assert "may not support the requested status route yet" in result["error"]
+
+
 def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path: Path) -> None:
     clawbio_root = tmp_path / "ClawBio"
     skill_dir = clawbio_root / "skills" / "gentle-cloning"

@@ -1032,6 +1032,12 @@ order. Durable architecture constraints and decisions remain in
           against the copied ClawBio skill layout itself, not only the current
           cwd, so example requests keep working when ClawBio launches the skill
           from a different working directory
+        - direct command failures now also distinguish likely wrapper/runtime
+          mismatches from plain command errors:
+          if the installed `gentle_cli` on PATH does not yet know a newly added
+          route such as `services status`, the wrapper surfaces that as a
+          likely version mismatch and points the operator to updating the
+          binary or using `gentle_local_checkout_cli.sh`
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for

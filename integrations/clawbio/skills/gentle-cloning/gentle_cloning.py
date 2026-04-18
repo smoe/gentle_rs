@@ -304,6 +304,53 @@ def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str
     return preview
 
 
+def _infer_command_compatibility_note(
+    command: list[str] | None,
+    stderr_text: str,
+) -> str | None:
+    if not command:
+        return None
+
+    stderr = stderr_text.strip()
+    if not stderr:
+        return None
+
+    requested = ""
+    if len(command) >= 3 and command[1] == "shell":
+        requested = command[2]
+    elif len(command) >= 3:
+        requested = " ".join(command[1:3])
+    elif len(command) >= 2:
+        requested = command[1]
+
+    requested = requested.strip()
+    if not requested:
+        return None
+
+    command_unknown = (
+        "Unknown shell command" in stderr
+        or "unrecognized subcommand" in stderr
+        or "unexpected argument" in stderr
+        or "Found argument" in stderr
+    )
+    if not command_unknown:
+        return None
+
+    if requested.startswith(("services ", "resources ", "helpers status", "genomes status")):
+        return (
+            "This GENtle CLI looks older than the current ClawBio skill scaffold and "
+            "may not support the requested status route yet. Update the installed "
+            "`gentle_cli` on PATH, or set `GENTLE_CLI_CMD` to "
+            "`gentle_local_checkout_cli.sh` for an updated GENtle checkout."
+        )
+    return (
+        "This GENtle CLI may be older than the current ClawBio skill scaffold and "
+        "may not support the requested command yet. Update the installed "
+        "`gentle_cli` on PATH, or point `GENTLE_CLI_CMD` at the updated GENtle "
+        "checkout launcher."
+    )
+
+
 def _build_failure_summary(
     *,
     stage: str,
@@ -312,9 +359,15 @@ def _build_failure_summary(
     note: str | None = None,
 ) -> dict[str, Any]:
     command = step.get("command") if isinstance(step, dict) else None
+    effective_note = note
+    if effective_note is None and isinstance(step, dict):
+        effective_note = _infer_command_compatibility_note(
+            command,
+            step.get("stderr", ""),
+        )
     summary = {
         "stage": stage,
-        "note": note,
+        "note": effective_note,
         "command": command,
         "command_text": _format_command_text(command),
         "execution_cwd": (str(execution_cwd) if execution_cwd is not None else None),

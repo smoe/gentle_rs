@@ -167,6 +167,11 @@ in this order:
    - for failed direct runs, inspect `result.json.error` and
      `result.json.failure_summary` first: they now include the failing command,
      cwd, exit code, and a short stderr/stdout preview
+   - if the stderr says `Unknown shell command 'services'` or similar, treat
+     that as a likely GENtle version mismatch before anything else:
+     the copied skill bundle is newer than the installed `gentle_cli` on PATH,
+     so the fix is to update that binary or point `GENTLE_CLI_CMD` at
+     `gentle_local_checkout_cli.sh` for an updated checkout
 5. in that case, restart the ClawBio chat-serving process and re-test with a
    phrasing that explicitly asks to use this skill
 
