@@ -809,6 +809,7 @@ fn parse_attract_db_text(
         let source_database = column_value(&record, map.source_database);
         let normalized_matrix_id = normalized_matrix_key(&matrix_id);
         let pfm = pwm_by_matrix.get(&normalized_matrix_id).cloned();
+        let pwm_present = pfm.is_some();
         let effective_length = pfm
             .as_ref()
             .map(|pfm| pfm.a.len())
@@ -845,7 +846,7 @@ fn parse_attract_db_text(
             } else {
                 "consensus_iupac".to_string()
             },
-            pwm_present: pwm_file_detected,
+            pwm_present,
             pfm,
         });
         if effective_length != len {
@@ -1137,10 +1138,12 @@ T [0 0 0]
         assert_eq!(snapshot.motifs[0].gene_name, "SRSF1");
         assert_eq!(snapshot.motifs[0].motif_iupac, "GAAGAA");
         assert_eq!(snapshot.motifs[0].model_kind, "pwm_counts");
+        assert!(snapshot.motifs[0].pwm_present);
         assert!(snapshot.motifs[0].pfm.is_some());
         assert_eq!(snapshot.motifs[1].motif_iupac, "TCTT");
         assert_eq!(snapshot.motifs[1].model_kind, "consensus_iupac");
-        assert!(snapshot.motifs.iter().all(|row| row.pwm_present));
+        assert!(!snapshot.motifs[1].pwm_present);
+        assert!(snapshot.motifs[1].pfm.is_none());
         assert!(
             snapshot
                 .warnings
