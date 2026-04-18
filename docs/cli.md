@@ -2482,6 +2482,14 @@ Resource sync commands:
   - Payload provenance now also includes `active_resource_fingerprint` so CLI,
     GUI, and exported reports can tie the evidence back to the exact normalized
     ATtRACT snapshot content rather than only a motif count.
+  - Recommended review pattern:
+    - start with `--pwm-mapping strict_same_length`
+    - add `--compare-policies` to see what the alternate heuristic would add
+      without switching the primary result set
+    - only move to `--pwm-mapping windowed_submatrix` when that alternate
+      summary looks biologically interesting enough to inspect directly
+  - Example:
+    - `attract inspect-splicing TP73 17 --organism "Homo sapiens" --pwm-mapping strict_same_length --compare-policies`
 - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
   - Expands one local JASPAR entry into an expert-oriented report.
   - Includes:

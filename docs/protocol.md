@@ -4531,6 +4531,13 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       are labeled as `llr_bits_windowed` with the chosen subwindow range
     - rows without a mapped PWM block continue to use deterministic
       consensus/IUPAC exact matching only
+    - interpretation guidance:
+      - `strict_same_length` is the canonical conservative mode
+      - `windowed_submatrix` is an engine-supported GENtle heuristic, not an
+        ATtRACT-published mapping rule
+      - `compare_alternate_policy` is intended to help reviewers quantify how
+        much that heuristic changes the evidence before switching the active
+        mapping mode
   - contract boundary:
     - this is an RBP/splicing interpretation payload, not the generic
       TFBS/PSSM score-track payload

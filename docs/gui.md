@@ -629,6 +629,16 @@ Feature tree grouping:
       always labeled as such in per-hit provenance
     - rows without mapped PWM data keep exact consensus/IUPAC matching only
     - no dense lane overlay or exon-exon junction scan yet
+  - practical review workflow:
+    - start with `PWM: strict same-length`
+    - enable `Compare strict/windowed counts`
+    - if the alternate summary adds only a few hits or RBPs, the heuristic is
+      likely not changing the biological picture much
+    - if the alternate summary adds many hits or RBPs, switch to
+      `PWM: windowed submatrix` and inspect the per-hit provenance column
+      carefully before trusting the extra evidence
+    - treat `windowed submatrix` rows as exploratory support unless they remain
+      convincing alongside the rest of the splicing evidence
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:
   - direct launcher now also exists in the DNA sequence window toolbar as
