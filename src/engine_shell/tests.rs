@@ -11380,6 +11380,28 @@ fn parse_resources_list_jaspar_with_options() {
 }
 
 #[test]
+fn parse_resources_sync_jaspar_remote_metadata_with_options() {
+    let cmd = parse_shell_line(
+        "resources sync-jaspar-remote-metadata --motif SP1 --motif REST --limit 20 --output jaspar.remote.json",
+    )
+    .expect("parse resources sync-jaspar-remote-metadata");
+    match cmd {
+        ShellCommand::ResourcesSyncJasparRemoteMetadata {
+            motifs,
+            filter,
+            limit,
+            output,
+        } => {
+            assert_eq!(motifs, vec!["SP1".to_string(), "REST".to_string()]);
+            assert_eq!(filter, None);
+            assert_eq!(limit, Some(20));
+            assert_eq!(output.as_deref(), Some("jaspar.remote.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_status() {
     let cmd = parse_shell_line("resources status").expect("parse resources status");
     match cmd {

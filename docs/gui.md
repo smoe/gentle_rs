@@ -4047,10 +4047,12 @@ Resource import behavior:
     motif length, consensus IUPAC sequence, and cached species-count /
     collection summaries when remote metadata has already been fetched for that
     row.
-  - `Reload catalog` refreshes the local registry table from the shared engine.
-  - `Fetch visible species` enriches only the currently visible filtered subset
-    through the shared engine catalog route, so GUI species summaries come from
-    the same payload that shell/CLI/agents can inspect.
+  - `Reload catalog` refreshes the local registry table from the shared engine
+    while reusing any persisted JASPAR remote-metadata snapshot rows already
+    available locally.
+  - `Fetch visible species` refreshes and persists remote JASPAR metadata for
+    only the currently visible filtered subset, so GUI species summaries come
+    from the same snapshot path that shell/CLI/agents can inspect or export.
   - The detail pane shows:
     - the count matrix,
     - a sequence logo derived from local per-column frequencies/information

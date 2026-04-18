@@ -1,5 +1,5 @@
 {
-   "command_count": 336,
+   "command_count": 337,
    "commands": [
       {
          "aliases": [
@@ -1198,6 +1198,20 @@
          "path": "resources sync-jaspar",
          "summary": "Normalize JASPAR source data into project motif JSON.",
          "usage": "resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SyncJasparRemoteMetadata"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-jaspar-remote-metadata",
+         "summary": "Refresh and persist reusable JASPAR remote metadata for one selected local motif subset.",
+         "usage": "resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]"
       },
       {
          "aliases": [],

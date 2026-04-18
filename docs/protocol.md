@@ -398,6 +398,48 @@ Portable schema:
 
 - `gentle.jaspar_catalog.v1`
 
+Behavior notes:
+
+- when remote metadata is requested for the catalog, GENtle first reuses any
+  persisted JASPAR remote-metadata snapshot rows that already exist locally
+- explicit refresh is a separate operation so GUI/CLI/agent consumers can
+  choose between:
+  - cache-first registry browsing
+  - and deliberate network refresh/persistence for selected subsets
+
+## JASPAR remote-metadata snapshot contract
+
+GENtle also exposes one persisted reusable JASPAR remote-metadata snapshot so
+species/collection/class/family assignments can survive across sessions instead
+of living only in one GUI/app run:
+
+- the local motif snapshot still governs which entries exist
+- the remote snapshot is an additive enrichment keyed by motif id
+- each persisted row stores:
+  - motif id / optional TF name
+  - consensus IUPAC sequence
+  - motif length
+  - full remote metadata payload
+  - and one compact derived summary for catalog/list views
+- the default runtime snapshot path is:
+  - `data/resources/jaspar.remote_metadata.json`
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources sync-jaspar-remote-metadata --filter TP --limit 50 --output jaspar.remote_metadata.json'
+```
+
+First-class operation route:
+
+```json
+{"SyncJasparRemoteMetadata":{"filter":"TP","limit":50,"path":"jaspar.remote_metadata.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_remote_metadata_snapshot.v1`
+
 ## JASPAR expert contract
 
 GENtle also exposes a portable single-entry JASPAR expert contract for the
@@ -423,7 +465,7 @@ gentle_cli shell 'resources inspect-jaspar SP1 --random-length 10000 --seed 123 
 First-class operation route:
 
 ```json
-{"InspectJasparEntry":{"motif":"SP1","random_sequence_length_bp":10000,"random_seed":123,"include_remote_metadata":true,"path":"jaspar.expert.json"}}
+{"InspectJasparEntry":{"motif":"SP1","random_sequence_length_bp":10000,"random_seed":123,"include_remote_metadata":true,"refresh_remote_metadata":true,"path":"jaspar.expert.json"}}
 ```
 
 Portable schema:
@@ -434,6 +476,9 @@ Behavior notes:
 
 - remote metadata enrichment is optional and best-effort; the expert still
   works from the local registry when offline or when the REST request fails
+- when remote metadata is requested, the expert first reuses any matching row
+  already persisted in `jaspar.remote_metadata.json` before falling back to a
+  live refresh
 - score panels include compact histogram bins so GUI/agent consumers can show
   actual distribution shape instead of only percentiles
 - count-matrix and logo payloads come from the same local matrix counts GENtle

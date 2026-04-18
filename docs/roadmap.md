@@ -630,6 +630,11 @@ order. Durable architecture constraints and decisions remain in
   - optional compact remote metadata summaries for the returned subset
   - and the `JASPAR Expert...` left-hand catalog table now reuses that shared
     report instead of rebuilding the registry view ad hoc in the GUI
+- Shared persisted JASPAR remote-metadata snapshots now exist too:
+  `SyncJasparRemoteMetadata` plus
+  `resources sync-jaspar-remote-metadata` refresh and persist
+  `data/resources/jaspar.remote_metadata.json`, and the catalog/expert routes
+  now reuse that snapshot before reaching for live REST metadata again.
 - Next operational step for that path:
   add a routine registry-wide snapshot/benchmark over all local JASPAR entries
   (default `10000 bp` random background, deterministic seed, cached/exportable

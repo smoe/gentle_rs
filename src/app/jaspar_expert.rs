@@ -76,7 +76,11 @@ impl GENtleApp {
         });
     }
 
-    fn refresh_jaspar_catalog(&mut self, include_remote_metadata: bool) {
+    fn refresh_jaspar_catalog(
+        &mut self,
+        include_remote_metadata: bool,
+        refresh_remote_metadata: bool,
+    ) {
         let result = self.engine.write().expect("Engine lock poisoned").apply(
             Operation::ListJasparCatalog {
                 filter: if include_remote_metadata {
@@ -86,6 +90,7 @@ impl GENtleApp {
                 },
                 limit: None,
                 include_remote_metadata,
+                refresh_remote_metadata,
                 path: None,
             },
         );
@@ -96,26 +101,100 @@ impl GENtleApp {
                     let warning_count = report.warnings.len();
                     self.merge_jaspar_catalog_report(report);
                     self.jaspar_expert_status = if include_remote_metadata {
-                        if warning_count == 0 {
+                        if refresh_remote_metadata {
+                            if warning_count == 0 {
+                                format!(
+                                    "Refreshed remote JASPAR metadata for {} visible catalog entr{}.",
+                                    fetched_count,
+                                    if fetched_count == 1 { "y" } else { "ies" }
+                                )
+                            } else {
+                                format!(
+                                    "Refreshed remote JASPAR metadata for {} visible catalog entr{} with {} warning(s).",
+                                    fetched_count,
+                                    if fetched_count == 1 { "y" } else { "ies" },
+                                    warning_count
+                                )
+                            }
+                        } else if warning_count == 0 {
                             format!(
-                                "Fetched remote JASPAR metadata for {} visible catalog entr{}.",
-                                fetched_count,
-                                if fetched_count == 1 { "y" } else { "ies" }
+                                "Loaded JASPAR catalog with {} entries and cached species summaries where available.",
+                                fetched_count
                             )
                         } else {
                             format!(
-                                "Fetched remote JASPAR metadata for {} visible catalog entr{} with {} warning(s).",
-                                fetched_count,
-                                if fetched_count == 1 { "y" } else { "ies" },
-                                warning_count
+                                "Loaded JASPAR catalog with {} entries and {} metadata warning(s).",
+                                fetched_count, warning_count
                             )
                         }
                     } else {
+                        if warning_count == 0 {
+                            format!(
+                                "Loaded local JASPAR catalog with {} entries.",
+                                fetched_count
+                            )
+                        } else {
+                            format!(
+                                "Loaded local JASPAR catalog with {} entries and {} warning(s).",
+                                fetched_count, warning_count
+                            )
+                        }
+                    };
+                }
+            }
+            Err(err) => {
+                self.jaspar_expert_status = err.to_string();
+            }
+        }
+    }
+
+    fn sync_visible_jaspar_remote_metadata(&mut self) {
+        let motifs = self
+            .filtered_jaspar_catalog_rows()
+            .into_iter()
+            .map(|row| row.motif_id)
+            .collect::<Vec<_>>();
+        if motifs.is_empty() {
+            self.jaspar_expert_status =
+                "No visible JASPAR entries matched the current filter.".to_string();
+            return;
+        }
+        let result = self.engine.write().expect("Engine lock poisoned").apply(
+            Operation::SyncJasparRemoteMetadata {
+                motifs,
+                filter: None,
+                limit: None,
+                path: None,
+            },
+        );
+        match result {
+            Ok(result) => {
+                if let Some(snapshot) = result.jaspar_remote_metadata_snapshot {
+                    self.jaspar_expert_status = if snapshot.warnings.is_empty() {
                         format!(
-                            "Loaded local JASPAR catalog with {} entries.",
-                            fetched_count
+                            "Refreshed and persisted JASPAR remote metadata for {} entr{} (snapshot now holds {}).",
+                            snapshot.fetched_entry_count,
+                            if snapshot.fetched_entry_count == 1 {
+                                "y"
+                            } else {
+                                "ies"
+                            },
+                            snapshot.persisted_entry_count
+                        )
+                    } else {
+                        format!(
+                            "Refreshed and persisted JASPAR remote metadata for {} entr{} with {} warning(s) (snapshot now holds {}).",
+                            snapshot.fetched_entry_count,
+                            if snapshot.fetched_entry_count == 1 {
+                                "y"
+                            } else {
+                                "ies"
+                            },
+                            snapshot.warnings.len(),
+                            snapshot.persisted_entry_count
                         )
                     };
+                    self.refresh_jaspar_catalog(true, false);
                 }
             }
             Err(err) => {
@@ -158,6 +237,7 @@ impl GENtleApp {
                 random_sequence_length_bp,
                 random_seed,
                 include_remote_metadata: self.jaspar_expert_fetch_remote_metadata,
+                refresh_remote_metadata: self.jaspar_expert_fetch_remote_metadata,
                 path: None,
             },
         );
@@ -411,7 +491,7 @@ impl GENtleApp {
         }
 
         if self.jaspar_catalog_report.is_none() {
-            self.refresh_jaspar_catalog(false);
+            self.refresh_jaspar_catalog(true, false);
         }
         let entries = self.filtered_jaspar_catalog_rows();
         if self.jaspar_expert_selected_motif_id.trim().is_empty() {
@@ -460,16 +540,16 @@ impl GENtleApp {
                         "Fetch JASPAR species metadata",
                     );
                     if ui.button("Reload catalog").clicked() {
-                        self.refresh_jaspar_catalog(false);
+                        self.refresh_jaspar_catalog(true, false);
                     }
                     if ui
                         .button("Fetch visible species")
                         .on_hover_text(
-                            "Request remote JASPAR metadata for the currently visible filtered subset and merge species summaries into the catalog table.",
+                            "Refresh and persist remote JASPAR metadata for the currently visible filtered subset, then reuse that snapshot in the catalog table.",
                         )
                         .clicked()
                     {
-                        self.refresh_jaspar_catalog(true);
+                        self.sync_visible_jaspar_remote_metadata();
                     }
                     if ui.button("Inspect selected").clicked() {
                         self.refresh_jaspar_expert_view();
@@ -730,7 +810,7 @@ mod tests {
     #[test]
     fn refresh_jaspar_catalog_loads_local_rows() {
         let mut app = GENtleApp::default();
-        app.refresh_jaspar_catalog(false);
+        app.refresh_jaspar_catalog(true, false);
         let report = app
             .jaspar_catalog_report
             .as_ref()

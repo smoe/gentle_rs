@@ -16,6 +16,7 @@ use tempfile::NamedTempFile;
 
 pub const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 pub const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
+pub const DEFAULT_JASPAR_REMOTE_METADATA_PATH: &str = "data/resources/jaspar.remote_metadata.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RebaseEnzymeRecord {

@@ -458,6 +458,7 @@ const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
 const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
 const JASPAR_CATALOG_REPORT_SCHEMA: &str = "gentle.jaspar_catalog.v1";
+const JASPAR_REMOTE_METADATA_SNAPSHOT_SCHEMA: &str = "gentle.jaspar_remote_metadata_snapshot.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
@@ -3434,6 +3435,18 @@ pub enum Operation {
         limit: Option<usize>,
         #[serde(default)]
         include_remote_metadata: bool,
+        #[serde(default)]
+        refresh_remote_metadata: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SyncJasparRemoteMetadata {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -3445,6 +3458,8 @@ pub enum Operation {
         random_seed: u64,
         #[serde(default)]
         include_remote_metadata: bool,
+        #[serde(default)]
+        refresh_remote_metadata: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -4749,6 +4764,7 @@ impl GentleEngine {
                 "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
                 "ListJasparCatalog".to_string(),
+                "SyncJasparRemoteMetadata".to_string(),
                 "AnnotatePromoterWindows".to_string(),
                 "SummarizeVariantPromoterContext".to_string(),
                 "SuggestPromoterReporterFragments".to_string(),
@@ -6651,6 +6667,7 @@ impl GentleEngine {
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::ListJasparCatalog { .. }
+                | Operation::SyncJasparRemoteMetadata { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
                 | Operation::ExportRnaReadReport { .. }
