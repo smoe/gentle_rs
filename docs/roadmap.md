@@ -1013,6 +1013,11 @@ order. Durable architecture constraints and decisions remain in
           references, helper backbones, and active external resource snapshots,
           giving ClawBio/OpenClaw a stable first question to ask GENtle before
           deciding whether to fetch, prepare, or render
+        - that same shared report now also persists/inspects best-effort
+          prepare-activity markers for reference/helper installs, so callers
+          can distinguish `currently preparing/indexing` from plain
+          `not prepared` and can see recent `failed` / `cancelled` prepare
+          outcomes
         - the first concrete wrapper-side automation slice is now in place:
           `gentle-cloning` requests can opt into
           `ensure_reference_prepared`, which runs
@@ -1030,8 +1035,9 @@ order. Durable architecture constraints and decisions remain in
           ClawBio can pick one "best first figure" and one compact textual
           summary without inventing presentation logic from raw files alone
         - enrich the new service-readiness surface further so it can report
-          active prepare/index jobs and any future ATtRACT integration state,
-          not only static prepared/not-prepared readiness
+          richer active-job details (queue/worker identity, stronger stale-job
+          detection) and any future ATtRACT integration state, not only
+          best-effort phase/progress hints
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

@@ -2331,6 +2331,9 @@ Resource sync commands:
   - Covers canonical reference genomes (currently `Human GRCh38 Ensembl 116`),
     helper backbones (currently `Plasmid pUC19 (online)`), and active external
     resource snapshots in one record.
+  - When a prepare/reindex run is active, it also surfaces live dependency
+    activity (`running`, `failed`, `cancelled`) plus the current prepare phase
+    and progress hints instead of only saying `prepared`/`not_prepared`.
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.

@@ -37,9 +37,9 @@ use crate::{
         EnsemblQuickInstallCatalogWriteReport, EnsemblQuickInstallPreview,
         EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
-        GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation, PrepareGenomePlan,
-        PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
-        PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
+        GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
+        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
         PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
         PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
@@ -5575,6 +5575,46 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Could not check prepared status for helper '{}': {}",
+                    genome_id, e
+                ),
+            })
+    }
+
+    pub fn inspect_reference_genome_prepare_activity(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PrepareGenomeActivityStatus>, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepare_activity_status(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepare activity for genome '{}': {}",
+                    genome_id, e
+                ),
+            })
+    }
+
+    pub fn inspect_helper_genome_prepare_activity(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<Option<PrepareGenomeActivityStatus>, EngineError> {
+        let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
+        catalog
+            .inspect_prepare_activity_status(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepare activity for helper '{}': {}",
                     genome_id, e
                 ),
             })

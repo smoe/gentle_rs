@@ -722,6 +722,9 @@ Apply the following methodology:
       backbones, and active external resource snapshots so chat/report layers
       can answer "what can this GENtle instance work with right now?" from one
       deterministic artifact
+    - when a prepare/reindex run is active, the same report can also surface
+      current phase/progress hints (`download_sequence`, `index_blast`, etc.)
+      and failed/cancelled prepare states instead of only static readiness
   - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
     - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
     - exports the fetched locus' gene/mRNA/variation rows with genomic

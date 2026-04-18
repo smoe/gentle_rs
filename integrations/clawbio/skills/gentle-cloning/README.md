@@ -299,6 +299,9 @@ Included follow-on analysis/planning/graphics requests:
     backbones, and active external resource snapshots so chat/report layers can
     answer "what can this GENtle instance work with right now?" from one
     deterministic artifact
+  - when a prepare/reindex run is in flight, the same report can also say
+    whether GENtle is currently downloading, indexing, cancelled, or failed
+    instead of only reporting static prepared/not-prepared state
 - `examples/request_export_bed_rs9923231_vkorc1_context_features.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - exports the fetched locus' gene/mRNA/variation rows with genomic coordinates
