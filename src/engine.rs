@@ -15397,9 +15397,11 @@ impl GentleEngine {
                 "low_complexity".to_string(),
                 "repeat_region".to_string(),
                 "mapping_ambiguity_risk".to_string(),
+                "nanopore_signal_risk".to_string(),
             ];
             if longest_homopolymer >= HOMOPOLYMER_ANNOTATION_THRESHOLD_BP {
                 tags.push("polymerase_slippage_risk".to_string());
+                tags.push("nanopore_homopolymer_risk".to_string());
             }
             let dominant_run = Self::construct_reasoning_most_common_base_run(slice)
                 .map(|(base, run)| format!("dominant_run={base}x{run}"))
@@ -15481,7 +15483,11 @@ impl GentleEngine {
                         "tandem_repeat".to_string()
                     },
                     "polymerase_slippage_risk".to_string(),
+                    "nanopore_signal_risk".to_string(),
                 ];
+                if motif_len == 1 {
+                    tags.push("nanopore_homopolymer_risk".to_string());
+                }
                 if motif_len == 1 || motif_len <= 3 {
                     tags.push("low_complexity".to_string());
                 }
@@ -15884,6 +15890,7 @@ impl GentleEngine {
                     "sine".to_string(),
                     "retrotransposon".to_string(),
                     "repeat_region".to_string(),
+                    "mapping_ambiguity_risk".to_string(),
                 ],
                 vec!["alu_like_sine_heuristic".to_string()],
                 vec![
@@ -18742,6 +18749,16 @@ impl GentleEngine {
             .copied()
             .filter(|row| has_similarity_tag(row, "polymerase_slippage_risk"))
             .collect::<Vec<_>>();
+        let nanopore_signal_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "nanopore_signal_risk"))
+            .collect::<Vec<_>>();
+        let nanopore_homopolymer_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "nanopore_homopolymer_risk"))
+            .collect::<Vec<_>>();
         let mapping_ambiguity_rows = repeat_region_rows
             .iter()
             .copied()
@@ -18764,6 +18781,11 @@ impl GentleEngine {
             .iter()
             .copied()
             .filter(|row| has_similarity_tag(row, "alu_like"))
+            .collect::<Vec<_>>();
+        let mobile_mapping_rows = mobile_element_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "mapping_ambiguity_risk"))
             .collect::<Vec<_>>();
 
         if !low_complexity_rows.is_empty()
@@ -18933,6 +18955,197 @@ impl GentleEngine {
                 vec!["fact_mobile_element_context".to_string()],
                 json!({
                     "status": mobile_element_status,
+                }),
+            ));
+        }
+
+        if !slippage_risk_rows.is_empty()
+            || !homopolymer_rows.is_empty()
+            || !tandem_rows.is_empty()
+            || !low_complexity_rows.is_empty()
+        {
+            let pcr_risk_status = if !homopolymer_rows.is_empty() || !tandem_rows.is_empty() {
+                "review_needed_repeat_slippage_risk"
+            } else {
+                "review_needed_low_complexity_pcr_risk"
+            };
+            let pcr_risk_rationale = format!(
+                "Sequence-derived repeat/complexity annotations imply {} low-complexity span(s), {} homopolymer run(s), {} tandem-repeat span(s), and {} explicit slippage-risk span(s). GENtle keeps these as PCR/amplification review cues because the practical severity depends on primer placement, amplicon length, and polymerase choice.",
+                low_complexity_rows.len(),
+                homopolymer_rows.len(),
+                tandem_rows.len(),
+                slippage_risk_rows.len()
+            );
+            let mut pcr_risk_ids = similarity_ids(&low_complexity_rows);
+            pcr_risk_ids.extend(similarity_ids(&homopolymer_rows));
+            pcr_risk_ids.extend(similarity_ids(&tandem_rows));
+            pcr_risk_ids.extend(similarity_ids(&slippage_risk_rows));
+            pcr_risk_ids.sort();
+            pcr_risk_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_pcr_operational_risk_context",
+                "pcr_operational_risk_context",
+                "PCR/amplification review suggested".to_string(),
+                pcr_risk_rationale.clone(),
+                pcr_risk_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": pcr_risk_status,
+                    "low_complexity_region_count": low_complexity_rows.len(),
+                    "homopolymer_run_count": homopolymer_rows.len(),
+                    "tandem_repeat_count": tandem_rows.len(),
+                    "polymerase_slippage_risk_count": slippage_risk_rows.len(),
+                    "low_complexity_labels": similarity_labels(&low_complexity_rows),
+                    "homopolymer_labels": similarity_labels(&homopolymer_rows),
+                    "tandem_repeat_labels": similarity_labels(&tandem_rows),
+                    "slippage_labels": similarity_labels(&slippage_risk_rows),
+                    "max_pcr_risk_score": similarity_max_score(&low_complexity_rows)
+                        .max(similarity_max_score(&slippage_risk_rows)),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_pcr_operational_risk",
+                "evaluate_pcr_operational_risk",
+                "Evaluate PCR/Amplification Risk".to_string(),
+                pcr_risk_rationale,
+                pcr_risk_ids,
+                vec!["fact_pcr_operational_risk_context".to_string()],
+                json!({
+                    "status": pcr_risk_status,
+                }),
+            ));
+        }
+
+        if !nanopore_signal_rows.is_empty() {
+            let nanopore_risk_status = if !nanopore_homopolymer_rows.is_empty() {
+                "review_needed_homopolymer_signal_risk"
+            } else {
+                "review_needed_low_complexity_signal_risk"
+            };
+            let nanopore_risk_rationale = format!(
+                "Sequence-derived repeat/complexity annotations imply {} nanopore signal-risk span(s), including {} homopolymer-dominated span(s). GENtle keeps these as direct-sequencing review cues because homopolymers and low-complexity sequence can affect raw-signal interpretation, basecalling, and local mapping confidence.",
+                nanopore_signal_rows.len(),
+                nanopore_homopolymer_rows.len()
+            );
+            let mut nanopore_risk_ids = similarity_ids(&nanopore_signal_rows);
+            nanopore_risk_ids.extend(similarity_ids(&nanopore_homopolymer_rows));
+            nanopore_risk_ids.sort();
+            nanopore_risk_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_nanopore_operational_risk_context",
+                "nanopore_operational_risk_context",
+                "Nanopore/direct-sequencing review suggested".to_string(),
+                nanopore_risk_rationale.clone(),
+                nanopore_risk_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": nanopore_risk_status,
+                    "nanopore_signal_risk_count": nanopore_signal_rows.len(),
+                    "nanopore_homopolymer_risk_count": nanopore_homopolymer_rows.len(),
+                    "signal_labels": similarity_labels(&nanopore_signal_rows),
+                    "homopolymer_labels": similarity_labels(&nanopore_homopolymer_rows),
+                    "max_nanopore_risk_score": similarity_max_score(&nanopore_signal_rows),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_nanopore_operational_risk",
+                "evaluate_nanopore_operational_risk",
+                "Evaluate Nanopore/Direct-Sequencing Risk".to_string(),
+                nanopore_risk_rationale,
+                nanopore_risk_ids,
+                vec!["fact_nanopore_operational_risk_context".to_string()],
+                json!({
+                    "status": nanopore_risk_status,
+                }),
+            ));
+        }
+
+        if !mapping_ambiguity_rows.is_empty() || !mobile_mapping_rows.is_empty() {
+            let mapping_risk_status = if !mobile_mapping_rows.is_empty() {
+                "review_needed_repeat_family_mapping_risk"
+            } else {
+                "review_needed_repeat_mapping_risk"
+            };
+            let mapping_risk_rationale = format!(
+                "Sequence-derived repeat/mobile-element annotations imply {} repeat-driven mapping-ambiguity span(s) and {} mobile-element candidate span(s). GENtle keeps these as mapping-review cues because ambiguity depends on read length, mapper behavior, and whether repeated family members are expected elsewhere in the genome.",
+                mapping_ambiguity_rows.len(),
+                mobile_mapping_rows.len()
+            );
+            let mut mapping_risk_ids = similarity_ids(&mapping_ambiguity_rows);
+            mapping_risk_ids.extend(similarity_ids(&mobile_mapping_rows));
+            mapping_risk_ids.sort();
+            mapping_risk_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_mapping_operational_risk_context",
+                "mapping_operational_risk_context",
+                "Repeat-driven mapping review suggested".to_string(),
+                mapping_risk_rationale.clone(),
+                mapping_risk_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": mapping_risk_status,
+                    "mapping_ambiguity_risk_count": mapping_ambiguity_rows.len(),
+                    "mobile_element_candidate_count": mobile_mapping_rows.len(),
+                    "mapping_labels": similarity_labels(&mapping_ambiguity_rows),
+                    "mobile_element_labels": similarity_labels(&mobile_mapping_rows),
+                    "max_mapping_risk_score": similarity_max_score(&mapping_ambiguity_rows)
+                        .max(similarity_max_score(&mobile_mapping_rows)),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_mapping_operational_risk",
+                "evaluate_mapping_operational_risk",
+                "Evaluate Repeat-Driven Mapping Risk".to_string(),
+                mapping_risk_rationale,
+                mapping_risk_ids,
+                vec!["fact_mapping_operational_risk_context".to_string()],
+                json!({
+                    "status": mapping_risk_status,
+                }),
+            ));
+        }
+
+        if !inversion_risk_rows.is_empty() || !cloning_risk_rows.is_empty() {
+            let cloning_risk_status = if !inversion_risk_rows.is_empty() {
+                "review_needed_inversion_recombination_risk"
+            } else {
+                "review_needed_repeat_cloning_stability"
+            };
+            let cloning_risk_rationale = format!(
+                "Sequence-derived repeat annotations imply {} inversion/palindromic-risk span(s) and {} cloning-stability span(s). GENtle keeps these as cloning review cues because repeated or inverted sequence can destabilize recovery, maintenance, or rearrangement-prone constructs.",
+                inversion_risk_rows.len(),
+                cloning_risk_rows.len()
+            );
+            let mut cloning_risk_ids = similarity_ids(&inversion_risk_rows);
+            cloning_risk_ids.extend(similarity_ids(&cloning_risk_rows));
+            cloning_risk_ids.sort();
+            cloning_risk_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_cloning_stability_context",
+                "cloning_stability_context",
+                "Cloning stability review suggested".to_string(),
+                cloning_risk_rationale.clone(),
+                cloning_risk_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": cloning_risk_status,
+                    "inversion_risk_count": inversion_risk_rows.len(),
+                    "cloning_stability_risk_count": cloning_risk_rows.len(),
+                    "inversion_labels": similarity_labels(&inversion_risk_rows),
+                    "cloning_labels": similarity_labels(&cloning_risk_rows),
+                    "max_cloning_risk_score": similarity_max_score(&inversion_risk_rows)
+                        .max(similarity_max_score(&cloning_risk_rows)),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_cloning_stability_context",
+                "evaluate_cloning_stability_context",
+                "Evaluate Cloning Stability".to_string(),
+                cloning_risk_rationale,
+                cloning_risk_ids,
+                vec!["fact_cloning_stability_context".to_string()],
+                json!({
+                    "status": cloning_risk_status,
                 }),
             ));
         }

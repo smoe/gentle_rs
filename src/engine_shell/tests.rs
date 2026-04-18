@@ -6468,6 +6468,97 @@ fn execute_routines_compare_returns_difference_matrix() {
 }
 
 #[test]
+fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "similarity_predictor_cli".to_string(),
+        DNAsequence::from_sequence(&sequence).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let graph = engine
+        .build_construct_reasoning_graph(
+            "similarity_predictor_cli",
+            None,
+            Some("similarity_predictor_cli_graph"),
+        )
+        .expect("build graph");
+
+    let show = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ConstructReasoningShowGraph {
+            graph_id: graph.graph_id.clone(),
+        },
+    )
+    .expect("show construct-reasoning graph");
+
+    assert!(
+        show.output["summary"]["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str().is_some_and(|text| {
+                    text.contains("PCR/amplification review suggested")
+                        && text.contains("review_needed")
+                })
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        show.output["summary"]["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row.as_str().is_some_and(|text| {
+                    text.contains("Nanopore/direct-sequencing review suggested")
+                })
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        show.output["summary"]["fact_summaries"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row["fact_type"].as_str() == Some("mapping_operational_risk_context")
+                    && row["detail_lines"]
+                        .as_array()
+                        .map(|detail_rows| {
+                            detail_rows.iter().any(|entry| {
+                                entry.as_str().is_some_and(|text| {
+                                    text.contains("mapping_review: repeat_ambiguity=")
+                                })
+                            })
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        show.output["summary"]["fact_summaries"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row["fact_type"].as_str() == Some("cloning_stability_context")
+                    && row["warning_lines"]
+                        .as_array()
+                        .map(|warning_rows| {
+                            warning_rows.iter().any(|entry| {
+                                entry.as_str().is_some_and(|text| {
+                                    text.contains("inversion/recombination review")
+                                })
+                            })
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
 fn execute_routines_explain_includes_variant_planning_context_for_sequence() {
     let mut engine = GentleEngine::default();
     engine

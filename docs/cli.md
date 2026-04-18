@@ -746,6 +746,9 @@ UniProt mapping capability status:
     - `summary_lines`
     - `warning_lines`
     - `fact_summaries`
+    - current fact summaries now include adapter-capture review plus the new
+      similarity-derived predictor rows for PCR/amplification,
+      nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
   - `construct-reasoning set-annotation-status` updates one persisted
     annotation candidate in place and returns:
     - the updated portable graph

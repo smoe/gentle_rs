@@ -726,6 +726,14 @@ Current landed slice:
   `repeat_architecture_context`, `mobile_element_context`, and
   `similarity_operational_risk_context` facts/decisions so low complexity is
   inspectable by axis rather than collapsed into one opaque warning
+- the same generated similarity evidence now also feeds explicit internal
+  predictor facts/decisions for:
+  - `pcr_operational_risk_context`
+  - `nanopore_operational_risk_context`
+  - `mapping_operational_risk_context`
+  - `cloning_stability_context`
+  so PCR, direct-sequencing, mapping, and cloning review can be inspected as
+  separate task-shaped cues without forking the underlying evidence scanner
 - the DNA window exposes the same curation in both the clicked-span detail
   view and the `Annotation candidates` inspector section
 - accepted or locked generated candidates can now be written back as ordinary

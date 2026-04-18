@@ -190,6 +190,10 @@ impl GentleEngine {
             "selection_context",
             "variant_effect_context",
             "variant_assay_context",
+            "pcr_operational_risk_context",
+            "nanopore_operational_risk_context",
+            "mapping_operational_risk_context",
+            "cloning_stability_context",
         ] {
             if let Some(fact) = graph.facts.iter().find(|fact| fact.fact_type == fact_type) {
                 if let Some(status) = fact_statuses.get(fact_type) {
@@ -266,7 +270,7 @@ impl GentleEngine {
                         fact.value_json
                             .get("status")
                             .and_then(serde_json::Value::as_str)
-                            == Some("review_needed")
+                            .is_some_and(|value| value.starts_with("review_needed"))
                     })
                     .map(|fact| &fact.label),
             )

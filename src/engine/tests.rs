@@ -26256,6 +26256,58 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let pcr_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "pcr_operational_risk_context")
+        .expect("pcr operational risk fact");
+    assert!(
+        pcr_fact
+            .value_json
+            .get("polymerase_slippage_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    let nanopore_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "nanopore_operational_risk_context")
+        .expect("nanopore operational risk fact");
+    assert!(
+        nanopore_fact
+            .value_json
+            .get("nanopore_signal_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    let mapping_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mapping_operational_risk_context")
+        .expect("mapping operational risk fact");
+    assert!(
+        mapping_fact
+            .value_json
+            .get("mapping_ambiguity_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    let cloning_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "cloning_stability_context")
+        .expect("cloning stability fact");
+    assert!(
+        cloning_fact
+            .value_json
+            .get("inversion_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::RepeatRegion && row.source_kind == "generated_annotation"
     }));
@@ -26301,6 +26353,19 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
         mobile_fact
             .value_json
             .get("alu_like_candidate_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    let mapping_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mapping_operational_risk_context")
+        .expect("mapping risk fact");
+    assert!(
+        mapping_fact
+            .value_json
+            .get("mobile_element_candidate_count")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
             >= 1

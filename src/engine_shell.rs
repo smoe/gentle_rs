@@ -20537,6 +20537,178 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
                     .unwrap_or_default(),
             );
         }
+        "sequence_complexity_context" => {
+            let low_complexity = fact
+                .value_json
+                .get("low_complexity_region_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let homopolymers = fact
+                .value_json
+                .get("homopolymer_run_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let tandem = fact
+                .value_json
+                .get("tandem_repeat_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "counts: low_complexity={low_complexity}, homopolymers={homopolymers}, tandem_repeats={tandem}"
+            ));
+        }
+        "repeat_architecture_context" => {
+            let direct = fact
+                .value_json
+                .get("direct_repeat_cluster_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let inverted = fact
+                .value_json
+                .get("inverted_repeat_cluster_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!("clusters: direct={direct}, inverted={inverted}"));
+        }
+        "mobile_element_context" => {
+            let mobile = fact
+                .value_json
+                .get("mobile_element_candidate_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let alu_like = fact
+                .value_json
+                .get("alu_like_candidate_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "candidates: mobile_elements={mobile}, alu_like={alu_like}"
+            ));
+            if alu_like > 0 {
+                warning_lines.push(
+                    "Alu-like calls are still heuristic until a curated repeat-family catalog is integrated"
+                        .to_string(),
+                );
+            }
+        }
+        "similarity_operational_risk_context" => {
+            let slippage = fact
+                .value_json
+                .get("polymerase_slippage_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let mapping = fact
+                .value_json
+                .get("mapping_ambiguity_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let inversion = fact
+                .value_json
+                .get("inversion_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let cloning = fact
+                .value_json
+                .get("cloning_stability_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "risks: slippage={slippage}, mapping={mapping}, inversion={inversion}, cloning={cloning}"
+            ));
+        }
+        "pcr_operational_risk_context" => {
+            let low_complexity = fact
+                .value_json
+                .get("low_complexity_region_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let homopolymers = fact
+                .value_json
+                .get("homopolymer_run_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let tandem = fact
+                .value_json
+                .get("tandem_repeat_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let slippage = fact
+                .value_json
+                .get("polymerase_slippage_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "pcr_review: low_complexity={low_complexity}, homopolymers={homopolymers}, tandem={tandem}, slippage={slippage}"
+            ));
+            if homopolymers > 0 || tandem > 0 {
+                warning_lines.push(
+                    "Repeated or homopolymer-rich sequence suggests PCR/amplification review"
+                        .to_string(),
+                );
+            }
+        }
+        "nanopore_operational_risk_context" => {
+            let signal = fact
+                .value_json
+                .get("nanopore_signal_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let homopolymer = fact
+                .value_json
+                .get("nanopore_homopolymer_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "nanopore_review: signal_risk={signal}, homopolymer_risk={homopolymer}"
+            ));
+            if homopolymer > 0 {
+                warning_lines.push(
+                    "Homopolymer-rich sequence suggests nanopore/direct-sequencing review"
+                        .to_string(),
+                );
+            }
+        }
+        "mapping_operational_risk_context" => {
+            let mapping = fact
+                .value_json
+                .get("mapping_ambiguity_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let mobile = fact
+                .value_json
+                .get("mobile_element_candidate_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "mapping_review: repeat_ambiguity={mapping}, mobile_elements={mobile}"
+            ));
+            if mobile > 0 {
+                warning_lines.push(
+                    "Repeat-family/mobile-element context suggests mapping ambiguity review"
+                        .to_string(),
+                );
+            }
+        }
+        "cloning_stability_context" => {
+            let inversion = fact
+                .value_json
+                .get("inversion_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let cloning = fact
+                .value_json
+                .get("cloning_stability_risk_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            detail_lines.push(format!(
+                "cloning_review: inversion={inversion}, stability={cloning}"
+            ));
+            if inversion > 0 {
+                warning_lines.push(
+                    "Inverted-repeat evidence suggests inversion/recombination review".to_string(),
+                );
+            }
+        }
         _ => {}
     }
 

@@ -1619,6 +1619,11 @@ Controls:
      - cautious `Alu-like SINE candidate` mobile-element calls
      - operational-risk facts stay in the non-sequence inspector instead of
        duplicating every underlying seed/hit on the map
+       - current predictor rows include:
+         - `PCR/amplification review suggested`
+         - `Nanopore/direct-sequencing review suggested`
+         - `Repeat-driven mapping review suggested`
+         - `Cloning stability review suggested`
   - Both the clicked-span detail view and the `Annotation candidates` section
     now expose shared-engine accept/reject/draft controls so reviewed
     automated-annotation candidates can be curated without inventing GUI-only

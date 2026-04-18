@@ -4478,6 +4478,13 @@ Post-baseline follow-ups:
     `similarity_operational_risk_context` facts/decisions so PCR/slippage,
     mapping ambiguity, inversion risk, and cloning-instability review can stay
     inspectable without flooding the sequence window with raw similarity hits.
+  - Done (2026-04-18, internal predictor split): the same generated
+    similarity/repeat evidence now also feeds explicit
+    `pcr_operational_risk_context`, `nanopore_operational_risk_context`,
+    `mapping_operational_risk_context`, and `cloning_stability_context`
+    facts/decisions, so GUI/CLI/ClawBio can inspect task-shaped PCR,
+    direct-sequencing, mapping, and cloning review cues without inventing a
+    second predictor pipeline.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

@@ -3118,6 +3118,10 @@ Construct reasoning graph foundation (implemented first slice):
       - `repeat_architecture_context`
       - `mobile_element_context`
       - `similarity_operational_risk_context`
+      - `pcr_operational_risk_context`
+      - `nanopore_operational_risk_context`
+      - `mapping_operational_risk_context`
+      - `cloning_stability_context`
     - current intent is inspectable structural context and operational review,
       not final repeat-family taxonomy; curated repeat catalogs can refine the
       same graph later without changing the adapter contract shape
