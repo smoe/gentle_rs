@@ -12,8 +12,32 @@
 
 use super::*;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 impl GentleEngine {
+    pub(crate) fn jaspar_remote_metadata_summary(
+        metadata: &JasparRemoteMetadata,
+    ) -> JasparCatalogRemoteSummary {
+        let mut species_preview = metadata
+            .species_assignments
+            .iter()
+            .map(|row| row.scientific_name.trim().to_string())
+            .filter(|row| !row.is_empty())
+            .collect::<Vec<_>>();
+        species_preview.sort_by_key(|value| value.to_ascii_uppercase());
+        species_preview.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        species_preview.truncate(3);
+        JasparCatalogRemoteSummary {
+            collection: metadata.collection.clone(),
+            tax_group: metadata.tax_group.clone(),
+            tf_class: metadata.tf_class.clone(),
+            tf_family: metadata.tf_family.clone(),
+            data_type: metadata.data_type.clone(),
+            species_count: metadata.species_assignments.len(),
+            species_preview,
+        }
+    }
+
     fn jaspar_extreme_sequence(score_matrix: &[[f64; 4]], pick_max: bool) -> String {
         const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
         let mut out = String::with_capacity(score_matrix.len());
@@ -424,12 +448,244 @@ impl GentleEngine {
         Ok(Self::parse_jaspar_remote_metadata_value(&value, &url))
     }
 
+    fn default_jaspar_remote_metadata_snapshot_path(path: Option<&str>) -> String {
+        path.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(crate::resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH)
+            .to_string()
+    }
+
+    fn jaspar_remote_metadata_snapshot_row(
+        motif_id: &str,
+        motif_name: Option<&str>,
+        consensus_iupac: &str,
+        motif_length_bp: usize,
+        remote_metadata: JasparRemoteMetadata,
+    ) -> JasparRemoteMetadataSnapshotRow {
+        JasparRemoteMetadataSnapshotRow {
+            motif_id: motif_id.to_string(),
+            motif_name: motif_name
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            consensus_iupac: consensus_iupac.to_string(),
+            motif_length_bp,
+            remote_summary: Some(Self::jaspar_remote_metadata_summary(&remote_metadata)),
+            remote_metadata,
+        }
+    }
+
+    fn load_jaspar_remote_metadata_snapshot_rows(
+        path: Option<&str>,
+    ) -> Result<BTreeMap<String, JasparRemoteMetadataSnapshotRow>, String> {
+        let path = Self::default_jaspar_remote_metadata_snapshot_path(path);
+        let snapshot_path = std::path::Path::new(&path);
+        if !snapshot_path.exists() {
+            return Ok(BTreeMap::new());
+        }
+        let text = std::fs::read_to_string(snapshot_path)
+            .map_err(|e| format!("Could not read JASPAR remote-metadata snapshot '{path}': {e}"))?;
+        let snapshot =
+            serde_json::from_str::<JasparRemoteMetadataSnapshot>(&text).map_err(|e| {
+                format!("Could not parse JASPAR remote-metadata snapshot '{path}': {e}")
+            })?;
+        if !snapshot
+            .schema
+            .starts_with("gentle.jaspar_remote_metadata_snapshot.v")
+        {
+            return Err(format!(
+                "Unexpected JASPAR remote-metadata snapshot schema '{}' in '{}'",
+                snapshot.schema, path
+            ));
+        }
+        Ok(snapshot
+            .rows
+            .into_iter()
+            .map(|mut row| {
+                if row.remote_summary.is_none() {
+                    row.remote_summary =
+                        Some(Self::jaspar_remote_metadata_summary(&row.remote_metadata));
+                }
+                (row.motif_id.clone(), row)
+            })
+            .collect())
+    }
+
+    fn select_jaspar_catalog_rows(
+        &self,
+        motifs: &[String],
+        filter: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<(usize, Vec<String>, Vec<tf_motifs::TfMotifSummary>), EngineError> {
+        let registry_rows = tf_motifs::list_motif_summaries();
+        let registry_entry_count = registry_rows.len();
+        let mut seen_ids = BTreeSet::new();
+        let mut requested_motifs = vec![];
+        let mut rows = vec![];
+        if !motifs.is_empty() {
+            for token in motifs
+                .iter()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+            {
+                requested_motifs.push(token.to_string());
+                let motif_definition =
+                    tf_motifs::resolve_motif_definition(token).ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "JASPAR entry '{}' was not found in the local motif registry",
+                            token
+                        ),
+                    })?;
+                if !seen_ids.insert(motif_definition.id.clone()) {
+                    continue;
+                }
+                rows.push(tf_motifs::TfMotifSummary {
+                    id: motif_definition.id,
+                    name: motif_definition.name,
+                    consensus_iupac: motif_definition.consensus_iupac,
+                    motif_length_bp: motif_definition.matrix_counts.len(),
+                });
+                if let Some(limit) = limit {
+                    if rows.len() >= limit {
+                        break;
+                    }
+                }
+            }
+            return Ok((registry_entry_count, requested_motifs, rows));
+        }
+
+        let requested_filter = filter.map(str::trim).filter(|value| !value.is_empty());
+        let normalized_filter = requested_filter.map(|value| value.to_ascii_uppercase());
+        let filtered_rows = registry_rows
+            .into_iter()
+            .filter(|row| {
+                let Some(filter) = normalized_filter.as_deref() else {
+                    return true;
+                };
+                row.id.to_ascii_uppercase().contains(filter)
+                    || row
+                        .name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_ascii_uppercase()
+                        .contains(filter)
+                    || row.consensus_iupac.to_ascii_uppercase().contains(filter)
+            })
+            .take(limit.unwrap_or(usize::MAX))
+            .collect::<Vec<_>>();
+        Ok((registry_entry_count, requested_motifs, filtered_rows))
+    }
+
+    pub(crate) fn sync_jaspar_remote_metadata_snapshot_with_fetcher<F>(
+        &self,
+        motifs: &[String],
+        filter: Option<&str>,
+        limit: Option<usize>,
+        path: Option<&str>,
+        mut fetcher: F,
+    ) -> Result<JasparRemoteMetadataSnapshot, EngineError>
+    where
+        F: FnMut(&str) -> Result<JasparRemoteMetadata, EngineError>,
+    {
+        let output_path = Self::default_jaspar_remote_metadata_snapshot_path(path);
+        let (registry_entry_count, requested_motifs, selected_rows) =
+            self.select_jaspar_catalog_rows(motifs, filter, limit)?;
+        let mut warnings = vec![];
+        let mut existing_rows =
+            match Self::load_jaspar_remote_metadata_snapshot_rows(Some(&output_path)) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    warnings.push(err);
+                    BTreeMap::new()
+                }
+            };
+        let mut fetched_entry_count = 0usize;
+        for row in selected_rows {
+            match fetcher(&row.id) {
+                Ok(metadata) => {
+                    fetched_entry_count += 1;
+                    existing_rows.insert(
+                        row.id.clone(),
+                        Self::jaspar_remote_metadata_snapshot_row(
+                            &row.id,
+                            row.name.as_deref(),
+                            &row.consensus_iupac,
+                            row.motif_length_bp,
+                            metadata,
+                        ),
+                    );
+                }
+                Err(err) => {
+                    warnings.push(format!("{}: {}", row.id, err.message));
+                }
+            }
+        }
+
+        let rows = existing_rows.into_values().collect::<Vec<_>>();
+        let snapshot = JasparRemoteMetadataSnapshot {
+            schema: JASPAR_REMOTE_METADATA_SNAPSHOT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            filter: filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            limit,
+            requested_motifs,
+            registry_entry_count,
+            fetched_entry_count,
+            persisted_entry_count: rows.len(),
+            source: "jaspar_rest_api_v1".to_string(),
+            rows,
+            warnings,
+        };
+        Ok(snapshot)
+    }
+
+    pub(crate) fn sync_jaspar_remote_metadata_snapshot(
+        &self,
+        motifs: &[String],
+        filter: Option<&str>,
+        limit: Option<usize>,
+        path: Option<&str>,
+    ) -> Result<JasparRemoteMetadataSnapshot, EngineError> {
+        self.sync_jaspar_remote_metadata_snapshot_with_fetcher(
+            motifs,
+            filter,
+            limit,
+            path,
+            |motif_id| self.fetch_jaspar_remote_metadata(motif_id),
+        )
+    }
+
     pub(crate) fn inspect_jaspar_entry(
         &self,
         motif: &str,
         random_sequence_length_bp: usize,
         random_seed: u64,
         include_remote_metadata: bool,
+        refresh_remote_metadata: bool,
+    ) -> Result<JasparEntryExpertView, EngineError> {
+        self.inspect_jaspar_entry_with_snapshot_path(
+            motif,
+            random_sequence_length_bp,
+            random_seed,
+            include_remote_metadata,
+            refresh_remote_metadata,
+            None,
+        )
+    }
+
+    pub(crate) fn inspect_jaspar_entry_with_snapshot_path(
+        &self,
+        motif: &str,
+        random_sequence_length_bp: usize,
+        random_seed: u64,
+        include_remote_metadata: bool,
+        refresh_remote_metadata: bool,
+        snapshot_path: Option<&str>,
     ) -> Result<JasparEntryExpertView, EngineError> {
         let motif = motif.trim();
         if motif.is_empty() {
@@ -479,12 +735,26 @@ impl GentleEngine {
             Self::deterministic_random_dna_bytes(random_sequence_length_bp, random_seed);
         let mut warnings = vec![];
         let remote_metadata = if include_remote_metadata {
-            match self.fetch_jaspar_remote_metadata(&motif_definition.id) {
-                Ok(metadata) => Some(metadata),
+            let cached_rows = match Self::load_jaspar_remote_metadata_snapshot_rows(snapshot_path) {
+                Ok(rows) => rows,
                 Err(err) => {
-                    warnings.push(err.message);
-                    None
+                    warnings.push(err);
+                    BTreeMap::new()
                 }
+            };
+            let cached_metadata = cached_rows
+                .get(&motif_definition.id)
+                .map(|row| row.remote_metadata.clone());
+            if refresh_remote_metadata {
+                match self.fetch_jaspar_remote_metadata(&motif_definition.id) {
+                    Ok(metadata) => Some(metadata),
+                    Err(err) => {
+                        warnings.push(err.message);
+                        cached_metadata
+                    }
+                }
+            } else {
+                cached_metadata
             }
         } else {
             None
@@ -521,6 +791,91 @@ impl GentleEngine {
                     &random_background,
                 ),
             ],
+            warnings,
+        })
+    }
+
+    pub(crate) fn list_jaspar_catalog(
+        &self,
+        filter: Option<&str>,
+        limit: Option<usize>,
+        include_remote_metadata: bool,
+        refresh_remote_metadata: bool,
+    ) -> Result<JasparCatalogReport, EngineError> {
+        self.list_jaspar_catalog_with_snapshot_path(
+            filter,
+            limit,
+            include_remote_metadata,
+            refresh_remote_metadata,
+            None,
+        )
+    }
+
+    pub(crate) fn list_jaspar_catalog_with_snapshot_path(
+        &self,
+        filter: Option<&str>,
+        limit: Option<usize>,
+        include_remote_metadata: bool,
+        refresh_remote_metadata: bool,
+        snapshot_path: Option<&str>,
+    ) -> Result<JasparCatalogReport, EngineError> {
+        let requested_filter = filter.map(str::trim).filter(|value| !value.is_empty());
+        let (registry_entry_count, _, selected_rows) =
+            self.select_jaspar_catalog_rows(&[], requested_filter, limit)?;
+        let mut warnings = vec![];
+        let cached_rows = if include_remote_metadata {
+            match Self::load_jaspar_remote_metadata_snapshot_rows(snapshot_path) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    warnings.push(err);
+                    BTreeMap::new()
+                }
+            }
+        } else {
+            BTreeMap::new()
+        };
+        let mut rows = vec![];
+        for row in selected_rows {
+            let remote_summary = if include_remote_metadata {
+                let cached_summary = cached_rows.get(&row.id).and_then(|entry| {
+                    entry.remote_summary.clone().or_else(|| {
+                        Some(Self::jaspar_remote_metadata_summary(&entry.remote_metadata))
+                    })
+                });
+                if refresh_remote_metadata {
+                    match self.fetch_jaspar_remote_metadata(&row.id) {
+                        Ok(metadata) => Some(Self::jaspar_remote_metadata_summary(&metadata)),
+                        Err(err) => {
+                            warnings.push(format!("{}: {}", row.id, err.message));
+                            cached_summary
+                        }
+                    }
+                } else {
+                    cached_summary
+                }
+            } else {
+                None
+            };
+            rows.push(JasparCatalogRow {
+                motif_id: row.id,
+                motif_name: row.name,
+                consensus_iupac: row.consensus_iupac,
+                motif_length_bp: row.motif_length_bp,
+                remote_summary,
+            });
+        }
+
+        Ok(JasparCatalogReport {
+            schema: JASPAR_CATALOG_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            filter: requested_filter.map(str::to_string),
+            limit,
+            include_remote_metadata,
+            registry_entry_count,
+            returned_entry_count: rows.len(),
+            rows,
             warnings,
         })
     }
@@ -665,6 +1020,22 @@ impl GentleEngine {
         path: &str,
     ) -> Result<(), EngineError> {
         self.write_pretty_json_file(report, path, "JASPAR entry presentation report")
+    }
+
+    pub(crate) fn write_jaspar_catalog_report_json(
+        &self,
+        report: &JasparCatalogReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        self.write_pretty_json_file(report, path, "JASPAR catalog report")
+    }
+
+    pub(crate) fn write_jaspar_remote_metadata_snapshot_json(
+        &self,
+        snapshot: &JasparRemoteMetadataSnapshot,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        self.write_pretty_json_file(snapshot, path, "JASPAR remote-metadata snapshot")
     }
 
     pub(crate) fn write_jaspar_entry_expert_view_json(

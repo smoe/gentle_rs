@@ -643,6 +643,62 @@ pub struct JasparEntryPresentationReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Compact remote JASPAR metadata summary suitable for catalog/list views.
+pub struct JasparCatalogRemoteSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<String>,
+    pub species_count: usize,
+    #[serde(default)]
+    pub species_preview: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One row inside the shared JASPAR catalog report.
+pub struct JasparCatalogRow {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_summary: Option<JasparCatalogRemoteSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable catalog/list view of local JASPAR entries with optional remote
+/// metadata summaries for the returned subset.
+pub struct JasparCatalogReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    pub include_remote_metadata: bool,
+    pub registry_entry_count: usize,
+    pub returned_entry_count: usize,
+    #[serde(default)]
+    pub rows: Vec<JasparCatalogRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One species assignment reported by optional remote JASPAR metadata.
 pub struct JasparSpeciesAssignment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -669,6 +725,47 @@ pub struct JasparRemoteMetadata {
     pub data_type: Option<String>,
     #[serde(default)]
     pub species_assignments: Vec<JasparSpeciesAssignment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One persisted JASPAR remote-metadata row keyed by local motif id.
+pub struct JasparRemoteMetadataSnapshotRow {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_summary: Option<JasparCatalogRemoteSummary>,
+    pub remote_metadata: JasparRemoteMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted reusable JASPAR remote-metadata snapshot for catalog/expert
+/// enrichment across sessions.
+pub struct JasparRemoteMetadataSnapshot {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub requested_motifs: Vec<String>,
+    pub registry_entry_count: usize,
+    pub fetched_entry_count: usize,
+    pub persisted_entry_count: usize,
+    pub source: String,
+    #[serde(default)]
+    pub rows: Vec<JasparRemoteMetadataSnapshotRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1850,6 +1947,10 @@ pub struct OpResult {
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jaspar_remote_metadata_snapshot: Option<JasparRemoteMetadataSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jaspar_catalog_report: Option<JasparCatalogReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jaspar_entry_expert_view: Option<JasparEntryExpertView>,
     pub jaspar_entry_presentation: Option<JasparEntryPresentationReport>,

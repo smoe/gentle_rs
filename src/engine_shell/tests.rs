@@ -11358,6 +11358,50 @@ fn parse_resources_inspect_jaspar_with_options() {
 }
 
 #[test]
+fn parse_resources_list_jaspar_with_options() {
+    let cmd = parse_shell_line(
+        "resources list-jaspar --filter TP --limit 25 --fetch-remote --output jaspar.catalog.json",
+    )
+    .expect("parse resources list-jaspar");
+    match cmd {
+        ShellCommand::ResourcesListJaspar {
+            filter,
+            limit,
+            fetch_remote,
+            output,
+        } => {
+            assert_eq!(filter.as_deref(), Some("TP"));
+            assert_eq!(limit, Some(25));
+            assert!(fetch_remote);
+            assert_eq!(output.as_deref(), Some("jaspar.catalog.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_resources_sync_jaspar_remote_metadata_with_options() {
+    let cmd = parse_shell_line(
+        "resources sync-jaspar-remote-metadata --motif SP1 --motif REST --limit 20 --output jaspar.remote.json",
+    )
+    .expect("parse resources sync-jaspar-remote-metadata");
+    match cmd {
+        ShellCommand::ResourcesSyncJasparRemoteMetadata {
+            motifs,
+            filter,
+            limit,
+            output,
+        } => {
+            assert_eq!(motifs, vec!["SP1".to_string(), "REST".to_string()]);
+            assert_eq!(filter, None);
+            assert_eq!(limit, Some(20));
+            assert_eq!(output.as_deref(), Some("jaspar.remote.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_status() {
     let cmd = parse_shell_line("resources status").expect("parse resources status");
     match cmd {
@@ -11594,6 +11638,41 @@ fn execute_resources_inspect_jaspar_writes_report_and_returns_payload() {
             .and_then(|value| value.as_array())
             .map(|rows| rows.len()),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_resources_list_jaspar_writes_report_and_returns_payload() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.catalog.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesListJaspar {
+            filter: Some("SP1".to_string()),
+            limit: Some(10),
+            fetch_remote: false,
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources list-jaspar");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["result"]["jaspar_catalog_report"]["schema"].as_str(),
+        Some("gentle.jaspar_catalog.v1")
+    );
+    let returned = out.output["result"]["jaspar_catalog_report"]["returned_entry_count"]
+        .as_u64()
+        .expect("returned count");
+    assert!(returned >= 1);
+    assert!(returned <= 10);
+    let written = fs::read_to_string(&output_path).expect("read JASPAR catalog JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("filter").and_then(|value| value.as_str()),
+        Some("SP1")
     );
 }
 

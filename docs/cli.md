@@ -392,7 +392,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources summarize-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1403,7 +1403,9 @@ cargo run --bin gentle_cli -- services status
 cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
+cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
 cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json
+cargo run --bin gentle_cli -- resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json
 cargo run --bin gentle_cli -- resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json
 cargo run --bin gentle_cli -- agents list
 cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
@@ -1557,7 +1559,9 @@ Shared shell command:
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+    - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
+    - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
     - `agents list [--catalog PATH]`
     - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
@@ -2410,6 +2414,27 @@ Resource sync commands:
   - Omitting `--motif` and `--motifs` summarizes the full active local JASPAR registry.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
+- `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
+  - Lists local JASPAR entries as a portable catalog view.
+  - Includes per-row:
+    - motif id
+    - optional TF name
+    - consensus IUPAC sequence
+    - motif length
+    - and, when `--fetch-remote` is requested, a compact remote summary with
+      collection/class/family/tax-group fields plus species-count previews for
+      the returned subset
+  - `--filter` matches motif id, TF name, and consensus.
+  - `--limit` caps the returned subset before optional remote lookups.
+  - When `--fetch-remote` is requested, GENtle first reuses any matching rows
+    from `data/resources/jaspar.remote_metadata.json` and only refreshes
+    missing/selected rows live when necessary.
+- `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
+  - Refreshes and persists reusable JASPAR remote metadata for one selected
+    subset of the local registry.
+  - Default output: `data/resources/jaspar.remote_metadata.json`.
+  - Stored rows include motif id/name, consensus, motif length, full remote
+    metadata payload, and a compact summary for catalog views.
 - `resources sync-attract INPUT.zip_or_URL [OUTPUT.attract.json]`
   - Normalizes the published ATtRACT ZIP into GENtle’s runtime motif snapshot.
   - `INPUT` may be a local ZIP path or an `https://...` URL.
@@ -2447,6 +2472,8 @@ Resource sync commands:
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so repeated expert
     inspection stays reproducible.
+  - When `--fetch-remote` is requested, GENtle reuses any matching persisted
+    remote metadata row first and only then falls back to a live refresh.
 
 Agent bridge commands:
 

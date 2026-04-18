@@ -5774,6 +5774,8 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             restriction_site_scan: None,
+            jaspar_remote_metadata_snapshot: None,
+            jaspar_catalog_report: None,
             jaspar_entry_expert_view: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
@@ -12556,11 +12558,98 @@ impl GentleEngine {
                 ));
                 result.jaspar_entry_presentation = Some(report);
             }
+            Operation::ListJasparCatalog {
+                filter,
+                limit,
+                include_remote_metadata,
+                refresh_remote_metadata,
+                path,
+            } => {
+                let mut report = self.list_jaspar_catalog(
+                    filter.as_deref(),
+                    limit,
+                    include_remote_metadata,
+                    refresh_remote_metadata,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_catalog_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR catalog report for {} entry/entries to '{}'",
+                        report.returned_entry_count, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "JASPAR catalog listed {} entry/entries{}{}",
+                    report.returned_entry_count,
+                    report
+                        .filter
+                        .as_deref()
+                        .map(|value| format!(" for filter '{}'", value))
+                        .unwrap_or_default(),
+                    if report.include_remote_metadata {
+                        if refresh_remote_metadata {
+                            " with refreshed remote metadata"
+                        } else {
+                            " with optional remote metadata"
+                        }
+                    } else {
+                        ""
+                    }
+                ));
+                result.jaspar_catalog_report = Some(report);
+            }
+            Operation::SyncJasparRemoteMetadata {
+                motifs,
+                filter,
+                limit,
+                path,
+            } => {
+                let mut snapshot = self.sync_jaspar_remote_metadata_snapshot(
+                    &motifs,
+                    filter.as_deref(),
+                    limit,
+                    path.as_deref(),
+                )?;
+                snapshot.op_id = Some(result.op_id.clone());
+                snapshot.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_remote_metadata_snapshot_json(&snapshot, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR remote-metadata snapshot with {} persisted entr{} to '{}'",
+                        snapshot.persisted_entry_count,
+                        if snapshot.persisted_entry_count == 1 {
+                            "y"
+                        } else {
+                            "ies"
+                        },
+                        path
+                    ));
+                } else {
+                    self.write_jaspar_remote_metadata_snapshot_json(
+                        &snapshot,
+                        crate::resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
+                    )?;
+                }
+                result.messages.push(format!(
+                    "JASPAR remote-metadata snapshot refreshed {} entr{} (persisted={})",
+                    snapshot.fetched_entry_count,
+                    if snapshot.fetched_entry_count == 1 {
+                        "y"
+                    } else {
+                        "ies"
+                    },
+                    snapshot.persisted_entry_count
+                ));
+                result.jaspar_remote_metadata_snapshot = Some(snapshot);
+            }
             Operation::InspectJasparEntry {
                 motif,
                 random_sequence_length_bp,
                 random_seed,
                 include_remote_metadata,
+                refresh_remote_metadata,
                 path,
             } => {
                 let mut report = self.inspect_jaspar_entry(
@@ -12568,6 +12657,7 @@ impl GentleEngine {
                     random_sequence_length_bp,
                     random_seed,
                     include_remote_metadata,
+                    refresh_remote_metadata,
                 )?;
                 report.op_id = Some(result.op_id.clone());
                 report.run_id = Some(run_id.to_string());
@@ -12583,7 +12673,11 @@ impl GentleEngine {
                     report.motif_id,
                     report.score_panels.len(),
                     if report.include_remote_metadata {
-                        " with optional remote metadata"
+                        if refresh_remote_metadata {
+                            " with refreshed remote metadata"
+                        } else {
+                            " with optional remote metadata"
+                        }
                     } else {
                         ""
                     }

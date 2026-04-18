@@ -910,10 +910,22 @@ pub enum ShellCommand {
         input: String,
         output: Option<String>,
     },
+    ResourcesSyncJasparRemoteMetadata {
+        motifs: Vec<String>,
+        filter: Option<String>,
+        limit: Option<usize>,
+        output: Option<String>,
+    },
     ResourcesSummarizeJaspar {
         motifs: Vec<String>,
         random_sequence_length_bp: usize,
         random_seed: u64,
+        output: Option<String>,
+    },
+    ResourcesListJaspar {
+        filter: Option<String>,
+        limit: Option<usize>,
+        fetch_remote: bool,
         output: Option<String>,
     },
     ResourcesInspectJaspar {
@@ -5459,6 +5471,32 @@ impl ShellCommand {
                     .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
                 format!("sync JASPAR from '{input}' to '{output}'")
             }
+            Self::ResourcesSyncJasparRemoteMetadata {
+                motifs,
+                filter,
+                limit,
+                output,
+            } => {
+                let output = output.clone().unwrap_or_else(|| {
+                    resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH.to_string()
+                });
+                format!(
+                    "sync JASPAR remote metadata for {}{}{} to '{}'",
+                    if motifs.is_empty() {
+                        "matching local registry entries".to_string()
+                    } else {
+                        motifs.join(",")
+                    },
+                    filter
+                        .as_deref()
+                        .map(|value| format!(" (filter='{}')", value))
+                        .unwrap_or_default(),
+                    limit
+                        .map(|value| format!(", limit={value}"))
+                        .unwrap_or_default(),
+                    output,
+                )
+            }
             Self::ResourcesSummarizeJaspar {
                 motifs,
                 random_sequence_length_bp,
@@ -5473,6 +5511,23 @@ impl ShellCommand {
                 },
                 random_sequence_length_bp,
                 random_seed,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesListJaspar {
+                filter,
+                limit,
+                fetch_remote,
+                output,
+            } => format!(
+                "list JASPAR catalog entries{}{} (remote={}, output='{}')",
+                filter
+                    .as_deref()
+                    .map(|value| format!(" for filter '{}'", value))
+                    .unwrap_or_default(),
+                limit
+                    .map(|value| format!(", limit={value}"))
+                    .unwrap_or_default(),
+                fetch_remote,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesSyncAttract { input, output } => {
@@ -14403,7 +14458,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, summarize-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -14470,6 +14525,94 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 1;
                     }
                     Ok(ShellCommand::ResourcesSyncJaspar { input, output })
+                }
+                "sync-jaspar-remote-metadata" => {
+                    let mut motifs: Vec<String> = vec![];
+                    let mut use_all = false;
+                    let mut filter: Option<String> = None;
+                    let mut limit: Option<usize> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--motif" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing TOKEN after --motif for resources sync-jaspar-remote-metadata"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.push(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--motifs" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing CSV after --motifs for resources sync-jaspar-remote-metadata"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.extend(
+                                    tokens[idx + 1]
+                                        .split(',')
+                                        .map(str::trim)
+                                        .filter(|value| !value.is_empty())
+                                        .map(str::to_string),
+                                );
+                                idx += 2;
+                            }
+                            "--all" => {
+                                use_all = true;
+                                idx += 1;
+                            }
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing TOKEN after --filter".to_string());
+                                }
+                                filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --limit".to_string());
+                                }
+                                limit = Some(tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --limit '{}' for resources sync-jaspar-remote-metadata: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources sync-jaspar-remote-metadata"
+                                ));
+                            }
+                        }
+                    }
+                    if use_all && !motifs.is_empty() {
+                        return Err(
+                            "resources sync-jaspar-remote-metadata cannot combine --all with --motif/--motifs"
+                                .to_string(),
+                        );
+                    }
+                    if use_all {
+                        motifs.clear();
+                    }
+                    Ok(ShellCommand::ResourcesSyncJasparRemoteMetadata {
+                        motifs,
+                        filter,
+                        limit,
+                        output,
+                    })
                 }
                 "summarize-jaspar" => {
                     let mut motifs: Vec<String> = vec![];
@@ -14562,6 +14705,58 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         motifs,
                         random_sequence_length_bp,
                         random_seed,
+                        output,
+                    })
+                }
+                "list-jaspar" => {
+                    let mut filter: Option<String> = None;
+                    let mut limit: Option<usize> = None;
+                    let mut fetch_remote = false;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing TOKEN after --filter".to_string());
+                                }
+                                filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --limit".to_string());
+                                }
+                                limit = Some(tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --limit '{}' for resources list-jaspar: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            "--fetch-remote" => {
+                                fetch_remote = true;
+                                idx += 1;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-jaspar"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListJaspar {
+                        filter,
+                        limit,
+                        fetch_remote,
                         output,
                     })
                 }
@@ -14661,7 +14856,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, summarize-jaspar, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -17285,6 +17480,28 @@ fn execute_export_import_and_resource_command(
                 }),
             })
         }
+        ShellCommand::ResourcesSyncJasparRemoteMetadata {
+            motifs,
+            filter,
+            limit,
+            output,
+        } => {
+            let resolved_output = output
+                .clone()
+                .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH.to_string());
+            let op_result = engine
+                .apply(Operation::SyncJasparRemoteMetadata {
+                    motifs: motifs.clone(),
+                    filter: filter.clone(),
+                    limit: *limit,
+                    path: Some(resolved_output),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::ResourcesSummarizeJaspar {
             motifs,
             random_sequence_length_bp,
@@ -17296,6 +17513,26 @@ fn execute_export_import_and_resource_command(
                     motifs: motifs.clone(),
                     random_sequence_length_bp: *random_sequence_length_bp,
                     random_seed: *random_seed,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ResourcesListJaspar {
+            filter,
+            limit,
+            fetch_remote,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::ListJasparCatalog {
+                    filter: filter.clone(),
+                    limit: *limit,
+                    include_remote_metadata: *fetch_remote,
+                    refresh_remote_metadata: *fetch_remote,
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -17328,6 +17565,7 @@ fn execute_export_import_and_resource_command(
                     random_sequence_length_bp: *random_sequence_length_bp,
                     random_seed: *random_seed,
                     include_remote_metadata: *fetch_remote,
+                    refresh_remote_metadata: *fetch_remote,
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -22960,6 +23198,8 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ServicesStatus
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
+            | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
+            | ShellCommand::ResourcesListJaspar { .. }
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
             | ShellCommand::ResourcesSyncAttract { .. }
@@ -23934,6 +24174,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ServicesStatus
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
+        | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
+        | ShellCommand::ResourcesListJaspar { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }
         | ShellCommand::ResourcesSyncAttract { .. } => {

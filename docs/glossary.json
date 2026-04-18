@@ -1,5 +1,5 @@
 {
-   "command_count": 335,
+   "command_count": 337,
    "commands": [
       {
          "aliases": [
@@ -1202,6 +1202,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "SyncJasparRemoteMetadata"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-jaspar-remote-metadata",
+         "summary": "Refresh and persist reusable JASPAR remote metadata for one selected local motif subset.",
+         "usage": "resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "SummarizeJasparEntries"
          ],
          "interfaces": [
@@ -1212,6 +1226,20 @@
          "path": "resources summarize-jaspar",
          "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
          "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListJasparCatalog"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-jaspar",
+         "summary": "List local JASPAR entries with consensus/length fields and optional compact remote species metadata summaries for the returned subset.",
+         "usage": "resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]"
       },
       {
          "aliases": [],

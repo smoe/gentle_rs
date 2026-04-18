@@ -26443,10 +26443,60 @@ fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
 }
 
 #[test]
+fn list_jaspar_catalog_returns_local_rows_and_remote_summary_preview() {
+    let engine = GentleEngine::new();
+    let metadata = GentleEngine::parse_jaspar_remote_metadata_value(
+        &serde_json::json!({
+            "collection": "CORE",
+            "tax_group": "vertebrates",
+            "tf_class": "bZIP factors",
+            "tf_family": "ATF family",
+            "data_type": "SELEX",
+            "species": [
+                {"tax_id": 9606, "name": "Homo sapiens"},
+                {"tax_id": "10090", "name": "Mus musculus"},
+                {"tax_id": "10116", "name": "Rattus norvegicus"},
+                {"tax_id": "10116", "name": "Rattus norvegicus"}
+            ]
+        }),
+        "https://jaspar.elixir.no/api/v1/matrix/MA0000.1/?format=json",
+    );
+    let summary = GentleEngine::jaspar_remote_metadata_summary(&metadata);
+    assert_eq!(summary.collection.as_deref(), Some("CORE"));
+    assert_eq!(summary.species_count, 3);
+    assert_eq!(
+        summary.species_preview,
+        vec![
+            "Homo sapiens".to_string(),
+            "Mus musculus".to_string(),
+            "Rattus norvegicus".to_string()
+        ]
+    );
+
+    let report = engine
+        .list_jaspar_catalog(Some("SP1"), Some(10), false, false)
+        .expect("list jaspar catalog");
+    assert_eq!(report.schema, "gentle.jaspar_catalog.v1");
+    assert_eq!(report.filter.as_deref(), Some("SP1"));
+    assert_eq!(report.limit, Some(10));
+    assert!(!report.include_remote_metadata);
+    assert!(report.returned_entry_count >= 1);
+    assert!(report.returned_entry_count <= 10);
+    let row = report
+        .rows
+        .iter()
+        .find(|row| row.motif_name.as_deref() == Some("SP1"))
+        .expect("SP1 catalog row");
+    assert_eq!(row.consensus_iupac, "GGGGCGGGG");
+    assert_eq!(row.motif_length_bp, 9);
+    assert!(row.remote_summary.is_none());
+}
+
+#[test]
 fn inspect_jaspar_entry_builds_columns_and_score_panels() {
     let engine = GentleEngine::new();
     let report = engine
-        .inspect_jaspar_entry("SP1", 10_000, 12345, false)
+        .inspect_jaspar_entry("SP1", 10_000, 12345, false, false)
         .expect("inspect jaspar entry");
 
     assert_eq!(report.schema, "gentle.jaspar_entry_expert.v1");
@@ -26525,6 +26575,7 @@ fn apply_inspect_jaspar_entry_operation_returns_report_and_writes_json() {
             random_sequence_length_bp: 512,
             random_seed: 77,
             include_remote_metadata: false,
+            refresh_remote_metadata: false,
             path: Some(output_path.to_string_lossy().to_string()),
         })
         .expect("apply jaspar inspect");
@@ -26549,6 +26600,132 @@ fn apply_inspect_jaspar_entry_operation_returns_report_and_writes_json() {
     assert_eq!(
         json.get("motif_name").and_then(|value| value.as_str()),
         Some("SP1")
+    );
+}
+
+#[test]
+fn apply_list_jaspar_catalog_operation_returns_report_and_writes_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.catalog.json");
+    let mut engine = GentleEngine::new();
+
+    let result = engine
+        .apply(Operation::ListJasparCatalog {
+            filter: Some("SP1".to_string()),
+            limit: Some(5),
+            include_remote_metadata: false,
+            refresh_remote_metadata: false,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("apply jaspar catalog");
+
+    let report = result.jaspar_catalog_report.expect("jaspar catalog report");
+    assert!(report.returned_entry_count >= 1);
+    assert!(report.returned_entry_count <= 5);
+    assert_eq!(report.filter.as_deref(), Some("SP1"));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("JASPAR catalog listed"))
+    );
+    let written = fs::read_to_string(&output_path).expect("read written JASPAR catalog JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.jaspar_catalog.v1")
+    );
+    assert_eq!(
+        json.get("returned_entry_count")
+            .and_then(|value| value.as_u64()),
+        Some(report.returned_entry_count as u64)
+    );
+}
+
+#[test]
+fn sync_jaspar_remote_metadata_snapshot_persists_rows_and_catalog_reuses_cached_summary() {
+    let td = tempdir().expect("tempdir");
+    let snapshot_path = td.path().join("jaspar.remote_metadata.json");
+    let engine = GentleEngine::new();
+    let snapshot = engine
+        .sync_jaspar_remote_metadata_snapshot_with_fetcher(
+            &["SP1".to_string()],
+            None,
+            None,
+            Some(snapshot_path.to_string_lossy().as_ref()),
+            |motif_id| {
+                assert_eq!(motif_id, "MA0079.5");
+                Ok(GentleEngine::parse_jaspar_remote_metadata_value(
+                    &serde_json::json!({
+                        "collection": "CORE",
+                        "tax_group": "vertebrates",
+                        "species": [
+                            {"tax_id": 9606, "name": "Homo sapiens"},
+                            {"tax_id": "10090", "name": "Mus musculus"}
+                        ]
+                    }),
+                    "file:///tmp/jaspar.synthetic.json",
+                ))
+            },
+        )
+        .expect("sync jaspar remote metadata snapshot");
+    engine
+        .write_jaspar_remote_metadata_snapshot_json(
+            &snapshot,
+            snapshot_path.to_string_lossy().as_ref(),
+        )
+        .expect("write jaspar remote metadata snapshot");
+    assert_eq!(snapshot.schema, "gentle.jaspar_remote_metadata_snapshot.v1");
+    assert_eq!(snapshot.fetched_entry_count, 1);
+    assert_eq!(snapshot.persisted_entry_count, 1);
+    let written = fs::read_to_string(&snapshot_path).expect("read written snapshot");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse snapshot JSON");
+    assert_eq!(
+        json.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.jaspar_remote_metadata_snapshot.v1")
+    );
+
+    let catalog = engine
+        .list_jaspar_catalog_with_snapshot_path(
+            Some("SP1"),
+            Some(10),
+            true,
+            false,
+            Some(snapshot_path.to_string_lossy().as_ref()),
+        )
+        .expect("list jaspar catalog with cached snapshot");
+    let row = catalog
+        .rows
+        .iter()
+        .find(|row| row.motif_name.as_deref() == Some("SP1"))
+        .expect("SP1 cached catalog row");
+    let summary = row.remote_summary.as_ref().expect("cached remote summary");
+    assert_eq!(summary.collection.as_deref(), Some("CORE"));
+    assert_eq!(summary.species_count, 2);
+
+    let expert = engine
+        .inspect_jaspar_entry_with_snapshot_path(
+            "SP1",
+            1024,
+            99,
+            true,
+            false,
+            Some(snapshot_path.to_string_lossy().as_ref()),
+        )
+        .expect("inspect jaspar entry with cached snapshot");
+    assert_eq!(
+        expert
+            .remote_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.collection.as_deref()),
+        Some("CORE")
+    );
+    assert_eq!(
+        expert
+            .remote_metadata
+            .as_ref()
+            .map(|metadata| metadata.species_assignments.len()),
+        Some(2)
     );
 }
 
