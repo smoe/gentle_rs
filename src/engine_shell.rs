@@ -54,6 +54,7 @@ use crate::{
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RnaReadConcatemerInspectionSettings,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
         RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
@@ -1817,6 +1818,12 @@ pub enum ShellCommand {
         score_density_variant: RnaReadScoreDensityVariant,
         score_bin_index: Option<usize>,
         score_bin_count: usize,
+    },
+    RnaReadsInspectConcatemers {
+        report_id: String,
+        selection: RnaReadHitSelection,
+        limit: usize,
+        settings: RnaReadConcatemerInspectionSettings,
     },
     RnaReadsExportReport {
         report_id: String,
@@ -8044,6 +8051,22 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "<none>".to_string()),
                 score_bin_count
+            ),
+            Self::RnaReadsInspectConcatemers {
+                report_id,
+                selection,
+                limit,
+                settings,
+            } => format!(
+                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2})",
+                report_id,
+                selection.as_str(),
+                limit,
+                settings.internal_homopolymer_min_bp,
+                settings.end_margin_bp,
+                settings.max_primary_query_coverage_fraction,
+                settings.min_secondary_identity_fraction,
+                settings.max_secondary_query_overlap_fraction
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",
@@ -22727,6 +22750,22 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsInspectConcatemers {
+            report_id,
+            selection,
+            limit,
+            settings,
+        } => {
+            let inspection = engine
+                .inspect_rna_read_concatemers(report_id, *selection, *limit, settings.clone())
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "inspection": inspection,
+                }),
+            })
+        }
         ShellCommand::RnaReadsExportReport { report_id, path } => {
             let report = engine
                 .export_rna_read_report(report_id, path)
@@ -23630,6 +23669,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
             | ShellCommand::RnaReadsInspectGeneSupport { .. }
             | ShellCommand::RnaReadsInspectAlignments { .. }
+            | ShellCommand::RnaReadsInspectConcatemers { .. }
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
             | ShellCommand::RnaReadsExportSampleSheet { .. }
@@ -25576,6 +25616,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
         | ShellCommand::RnaReadsInspectGeneSupport { .. }
         | ShellCommand::RnaReadsInspectAlignments { .. }
+        | ShellCommand::RnaReadsInspectConcatemers { .. }
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }
         | ShellCommand::RnaReadsExportSampleSheet { .. }

@@ -4762,6 +4762,34 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         response for deterministic replay
     - row `rank` remains the original alignment-aware retention rank even when
       subset sorting reorders the returned rows
+  - fragment/concatemer suspicion audit behavior:
+    - `InspectRnaReadConcatemers` is a non-mutating saved-report audit aimed at
+      diagnosing whether retained cDNA reads look more like fragment fusions
+      than coherent full transcript molecules
+    - output schema:
+      - `gentle.rna_read_concatemer_inspection.v1`
+    - settings:
+      - `internal_homopolymer_min_bp`
+      - `end_margin_bp`
+      - `max_primary_query_coverage_fraction`
+      - `min_secondary_identity_fraction`
+      - `max_secondary_query_overlap_fraction`
+    - current evidence signals:
+      - low primary `query_coverage_fraction`
+      - internal poly(A) run away from both read ends
+      - internal poly(T) run away from both read ends
+      - disjoint secondary mappings with limited query overlap
+      - phase-1 local-block / partial-origin classification
+    - current severity semantics are intentionally conservative:
+      - `strong` requires at least one disjoint secondary mapping plus another
+        signal
+      - `moderate` requires at least two non-background signals
+      - `weak` indicates only one current signal
+    - adapters should treat the payload as a suspicion-ranking surface rather
+      than as a definitive chimera caller
+    - if the source report was aligned with `max_secondary_mappings = 0`, the
+      payload includes a warning that the disjoint-secondary branch of the
+      audit was unavailable
   - on-demand pairwise-alignment detail behavior:
     - the engine can reconstruct the exact phase-2 read-vs-transcript-template
       alignment for one retained row from the saved report plus admitted
@@ -4981,6 +5009,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
   - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
+  - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -5011,6 +5040,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `selected_record_indices`, `score_density_variant`, `score_bin_index`,
       `score_bin_count`) and
       `subset_match_count`
+    - `rna-reads inspect-concatemers` returns the full
+      `gentle.rna_read_concatemer_inspection.v1` payload directly, including
+      machine-readable signal counts, the normalized thresholds used for the
+      audit, ranked suspicious rows, and warning text when secondary-mapping
+      evidence was unavailable
 - Alignment-TSV export:
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`

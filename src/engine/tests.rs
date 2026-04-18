@@ -24284,6 +24284,143 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
 }
 
 #[test]
+fn test_inspect_rna_read_concatemers_ranks_fragment_fusion_signals() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_concatemers".to_string(),
+            seq_id: "seq_concat".to_string(),
+            align_config: RnaReadAlignConfig {
+                max_secondary_mappings: 2,
+                ..RnaReadAlignConfig::default()
+            },
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "strong_concatemer".to_string(),
+                    sequence: format!("{}{}{}", "C".repeat(35), "A".repeat(20), "G".repeat(35)),
+                    read_length_bp: 90,
+                    seed_chain_transcript_id: "tx_phase1".to_string(),
+                    exon_path_transcript_id: "tx_phase1".to_string(),
+                    origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_id: "tx_primary".to_string(),
+                        transcript_label: "TX_PRIMARY".to_string(),
+                        strand: "+".to_string(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: 38,
+                        query_coverage_fraction: 0.42,
+                        identity_fraction: 0.96,
+                        score: 180,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    secondary_mappings: vec![RnaReadMappingHit {
+                        transcript_id: "tx_secondary".to_string(),
+                        transcript_label: "TX_SECONDARY".to_string(),
+                        strand: "+".to_string(),
+                        query_start_0based: 46,
+                        query_end_0based_exclusive: 86,
+                        query_coverage_fraction: 0.44,
+                        identity_fraction: 0.92,
+                        score: 150,
+                        ..RnaReadMappingHit::default()
+                    }],
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "internal_poly_t_only".to_string(),
+                    sequence: format!("{}{}{}", "C".repeat(35), "T".repeat(20), "G".repeat(35)),
+                    read_length_bp: 90,
+                    origin_class: RnaReadOriginClass::TargetCoherent,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_id: "tx_full".to_string(),
+                        transcript_label: "TX_FULL".to_string(),
+                        strand: "+".to_string(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: 90,
+                        query_coverage_fraction: 0.98,
+                        identity_fraction: 0.95,
+                        score: 120,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "background".to_string(),
+                    sequence: "ACGT".repeat(20),
+                    read_length_bp: 80,
+                    origin_class: RnaReadOriginClass::TargetCoherent,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_id: "tx_background".to_string(),
+                        transcript_label: "TX_BACKGROUND".to_string(),
+                        strand: "+".to_string(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: 80,
+                        query_coverage_fraction: 1.0,
+                        identity_fraction: 0.99,
+                        score: 210,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert concatemer report");
+
+    let inspection = engine
+        .inspect_rna_read_concatemers(
+            "rna_reads_concatemers",
+            RnaReadHitSelection::All,
+            10,
+            RnaReadConcatemerInspectionSettings::default(),
+        )
+        .expect("inspect concatemer rows");
+    assert_eq!(inspection.inspected_count, 3);
+    assert_eq!(inspection.suspicious_count, 2);
+    assert_eq!(inspection.strong_count, 1);
+    assert_eq!(inspection.low_query_coverage_count, 1);
+    assert_eq!(inspection.internal_poly_a_count, 1);
+    assert_eq!(inspection.internal_poly_t_count, 1);
+    assert_eq!(inspection.disjoint_secondary_mapping_count, 1);
+    assert_eq!(inspection.phase1_partial_origin_count, 1);
+    assert!(inspection.warnings.is_empty());
+    assert_eq!(inspection.rows.len(), 2);
+    assert_eq!(inspection.rows[0].header_id, "strong_concatemer");
+    assert_eq!(
+        inspection.rows[0].suspicion_level,
+        RnaReadConcatemerSuspicionLevel::Strong
+    );
+    assert!(
+        inspection.rows[0]
+            .suspicion_signals
+            .contains(&"low_query_coverage".to_string())
+    );
+    assert!(
+        inspection.rows[0]
+            .suspicion_signals
+            .contains(&"internal_poly_a".to_string())
+    );
+    assert!(
+        inspection.rows[0]
+            .suspicion_signals
+            .contains(&"disjoint_secondary_mapping".to_string())
+    );
+    assert_eq!(
+        inspection.rows[0].top_disjoint_secondary_transcript_id.as_deref(),
+        Some("tx_secondary")
+    );
+    assert_eq!(inspection.rows[1].header_id, "internal_poly_t_only");
+    assert_eq!(
+        inspection.rows[1].suspicion_level,
+        RnaReadConcatemerSuspicionLevel::Weak
+    );
+}
+
+#[test]
 fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_midline() {
     let mut state = ProjectState::default();
     state

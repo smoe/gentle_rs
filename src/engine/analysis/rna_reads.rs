@@ -1681,6 +1681,339 @@ impl GentleEngine {
         }
     }
 
+    fn longest_internal_homopolymer_run(
+        sequence: &str,
+        base: u8,
+        end_margin_bp: usize,
+    ) -> usize {
+        let normalized = sequence
+            .as_bytes()
+            .iter()
+            .map(|raw| Self::normalize_nucleotide_base(*raw))
+            .collect::<Vec<_>>();
+        let len = normalized.len();
+        if len == 0 {
+            return 0;
+        }
+        let margin = end_margin_bp.min(len / 2);
+        let mut best = 0usize;
+        let mut current = 0usize;
+        for (idx, current_base) in normalized.iter().copied().enumerate() {
+            if current_base == base {
+                current = current.saturating_add(1);
+                let start = idx.saturating_add(1).saturating_sub(current);
+                let end_exclusive = idx.saturating_add(1);
+                if start >= margin && end_exclusive <= len.saturating_sub(margin) {
+                    best = best.max(current);
+                }
+            } else {
+                current = 0;
+            }
+        }
+        best
+    }
+
+    fn query_interval_overlap_fraction(
+        left_start: usize,
+        left_end_exclusive: usize,
+        right_start: usize,
+        right_end_exclusive: usize,
+    ) -> f64 {
+        let left_len = left_end_exclusive.saturating_sub(left_start);
+        let right_len = right_end_exclusive.saturating_sub(right_start);
+        let denom = left_len.min(right_len);
+        if denom == 0 {
+            return 0.0;
+        }
+        let overlap_start = left_start.max(right_start);
+        let overlap_end = left_end_exclusive.min(right_end_exclusive);
+        let overlap_len = overlap_end.saturating_sub(overlap_start);
+        overlap_len as f64 / denom as f64
+    }
+
+    fn rna_read_concatemer_origin_partial(origin_class: RnaReadOriginClass) -> bool {
+        matches!(
+            origin_class,
+            RnaReadOriginClass::TargetPartialLocalBlock
+                | RnaReadOriginClass::RoiSameStrandLocalBlock
+                | RnaReadOriginClass::RoiReverseStrandLocalBlock
+                | RnaReadOriginClass::TpFamilyAmbiguous
+        )
+    }
+
+    fn rna_read_concatemer_suspicion_level_sort_key(
+        level: RnaReadConcatemerSuspicionLevel,
+    ) -> usize {
+        match level {
+            RnaReadConcatemerSuspicionLevel::Background => 0,
+            RnaReadConcatemerSuspicionLevel::Weak => 1,
+            RnaReadConcatemerSuspicionLevel::Moderate => 2,
+            RnaReadConcatemerSuspicionLevel::Strong => 3,
+        }
+    }
+
+    pub fn inspect_rna_read_concatemers(
+        &self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        limit: usize,
+        settings: RnaReadConcatemerInspectionSettings,
+    ) -> Result<RnaReadConcatemerInspection, EngineError> {
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read concatemer inspection requires --limit >= 1".to_string(),
+            });
+        }
+        let mut settings = settings;
+        settings.internal_homopolymer_min_bp = settings.internal_homopolymer_min_bp.max(1);
+        settings.end_margin_bp = settings.end_margin_bp.max(1);
+        settings.max_primary_query_coverage_fraction = settings
+            .max_primary_query_coverage_fraction
+            .clamp(0.0, 1.0);
+        settings.min_secondary_identity_fraction =
+            settings.min_secondary_identity_fraction.clamp(0.0, 1.0);
+        settings.max_secondary_query_overlap_fraction = settings
+            .max_secondary_query_overlap_fraction
+            .clamp(0.0, 1.0);
+
+        let report = self.get_rna_read_report(report_id)?;
+        let mut warnings = Vec::<String>::new();
+        if report.align_config.max_secondary_mappings == 0 {
+            warnings.push(
+                "alignment phase ran with max_secondary_mappings=0; disjoint secondary-mapping evidence is unavailable unless the report is re-aligned with retained secondaries"
+                    .to_string(),
+            );
+        }
+
+        let mut inspected_count = 0usize;
+        let mut suspicious_count = 0usize;
+        let mut strong_count = 0usize;
+        let mut low_query_coverage_count = 0usize;
+        let mut internal_poly_a_count = 0usize;
+        let mut internal_poly_t_count = 0usize;
+        let mut disjoint_secondary_mapping_count = 0usize;
+        let mut phase1_partial_origin_count = 0usize;
+        let mut rows = Vec::<RnaReadConcatemerSuspicionRow>::new();
+
+        for hit in report
+            .hits
+            .iter()
+            .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+        {
+            inspected_count = inspected_count.saturating_add(1);
+            let best_mapping = hit.best_mapping.as_ref();
+            let low_query_coverage = best_mapping.is_some_and(|mapping| {
+                mapping.query_coverage_fraction + f64::EPSILON
+                    < settings.max_primary_query_coverage_fraction
+            });
+            if low_query_coverage {
+                low_query_coverage_count = low_query_coverage_count.saturating_add(1);
+            }
+
+            let internal_poly_a_run_bp = Self::longest_internal_homopolymer_run(
+                &hit.sequence,
+                b'A',
+                settings.end_margin_bp,
+            );
+            let internal_poly_t_run_bp = Self::longest_internal_homopolymer_run(
+                &hit.sequence,
+                b'T',
+                settings.end_margin_bp,
+            );
+            let internal_poly_a =
+                internal_poly_a_run_bp >= settings.internal_homopolymer_min_bp;
+            let internal_poly_t =
+                internal_poly_t_run_bp >= settings.internal_homopolymer_min_bp;
+            if internal_poly_a {
+                internal_poly_a_count = internal_poly_a_count.saturating_add(1);
+            }
+            if internal_poly_t {
+                internal_poly_t_count = internal_poly_t_count.saturating_add(1);
+            }
+
+            let phase1_partial_origin =
+                Self::rna_read_concatemer_origin_partial(hit.origin_class);
+            if phase1_partial_origin {
+                phase1_partial_origin_count = phase1_partial_origin_count.saturating_add(1);
+            }
+
+            let disjoint_secondary_mappings = best_mapping
+                .map(|best| {
+                    let mut filtered = hit
+                        .secondary_mappings
+                        .iter()
+                        .filter(|secondary| {
+                            secondary.identity_fraction + f64::EPSILON
+                                >= settings.min_secondary_identity_fraction
+                                && Self::query_interval_overlap_fraction(
+                                    best.query_start_0based,
+                                    best.query_end_0based_exclusive,
+                                    secondary.query_start_0based,
+                                    secondary.query_end_0based_exclusive,
+                                ) <= settings.max_secondary_query_overlap_fraction + f64::EPSILON
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    filtered.sort_by(|left, right| {
+                        right
+                            .identity_fraction
+                            .partial_cmp(&left.identity_fraction)
+                            .unwrap_or(Ordering::Equal)
+                            .then_with(|| {
+                                right
+                                    .query_coverage_fraction
+                                    .partial_cmp(&left.query_coverage_fraction)
+                                    .unwrap_or(Ordering::Equal)
+                            })
+                            .then_with(|| right.score.cmp(&left.score))
+                    });
+                    filtered
+                })
+                .unwrap_or_default();
+            if !disjoint_secondary_mappings.is_empty() {
+                disjoint_secondary_mapping_count = disjoint_secondary_mapping_count
+                    .saturating_add(1);
+            }
+
+            let mut suspicion_signals = Vec::<String>::new();
+            if low_query_coverage {
+                suspicion_signals.push("low_query_coverage".to_string());
+            }
+            if internal_poly_a {
+                suspicion_signals.push("internal_poly_a".to_string());
+            }
+            if internal_poly_t {
+                suspicion_signals.push("internal_poly_t".to_string());
+            }
+            if !disjoint_secondary_mappings.is_empty() {
+                suspicion_signals.push("disjoint_secondary_mapping".to_string());
+            }
+            if phase1_partial_origin {
+                suspicion_signals.push("phase1_partial_origin".to_string());
+            }
+
+            let suspicion_score = (low_query_coverage as usize).saturating_mul(2)
+                + (internal_poly_a as usize)
+                + (internal_poly_t as usize)
+                + ((!disjoint_secondary_mappings.is_empty()) as usize).saturating_mul(3)
+                + (phase1_partial_origin as usize);
+            let suspicion_level = if !disjoint_secondary_mappings.is_empty()
+                && (low_query_coverage || internal_poly_a || internal_poly_t || phase1_partial_origin)
+            {
+                RnaReadConcatemerSuspicionLevel::Strong
+            } else if suspicion_signals.len() >= 2 {
+                RnaReadConcatemerSuspicionLevel::Moderate
+            } else if suspicion_signals.is_empty() {
+                RnaReadConcatemerSuspicionLevel::Background
+            } else {
+                RnaReadConcatemerSuspicionLevel::Weak
+            };
+            if suspicion_level == RnaReadConcatemerSuspicionLevel::Background {
+                continue;
+            }
+
+            suspicious_count = suspicious_count.saturating_add(1);
+            if suspicion_level == RnaReadConcatemerSuspicionLevel::Strong {
+                strong_count = strong_count.saturating_add(1);
+            }
+            let top_disjoint_secondary = disjoint_secondary_mappings.first();
+            let phase1_primary_transcript_id = Self::primary_phase1_transcript_id(hit)
+                .trim()
+                .to_string();
+            let suspicion_summary = if !disjoint_secondary_mappings.is_empty() {
+                format!(
+                    "{} signal(s): low primary query coverage plus a disjoint secondary mapping make this read look fragmentary or concatemer-like",
+                    suspicion_signals.len()
+                )
+            } else if low_query_coverage && (internal_poly_a || internal_poly_t) {
+                format!(
+                    "{} signal(s): low primary query coverage plus an internal homopolymer bridge support a fragment-fusion hypothesis",
+                    suspicion_signals.len()
+                )
+            } else if phase1_partial_origin {
+                format!(
+                    "{} signal(s): phase-1 classified this read as a local/partial block rather than a coherent target transcript",
+                    suspicion_signals.len()
+                )
+            } else {
+                format!(
+                    "{} signal(s): weak fragment/concatemer suspicion only",
+                    suspicion_signals.len()
+                )
+            };
+            rows.push(RnaReadConcatemerSuspicionRow {
+                rank: 0,
+                record_index: hit.record_index,
+                header_id: hit.header_id.clone(),
+                read_length_bp: hit.read_length_bp,
+                phase1_primary_transcript_id: (!phase1_primary_transcript_id.is_empty())
+                    .then_some(phase1_primary_transcript_id),
+                best_transcript_id: best_mapping.map(|mapping| mapping.transcript_id.clone()),
+                best_transcript_label: best_mapping
+                    .map(|mapping| mapping.transcript_label.clone()),
+                best_identity_fraction: best_mapping.map(|mapping| mapping.identity_fraction),
+                best_query_coverage_fraction: best_mapping
+                    .map(|mapping| mapping.query_coverage_fraction),
+                secondary_mapping_count: hit.secondary_mappings.len(),
+                internal_poly_a_run_bp,
+                internal_poly_t_run_bp,
+                disjoint_secondary_mapping_count: disjoint_secondary_mappings.len(),
+                top_disjoint_secondary_transcript_id: top_disjoint_secondary
+                    .map(|mapping| mapping.transcript_id.clone()),
+                top_disjoint_secondary_identity_fraction: top_disjoint_secondary
+                    .map(|mapping| mapping.identity_fraction),
+                top_disjoint_secondary_query_coverage_fraction: top_disjoint_secondary
+                    .map(|mapping| mapping.query_coverage_fraction),
+                origin_class: hit.origin_class,
+                suspicion_score,
+                suspicion_level,
+                suspicion_signals,
+                suspicion_summary,
+            });
+        }
+
+        rows.sort_by(|left, right| {
+            Self::rna_read_concatemer_suspicion_level_sort_key(right.suspicion_level)
+                .cmp(&Self::rna_read_concatemer_suspicion_level_sort_key(
+                    left.suspicion_level,
+                ))
+                .then_with(|| right.suspicion_score.cmp(&left.suspicion_score))
+                .then_with(|| {
+                    left.best_query_coverage_fraction
+                        .unwrap_or(1.0)
+                        .partial_cmp(&right.best_query_coverage_fraction.unwrap_or(1.0))
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| right.read_length_bp.cmp(&left.read_length_bp))
+                .then_with(|| left.record_index.cmp(&right.record_index))
+        });
+        for (idx, row) in rows.iter_mut().enumerate() {
+            row.rank = idx.saturating_add(1);
+        }
+        rows.truncate(limit);
+
+        Ok(RnaReadConcatemerInspection {
+            schema: RNA_READ_CONCATEMER_INSPECTION_SCHEMA.to_string(),
+            report_id: report.report_id,
+            seq_id: report.seq_id,
+            selection,
+            inspected_count,
+            suspicious_count,
+            strong_count,
+            low_query_coverage_count,
+            internal_poly_a_count,
+            internal_poly_t_count,
+            disjoint_secondary_mapping_count,
+            phase1_partial_origin_count,
+            limit,
+            max_secondary_mappings: report.align_config.max_secondary_mappings,
+            settings,
+            warnings,
+            rows,
+        })
+    }
+
     pub fn inspect_rna_read_alignments(
         &self,
         report_id: &str,

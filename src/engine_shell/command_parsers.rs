@@ -4993,7 +4993,7 @@ pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -5759,6 +5759,130 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 score_bin_count,
             })
         }
+        "inspect-concatemers" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err(
+                    "rna-reads inspect-concatemers REPORT_ID must not be empty".to_string(),
+                );
+            }
+            let mut selection = RnaReadHitSelection::All;
+            let mut limit = 50usize;
+            let mut settings = RnaReadConcatemerInspectionSettings::default();
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        limit = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads inspect-concatemers: {e}"
+                            )
+                        })?;
+                    }
+                    "--internal-homopolymer-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--internal-homopolymer-min-bp",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.internal_homopolymer_min_bp =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --internal-homopolymer-min-bp value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    "--end-margin-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--end-margin-bp",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.end_margin_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --end-margin-bp value '{raw}' for rna-reads inspect-concatemers: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-primary-query-cov" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-primary-query-cov",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.max_primary_query_coverage_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-primary-query-cov value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-secondary-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-secondary-identity",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.min_secondary_identity_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-secondary-identity value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-secondary-query-overlap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-query-overlap",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.max_secondary_query_overlap_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-secondary-query-overlap value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads inspect-concatemers"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsInspectConcatemers {
+                report_id,
+                selection,
+                limit,
+                settings,
+            })
+        }
         "export-report" => {
             if tokens.len() != 4 {
                 return Err("rna-reads export-report requires REPORT_ID OUTPUT.json".to_string());
@@ -6180,7 +6304,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

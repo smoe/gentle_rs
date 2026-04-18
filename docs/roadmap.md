@@ -3161,6 +3161,19 @@ Status:
       score/identity/coverage metadata
   - `rna-reads inspect-alignments` rows and alignment TSV export now include
     full-length flags and class label columns for downstream filtering.
+  - New non-mutating fragment/concatemer suspicion audits are now available
+    from saved RNA-read reports via `InspectRnaReadConcatemers` /
+    `rna-reads inspect-concatemers`:
+    - rows are ranked conservatively from `weak` to `strong` suspicion rather
+      than being labeled as proven chimeras
+    - current signals combine low primary query coverage, internal poly(A/T)
+      bridges away from read ends, disjoint secondary mappings, and phase-1
+      local-block / partial-origin classes
+    - the payload warns explicitly when the source report was aligned with
+      `max_secondary_mappings=0`, because that removes the strongest current
+      fragment-fusion evidence branch
+    - intended use: triage rare-isoform failures and candidate partial-read
+      fusions before deeper locus-specific review
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.

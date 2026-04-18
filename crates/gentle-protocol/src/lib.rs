@@ -3379,6 +3379,149 @@ pub struct RnaReadAlignmentInspection {
     pub rows: Vec<RnaReadAlignmentInspectionRow>,
 }
 
+fn default_rna_read_concatemer_internal_homopolymer_min_bp() -> usize {
+    18
+}
+
+fn default_rna_read_concatemer_end_margin_bp() -> usize {
+    30
+}
+
+fn default_rna_read_concatemer_max_primary_query_coverage_fraction() -> f64 {
+    0.85
+}
+
+fn default_rna_read_concatemer_min_secondary_identity_fraction() -> f64 {
+    0.85
+}
+
+fn default_rna_read_concatemer_max_secondary_query_overlap_fraction() -> f64 {
+    0.20
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Conservative severity label for fragment/concatemer-like RNA-read rows.
+pub enum RnaReadConcatemerSuspicionLevel {
+    #[default]
+    Background,
+    Weak,
+    Moderate,
+    Strong,
+}
+
+impl RnaReadConcatemerSuspicionLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Background => "background",
+            Self::Weak => "weak",
+            Self::Moderate => "moderate",
+            Self::Strong => "strong",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+/// Shared thresholds for the RNA-read fragment/concatemer suspicion audit.
+pub struct RnaReadConcatemerInspectionSettings {
+    #[serde(default = "default_rna_read_concatemer_internal_homopolymer_min_bp")]
+    pub internal_homopolymer_min_bp: usize,
+    #[serde(default = "default_rna_read_concatemer_end_margin_bp")]
+    pub end_margin_bp: usize,
+    #[serde(default = "default_rna_read_concatemer_max_primary_query_coverage_fraction")]
+    pub max_primary_query_coverage_fraction: f64,
+    #[serde(default = "default_rna_read_concatemer_min_secondary_identity_fraction")]
+    pub min_secondary_identity_fraction: f64,
+    #[serde(default = "default_rna_read_concatemer_max_secondary_query_overlap_fraction")]
+    pub max_secondary_query_overlap_fraction: f64,
+}
+
+impl Default for RnaReadConcatemerInspectionSettings {
+    fn default() -> Self {
+        Self {
+            internal_homopolymer_min_bp:
+                default_rna_read_concatemer_internal_homopolymer_min_bp(),
+            end_margin_bp: default_rna_read_concatemer_end_margin_bp(),
+            max_primary_query_coverage_fraction:
+                default_rna_read_concatemer_max_primary_query_coverage_fraction(),
+            min_secondary_identity_fraction:
+                default_rna_read_concatemer_min_secondary_identity_fraction(),
+            max_secondary_query_overlap_fraction:
+                default_rna_read_concatemer_max_secondary_query_overlap_fraction(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One retained RNA-read row ranked by fragment/concatemer suspicion.
+pub struct RnaReadConcatemerSuspicionRow {
+    pub rank: usize,
+    pub record_index: usize,
+    pub header_id: String,
+    pub read_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase1_primary_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_identity_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_query_coverage_fraction: Option<f64>,
+    #[serde(default)]
+    pub secondary_mapping_count: usize,
+    #[serde(default)]
+    pub internal_poly_a_run_bp: usize,
+    #[serde(default)]
+    pub internal_poly_t_run_bp: usize,
+    #[serde(default)]
+    pub disjoint_secondary_mapping_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_disjoint_secondary_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_disjoint_secondary_identity_fraction: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_disjoint_secondary_query_coverage_fraction: Option<f64>,
+    #[serde(default)]
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub suspicion_score: usize,
+    #[serde(default)]
+    pub suspicion_level: RnaReadConcatemerSuspicionLevel,
+    #[serde(default)]
+    pub suspicion_signals: Vec<String>,
+    #[serde(default)]
+    pub suspicion_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared fragment/concatemer suspicion audit over one RNA-read report.
+pub struct RnaReadConcatemerInspection {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub selection: RnaReadHitSelection,
+    pub inspected_count: usize,
+    pub suspicious_count: usize,
+    pub strong_count: usize,
+    pub low_query_coverage_count: usize,
+    pub internal_poly_a_count: usize,
+    pub internal_poly_t_count: usize,
+    pub disjoint_secondary_mapping_count: usize,
+    pub phase1_partial_origin_count: usize,
+    pub limit: usize,
+    pub max_secondary_mappings: usize,
+    pub settings: RnaReadConcatemerInspectionSettings,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<RnaReadConcatemerSuspicionRow>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// How one transcript/CDS protein derivation resolved its genetic code table.

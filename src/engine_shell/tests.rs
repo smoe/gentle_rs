@@ -18,7 +18,9 @@ use crate::engine::{
     ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    RestrictionCloningPcrHandoffMode, SequenceScanTarget, TfThresholdOverride,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
+    TfThresholdOverride,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -15724,6 +15726,23 @@ fn parse_rna_reads_commands() {
                 && score_bin_count == 40
     ));
 
+    let inspect_concatemers = parse_shell_line(
+        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10",
+    )
+    .expect("parse rna-reads inspect-concatemers");
+    assert!(matches!(
+        inspect_concatemers,
+        ShellCommand::RnaReadsInspectConcatemers { report_id, selection, limit, settings }
+            if report_id == "tp73_reads"
+                && selection == RnaReadHitSelection::SeedPassed
+                && limit == 15
+                && settings.internal_homopolymer_min_bp == 21
+                && settings.end_margin_bp == 40
+                && (settings.max_primary_query_coverage_fraction - 0.80).abs() < 1e-9
+                && (settings.min_secondary_identity_fraction - 0.90).abs() < 1e-9
+                && (settings.max_secondary_query_overlap_fraction - 0.10).abs() < 1e-9
+    ));
+
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
         .expect("parse rna-reads export-report");
     assert!(matches!(
@@ -16414,6 +16433,96 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert_eq!(
         inspected.output["inspection"]["subset_match_count"].as_u64(),
         Some(0)
+    );
+
+    let concatemer_report = RnaReadInterpretationReport {
+        schema: "gentle.rna_read_report.v1".to_string(),
+        report_id: "rna_reads_concatemers_shell".to_string(),
+        seq_id: "seq_concat".to_string(),
+        align_config: RnaReadAlignConfig {
+            max_secondary_mappings: 2,
+            ..RnaReadAlignConfig::default()
+        },
+        hits: vec![RnaReadInterpretationHit {
+            record_index: 0,
+            header_id: "concatemer_candidate".to_string(),
+            sequence: format!("{}{}{}", "C".repeat(35), "A".repeat(20), "G".repeat(35)),
+            read_length_bp: 90,
+            origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_id: "tx_primary".to_string(),
+                transcript_label: "TX_PRIMARY".to_string(),
+                strand: "+".to_string(),
+                query_start_0based: 0,
+                query_end_0based_exclusive: 38,
+                query_coverage_fraction: 0.42,
+                identity_fraction: 0.96,
+                score: 180,
+                ..RnaReadMappingHit::default()
+            }),
+            secondary_mappings: vec![RnaReadMappingHit {
+                transcript_id: "tx_secondary".to_string(),
+                transcript_label: "TX_SECONDARY".to_string(),
+                strand: "+".to_string(),
+                query_start_0based: 46,
+                query_end_0based_exclusive: 86,
+                query_coverage_fraction: 0.44,
+                identity_fraction: 0.92,
+                score: 150,
+                ..RnaReadMappingHit::default()
+            }],
+            ..RnaReadInterpretationHit::default()
+        }],
+        ..RnaReadInterpretationReport::default()
+    };
+    let mut report_store_value = engine
+        .state()
+        .metadata
+        .get("rna_read_reports")
+        .cloned()
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "schema": "gentle.rna_read_reports.v1",
+                "reports": {}
+            })
+        });
+    report_store_value["reports"]["rna_reads_concatemers_shell"] =
+        serde_json::to_value(concatemer_report).expect("serialize concatemer report");
+    engine
+        .state_mut()
+        .metadata
+        .insert("rna_read_reports".to_string(), report_store_value);
+
+    let concatemer_inspection = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsInspectConcatemers {
+            report_id: "rna_reads_concatemers_shell".to_string(),
+            selection: RnaReadHitSelection::All,
+            limit: 10,
+            settings: RnaReadConcatemerInspectionSettings::default(),
+        },
+    )
+    .expect("inspect rna-read concatemers");
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["report_id"].as_str(),
+        Some("rna_reads_concatemers_shell")
+    );
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["suspicious_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["strong_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["rows"][0]["suspicion_level"].as_str(),
+        Some("strong")
+    );
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["rows"][0]["top_disjoint_secondary_transcript_id"]
+            .as_str(),
+        Some("tx_secondary")
     );
 
     let exported_report = fasta_dir.path().join("report.json");

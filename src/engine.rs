@@ -409,6 +409,7 @@ const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_ts
 const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_alignment_dotplot_svg_export.v1";
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
+const RNA_READ_CONCATEMER_INSPECTION_SCHEMA: &str = "gentle.rna_read_concatemer_inspection.v1";
 const RNA_READ_ALIGNMENT_DETAIL_SCHEMA: &str = "gentle.rna_read_alignment_detail.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;

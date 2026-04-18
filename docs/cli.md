@@ -486,6 +486,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads summarize-gene-support`
   - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
+  - `rna-reads inspect-concatemers`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
@@ -548,6 +549,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       ordinals, ordered exon pairs, neighboring direct transitions, phase-2
       score/identity/coverage, and `passed_seed_filter`.
   - `inspect-alignments`: non-mutating ranked alignment inspection
+  - `inspect-concatemers`: non-mutating fragment/concatemer suspicion audit
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
@@ -1690,6 +1692,7 @@ Shared shell command:
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
+    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -1710,6 +1713,26 @@ Shared shell command:
       - `full_length_exact`
       - `full_length_near`
       - `full_length_strict`
+    - `rna-reads inspect-concatemers` returns a conservative
+      `gentle.rna_read_concatemer_inspection.v1` audit over one saved report.
+      It does not claim to prove library chimeras by itself; instead it ranks
+      retained reads by fragment-fusion-like signals so suspicious reads can be
+      reviewed before stronger conclusions are drawn.
+      - current signals are:
+        - low primary query coverage
+        - internal poly(A) bridge away from read ends
+        - internal poly(T) bridge away from read ends
+        - disjoint secondary mappings with limited query overlap
+        - phase-1 local-block / partial-origin classification
+      - `strong` rows currently require a disjoint secondary mapping plus at
+        least one additional signal
+      - if the aligned report was built with `max_secondary_mappings=0`, the
+        payload warns that disjoint-secondary evidence is unavailable and the
+        audit becomes weaker
+      - practical recommendation:
+        rerun `rna-reads align-report REPORT_ID --max-secondary-mappings 3`
+        (or higher) before using this audit to argue for concatemer/fusion
+        artifacts in real data
     - `rna-reads summarize-gene-support` returns a machine-readable
       `gentle.rna_read_gene_support_summary.v1` payload for one or more target
       genes from a saved aligned report:
