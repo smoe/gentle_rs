@@ -459,8 +459,8 @@ const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
-const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
-const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
+pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
+pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
 const DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP: usize = 100;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP: usize = 200;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP: usize = 500;
@@ -2795,6 +2795,27 @@ pub enum Operation {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ExtractGenomePromoterSlice {
+        genome_id: String,
+        gene_query: String,
+        occurrence: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        output_id: Option<SeqId>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotation_scope: Option<GenomeAnnotationScope>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_annotation_features: Option<usize>,
+        /// Legacy compatibility flag; prefer `annotation_scope`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_genomic_annotation: Option<bool>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     ExtendGenomeAnchor {
         seq_id: SeqId,
         side: GenomeAnchorSide,
@@ -4620,6 +4641,7 @@ impl GentleEngine {
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
+                "ExtractGenomePromoterSlice".to_string(),
                 "ExtendGenomeAnchor".to_string(),
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
@@ -6803,6 +6825,35 @@ impl GentleEngine {
         }
     }
 
+    fn default_extract_genome_promoter_slice_output_id(
+        genome_id: &str,
+        gene: &GenomeGeneRecord,
+        transcript_id: &str,
+        upstream_bp: usize,
+        downstream_bp: usize,
+    ) -> String {
+        let label = gene
+            .gene_name
+            .as_deref()
+            .or(gene.gene_id.as_deref())
+            .unwrap_or("gene");
+        let genome_token = Self::normalize_id_token(genome_id);
+        let label_token = Self::normalize_id_token(label);
+        let transcript_token = Self::normalize_id_token(transcript_id);
+        format!(
+            "{}_{}_{}_promoter_{}up_{}down",
+            genome_token,
+            if transcript_token.is_empty() {
+                label_token
+            } else {
+                format!("{label_token}_{transcript_token}")
+            },
+            "slice",
+            upstream_bp,
+            downstream_bp
+        )
+    }
+
     fn resolve_extract_genome_gene_interval(
         selected_gene: &GenomeGeneRecord,
         transcript_records: &[GenomeTranscriptRecord],
@@ -6864,6 +6915,123 @@ impl GentleEngine {
                 }
             }
         }
+    }
+
+    fn transcript_record_tss_1based(
+        selected_gene: &GenomeGeneRecord,
+        transcript_record: &GenomeTranscriptRecord,
+    ) -> Result<(char, usize), String> {
+        let strand = transcript_record
+            .strand
+            .or(selected_gene.strand)
+            .ok_or_else(|| {
+                format!(
+                    "Transcript '{}' for gene '{}' has no strand annotation",
+                    transcript_record.transcript_id,
+                    Self::genome_gene_display_label(selected_gene)
+                )
+            })?;
+        let tss_1based = if strand == '-' {
+            transcript_record.transcript_end_1based
+        } else {
+            transcript_record.transcript_start_1based
+        };
+        Ok((strand, tss_1based))
+    }
+
+    fn select_promoter_transcript_record(
+        selected_gene: &GenomeGeneRecord,
+        transcript_records: &[GenomeTranscriptRecord],
+        transcript_id: Option<&str>,
+    ) -> Result<GenomeTranscriptRecord, String> {
+        if transcript_records.is_empty() {
+            return Err(format!(
+                "Gene '{}' has no transcript annotation; cannot derive promoter slice from transcript TSS",
+                Self::genome_gene_display_label(selected_gene)
+            ));
+        }
+        if let Some(requested) = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let requested_norm = Self::normalize_id_token(requested);
+            return transcript_records
+                .iter()
+                .find(|record| {
+                    Self::normalize_id_token(&record.transcript_id) == requested_norm
+                        || record
+                            .gene_name
+                            .as_deref()
+                            .map(Self::normalize_id_token)
+                            .map(|value| value == requested_norm)
+                            .unwrap_or(false)
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "Gene '{}' has no transcript matching '{}'",
+                        Self::genome_gene_display_label(selected_gene),
+                        requested
+                    )
+                });
+        }
+
+        let mut ranked = transcript_records
+            .iter()
+            .filter_map(|record| {
+                Self::transcript_record_tss_1based(selected_gene, record)
+                    .ok()
+                    .map(|(strand, tss_1based)| (record.clone(), strand, tss_1based))
+            })
+            .collect::<Vec<_>>();
+        if ranked.is_empty() {
+            return Err(format!(
+                "Gene '{}' has transcript records but none had usable TSS geometry",
+                Self::genome_gene_display_label(selected_gene)
+            ));
+        }
+        ranked.sort_by(
+            |(left_record, left_strand, left_tss), (right_record, right_strand, right_tss)| match (
+                left_strand,
+                right_strand,
+            ) {
+                ('-', '-') => right_tss
+                    .cmp(left_tss)
+                    .then(left_record.transcript_id.cmp(&right_record.transcript_id)),
+                _ => left_tss
+                    .cmp(right_tss)
+                    .then(left_record.transcript_id.cmp(&right_record.transcript_id)),
+            },
+        );
+        Ok(ranked.remove(0).0)
+    }
+
+    fn resolve_extract_genome_promoter_slice_interval(
+        selected_gene: &GenomeGeneRecord,
+        transcript_records: &[GenomeTranscriptRecord],
+        transcript_id: Option<&str>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+    ) -> Result<(GenomeTranscriptRecord, usize, usize, usize), String> {
+        let transcript_record = Self::select_promoter_transcript_record(
+            selected_gene,
+            transcript_records,
+            transcript_id,
+        )?;
+        let (strand, tss_1based) =
+            Self::transcript_record_tss_1based(selected_gene, &transcript_record)?;
+        let (start_1based, end_1based) = if strand == '-' {
+            (
+                tss_1based.saturating_sub(downstream_bp).max(1),
+                tss_1based.saturating_add(upstream_bp),
+            )
+        } else {
+            (
+                tss_1based.saturating_sub(upstream_bp).max(1),
+                tss_1based.saturating_add(downstream_bp),
+            )
+        };
+        Ok((transcript_record, tss_1based, start_1based, end_1based))
     }
 
     fn normalize_genome_chromosome_token(raw: &str) -> String {

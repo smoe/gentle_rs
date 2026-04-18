@@ -11647,6 +11647,46 @@ fn parse_genomes_extract_gene_with_coding_promoter_mode() {
 }
 
 #[test]
+fn parse_genomes_extract_promoter_with_scope_and_transcript() {
+    let cmd = parse_shell_line(
+        "genomes extract-promoter ToyGenome MYGENE --occurrence 2 --transcript-id TX2 --output-id promoter_out --upstream-bp 750 --downstream-bp 80 --annotation-scope full --max-annotation-features 25 --catalog c.json --cache-dir cache",
+    )
+    .expect("parse genomes extract-promoter");
+    match cmd {
+        ShellCommand::ReferenceExtractPromoter {
+            helper_mode,
+            genome_id,
+            gene_query,
+            occurrence,
+            transcript_id,
+            output_id,
+            upstream_bp,
+            downstream_bp,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
+            catalog_path,
+            cache_dir,
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(genome_id, "ToyGenome".to_string());
+            assert_eq!(gene_query, "MYGENE".to_string());
+            assert_eq!(occurrence, Some(2));
+            assert_eq!(transcript_id, Some("TX2".to_string()));
+            assert_eq!(output_id, Some("promoter_out".to_string()));
+            assert_eq!(upstream_bp, Some(750));
+            assert_eq!(downstream_bp, Some(80));
+            assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Full));
+            assert_eq!(max_annotation_features, Some(25));
+            assert_eq!(include_genomic_annotation, None);
+            assert_eq!(catalog_path, Some("c.json".to_string()));
+            assert_eq!(cache_dir, Some("cache".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_extract_gene_with_annotation_flag() {
     let cmd = parse_shell_line(
         "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",
@@ -12026,6 +12066,109 @@ fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
             .iter()
             .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
     );
+}
+
+#[test]
+fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let sequence: String = (0..3000)
+        .map(|idx| match ((idx * 37) + (idx / 7)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t1001\t2000\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t1201\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\";\n",
+            "chr1\tsrc\texon\t1201\t1400\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t1801\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let cache_dir = td.path().join("cache");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+    let catalog_path = catalog.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePrepare {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        },
+    )
+    .expect("prepare genome");
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceExtractPromoter {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "NEG1".to_string(),
+            occurrence: None,
+            transcript_id: Some("TX1".to_string()),
+            output_id: Some("neg1_promoter_shell".to_string()),
+            upstream_bp: Some(100),
+            downstream_bp: Some(20),
+            annotation_scope: Some(GenomeAnnotationScope::None),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path),
+            cache_dir: None,
+        },
+    )
+    .expect("extract promoter");
+
+    assert!(out.state_changed);
+    let created = out
+        .output
+        .get("result")
+        .and_then(|value| value.get("created_seq_ids"))
+        .and_then(|value| value.as_array())
+        .expect("created_seq_ids");
+    assert!(
+        created
+            .iter()
+            .any(|value| value.as_str() == Some("neg1_promoter_shell"))
+    );
+
+    let seq = engine
+        .state()
+        .sequences
+        .get("neg1_promoter_shell")
+        .expect("sequence created by extract-promoter");
+    let expected = sequence[(1930 - 1)..2050].to_string();
+    assert_eq!(seq.get_forward_string(), expected);
 }
 
 #[test]

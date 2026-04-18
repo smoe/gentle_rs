@@ -38,6 +38,8 @@ use gentle::engine::{TranslationSpeedMark, TranslationSpeedProfile};
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
+const DEFAULT_PROMOTER_EXTRACT_UPSTREAM_BP: usize = 1000;
+const DEFAULT_PROMOTER_EXTRACT_DOWNSTREAM_BP: usize = 200;
 
 fn parse_bool_flag(raw: &str) -> Option<bool> {
     match raw.trim().to_ascii_lowercase().as_str() {
@@ -577,6 +579,7 @@ fn usage() {
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
@@ -590,6 +593,7 @@ fn usage() {
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli hosts list [--catalog PATH] [--filter TEXT]\n\n  \
@@ -2288,8 +2292,212 @@ fn run() -> Result<(), String> {
                         .map_err(|e| e.to_string())?;
                     print_json(&result)
                 }
+                "extract-promoter" => {
+                    if args.len() <= cmd_idx + 3 {
+                        usage();
+                        return Err(format!(
+                            "{label} extract-promoter requires GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let gene_query = args[cmd_idx + 3].clone();
+                    let mut occurrence: Option<usize> = None;
+                    let mut transcript_id: Option<String> = None;
+                    let mut output_id: Option<String> = None;
+                    let mut upstream_bp: Option<usize> = None;
+                    let mut downstream_bp: Option<usize> = None;
+                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+                    let mut max_annotation_features: Option<usize> = None;
+                    let mut include_genomic_annotation: Option<bool> = None;
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 4;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--occurrence" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --occurrence for {label} extract-promoter"
+                                    ));
+                                }
+                                let occ = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!("Invalid --occurrence value '{}': {}", args[idx + 1], e)
+                                })?;
+                                if occ == 0 {
+                                    return Err("--occurrence must be >= 1".to_string());
+                                }
+                                occurrence = Some(occ);
+                                idx += 2;
+                            }
+                            "--transcript-id" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing ID after --transcript-id for {label} extract-promoter"
+                                    ));
+                                }
+                                transcript_id = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output-id" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing ID after --output-id for {label} extract-promoter"
+                                    ));
+                                }
+                                output_id = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--upstream-bp" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --upstream-bp for {label} extract-promoter"
+                                    ));
+                                }
+                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --upstream-bp value '{}' for {label} extract-promoter: {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                upstream_bp = Some(parsed);
+                                idx += 2;
+                            }
+                            "--downstream-bp" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --downstream-bp for {label} extract-promoter"
+                                    ));
+                                }
+                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --downstream-bp value '{}' for {label} extract-promoter: {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                downstream_bp = Some(parsed);
+                                idx += 2;
+                            }
+                            "--annotation-scope" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing VALUE after --annotation-scope for {label} extract-promoter"
+                                    ));
+                                }
+                                let parsed = match args[idx + 1]
+                                    .trim()
+                                    .to_ascii_lowercase()
+                                    .as_str()
+                                {
+                                    "none" => GenomeAnnotationScope::None,
+                                    "core" => GenomeAnnotationScope::Core,
+                                    "full" => GenomeAnnotationScope::Full,
+                                    other => {
+                                        return Err(format!(
+                                            "Invalid --annotation-scope value '{}' for {label} extract-promoter (expected none|core|full)",
+                                            other
+                                        ));
+                                    }
+                                };
+                                annotation_scope = Some(parsed);
+                                idx += 2;
+                            }
+                            "--max-annotation-features" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --max-annotation-features for {label} extract-promoter"
+                                    ));
+                                }
+                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --max-annotation-features value '{}' for {label} extract-promoter: {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                max_annotation_features = Some(parsed);
+                                idx += 2;
+                            }
+                            "--include-genomic-annotation" => {
+                                include_genomic_annotation = Some(true);
+                                idx += 1;
+                            }
+                            "--no-include-genomic-annotation" => {
+                                include_genomic_annotation = Some(false);
+                                idx += 1;
+                            }
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} extract-promoter"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} extract-promoter"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} extract-promoter",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(include) = include_genomic_annotation {
+                        let mapped_scope = if include {
+                            GenomeAnnotationScope::Core
+                        } else {
+                            GenomeAnnotationScope::None
+                        };
+                        if let Some(explicit_scope) = annotation_scope {
+                            if explicit_scope != mapped_scope {
+                                return Err(format!(
+                                    "Conflicting annotation options for {label} extract-promoter: --annotation-scope={} with legacy include/no-include flag",
+                                    explicit_scope.as_str()
+                                ));
+                            }
+                        } else {
+                            annotation_scope = Some(mapped_scope);
+                        }
+                    }
+                    let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let result = engine
+                        .apply(Operation::ExtractGenomePromoterSlice {
+                            genome_id,
+                            gene_query,
+                            occurrence,
+                            transcript_id,
+                            output_id,
+                            upstream_bp: upstream_bp
+                                .unwrap_or(DEFAULT_PROMOTER_EXTRACT_UPSTREAM_BP),
+                            downstream_bp: downstream_bp
+                                .unwrap_or(DEFAULT_PROMOTER_EXTRACT_DOWNSTREAM_BP),
+                            annotation_scope,
+                            max_annotation_features,
+                            include_genomic_annotation,
+                            catalog_path: op_catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    print_json(&result)
+                }
                 other => Err(format!(
-                    "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene)",
+                    "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene, extract-promoter)",
                     other
                 )),
             }

@@ -998,11 +998,15 @@ order. Durable architecture constraints and decisions remain in
           `ExtractGenomeRegion` reproduces the `1000 bp upstream / 200 bp into
           transcribed area` slice, and the resulting internally derived
           sequence matches the upstream Ensembl region exactly
-        - remaining convenience gap:
-          there is still no single dedicated op/command for "derive unclipped
-          promoter slice from one gene/transcript TSS", so reverse-strand
-          promoter case studies currently require a two-step internal chain
-          rather than one direct promoter-slice command
+        - the first-class direct path now exists:
+          `ExtractGenomePromoterSlice` plus shared shell/CLI
+          `genomes/helpers extract-promoter ...` derive one unclipped promoter
+          slice directly from transcript TSS geometry while keeping provenance
+          machine-readable
+        - the local prepared-cache TERT comparison is now covered by a
+          conditional regression that only runs when a prepared
+          `Human GRCh38 Ensembl 116` cache already exists locally, so regular
+          GitHub CI stays light
         - it now also exports a portable handoff bundle directly from the GUI:
           promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
           SVG previews, `report.md`, `result.json`, and replay `commands.sh`

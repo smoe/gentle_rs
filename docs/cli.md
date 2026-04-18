@@ -2558,6 +2558,13 @@ Genome convenience commands:
   - Result payload includes `genome_annotation_projection` telemetry.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
+- `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+  - Runs engine `ExtractGenomePromoterSlice`.
+  - Derives one unclipped promoter slice directly from transcript TSS geometry.
+  - When `--transcript-id` is omitted, GENtle deterministically uses the
+    outermost 5' transcript among the matched gene’s transcript records and
+    warns when multiple transcript candidates existed.
+  - Defaults are `--upstream-bp 1000` and `--downstream-bp 200`.
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
   - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
@@ -2603,6 +2610,8 @@ Host convenience commands:
   - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes remove-prepared`, with helper-catalog default.
+- `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes extract-promoter`, with helper-catalog default.
 - `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
   - Lists prepared installs and orphaned remnants under the selected cache
     roots with artifact-group byte totals.
@@ -3498,6 +3507,12 @@ Extract by gene query (name/id) from the prepared gene index:
 {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
+Extract a promoter slice directly from transcript TSS geometry:
+
+```json
+{"ExtractGenomePromoterSlice":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TERT","transcript_id":"ENST00000310581","output_id":"grch38_tert_promoter","upstream_bp":1000,"downstream_bp":200,"annotation_scope":"core","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
 Extend an anchored sequence on the contextual 5' side by 250 bp:
 
 ```json
@@ -3545,6 +3560,7 @@ Notes:
   mass and labels it as `estimated_from_nucleotide_length`.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
 - `ExtractGenomeGene` also expects prepared cache and gene index.
+- `ExtractGenomePromoterSlice` also expects prepared cache and transcript/gene index.
 - `genomes/helpers blast` expects prepared cache and a BLAST index.
   If index files are missing, GENtle tries to build them on demand.
 - BLAST progress:

@@ -1091,6 +1091,14 @@ Current draft operations:
   - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
   - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
   - for helper genome IDs containing `pUC18`/`pUC19`, the same deterministic MCS fallback annotation behavior applies when an MCS feature is missing; non-unique motif matches are warned and skipped.
+- `ExtractGenomePromoterSlice { genome_id, gene_query, occurrence?, transcript_id?, output_id?, upstream_bp?, downstream_bp?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - derives one unclipped promoter slice directly from transcript TSS geometry instead of requiring a separate gene extraction + TSS recovery + region extraction chain.
+  - when `transcript_id` is omitted, the engine deterministically chooses the outermost 5' transcript for the matched gene and warns when multiple transcript candidates exist.
+  - `upstream_bp` and `downstream_bp` default to the shared promoter-window baseline (`1000` upstream, `200` into the transcribed area).
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - provenance rows record `gene_query`, `occurrence`, `transcript_id`, and both promoter flank lengths so GUI/CLI/agents can audit how the slice was derived.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 

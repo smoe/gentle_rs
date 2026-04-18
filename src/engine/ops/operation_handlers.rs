@@ -28,6 +28,21 @@ pub(crate) struct TranslationSpeedProfileResolution {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct GenomeExtractionProvenanceOverrides {
+    gene_query: Option<String>,
+    occurrence: Option<usize>,
+    gene_extract_mode: Option<String>,
+    transcript_id: Option<String>,
+    promoter_upstream_bp: Option<usize>,
+    promoter_downstream_bp: Option<usize>,
+    gene_id: Option<String>,
+    gene_name: Option<String>,
+    strand: Option<char>,
+    anchor_strand: Option<char>,
+    anchor_verified: Option<bool>,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -156,6 +171,7 @@ impl GentleEngine {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
         provenance_operation: &str,
+        provenance_overrides: Option<GenomeExtractionProvenanceOverrides>,
     ) -> Result<SeqId, EngineError> {
         let catalog_path =
             catalog_path.unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
@@ -348,15 +364,39 @@ impl GentleEngine {
             chromosome: Some(chromosome.to_string()),
             start_1based: Some(start_1based),
             end_1based: Some(end_1based),
-            gene_query: None,
-            occurrence: None,
-            gene_extract_mode: None,
-            promoter_upstream_bp: None,
-            gene_id: None,
-            gene_name: None,
-            strand: None,
-            anchor_strand: Some('+'),
-            anchor_verified: Some(true),
+            gene_query: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.gene_query.clone()),
+            occurrence: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.occurrence),
+            gene_extract_mode: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.gene_extract_mode.clone()),
+            transcript_id: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.transcript_id.clone()),
+            promoter_upstream_bp: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.promoter_upstream_bp),
+            promoter_downstream_bp: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.promoter_downstream_bp),
+            gene_id: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.gene_id.clone()),
+            gene_name: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.gene_name.clone()),
+            strand: provenance_overrides.as_ref().and_then(|value| value.strand),
+            anchor_strand: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.anchor_strand)
+                .or(Some('+')),
+            anchor_verified: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.anchor_verified)
+                .or(Some(true)),
             sequence_source_type,
             annotation_source_type,
             sequence_source,
@@ -3463,7 +3503,9 @@ impl GentleEngine {
                 gene_query: None,
                 occurrence: None,
                 gene_extract_mode: None,
+                transcript_id: None,
                 promoter_upstream_bp: None,
+                promoter_downstream_bp: None,
                 gene_id: None,
                 gene_name: None,
                 strand: None,
@@ -5825,7 +5867,9 @@ impl GentleEngine {
                         gene_query: None,
                         occurrence: None,
                         gene_extract_mode: None,
+                        transcript_id: None,
                         promoter_upstream_bp: None,
+                        promoter_downstream_bp: None,
                         gene_id: None,
                         gene_name: None,
                         strand: None,
@@ -6748,6 +6792,7 @@ impl GentleEngine {
                     catalog_path,
                     cache_dir,
                     "ExtractGenomeRegion",
+                    None,
                 )?;
             }
             Operation::FetchDbSnpRegion {
@@ -6910,6 +6955,7 @@ impl GentleEngine {
                     Some(resolved_catalog_path),
                     cache_dir,
                     "FetchDbSnpRegion",
+                    None,
                 )?;
                 let local_start_0based = placement.position_1based.saturating_sub(start_1based);
                 if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
@@ -7433,11 +7479,13 @@ impl GentleEngine {
                     gene_query: Some(query.to_string()),
                     occurrence: Some(occurrence),
                     gene_extract_mode: Some(extract_mode.as_str().to_string()),
+                    transcript_id: None,
                     promoter_upstream_bp: matches!(
                         extract_mode,
                         GenomeGeneExtractMode::CodingWithPromoter
                     )
                     .then_some(promoter_upstream_bp),
+                    promoter_downstream_bp: None,
                     gene_id: selected_gene.gene_id.clone(),
                     gene_name: selected_gene.gene_name.clone(),
                     strand: selected_gene.strand,
@@ -7461,6 +7509,249 @@ impl GentleEngine {
                     Self::genome_gene_display_label(selected_gene),
                     extract_mode.as_str(),
                     promoter_upstream_bp
+                ));
+            }
+            Operation::ExtractGenomePromoterSlice {
+                genome_id,
+                gene_query,
+                occurrence,
+                transcript_id,
+                output_id,
+                upstream_bp,
+                downstream_bp,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
+                catalog_path,
+                cache_dir,
+            } => {
+                let query = gene_query.trim();
+                if query.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Gene query cannot be empty".to_string(),
+                    });
+                }
+                let resolved_transcript_id = transcript_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let catalog_path = catalog_path
+                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
+                let genes = catalog
+                    .list_gene_regions(&genome_id, cache_dir.as_deref())
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load gene index for genome '{}': {}",
+                            genome_id, e
+                        ),
+                    })?;
+                let mut exact_matches: Vec<&GenomeGeneRecord> = genes
+                    .iter()
+                    .filter(|record| Self::genome_gene_matches_exact(record, query))
+                    .collect();
+                let used_fuzzy = if exact_matches.is_empty() {
+                    let query_lower = query.to_ascii_lowercase();
+                    exact_matches = genes
+                        .iter()
+                        .filter(|record| Self::genome_gene_matches_contains(record, &query_lower))
+                        .collect();
+                    true
+                } else {
+                    false
+                };
+                if exact_matches.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("No genes in '{}' match query '{}'", genome_id, query),
+                    });
+                }
+                let requested_occurrence = occurrence;
+                let occurrence = requested_occurrence.unwrap_or(1);
+                if occurrence == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Gene occurrence must be >= 1".to_string(),
+                    });
+                }
+                if exact_matches.len() > 1 && requested_occurrence.is_none() {
+                    result.warnings.push(format!(
+                        "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
+                        query,
+                        exact_matches.len(),
+                        genome_id
+                    ));
+                }
+                let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Gene query '{}' matched {} records, but occurrence {} was requested",
+                            query,
+                            exact_matches.len(),
+                            occurrence
+                        ),
+                    });
+                };
+
+                let mut transcript_records = match catalog.list_gene_transcript_records(
+                    &genome_id,
+                    &selected_gene.chromosome,
+                    selected_gene.start_1based,
+                    selected_gene.end_1based,
+                    selected_gene.gene_id.as_deref(),
+                    selected_gene.gene_name.as_deref(),
+                    cache_dir.as_deref(),
+                ) {
+                    Ok(records) => records,
+                    Err(e) => {
+                        result.warnings.push(format!(
+                            "Could not inspect transcript/exon annotation for gene '{}': {}",
+                            Self::genome_gene_display_label(selected_gene),
+                            e
+                        ));
+                        vec![]
+                    }
+                };
+                if transcript_records.is_empty() {
+                    match catalog.list_gene_transcript_records(
+                        &genome_id,
+                        &selected_gene.chromosome,
+                        selected_gene.start_1based,
+                        selected_gene.end_1based,
+                        None,
+                        None,
+                        cache_dir.as_deref(),
+                    ) {
+                        Ok(mut records) => {
+                            let selected_gene_id_norm = selected_gene
+                                .gene_id
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            let selected_gene_name_norm = selected_gene
+                                .gene_name
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            if selected_gene_id_norm.is_some() || selected_gene_name_norm.is_some()
+                            {
+                                records.retain(|record| {
+                                    let transcript_gene_id_norm = record
+                                        .gene_id
+                                        .as_deref()
+                                        .map(Self::normalize_id_token)
+                                        .filter(|v| !v.is_empty());
+                                    let transcript_gene_name_norm = record
+                                        .gene_name
+                                        .as_deref()
+                                        .map(Self::normalize_id_token)
+                                        .filter(|v| !v.is_empty());
+                                    selected_gene_id_norm
+                                        .as_ref()
+                                        .zip(transcript_gene_id_norm.as_ref())
+                                        .map(|(left, right)| left == right)
+                                        .unwrap_or(false)
+                                        || selected_gene_name_norm
+                                            .as_ref()
+                                            .zip(transcript_gene_name_norm.as_ref())
+                                            .map(|(left, right)| left == right)
+                                            .unwrap_or(false)
+                                });
+                            }
+                            if !records.is_empty() {
+                                result.warnings.push(format!(
+                                    "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
+                                    Self::genome_gene_display_label(selected_gene),
+                                    records.len()
+                                ));
+                                transcript_records = records;
+                            }
+                        }
+                        Err(e) => {
+                            result.warnings.push(format!(
+                                "Could not run transcript fallback for gene '{}': {}",
+                                Self::genome_gene_display_label(selected_gene),
+                                e
+                            ));
+                        }
+                    }
+                }
+
+                let (selected_transcript, tss_1based, extract_start_1based, extract_end_1based) =
+                    Self::resolve_extract_genome_promoter_slice_interval(
+                        selected_gene,
+                        &transcript_records,
+                        resolved_transcript_id.as_deref(),
+                        upstream_bp,
+                        downstream_bp,
+                    )
+                    .map_err(|message| EngineError {
+                        code: ErrorCode::NotFound,
+                        message,
+                    })?;
+
+                if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
+                    result.warnings.push(format!(
+                        "Gene '{}' has {} transcript candidate(s); using outermost 5' transcript '{}' for promoter slice derivation (set transcript_id to choose another).",
+                        Self::genome_gene_display_label(selected_gene),
+                        transcript_records.len(),
+                        selected_transcript.transcript_id
+                    ));
+                }
+
+                let default_id = Self::default_extract_genome_promoter_slice_output_id(
+                    &genome_id,
+                    selected_gene,
+                    &selected_transcript.transcript_id,
+                    upstream_bp,
+                    downstream_bp,
+                );
+                let seq_id = self.extract_genome_region_into_state(
+                    &mut result,
+                    &genome_id,
+                    &selected_transcript.chromosome,
+                    extract_start_1based,
+                    extract_end_1based,
+                    output_id.or(Some(default_id)),
+                    annotation_scope,
+                    max_annotation_features,
+                    include_genomic_annotation,
+                    Some(catalog_path.clone()),
+                    cache_dir.clone(),
+                    "ExtractGenomePromoterSlice",
+                    Some(GenomeExtractionProvenanceOverrides {
+                        gene_query: Some(query.to_string()),
+                        occurrence: Some(occurrence),
+                        transcript_id: Some(selected_transcript.transcript_id.clone()),
+                        promoter_upstream_bp: Some(upstream_bp),
+                        promoter_downstream_bp: Some(downstream_bp),
+                        gene_id: selected_gene.gene_id.clone(),
+                        gene_name: selected_gene.gene_name.clone(),
+                        strand: selected_gene.strand,
+                        anchor_strand: Some('+'),
+                        anchor_verified: Some(true),
+                        ..Default::default()
+                    }),
+                )?;
+                let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
+                result.messages.push(format!(
+                    "Extracted promoter slice for '{}' using transcript '{}' [{} match, occurrence {}] as '{}' from '{}' ({}:{}-{}, tss_1based={}, upstream_bp={}, downstream_bp={})",
+                    Self::genome_gene_display_label(selected_gene),
+                    selected_transcript.transcript_id,
+                    match_mode,
+                    occurrence,
+                    seq_id,
+                    genome_id,
+                    selected_transcript.chromosome,
+                    extract_start_1based,
+                    extract_end_1based,
+                    tss_1based,
+                    upstream_bp,
+                    downstream_bp
                 ));
             }
             Operation::ExtendGenomeAnchor {
@@ -7680,7 +7971,9 @@ impl GentleEngine {
                     gene_query: None,
                     occurrence: None,
                     gene_extract_mode: None,
+                    transcript_id: None,
                     promoter_upstream_bp: None,
+                    promoter_downstream_bp: None,
                     gene_id: None,
                     gene_name: None,
                     strand: anchor.strand,
@@ -7883,7 +8176,9 @@ impl GentleEngine {
                     gene_query: None,
                     occurrence: None,
                     gene_extract_mode: None,
+                    transcript_id: None,
                     promoter_upstream_bp: None,
+                    promoter_downstream_bp: None,
                     gene_id: None,
                     gene_name: None,
                     strand: anchor.strand,

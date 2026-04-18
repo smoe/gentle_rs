@@ -1300,7 +1300,11 @@ pub struct GenomeExtractionProvenance {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_extract_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_upstream_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_downstream_bp: Option<usize>,
     pub gene_id: Option<String>,
     pub gene_name: Option<String>,
     pub strand: Option<char>,

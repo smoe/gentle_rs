@@ -31,6 +31,7 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
@@ -1090,6 +1091,21 @@ pub enum ShellCommand {
         output_id: Option<String>,
         extract_mode: Option<GenomeGeneExtractMode>,
         promoter_upstream_bp: Option<usize>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        include_genomic_annotation: Option<bool>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceExtractPromoter {
+        helper_mode: bool,
+        genome_id: String,
+        gene_query: String,
+        occurrence: Option<usize>,
+        transcript_id: Option<String>,
+        output_id: Option<String>,
+        upstream_bp: Option<usize>,
+        downstream_bp: Option<usize>,
         annotation_scope: Option<GenomeAnnotationScope>,
         max_annotation_features: Option<usize>,
         include_genomic_annotation: Option<bool>,
@@ -5975,6 +5991,62 @@ impl ShellCommand {
                     "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', extract_mode={extract_mode}, promoter_upstream_bp={promoter_upstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
                 )
             }
+            Self::ReferenceExtractPromoter {
+                helper_mode,
+                genome_id,
+                gene_query,
+                occurrence,
+                transcript_id,
+                output_id,
+                upstream_bp,
+                downstream_bp,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let occ = occurrence
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let transcript = transcript_id.clone().unwrap_or_else(|| "-".to_string());
+                let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let upstream_bp = upstream_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| format!("{}(default)", DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP));
+                let downstream_bp =
+                    downstream_bp
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| {
+                            format!("{}(default)", DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP)
+                        });
+                let scope = annotation_scope
+                    .map(|value| value.as_str().to_string())
+                    .or_else(|| {
+                        include_genomic_annotation.map(|v| {
+                            if v {
+                                "core(legacy-flag)".to_string()
+                            } else {
+                                "none(legacy-flag)".to_string()
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| "core(default)".to_string());
+                let max_features = max_annotation_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let include_annotation = include_genomic_annotation
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "extract {label} promoter '{gene_query}' from '{genome_id}' (occurrence={occ}, transcript_id='{transcript}', output='{output}', upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                )
+            }
             Self::ReferenceExtendAnchor {
                 helper_mode,
                 seq_id,
@@ -7959,6 +8031,7 @@ impl ShellCommand {
                 | Self::ReferencePrepare { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
+                | Self::ReferenceExtractPromoter { .. }
                 | Self::ReferenceExtendAnchor { .. }
                 | Self::ReferenceVerifyAnchor { .. }
                 | Self::ReferenceBlastTrack { .. }
@@ -10629,6 +10702,149 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "extract-promoter" => {
+            if tokens.len() < 4 {
+                return Err(format!(
+                    "{label} extract-promoter requires GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let gene_query = tokens[3].clone();
+            let mut occurrence: Option<usize> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut output_id: Option<String> = None;
+            let mut upstream_bp: Option<usize> = None;
+            let mut downstream_bp: Option<usize> = None;
+            let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+            let mut max_annotation_features: Option<usize> = None;
+            let mut include_genomic_annotation: Option<bool> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--occurrence" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--occurrence", label)?;
+                        let value = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --occurrence value '{raw}': {e}"))?;
+                        if value == 0 {
+                            return Err("--occurrence must be >= 1".to_string());
+                        }
+                        occurrence = Some(value);
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            label,
+                        )?)
+                    }
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
+                    }
+                    "--upstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--upstream-bp", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --upstream-bp value '{raw}' for {label} extract-promoter: {e}"
+                            )
+                        })?;
+                        upstream_bp = Some(parsed);
+                    }
+                    "--downstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--downstream-bp", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --downstream-bp value '{raw}' for {label} extract-promoter: {e}"
+                            )
+                        })?;
+                        downstream_bp = Some(parsed);
+                    }
+                    "--annotation-scope" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
+                        let scope = match raw.trim().to_ascii_lowercase().as_str() {
+                            "none" => GenomeAnnotationScope::None,
+                            "core" => GenomeAnnotationScope::Core,
+                            "full" => GenomeAnnotationScope::Full,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --annotation-scope value '{other}' for {label} extract-promoter (expected none|core|full)"
+                                ));
+                            }
+                        };
+                        annotation_scope = Some(scope);
+                    }
+                    "--max-annotation-features" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-annotation-features",
+                            label,
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-annotation-features value '{raw}' for {label} extract-promoter: {e}"
+                            )
+                        })?;
+                        max_annotation_features = Some(parsed);
+                    }
+                    "--include-genomic-annotation" => {
+                        include_genomic_annotation = Some(true);
+                        idx += 1;
+                    }
+                    "--no-include-genomic-annotation" => {
+                        include_genomic_annotation = Some(false);
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} extract-promoter"
+                        ));
+                    }
+                }
+            }
+            if let Some(include) = include_genomic_annotation {
+                let mapped_scope = if include {
+                    GenomeAnnotationScope::Core
+                } else {
+                    GenomeAnnotationScope::None
+                };
+                if let Some(explicit_scope) = annotation_scope {
+                    if explicit_scope != mapped_scope {
+                        return Err(format!(
+                            "Conflicting annotation options for {label} extract-promoter: --annotation-scope={} with legacy include/no-include flag",
+                            explicit_scope.as_str()
+                        ));
+                    }
+                } else {
+                    annotation_scope = Some(mapped_scope);
+                }
+            }
+            Ok(ShellCommand::ReferenceExtractPromoter {
+                helper_mode,
+                genome_id,
+                gene_query,
+                occurrence,
+                transcript_id,
+                output_id,
+                upstream_bp,
+                downstream_bp,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
+                catalog_path,
+                cache_dir,
+            })
+        }
         "extend-anchor" => {
             if tokens.len() < 5 {
                 return Err(format!(
@@ -10730,7 +10946,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -17637,6 +17853,44 @@ fn execute_reference_and_track_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::ReferenceExtractPromoter {
+            helper_mode,
+            genome_id,
+            gene_query,
+            occurrence,
+            transcript_id,
+            output_id,
+            upstream_bp,
+            downstream_bp,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtractGenomePromoterSlice {
+                    genome_id: genome_id.clone(),
+                    gene_query: gene_query.clone(),
+                    occurrence: *occurrence,
+                    transcript_id: transcript_id.clone(),
+                    output_id: output_id.clone(),
+                    upstream_bp: upstream_bp.unwrap_or(DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP),
+                    downstream_bp: downstream_bp.unwrap_or(DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    include_genomic_annotation: *include_genomic_annotation,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::ReferenceExtendAnchor {
             helper_mode,
             seq_id,
@@ -22305,6 +22559,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ReferenceBlastTrack { .. }
             | ShellCommand::ReferenceExtractRegion { .. }
             | ShellCommand::ReferenceExtractGene { .. }
+            | ShellCommand::ReferenceExtractPromoter { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
             | ShellCommand::ReferenceVerifyAnchor { .. }
             | ShellCommand::TracksImportBed { .. }
@@ -23527,6 +23782,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceBlastTrack { .. }
         | ShellCommand::ReferenceExtractRegion { .. }
         | ShellCommand::ReferenceExtractGene { .. }
+        | ShellCommand::ReferenceExtractPromoter { .. }
         | ShellCommand::ReferenceExtendAnchor { .. }
         | ShellCommand::ReferenceVerifyAnchor { .. }
         | ShellCommand::TracksImportBed { .. }

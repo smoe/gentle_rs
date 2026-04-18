@@ -22,10 +22,42 @@ use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
 const EXTERNAL_PRIMER_BINARY_TEST_ENV: &str = "GENTLE_TEST_EXTERNAL_BINARIES";
+
+fn find_local_prepared_human_grch38_catalog_and_cache() -> Option<(String, String)> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut candidates = vec![(
+        repo_root.join("assets/genomes.json"),
+        repo_root.join("assets/data/genomes"),
+    )];
+    if let Ok(home) = env::var("HOME") {
+        let home = PathBuf::from(home);
+        candidates.push((
+            home.join("GitHub/gentle_rs/assets/genomes.json"),
+            home.join("GitHub/gentle_rs/assets/data/genomes"),
+        ));
+    }
+    for (catalog_path, cache_dir) in candidates {
+        if !catalog_path.is_file() || !cache_dir.is_dir() {
+            continue;
+        }
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let cache_dir_str = cache_dir.to_string_lossy().to_string();
+        if GentleEngine::is_reference_genome_prepared(
+            Some(&catalog_path_str),
+            "Human GRCh38 Ensembl 116",
+            Some(&cache_dir_str),
+        )
+        .unwrap_or(false)
+        {
+            return Some((catalog_path_str, cache_dir_str));
+        }
+    }
+    None
+}
 
 fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
@@ -13643,8 +13675,9 @@ fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_e
                     .any(|value| value == "TX1")
         })
         .expect("expected transcript-derived promoter window");
-    let promoter_range = GentleEngine::construct_reasoning_first_range_for_feature(promoter_feature)
-        .expect("promoter range");
+    let promoter_range =
+        GentleEngine::construct_reasoning_first_range_for_feature(promoter_feature)
+            .expect("promoter range");
     assert_eq!(
         promoter_range,
         (929, 1000),
@@ -13661,7 +13694,9 @@ fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_e
                     .any(|value| value == "TX1")
         })
         .expect("expected projected transcript feature");
-    assert!(crate::feature_location::feature_is_reverse(transcript_feature));
+    assert!(crate::feature_location::feature_is_reverse(
+        transcript_feature
+    ));
     let transcript_tss_1based = transcript_feature
         .qualifier_values("genomic_end_1based")
         .find_map(|value| value.parse::<usize>().ok())
@@ -13691,6 +13726,229 @@ fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_e
         .expect("expected promoter region extract");
     let expected = sequence[(promoter_start_1based - 1)..promoter_end_1based].to_string();
     assert_eq!(promoter_seq.get_forward_string(), expected);
+}
+
+#[test]
+fn test_extract_genome_promoter_slice_derives_reverse_strand_interval_and_provenance() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let ann = root.join("toy.gtf");
+    let sequence: String = (0..3000)
+        .map(|idx| match ((idx * 37) + (idx / 7)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).unwrap();
+    fs::write(
+        &ann,
+        concat!(
+            "chr1\tsrc\tgene\t1001\t2000\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t1201\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\";\n",
+            "chr1\tsrc\texon\t1201\t1400\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t1801\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+        ),
+    )
+    .unwrap();
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        ),
+    )
+    .unwrap();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+
+    let extract = engine
+        .apply(Operation::ExtractGenomePromoterSlice {
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "NEG1".to_string(),
+            occurrence: None,
+            transcript_id: Some("TX1".to_string()),
+            output_id: Some("neg1_promoter_direct".to_string()),
+            upstream_bp: 100,
+            downstream_bp: 20,
+            annotation_scope: Some(GenomeAnnotationScope::Full),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path_str),
+            cache_dir: None,
+        })
+        .unwrap();
+    assert_eq!(
+        extract.created_seq_ids,
+        vec!["neg1_promoter_direct".to_string()]
+    );
+
+    let promoter_seq = engine
+        .state()
+        .sequences
+        .get("neg1_promoter_direct")
+        .expect("expected promoter slice");
+    let expected_start_1based = 1930usize;
+    let expected_end_1based = 2050usize;
+    let expected = sequence[(expected_start_1based - 1)..expected_end_1based].to_string();
+    assert_eq!(promoter_seq.get_forward_string(), expected);
+    assert!(
+        promoter_seq.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "TX1")
+        }),
+        "full annotation scope should project transcript context onto the promoter slice"
+    );
+
+    let provenance = engine
+        .state()
+        .metadata
+        .get("provenance")
+        .and_then(|v| v.as_object())
+        .expect("provenance metadata object");
+    let extractions = provenance
+        .get("genome_extractions")
+        .and_then(|v| v.as_array())
+        .expect("genome_extractions array");
+    let promoter_entry = extractions
+        .iter()
+        .find(|entry| {
+            entry
+                .get("seq_id")
+                .and_then(|value| value.as_str())
+                .map(|value| value == "neg1_promoter_direct")
+                .unwrap_or(false)
+        })
+        .expect("promoter provenance entry");
+    assert_eq!(
+        promoter_entry
+            .get("operation")
+            .and_then(|value| value.as_str()),
+        Some("ExtractGenomePromoterSlice")
+    );
+    assert_eq!(
+        promoter_entry
+            .get("transcript_id")
+            .and_then(|value| value.as_str()),
+        Some("TX1")
+    );
+    assert_eq!(
+        promoter_entry
+            .get("promoter_upstream_bp")
+            .and_then(|value| value.as_u64()),
+        Some(100)
+    );
+    assert_eq!(
+        promoter_entry
+            .get("promoter_downstream_bp")
+            .and_then(|value| value.as_u64()),
+        Some(20)
+    );
+    assert_eq!(
+        promoter_entry
+            .get("gene_query")
+            .and_then(|value| value.as_str()),
+        Some("NEG1")
+    );
+}
+
+#[test]
+fn test_extract_genome_promoter_slice_matches_local_prepared_tert_window_when_available() {
+    let Some((catalog_path, cache_dir)) = find_local_prepared_human_grch38_catalog_and_cache()
+    else {
+        eprintln!(
+            "Skipping local prepared TERT promoter test because no prepared 'Human GRCh38 Ensembl 116' cache was found."
+        );
+        return;
+    };
+
+    let mut engine = GentleEngine::new();
+    let promoter = engine
+        .apply(Operation::ExtractGenomePromoterSlice {
+            genome_id: "Human GRCh38 Ensembl 116".to_string(),
+            gene_query: "TERT".to_string(),
+            occurrence: None,
+            transcript_id: Some("ENST00000310581".to_string()),
+            output_id: Some("tert_promoter_from_tss".to_string()),
+            upstream_bp: 1000,
+            downstream_bp: 200,
+            annotation_scope: Some(GenomeAnnotationScope::None),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: Some(cache_dir.clone()),
+        })
+        .expect("extract promoter slice from prepared TERT");
+    assert!(
+        promoter
+            .created_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "tert_promoter_from_tss")
+    );
+
+    let region = engine
+        .apply(Operation::ExtractGenomeRegion {
+            genome_id: "Human GRCh38 Ensembl 116".to_string(),
+            chromosome: "5".to_string(),
+            start_1based: 1_294_868,
+            end_1based: 1_296_068,
+            output_id: Some("tert_promoter_region".to_string()),
+            annotation_scope: Some(GenomeAnnotationScope::None),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path),
+            cache_dir: Some(cache_dir),
+        })
+        .expect("extract direct promoter region");
+    assert!(
+        region
+            .created_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "tert_promoter_region")
+    );
+
+    let promoter_seq = engine
+        .state()
+        .sequences
+        .get("tert_promoter_from_tss")
+        .expect("promoter sequence");
+    let region_seq = engine
+        .state()
+        .sequences
+        .get("tert_promoter_region")
+        .expect("region sequence");
+    assert_eq!(promoter_seq.len(), 1201);
+    assert_eq!(
+        promoter_seq.get_forward_string(),
+        region_seq.get_forward_string()
+    );
 }
 
 #[test]
