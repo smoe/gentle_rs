@@ -598,6 +598,17 @@ order. Durable architecture constraints and decisions remain in
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI
   and scripting adapters.
+- Shared JASPAR entry presentation now exists too:
+  `SummarizeJasparEntries` plus `resources summarize-jaspar` derive one
+  maximizing sequence, one minimizing sequence, and deterministic random-DNA
+  score distributions for selected or all local JASPAR entries, so agents and
+  command-line users can inspect motif behavior without leaving GENtle’s own
+  scoring path.
+- Next operational step for that path:
+  add a routine registry-wide snapshot/benchmark over all local JASPAR entries
+  (default `10000 bp` random background, deterministic seed, cached/exportable
+  JSON artifact) so regression work can detect scoring drift across JASPAR
+  updates or matrix/scanning changes.
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor

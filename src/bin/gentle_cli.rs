@@ -3,11 +3,13 @@
 use gentle::{
     about,
     engine::{
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DbSnpFetchProgress, DotplotOverlayAnchorExonRef,
-        DotplotOverlayXAxisMode, Engine, EngineStateSummary, GelBufferModel, GelRunConditions,
-        GelTopologyForm, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
-        GentleEngine, Operation, OperationProgress, PrimerDesignProgress, ProjectState,
-        RenderSvgMode, RnaReadInterpretProgress, TfbsProgress,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress,
+        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, Engine, EngineStateSummary,
+        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
+        OperationProgress, PrimerDesignProgress, ProjectState, RenderSvgMode,
+        RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, ShellProgressCallback,
@@ -711,6 +713,7 @@ fn usage() {
   gentle_cli resources status\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
+  gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
   gentle_cli services status\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
   gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
@@ -2562,7 +2565,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "resources requires a subcommand: status, sync-rebase or sync-jaspar"
+                    "resources requires a subcommand: status, sync-rebase, sync-jaspar or summarize-jaspar"
                         .to_string(),
                 );
             }
@@ -2652,8 +2655,107 @@ fn run() -> Result<(), String> {
                     );
                     Ok(())
                 }
+                "summarize-jaspar" => {
+                    let mut motifs: Vec<String> = vec![];
+                    let mut use_all = false;
+                    let mut random_sequence_length_bp =
+                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
+                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
+                    let mut output: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--motif" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(
+                                        "Missing TOKEN after --motif for resources summarize-jaspar"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.push(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--motifs" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(
+                                        "Missing CSV after --motifs for resources summarize-jaspar"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.extend(
+                                    args[idx + 1]
+                                        .split(',')
+                                        .map(str::trim)
+                                        .filter(|value| !value.is_empty())
+                                        .map(str::to_string),
+                                );
+                                idx += 2;
+                            }
+                            "--all" => {
+                                use_all = true;
+                                idx += 1;
+                            }
+                            "--random-length" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --random-length".to_string());
+                                }
+                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --random-length '{}' for resources summarize-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--seed" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --seed".to_string());
+                                }
+                                random_seed = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --seed '{}' for resources summarize-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for resources summarize-jaspar",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    if use_all && !motifs.is_empty() {
+                        return Err(
+                            "resources summarize-jaspar cannot combine --all with --motif/--motifs"
+                                .to_string(),
+                        );
+                    }
+                    if use_all {
+                        motifs.clear();
+                    }
+                    let mut engine = GentleEngine::new();
+                    let op_result = engine
+                        .apply(Operation::SummarizeJasparEntries {
+                            motifs,
+                            random_sequence_length_bp,
+                            random_seed,
+                            path: output,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    print_json(&json!({ "result": op_result }))
+                }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase or sync-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar or summarize-jaspar)"
                 )),
             }
         }
@@ -3874,6 +3976,24 @@ mod tests {
             ShellCommand::ResourcesSyncJaspar { .. }
         ));
 
+        let summarize = parse_shell_tokens(&[
+            "resources".to_string(),
+            "summarize-jaspar".to_string(),
+            "--motif".to_string(),
+            "SP1".to_string(),
+            "--random-length".to_string(),
+            "512".to_string(),
+            "--seed".to_string(),
+            "99".to_string(),
+            "--output".to_string(),
+            "jaspar.json".to_string(),
+        ])
+        .expect("parse resources summarize-jaspar");
+        assert!(matches!(
+            summarize,
+            ShellCommand::ResourcesSummarizeJaspar { .. }
+        ));
+
         let import_pool = parse_shell_tokens(&[
             "import-pool".to_string(),
             "demo.pool.gentle.json".to_string(),
@@ -4452,6 +4572,47 @@ mod tests {
             "resources".to_string(),
             "sync-jaspar".to_string(),
             input_path.to_string_lossy().to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_resources_summarize_jaspar_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("jaspar.summary.json");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "summarize-jaspar".to_string(),
+            "--motif".to_string(),
+            "SP1".to_string(),
+            "--random-length".to_string(),
+            "512".to_string(),
+            "--seed".to_string(),
+            "7".to_string(),
+            "--output".to_string(),
             output_path.to_string_lossy().to_string(),
         ];
         let shared_tokens = forwarded_args[1..].to_vec();

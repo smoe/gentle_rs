@@ -455,12 +455,15 @@ const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
+const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
+pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP: usize = 10_000;
+pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED: u64 = 0x4A_41_53_50_41_52_5F_31;
 const DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP: usize = 100;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP: usize = 200;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP: usize = 500;
@@ -503,6 +506,14 @@ fn default_promoter_window_downstream_bp() -> usize {
     DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP
 }
 
+fn default_jaspar_presentation_random_sequence_length_bp() -> usize {
+    DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP
+}
+
+fn default_jaspar_presentation_random_seed() -> u64 {
+    DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED
+}
+
 fn default_variant_promoter_tfbs_focus_half_window_bp() -> usize {
     DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP
 }
@@ -535,6 +546,8 @@ mod feature_expert_ops;
 mod genome_tracks;
 #[path = "engine/io/import_anchors.rs"]
 mod import_anchors;
+#[path = "engine/analysis/jaspar.rs"]
+mod jaspar;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
 #[path = "engine/ops/operation_handlers.rs"]
@@ -3400,6 +3413,16 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeJasparEntries {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_jaspar_presentation_random_sequence_length_bp")]
+        random_sequence_length_bp: usize,
+        #[serde(default = "default_jaspar_presentation_random_seed")]
+        random_seed: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     AnnotatePromoterWindows {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4698,6 +4721,7 @@ impl GentleEngine {
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
+                "SummarizeJasparEntries".to_string(),
                 "AnnotatePromoterWindows".to_string(),
                 "SummarizeVariantPromoterContext".to_string(),
                 "SuggestPromoterReporterFragments".to_string(),
@@ -6597,6 +6621,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
+                | Operation::SummarizeJasparEntries { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
                 | Operation::ExportRnaReadReport { .. }

@@ -1,5 +1,5 @@
 {
-   "command_count": 333,
+   "command_count": 334,
    "commands": [
       {
          "aliases": [
@@ -1198,6 +1198,20 @@
          "path": "resources sync-jaspar",
          "summary": "Normalize JASPAR source data into project motif JSON.",
          "usage": "resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeJasparEntries"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources summarize-jaspar",
+         "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
+         "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
       },
       {
          "aliases": [],

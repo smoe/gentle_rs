@@ -31,6 +31,8 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
@@ -896,6 +898,12 @@ pub enum ShellCommand {
     },
     ResourcesSyncJaspar {
         input: String,
+        output: Option<String>,
+    },
+    ResourcesSummarizeJaspar {
+        motifs: Vec<String>,
+        random_sequence_length_bp: usize,
+        random_seed: u64,
         output: Option<String>,
     },
     ResourcesStatus,
@@ -5422,6 +5430,22 @@ impl ShellCommand {
                     .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
                 format!("sync JASPAR from '{input}' to '{output}'")
             }
+            Self::ResourcesSummarizeJaspar {
+                motifs,
+                random_sequence_length_bp,
+                random_seed,
+                output,
+            } => format!(
+                "summarize {} JASPAR entry presentation(s) over one deterministic {} bp random background (seed={}, output='{}')",
+                if motifs.is_empty() {
+                    "all".to_string()
+                } else {
+                    motifs.join(",")
+                },
+                random_sequence_length_bp,
+                random_seed,
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::ResourcesStatus => "inspect active REBASE/JASPAR resource status".to_string(),
             Self::ServicesStatus => {
                 "inspect combined service readiness for canonical references/helpers/resources"
@@ -14208,7 +14232,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase or sync-jaspar".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, summarize-jaspar or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -14276,6 +14300,100 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ResourcesSyncJaspar { input, output })
                 }
+                "summarize-jaspar" => {
+                    let mut motifs: Vec<String> = vec![];
+                    let mut use_all = false;
+                    let mut random_sequence_length_bp =
+                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
+                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--motif" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing TOKEN after --motif for resources summarize-jaspar"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.push(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--motifs" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing CSV after --motifs for resources summarize-jaspar"
+                                            .to_string(),
+                                    );
+                                }
+                                motifs.extend(
+                                    tokens[idx + 1]
+                                        .split(',')
+                                        .map(str::trim)
+                                        .filter(|value| !value.is_empty())
+                                        .map(str::to_string),
+                                );
+                                idx += 2;
+                            }
+                            "--all" => {
+                                use_all = true;
+                                idx += 1;
+                            }
+                            "--random-length" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --random-length".to_string());
+                                }
+                                random_sequence_length_bp = tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --random-length '{}' for resources summarize-jaspar: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--seed" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --seed".to_string());
+                                }
+                                random_seed = tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --seed '{}' for resources summarize-jaspar: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources summarize-jaspar"
+                                ));
+                            }
+                        }
+                    }
+                    if use_all && !motifs.is_empty() {
+                        return Err(
+                            "resources summarize-jaspar cannot combine --all with --motif/--motifs"
+                                .to_string(),
+                        );
+                    }
+                    if use_all {
+                        motifs.clear();
+                    }
+                    Ok(ShellCommand::ResourcesSummarizeJaspar {
+                        motifs,
+                        random_sequence_length_bp,
+                        random_seed,
+                        output,
+                    })
+                }
                 "status" => {
                     if tokens.len() != 2 {
                         return Err("resources status takes no additional arguments".to_string());
@@ -14283,7 +14401,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase or sync-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar or summarize-jaspar)"
                 )),
             }
         }
@@ -16905,6 +17023,25 @@ fn execute_export_import_and_resource_command(
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
                 }),
+            })
+        }
+        ShellCommand::ResourcesSummarizeJaspar {
+            motifs,
+            random_sequence_length_bp,
+            random_seed,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeJasparEntries {
+                    motifs: motifs.clone(),
+                    random_sequence_length_bp: *random_sequence_length_bp,
+                    random_seed: *random_seed,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
             })
         }
         ShellCommand::ResourcesStatus => Ok(ShellRunResult {
@@ -22517,6 +22654,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ServicesStatus
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
+            | ShellCommand::ResourcesSummarizeJaspar { .. }
     ) {
         return execute_export_import_and_resource_command(engine, command);
     }
@@ -23485,7 +23623,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ResourcesSyncRebase { .. }
-        | ShellCommand::ResourcesSyncJaspar { .. } => {
+        | ShellCommand::ResourcesSyncJaspar { .. }
+        | ShellCommand::ResourcesSummarizeJaspar { .. } => {
             execute_export_import_and_resource_command(engine, command)?
         }
         ShellCommand::RoutinesList { .. }

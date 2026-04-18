@@ -1281,6 +1281,12 @@ impl GentleEngine {
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
+        if let Operation::SummarizeJasparEntries {
+            path: Some(path), ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         summary
     }
 
@@ -1325,6 +1331,9 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::FindRestrictionSites {
+                path: Some(path), ..
+            } => push(path),
+            Operation::SummarizeJasparEntries {
                 path: Some(path), ..
             } => push(path),
             _ => {}

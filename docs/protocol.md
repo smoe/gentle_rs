@@ -303,6 +303,51 @@ UX parity expectations:
   - deterministic parity tests compare inline-target results against stored
     `seq_id` results for the same sequence/span
 
+## JASPAR entry presentation contract
+
+GENtle also exposes a portable JASPAR-entry presentation contract that answers
+three practical questions for one local motif snapshot:
+
+- what sequence should maximize this motif score,
+- what sequence should minimize it,
+- and what score range should one expect on one deterministic random DNA
+  background.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json'
+```
+
+First-class operation route:
+
+```json
+{"SummarizeJasparEntries":{"motifs":["SP1","REST"],"random_sequence_length_bp":10000,"random_seed":123,"path":"jaspar.summary.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_entry_presentation.v1`
+
+Behavior notes:
+
+- When `motifs` is omitted or empty, GENtle summarizes every entry currently
+  visible through the active local JASPAR registry.
+- `maximizing_sequence` and `minimizing_sequence` are derived column-wise from
+  the same local matrix/consensus information GENtle already uses for TFBS
+  scoring; they are not hand-curated examples.
+- The background distribution uses one deterministic pseudorandom
+  `uniform_acgt_lcg` DNA sequence so shell/CLI/agent runs are reproducible.
+- Per-entry output includes:
+  - local entry identity (`motif_id`, optional `motif_name`,
+    `consensus_iupac`)
+  - motif length
+  - maximizing/minimizing sequences
+  - their exact `llr_bits` and `true_log_odds_bits`
+  - their empirical quantiles against the same random-background distribution
+  - min/max/mean/stddev plus `p01/p05/p25/p50/p75/p95/p99` summaries for both
+    bit-based score families
+
 ## Draft design resources
 
 ### `gentle.gibson_assembly_plan.v1`

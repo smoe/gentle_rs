@@ -11257,6 +11257,31 @@ fn parse_resources_sync_jaspar_with_output() {
 }
 
 #[test]
+fn parse_resources_summarize_jaspar_with_options() {
+    let cmd = parse_shell_line(
+        "resources summarize-jaspar --motif SP1 --motifs REST,PATZ1 --random-length 512 --seed 99 --output jaspar.json",
+    )
+    .expect("parse resources summarize-jaspar");
+    match cmd {
+        ShellCommand::ResourcesSummarizeJaspar {
+            motifs,
+            random_sequence_length_bp,
+            random_seed,
+            output,
+        } => {
+            assert_eq!(
+                motifs,
+                vec!["SP1".to_string(), "REST".to_string(), "PATZ1".to_string()]
+            );
+            assert_eq!(random_sequence_length_bp, 512);
+            assert_eq!(random_seed, 99);
+            assert_eq!(output.as_deref(), Some("jaspar.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_status() {
     let cmd = parse_shell_line("resources status").expect("parse resources status");
     match cmd {
@@ -11344,6 +11369,46 @@ fn execute_resources_sync_jaspar_with_local_fixture() {
     assert_eq!(
         snapshot.get("motif_count").and_then(|v| v.as_u64()),
         Some(2)
+    );
+}
+
+#[test]
+fn execute_resources_summarize_jaspar_writes_report_and_returns_payload() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.summary.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSummarizeJaspar {
+            motifs: vec!["SP1".to_string()],
+            random_sequence_length_bp: 512,
+            random_seed: 42,
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources summarize-jaspar");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["result"]["jaspar_entry_presentation"]["schema"].as_str(),
+        Some("gentle.jaspar_entry_presentation.v1")
+    );
+    assert_eq!(
+        out.output["result"]["jaspar_entry_presentation"]["resolved_entry_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        out.output["result"]["jaspar_entry_presentation"]["rows"][0]["maximizing_sequence"]
+            .as_str(),
+        Some("GGGGCGGGG")
+    );
+    let written = fs::read_to_string(&output_path).expect("read JASPAR summary JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("random_sequence_length_bp")
+            .and_then(|value| value.as_u64()),
+        Some(512)
     );
 }
 

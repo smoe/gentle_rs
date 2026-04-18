@@ -26119,6 +26119,82 @@ fn render_tfbs_score_tracks_svg_operation_writes_shared_plot() {
 }
 
 #[test]
+fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .summarize_jaspar_entries(&["SP1".to_string()], 10_000, 12345)
+        .expect("summarize jaspar entries");
+
+    assert_eq!(report.schema, "gentle.jaspar_entry_presentation.v1");
+    assert_eq!(report.random_sequence_length_bp, 10_000);
+    assert_eq!(report.random_seed, 12345);
+    assert_eq!(report.resolved_entry_count, 1);
+    let row = report.rows.first().expect("SP1 row");
+    assert_eq!(row.motif_name.as_deref(), Some("SP1"));
+    assert_eq!(row.consensus_iupac, "GGGGCGGGG");
+    assert_eq!(row.motif_length_bp, 9);
+    assert_eq!(row.maximizing_sequence, "GGGGCGGGG");
+    assert_eq!(row.minimizing_sequence, "AAAAAAAAA");
+    assert_eq!(
+        row.llr_bits_distribution.sample_count,
+        2 * (10_000usize - row.motif_length_bp + 1)
+    );
+    assert_eq!(
+        row.true_log_odds_bits_distribution.sample_count,
+        2 * (10_000usize - row.motif_length_bp + 1)
+    );
+    assert!(row.maximizing_llr_bits >= row.llr_bits_distribution.max_score);
+    assert!(row.maximizing_llr_bits >= row.minimizing_llr_bits);
+    assert!(row.maximizing_llr_quantile >= 0.99);
+    assert!(row.maximizing_llr_quantile >= row.minimizing_llr_quantile);
+    assert!(row.maximizing_true_log_odds_bits >= row.minimizing_true_log_odds_bits);
+    assert!(
+        row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile
+    );
+}
+
+#[test]
+fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.summary.json");
+    let mut engine = GentleEngine::new();
+
+    let result = engine
+        .apply(Operation::SummarizeJasparEntries {
+            motifs: vec!["SP1".to_string(), "REST".to_string()],
+            random_sequence_length_bp: 256,
+            random_seed: 77,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("apply jaspar summary");
+
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.changed_seq_ids.is_empty());
+    let report = result
+        .jaspar_entry_presentation
+        .expect("jaspar entry presentation report");
+    assert_eq!(report.resolved_entry_count, 2);
+    assert_eq!(report.random_sequence_length_bp, 256);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("JASPAR entry presentation"))
+    );
+    let written = fs::read_to_string(&output_path).expect("read written JASPAR summary");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.jaspar_entry_presentation.v1")
+    );
+    assert_eq!(
+        json.get("resolved_entry_count")
+            .and_then(|value| value.as_u64()),
+        Some(2)
+    );
+}
+
+#[test]
 fn upsert_construct_objective_normalizes_and_persists_construct_reasoning_store() {
     let mut engine = GentleEngine::new();
     let stored = engine

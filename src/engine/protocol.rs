@@ -574,6 +574,73 @@ pub struct RestrictionSiteScanReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Deterministic score-distribution summary for one JASPAR motif over one
+/// pseudorandom DNA background.
+pub struct JasparScoreDistributionSummary {
+    pub sample_count: usize,
+    pub min_score: f64,
+    pub max_score: f64,
+    pub mean_score: f64,
+    pub stddev_score: f64,
+    pub p01_score: f64,
+    pub p05_score: f64,
+    pub p25_score: f64,
+    pub p50_score: f64,
+    pub p75_score: f64,
+    pub p95_score: f64,
+    pub p99_score: f64,
+    pub positive_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One JASPAR entry presented with score-extreme sequences and one
+/// deterministic random-background score summary.
+pub struct JasparEntryPresentationRow {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
+    pub maximizing_sequence: String,
+    pub minimizing_sequence: String,
+    pub maximizing_llr_bits: f64,
+    pub maximizing_llr_quantile: f64,
+    pub minimizing_llr_bits: f64,
+    pub minimizing_llr_quantile: f64,
+    pub maximizing_true_log_odds_bits: f64,
+    pub maximizing_true_log_odds_quantile: f64,
+    pub minimizing_true_log_odds_bits: f64,
+    pub minimizing_true_log_odds_quantile: f64,
+    pub llr_bits_distribution: JasparScoreDistributionSummary,
+    pub true_log_odds_bits_distribution: JasparScoreDistributionSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable registry-wide presentation of JASPAR entries that shows the
+/// deterministic best/worst-scoring motif strings and one random-background
+/// score expectation summary per entry.
+pub struct JasparEntryPresentationReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub requested_motifs: Vec<String>,
+    pub registry_entry_count: usize,
+    pub resolved_entry_count: usize,
+    pub random_sequence_length_bp: usize,
+    pub random_seed: u64,
+    pub background_model: String,
+    #[serde(default)]
+    pub rows: Vec<JasparEntryPresentationRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One visible feature-class lane summarized in a sequence-context view.
 pub struct SequenceContextVisibleClass {
     pub class_id: String,
@@ -1653,6 +1720,7 @@ pub struct OpResult {
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
+    pub jaspar_entry_presentation: Option<JasparEntryPresentationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

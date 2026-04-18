@@ -5774,6 +5774,7 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             restriction_site_scan: None,
+            jaspar_entry_presentation: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
             variant_promoter_context: None,
@@ -12529,6 +12530,30 @@ impl GentleEngine {
                     report.clip_negative
                 ));
                 result.tfbs_score_tracks = Some(report);
+            }
+            Operation::SummarizeJasparEntries {
+                motifs,
+                random_sequence_length_bp,
+                random_seed,
+                path,
+            } => {
+                let mut report =
+                    self.summarize_jaspar_entries(&motifs, random_sequence_length_bp, random_seed)?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_entry_presentation_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR entry presentation for {} motif(s) to '{}'",
+                        report.resolved_entry_count, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "JASPAR entry presentation summarized {} motif(s) over one deterministic {} bp random background",
+                    report.resolved_entry_count,
+                    report.random_sequence_length_bp
+                ));
+                result.jaspar_entry_presentation = Some(report);
             }
             Operation::InspectSequenceContextView {
                 seq_id,
