@@ -643,6 +643,18 @@ order. Durable architecture constraints and decisions remain in
   background (`data/resources/jaspar.registry_benchmark.json` by default), with
   aggregate score-family summaries so regression work can detect scoring drift
   across JASPAR updates or matrix/scanning changes.
+- For the heavier `10000 bp` benchmark regime we now also want one explicitly
+  incremental "open compute challenge" path, not just the monolithic all-entry
+  run:
+  - store one `SummarizeJasparEntries --motif ...` result per motif of
+    interest under a persistent directory
+  - rebuild one partial benchmark catalog from those stored entry reports
+    whenever new motifs finish
+  - keep this cluster-friendly and internal-first so benchmark production keeps
+    exercising GENtle's own motif machinery rather than drifting into an
+    external ad hoc script
+  - the first helper for that now lives at
+    `scripts/benchmark_jaspar_interest_catalog.sh`
 - The single-entry `JASPAR Expert...` surface is now clearer in the
   non-comparative case too:
   - a motif overview card summarizes consensus, background, and registry scope

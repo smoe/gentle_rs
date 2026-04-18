@@ -1408,6 +1408,8 @@ cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif RES
 cargo run --bin gentle_cli -- resources benchmark-jaspar --random-length 10000 --seed 123 --output data/resources/jaspar.registry_benchmark.json
 cargo run --bin gentle_cli -- resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json
 cargo run --bin gentle_cli -- resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json
+scripts/benchmark_jaspar_interest_catalog.sh run --motif SP1 --out-dir data/resources/jaspar_interest_catalog
+scripts/benchmark_jaspar_interest_catalog.sh merge --out-dir data/resources/jaspar_interest_catalog
 cargo run --bin gentle_cli -- agents list
 cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize current project state"
