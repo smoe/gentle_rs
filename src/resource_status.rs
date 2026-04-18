@@ -6,7 +6,7 @@
 
 use crate::{
     attract_motifs::{
-        DEFAULT_ATTRACT_RESOURCE_PATH,
+        DEFAULT_ATTRACT_RESOURCE_PATH, active_model_counts as active_attract_model_counts,
         active_snapshot_fingerprint as active_attract_snapshot_fingerprint,
         list_motif_summaries as list_attract_motif_summaries, snapshot_fingerprint_from_text,
     },
@@ -79,6 +79,8 @@ pub struct AttractResourceStatus {
     pub runtime_error: Option<String>,
     pub active_source: String,
     pub active_item_count: usize,
+    pub active_pwm_row_count: usize,
+    pub active_consensus_only_row_count: usize,
     pub active_fingerprint: Option<String>,
     pub notes: Vec<String>,
 }
@@ -242,6 +244,7 @@ fn attract_status() -> AttractResourceStatus {
         (false, None, None, None)
     };
     let active_item_count = list_attract_motif_summaries().len();
+    let (active_pwm_row_count, active_consensus_only_row_count) = active_attract_model_counts();
     let active_fingerprint = active_attract_snapshot_fingerprint();
     let (support_status, active_source, notes) = if runtime_valid {
         (
@@ -250,6 +253,10 @@ fn attract_status() -> AttractResourceStatus {
             vec![
                 "ATtRACT motifs are available from a normalized runtime snapshot.".to_string(),
                 "Current v1 integration retains normalized consensus/IUPAC motifs from ATtRACT_db.txt and, when PWM blocks can be mapped by Matrix_id, upgrades those rows to PWM-backed splice-aware scoring.".to_string(),
+                format!(
+                    "Active model mix: {} PWM-backed rows, {} consensus-only rows.",
+                    active_pwm_row_count, active_consensus_only_row_count
+                ),
                 format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
             ],
         )
@@ -292,6 +299,8 @@ fn attract_status() -> AttractResourceStatus {
         runtime_error,
         active_source,
         active_item_count,
+        active_pwm_row_count,
+        active_consensus_only_row_count,
         active_fingerprint,
         notes,
     }

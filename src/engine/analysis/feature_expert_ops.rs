@@ -7713,6 +7713,11 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let resource_status = crate::resource_status::resource_catalog_status();
+        let pwm_scored_hit_count = hit_rows
+            .iter()
+            .filter(|row| row.match_score_kind == "llr_bits")
+            .count();
+        let consensus_hit_count = hit_rows.len().saturating_sub(pwm_scored_hit_count);
         Ok(AttractSplicingEvidenceView {
             schema: ATTRACT_SPLICING_EVIDENCE_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
@@ -7728,8 +7733,14 @@ impl GentleEngine {
             scanned_window_count: scanned_windows,
             unique_rbp_count: summary_rows.len(),
             hit_count: hit_rows.len(),
+            pwm_scored_hit_count,
+            consensus_hit_count,
             active_resource_source: resource_status.attract.active_source,
             active_resource_item_count: resource_status.attract.active_item_count,
+            active_resource_pwm_row_count: resource_status.attract.active_pwm_row_count,
+            active_resource_consensus_only_row_count: resource_status
+                .attract
+                .active_consensus_only_row_count,
             active_resource_fingerprint: resource_status.attract.active_fingerprint,
             summary_rows,
             hit_rows,

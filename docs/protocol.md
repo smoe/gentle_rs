@@ -4278,6 +4278,8 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - `gentle.attract_motifs.v1`
     - records one deterministic ATtRACT motif row per normalized
       `ATtRACT_db.txt` entry, including:
+      - `pwm_row_count`
+      - `consensus_only_row_count`
       - optional `snapshot_fingerprint` on the snapshot wrapper so runtime and
         session-loaded resources can be identified by content, not just by item
         count
@@ -4331,10 +4333,15 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - provenance:
       - active ATtRACT source label
       - active resource item count
+      - active resource PWM-backed row count
+      - active resource consensus-only row count
       - optional `active_resource_fingerprint`
       - requested/resolved organism
       - species-match mode
       - scan warnings
+    - aggregate hit counters:
+      - `pwm_scored_hit_count`
+      - `consensus_hit_count`
   - current v1 scan semantics:
     - transcript-strand aware by default
     - scans exon bodies and intron bodies from the selected splicing group

@@ -889,6 +889,8 @@ fn parse_attract_db_text(
         source: source_label.to_string(),
         fetched_at_unix_ms: now_unix_ms(),
         motif_count: motifs.len(),
+        pwm_row_count: motifs.iter().filter(|row| row.pfm.is_some()).count(),
+        consensus_only_row_count: motifs.iter().filter(|row| row.pfm.is_none()).count(),
         snapshot_fingerprint: None,
         archive_members: archive_members.to_vec(),
         warnings,

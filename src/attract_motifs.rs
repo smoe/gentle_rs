@@ -68,6 +68,10 @@ pub struct AttractMotifSnapshot {
     pub source: String,
     pub fetched_at_unix_ms: u128,
     pub motif_count: usize,
+    #[serde(default)]
+    pub pwm_row_count: usize,
+    #[serde(default)]
+    pub consensus_only_row_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_fingerprint: Option<String>,
     #[serde(default)]
@@ -132,6 +136,13 @@ impl AttractMotifDb {
 
     fn active_snapshot_fingerprint(&self) -> Option<String> {
         self.snapshot_fingerprint.clone()
+    }
+
+    fn active_model_counts(&self) -> (usize, usize) {
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| (snapshot.pwm_row_count, snapshot.consensus_only_row_count))
+            .unwrap_or((0, 0))
     }
 
     fn list_summaries(&self) -> Vec<AttractMotifSummary> {
@@ -207,6 +218,14 @@ pub fn active_snapshot_fingerprint() -> Option<String> {
         .read()
         .ok()
         .and_then(|db| db.active_snapshot_fingerprint())
+}
+
+pub fn active_model_counts() -> (usize, usize) {
+    ATTRACT_MOTIFS
+        .read()
+        .ok()
+        .map(|db| db.active_model_counts())
+        .unwrap_or((0, 0))
 }
 
 pub fn snapshot_fingerprint_from_text(text: &str) -> Option<String> {

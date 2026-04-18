@@ -177,6 +177,8 @@ fn load_synthetic_attract_snapshot(records: Vec<AttractMotifRecord>) -> tempfile
         fetched_at_unix_ms: 0,
         snapshot_fingerprint: None,
         motif_count: records.len(),
+        pwm_row_count: records.iter().filter(|row| row.pfm.is_some()).count(),
+        consensus_only_row_count: records.iter().filter(|row| row.pfm.is_none()).count(),
         archive_members: vec!["ATtRACT_db.txt".to_string()],
         warnings: vec![],
         motifs: records,
