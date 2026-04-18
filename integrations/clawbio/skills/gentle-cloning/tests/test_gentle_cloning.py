@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -674,6 +675,56 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
     assert "## Failure Summary" in report
     assert "catalog file missing" in report
     assert "Failure stage: `main_command`" in report
+
+
+def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path: Path) -> None:
+    clawbio_root = tmp_path / "ClawBio"
+    skill_dir = clawbio_root / "skills" / "gentle-cloning"
+    examples_dir = skill_dir / "examples"
+    examples_dir.mkdir(parents=True)
+
+    copied_skill = skill_dir / "gentle_cloning.py"
+    shutil.copy2(_skill_script(), copied_skill)
+
+    request_rel = Path("skills/gentle-cloning/examples/request_services_status.json")
+    request_abs = clawbio_root / request_rel
+    request_abs.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "capabilities",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "out"
+    unrelated_cwd = tmp_path / "somewhere-else"
+    unrelated_cwd.mkdir(parents=True)
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(copied_skill),
+            "--input",
+            str(request_rel),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "true",
+        ],
+        cwd=unrelated_cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["request"]["mode"] == "capabilities"
 
 
 def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
