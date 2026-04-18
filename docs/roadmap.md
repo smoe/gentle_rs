@@ -1023,6 +1023,11 @@ order. Durable architecture constraints and decisions remain in
           `ensure_reference_prepared`, which runs
           `genomes status ...` and only then `genomes prepare ...` when needed,
           while recording the before/after status payloads in the bundle
+        - the wrapper now also reports failing direct commands more helpfully:
+          `result.json.error` and `result.json.failure_summary` include the
+          failing command, execution cwd, exit code, and a short
+          stderr/stdout preview so remote ClawBio deployments are easier to
+          debug without manual log spelunking
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for

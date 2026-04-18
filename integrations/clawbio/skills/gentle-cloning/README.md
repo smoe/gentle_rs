@@ -67,6 +67,37 @@ ClawBio/OpenClaw answer pattern is:
 This keeps the answer truthful while still surfacing the practical path
 forward.
 
+### Investigating stale Ensembl answers
+
+If ClawBio still replies only with "GENtle cannot access remote databases
+directly" after you updated the skill files, the most likely problem is that
+the chat layer did not actually invoke the refreshed `gentle-cloning` skill.
+
+The shortest investigation path is:
+
+1. verify the copied remote skill bundle really contains:
+   - `examples/request_services_status.json`
+   - the `Ensembl availability answers` section in `SKILL.md`
+2. run the skill directly from the ClawBio checkout:
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status`
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38`
+3. inspect whether those direct runs succeed and produce `report.md` /
+   `result.json`
+   - failed runs now also surface the failing command, execution cwd, exit
+     code, and a short stderr/stdout preview directly in `result.json.error`
+     plus a dedicated `result.json.failure_summary` block
+4. if the direct runs succeed but the chat answer is still the old one, the
+   issue is not GENtle capability; it is ClawBio routing/prompting/caching
+5. in that case, restart the ClawBio process that owns the chat session and
+   re-test with a wording that strongly invites the skill, for example:
+   - `Please use the GENtle cloning skill to tell me whether Ensembl-backed human reference data is available or can be prepared locally.`
+
+This investigation separates three cases cleanly:
+
+- GENtle skill not invoked
+- GENtle skill invoked but status command failed
+- GENtle skill invoked and worked, but ClawBio summarized it poorly
+
 ## Recommended first-time route: local GENtle checkout
 
 This is the intended newcomer path for ClawBio/BioClaw users who want to keep

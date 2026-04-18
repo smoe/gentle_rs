@@ -55,6 +55,12 @@ class CliResolution:
     label: str
 
 
+def _format_command_text(command: list[str] | None) -> str:
+    if not command:
+        return "(none)"
+    return " ".join(shlex.quote(v) for v in command)
+
+
 def _now_utc_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -268,6 +274,75 @@ def _json_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
 
 
+def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str | None:
+    trimmed = text.strip()
+    if not trimmed:
+        return None
+    lines = trimmed.splitlines()
+    preview = "\n".join(lines[:max_lines])
+    if len(preview) > max_chars:
+        preview = preview[: max_chars - 3].rstrip() + "..."
+    elif len(lines) > max_lines or len(trimmed) > len(preview):
+        preview = preview.rstrip() + "..."
+    return preview
+
+
+def _build_failure_summary(
+    *,
+    stage: str,
+    step: dict[str, Any] | None,
+    execution_cwd: Path | None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    command = step.get("command") if isinstance(step, dict) else None
+    summary = {
+        "stage": stage,
+        "note": note,
+        "command": command,
+        "command_text": _format_command_text(command),
+        "execution_cwd": (str(execution_cwd) if execution_cwd is not None else None),
+        "exit_code": (step.get("exit_code") if isinstance(step, dict) else None),
+        "stderr_preview": (
+            _preview_text(step.get("stderr", "")) if isinstance(step, dict) else None
+        ),
+        "stdout_preview": (
+            _preview_text(step.get("stdout", "")) if isinstance(step, dict) else None
+        ),
+    }
+    return summary
+
+
+def _build_failure_message(
+    *,
+    headline: str,
+    failure_summary: dict[str, Any] | None,
+) -> str:
+    if not failure_summary:
+        return headline
+
+    parts = [headline]
+    note = failure_summary.get("note")
+    if isinstance(note, str) and note.strip():
+        parts.append(note.strip())
+    command_text = failure_summary.get("command_text")
+    if isinstance(command_text, str) and command_text and command_text != "(none)":
+        parts.append(f"Command: `{command_text}`.")
+    execution_cwd = failure_summary.get("execution_cwd")
+    if isinstance(execution_cwd, str) and execution_cwd:
+        parts.append(f"Cwd: `{execution_cwd}`.")
+    exit_code = failure_summary.get("exit_code")
+    if exit_code is not None:
+        parts.append(f"Exit code: `{exit_code}`.")
+    stderr_preview = failure_summary.get("stderr_preview")
+    stdout_preview = failure_summary.get("stdout_preview")
+    if isinstance(stderr_preview, str) and stderr_preview:
+        parts.append(f"Stderr preview: `{stderr_preview}`.")
+    elif isinstance(stdout_preview, str) and stdout_preview:
+        parts.append(f"Stdout preview: `{stdout_preview}`.")
+    parts.append("Full stdout/stderr are recorded in `report.md` and `result.json`.")
+    return " ".join(parts)
+
+
 def _resolve_execution_cwd(
     request: Request,
     resolution: CliResolution | None,
@@ -425,15 +500,25 @@ def _reference_preflight_record(reference: EnsureReferencePrepared) -> dict[str,
         "status_before": None,
         "status_after": None,
         "steps": [],
+        "last_failure": None,
         "status": "pending",
     }
 
 
-def _parse_json_stdout(stdout: str, context: str) -> Any:
+def _parse_json_stdout(
+    stdout: str,
+    context: str,
+    *,
+    failure_summary: dict[str, Any] | None = None,
+) -> Any:
     try:
         return json.loads(stdout)
     except json.JSONDecodeError as e:
-        raise SkillError(f"{context} did not return valid JSON: {e}") from e
+        detail = _build_failure_message(
+            headline=f"{context} did not return valid JSON: {e}",
+            failure_summary=failure_summary,
+        )
+        raise SkillError(detail) from e
 
 
 def _ensure_reference_prepared(
@@ -452,12 +537,29 @@ def _ensure_reference_prepared(
     record["steps"].append(status_step)
     if status_result.returncode != 0:
         record["status"] = "failed"
+        failure_summary = _build_failure_summary(
+            stage="reference_status_preflight",
+            step=status_step,
+            execution_cwd=execution_cwd,
+        )
+        record["last_failure"] = failure_summary
         raise SkillError(
-            "reference-status preflight failed; inspect preflight step stderr in result.json/report.md"
+            _build_failure_message(
+                headline=(
+                    "reference-status preflight failed while checking whether the requested "
+                    "reference is already prepared."
+                ),
+                failure_summary=failure_summary,
+            )
         )
     status_payload = _parse_json_stdout(
         status_result.stdout,
         f"genomes status {reference.genome_id}",
+        failure_summary=_build_failure_summary(
+            stage="reference_status_preflight",
+            step=status_step,
+            execution_cwd=execution_cwd,
+        ),
     )
     record["status_before"] = status_payload
     record["prepared_before"] = bool(status_payload.get("prepared"))
@@ -478,8 +580,20 @@ def _ensure_reference_prepared(
     record["prepare_attempted"] = True
     if prepare_result.returncode != 0:
         record["status"] = "failed"
+        failure_summary = _build_failure_summary(
+            stage="reference_prepare_preflight",
+            step=prepare_step,
+            execution_cwd=execution_cwd,
+        )
+        record["last_failure"] = failure_summary
         raise SkillError(
-            "reference-prepare preflight failed; inspect preflight step stderr in result.json/report.md"
+            _build_failure_message(
+                headline=(
+                    "reference-prepare preflight failed while trying to prepare the requested "
+                    "reference locally."
+                ),
+                failure_summary=failure_summary,
+            )
         )
 
     status_after_result, status_after_step = _run_cli_command(
@@ -491,12 +605,29 @@ def _ensure_reference_prepared(
     record["steps"].append(status_after_step)
     if status_after_result.returncode != 0:
         record["status"] = "failed"
+        failure_summary = _build_failure_summary(
+            stage="post_prepare_reference_status_preflight",
+            step=status_after_step,
+            execution_cwd=execution_cwd,
+        )
+        record["last_failure"] = failure_summary
         raise SkillError(
-            "post-prepare reference-status preflight failed; inspect preflight step stderr in result.json/report.md"
+            _build_failure_message(
+                headline=(
+                    "post-prepare reference-status preflight failed after the prepare step "
+                    "completed."
+                ),
+                failure_summary=failure_summary,
+            )
         )
     status_after_payload = _parse_json_stdout(
         status_after_result.stdout,
         f"post-prepare genomes status {reference.genome_id}",
+        failure_summary=_build_failure_summary(
+            stage="post_prepare_reference_status_preflight",
+            step=status_after_step,
+            execution_cwd=execution_cwd,
+        ),
     )
     record["status_after"] = status_after_payload
     record["prepared_after"] = bool(status_after_payload.get("prepared"))
@@ -585,8 +716,9 @@ def _write_report(
     ended_utc: str,
     status: str,
     error_message: str | None,
+    failure_summary: dict[str, Any] | None,
 ) -> None:
-    command_text = " ".join(shlex.quote(v) for v in command) if command else "(none)"
+    command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
     stderr = run_result.stderr if run_result else ""
     exit_code = run_result.returncode if run_result else None
@@ -609,6 +741,10 @@ def _write_report(
         lines.append(f"- Parsed stdout JSON schema: `{stdout_json['schema']}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
+    if failure_summary:
+        lines.append(
+            f"- Failure stage: `{failure_summary.get('stage', 'unknown')}`"
+        )
     if collected_artifacts:
         lines.append("- Collected artifacts:")
         for artifact in collected_artifacts:
@@ -622,6 +758,48 @@ def _write_report(
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
+    if failure_summary:
+        lines.extend(
+            [
+                "",
+                "## Failure Summary",
+                "",
+                f"- Stage: `{failure_summary.get('stage', 'unknown')}`",
+                f"- Command: `{failure_summary.get('command_text', '(none)')}`",
+            ]
+        )
+        if failure_summary.get("execution_cwd"):
+            lines.append(
+                f"- Cwd: `{failure_summary['execution_cwd']}`"
+            )
+        if failure_summary.get("exit_code") is not None:
+            lines.append(
+                f"- Exit code: `{failure_summary['exit_code']}`"
+            )
+        if failure_summary.get("note"):
+            lines.append(f"- Note: `{failure_summary['note']}`")
+        if failure_summary.get("stderr_preview"):
+            lines.extend(
+                [
+                    "",
+                    "### Stderr Preview",
+                    "",
+                    "```text",
+                    str(failure_summary["stderr_preview"]),
+                    "```",
+                ]
+            )
+        elif failure_summary.get("stdout_preview"):
+            lines.extend(
+                [
+                    "",
+                    "### Stdout Preview",
+                    "",
+                    "```text",
+                    str(failure_summary["stdout_preview"]),
+                    "```",
+                ]
+            )
     lines.extend(
         [
             "",
@@ -740,6 +918,7 @@ def main() -> int:
     execution_cwd = Path.cwd()
     status = "failed"
     error_message: str | None = None
+    failure_summary: dict[str, Any] | None = None
     collected_artifacts: list[dict[str, str]] = []
     reference_preflight: dict[str, Any] | None = None
     stdout_json: Any | None = None
@@ -786,8 +965,14 @@ def main() -> int:
         command = main_step["command"]
         status = "ok" if run_result.returncode == 0 else "command_failed"
         if run_result.returncode != 0:
-            error_message = (
-                f"gentle_cli exited with {run_result.returncode}; inspect stderr in report.md"
+            failure_summary = _build_failure_summary(
+                stage="main_command",
+                step=main_step,
+                execution_cwd=execution_cwd,
+            )
+            error_message = _build_failure_message(
+                headline="gentle_cli exited with a non-zero status.",
+                failure_summary=failure_summary,
             )
         stdout_json = _parse_stdout_json(run_result.stdout)
         chat_summary_lines = _extract_chat_summary_lines(stdout_json)
@@ -800,6 +985,12 @@ def main() -> int:
         status = "timeout"
     except SkillError as e:
         request = request if "request" in locals() else _default_demo_request()
+        if (
+            failure_summary is None
+            and reference_preflight is not None
+            and isinstance(reference_preflight.get("last_failure"), dict)
+        ):
+            failure_summary = reference_preflight["last_failure"]
         error_message = str(e)
         if status != "degraded_demo":
             status = "failed"
@@ -831,6 +1022,7 @@ def main() -> int:
         ended_utc=ended,
         status=status,
         error_message=error_message,
+        failure_summary=failure_summary,
     )
 
     command_lines = [
@@ -871,6 +1063,7 @@ def main() -> int:
         "stderr": (run_result.stderr if run_result else ""),
         "chat_summary_lines": chat_summary_lines,
         "error": error_message,
+        "failure_summary": failure_summary,
         "preflight": {
             "reference_preparation": reference_preflight,
         },

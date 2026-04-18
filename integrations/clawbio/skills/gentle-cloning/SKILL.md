@@ -151,6 +151,25 @@ Preferred wording pattern:
 > I should first check which Ensembl version is already available or prepared
 > locally, and if it is missing I can prepare it for later reuse.
 
+If the user reports that ClawBio still answered with only
+"cannot access remote databases directly" even after the skill update, debug it
+in this order:
+
+1. assume first that the skill may not have been invoked at all
+2. verify the copied skill bundle contains:
+   - `examples/request_services_status.json`
+   - this Ensembl-answer section
+3. run the two direct smoke calls from the ClawBio checkout:
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status`
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38`
+4. if those direct runs succeed, treat the remaining issue as ClawBio
+   routing/prompting/caching rather than a missing GENtle capability
+   - for failed direct runs, inspect `result.json.error` and
+     `result.json.failure_summary` first: they now include the failing command,
+     cwd, exit code, and a short stderr/stdout preview
+5. in that case, restart the ClawBio chat-serving process and re-test with a
+   phrasing that explicitly asks to use this skill
+
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should

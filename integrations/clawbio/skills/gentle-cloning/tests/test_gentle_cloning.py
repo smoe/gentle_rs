@@ -605,6 +605,77 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
     assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
 
 
+def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes status "Human GRCh38 Ensembl 116"',
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'catalog file missing\\n' >&2\n"
+        "exit 17\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode != 0
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "command_failed"
+    assert result["failure_summary"] == {
+        "stage": "main_command",
+        "note": None,
+        "command": [
+            str(fake_cli),
+            "shell",
+            'genomes status "Human GRCh38 Ensembl 116"',
+        ],
+        "command_text": (
+            f"{shlex.quote(str(fake_cli))} shell "
+            '\'genomes status "Human GRCh38 Ensembl 116"\''
+        ),
+        "execution_cwd": str(tmp_path.resolve()),
+        "exit_code": 17,
+        "stderr_preview": "catalog file missing",
+        "stdout_preview": None,
+    }
+    assert "gentle_cli exited with a non-zero status." in result["error"]
+    assert "Exit code: `17`." in result["error"]
+    assert "catalog file missing" in result["error"]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Failure Summary" in report
+    assert "catalog file missing" in report
+    assert "Failure stage: `main_command`" in report
+
+
 def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
