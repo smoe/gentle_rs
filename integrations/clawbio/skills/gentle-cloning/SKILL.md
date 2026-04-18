@@ -214,6 +214,9 @@ Expected outputs:
   - `bundle.json`
   - when the bundle embeds the shared `sequence_context_view`, the wrapper also
     surfaces its `summary_lines[]` through `result.json.chat_summary_lines[]`
+  - and when the bundle exposes ranked artifact metadata, the wrapper lifts it
+    into `result.json.preferred_artifacts[]` so chat/report layers can choose
+    one best-first figure deterministically
 - one SVG map
 - one BED/tabular coordinate export
 - one reproducibility bundle from the ClawBio wrapper

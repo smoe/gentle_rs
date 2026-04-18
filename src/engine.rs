@@ -9927,6 +9927,128 @@ impl GentleEngine {
         }
     }
 
+    fn sequence_context_artifact_caption(
+        artifact_kind: &str,
+        seq_id: &str,
+        sequence_context_view: &SequenceContextViewReport,
+    ) -> String {
+        let span_label = format!(
+            "{}..{} ({} bp)",
+            sequence_context_view.viewport_start_0based + 1,
+            sequence_context_view.viewport_end_0based_exclusive,
+            sequence_context_view.viewport_span_bp
+        );
+        match artifact_kind {
+            "context_svg" => format!(
+                "Sequence-context {} figure for '{}' covering {}",
+                sequence_context_view.mode, seq_id, span_label
+            ),
+            "context_summary_json" => format!(
+                "Machine-readable sequence-context summary for '{}' covering {}",
+                seq_id, span_label
+            ),
+            "context_summary_text" => format!(
+                "Compact text summary for '{}' covering {}",
+                seq_id, span_label
+            ),
+            "context_feature_bed" => format!(
+                "Coordinate-bearing feature table for '{}' covering {}",
+                seq_id, span_label
+            ),
+            "bundle_manifest" => format!(
+                "Bundle manifest for '{}' sequence-context export",
+                seq_id
+            ),
+            _ => format!("Sequence-context artifact '{artifact_kind}' for '{seq_id}'"),
+        }
+    }
+
+    fn sequence_context_bundle_artifact_manifest(
+        seq_id: &str,
+        sequence_context_view: &SequenceContextViewReport,
+        svg_path: &Path,
+        summary_json_path: &Path,
+        summary_text_path: Option<&Path>,
+        feature_bed_path: Option<&Path>,
+        bundle_json_path: &Path,
+    ) -> Vec<SequenceContextBundleArtifact> {
+        let mut artifacts = vec![SequenceContextBundleArtifact {
+            artifact_id: "context_svg".to_string(),
+            path: svg_path.to_string_lossy().into_owned(),
+            media_type: "image/svg+xml".to_string(),
+            artifact_kind: "figure".to_string(),
+            caption: Self::sequence_context_artifact_caption(
+                "context_svg",
+                seq_id,
+                sequence_context_view,
+            ),
+            recommended_use: "best_first_figure".to_string(),
+            presentation_rank: 0,
+            is_best_first_artifact: true,
+        }];
+        artifacts.push(SequenceContextBundleArtifact {
+            artifact_id: "context_summary_json".to_string(),
+            path: summary_json_path.to_string_lossy().into_owned(),
+            media_type: "application/json".to_string(),
+            artifact_kind: "summary_json".to_string(),
+            caption: Self::sequence_context_artifact_caption(
+                "context_summary_json",
+                seq_id,
+                sequence_context_view,
+            ),
+            recommended_use: "machine_readable_context".to_string(),
+            presentation_rank: 1,
+            is_best_first_artifact: false,
+        });
+        if let Some(summary_text_path) = summary_text_path {
+            artifacts.push(SequenceContextBundleArtifact {
+                artifact_id: "context_summary_text".to_string(),
+                path: summary_text_path.to_string_lossy().into_owned(),
+                media_type: "text/plain".to_string(),
+                artifact_kind: "summary_text".to_string(),
+                caption: Self::sequence_context_artifact_caption(
+                    "context_summary_text",
+                    seq_id,
+                    sequence_context_view,
+                ),
+                recommended_use: "compact_chat_summary".to_string(),
+                presentation_rank: 2,
+                is_best_first_artifact: false,
+            });
+        }
+        if let Some(feature_bed_path) = feature_bed_path {
+            artifacts.push(SequenceContextBundleArtifact {
+                artifact_id: "context_feature_bed".to_string(),
+                path: feature_bed_path.to_string_lossy().into_owned(),
+                media_type: "text/plain".to_string(),
+                artifact_kind: "feature_bed".to_string(),
+                caption: Self::sequence_context_artifact_caption(
+                    "context_feature_bed",
+                    seq_id,
+                    sequence_context_view,
+                ),
+                recommended_use: "coordinate_table".to_string(),
+                presentation_rank: 3,
+                is_best_first_artifact: false,
+            });
+        }
+        artifacts.push(SequenceContextBundleArtifact {
+            artifact_id: "bundle_manifest".to_string(),
+            path: bundle_json_path.to_string_lossy().into_owned(),
+            media_type: "application/json".to_string(),
+            artifact_kind: "bundle_manifest".to_string(),
+            caption: Self::sequence_context_artifact_caption(
+                "bundle_manifest",
+                seq_id,
+                sequence_context_view,
+            ),
+            recommended_use: "replay_manifest".to_string(),
+            presentation_rank: 4,
+            is_best_first_artifact: false,
+        });
+        artifacts
+    }
+
     pub fn export_sequence_context_bundle(
         &self,
         seq_id: &str,
@@ -10088,6 +10210,23 @@ impl GentleEngine {
             None
         };
 
+        let artifacts = Self::sequence_context_bundle_artifact_manifest(
+            seq_id,
+            &sequence_context_view,
+            &svg_path,
+            &summary_json_path,
+            summary_text_path.as_deref(),
+            feature_bed_path.as_deref(),
+            &bundle_json_path,
+        );
+        let best_first_artifact = artifacts
+            .iter()
+            .find(|artifact| artifact.is_best_first_artifact)
+            .or_else(|| artifacts.first());
+        let best_first_artifact_id =
+            best_first_artifact.map(|artifact| artifact.artifact_id.clone());
+        let best_first_artifact_path =
+            best_first_artifact.map(|artifact| artifact.path.clone());
         let bundle = SequenceContextBundleExport {
             schema: SEQUENCE_CONTEXT_BUNDLE_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
@@ -10108,6 +10247,9 @@ impl GentleEngine {
             include_feature_bed,
             include_restriction_sites,
             restriction_enzymes,
+            artifacts,
+            best_first_artifact_id,
+            best_first_artifact_path,
             sequence_context_view,
             feature_bed_export,
         };

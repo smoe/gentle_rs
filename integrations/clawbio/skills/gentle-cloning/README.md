@@ -195,6 +195,9 @@ Notes:
   - the wrapper also promotes the nested compact summary into
     `result.json.chat_summary_lines[]` when the exported bundle contains the
     shared `sequence_context_view` payload
+  - and it now promotes any bundle-owned ranked artifact metadata into
+    `result.json.preferred_artifacts[]`, so ClawBio can choose the best first
+    figure without ad hoc path guessing
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED

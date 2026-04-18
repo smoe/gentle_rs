@@ -3952,6 +3952,10 @@ Sequence-context bundle export contract (implemented baseline):
       optional `feature_bed_path`, `bundle_json_path`
     - `include_text_summary`, `include_feature_bed`,
       `include_restriction_sites`, `restriction_enzymes[]`
+    - `artifacts[]` with deterministic presentation metadata:
+      `artifact_id`, `path`, `media_type`, `artifact_kind`, `caption`,
+      `recommended_use`, `presentation_rank`, `is_best_first_artifact`
+    - `best_first_artifact_id`, `best_first_artifact_path`
     - embedded `sequence_context_view`
     - optional embedded `feature_bed_export`
 

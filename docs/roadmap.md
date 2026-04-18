@@ -1052,6 +1052,10 @@ order. Durable architecture constraints and decisions remain in
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for
           chat/presentation handoff
+        - the sequence-context bundle now carries ranked artifact metadata and
+          one explicit best-first artifact selection, and the ClawBio wrapper
+          lifts that into `result.json.preferred_artifacts[]` so chat layers
+          can choose a first figure without path heuristics
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo

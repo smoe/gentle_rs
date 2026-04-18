@@ -754,16 +754,51 @@ def _summary_lines_from_sequence_context_view(candidate: Any) -> list[str] | Non
     return lines or None
 
 
+def _extract_sequence_context_bundle(stdout_json: Any) -> dict[str, Any] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+    if stdout_json.get("schema") == "gentle.sequence_context_bundle.v1":
+        return stdout_json
+    candidate = stdout_json.get("sequence_context_bundle")
+    if isinstance(candidate, dict) and candidate.get("schema") == "gentle.sequence_context_bundle.v1":
+        return candidate
+    return None
+
+
+def _extract_preferred_artifacts(stdout_json: Any) -> list[dict[str, Any]] | None:
+    bundle = _extract_sequence_context_bundle(stdout_json)
+    if not isinstance(bundle, dict):
+        return None
+    raw_artifacts = bundle.get("artifacts")
+    if not isinstance(raw_artifacts, list):
+        return None
+    artifacts = [
+        artifact
+        for artifact in raw_artifacts
+        if isinstance(artifact, dict) and isinstance(artifact.get("path"), str)
+    ]
+    if not artifacts:
+        return None
+    artifacts.sort(
+        key=lambda artifact: (
+            int(artifact.get("presentation_rank", 10**9))
+            if isinstance(artifact.get("presentation_rank"), int)
+            else 10**9,
+            str(artifact.get("artifact_id", "")),
+        )
+    )
+    return artifacts
+
+
 def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
     if not isinstance(stdout_json, dict):
         return None
+    bundle = _extract_sequence_context_bundle(stdout_json)
     for candidate in (
         stdout_json,
         stdout_json.get("sequence_context_view"),
-        stdout_json.get("sequence_context_bundle"),
-        stdout_json.get("sequence_context_bundle", {}).get("sequence_context_view")
-        if isinstance(stdout_json.get("sequence_context_bundle"), dict)
-        else None,
+        bundle,
+        bundle.get("sequence_context_view") if isinstance(bundle, dict) else None,
     ):
         lines = _summary_lines_from_sequence_context_view(candidate)
         if lines:
@@ -787,6 +822,7 @@ def _write_report(
     status: str,
     error_message: str | None,
     failure_summary: dict[str, Any] | None,
+    preferred_artifacts: list[dict[str, Any]] | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -821,6 +857,18 @@ def _write_report(
             lines.append(
                 f"  - `{artifact['declared_path']}` -> `{artifact['copied_path']}`"
             )
+    if preferred_artifacts:
+        best_first = next(
+            (
+                artifact
+                for artifact in preferred_artifacts
+                if artifact.get("is_best_first_artifact") is True
+            ),
+            preferred_artifacts[0],
+        )
+        lines.append(
+            f"- Best first artifact: `{best_first.get('path', '(unknown)')}`"
+        )
     if reference_preflight:
         lines.append(
             f"- Reference preflight: `{reference_preflight.get('status', 'unknown')}`"
@@ -828,6 +876,18 @@ def _write_report(
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
+    if preferred_artifacts:
+        lines.extend(["", "## Preferred Artifacts", ""])
+        for artifact in preferred_artifacts:
+            marker = " (best first)" if artifact.get("is_best_first_artifact") is True else ""
+            lines.append(
+                f"- `{artifact.get('artifact_id', 'artifact')}`{marker}: "
+                f"`{artifact.get('path', '(unknown)')}`"
+            )
+            if artifact.get("caption"):
+                lines.append(f"  Caption: `{artifact['caption']}`")
+            if artifact.get("recommended_use"):
+                lines.append(f"  Recommended use: `{artifact['recommended_use']}`")
     if failure_summary:
         lines.extend(
             [
@@ -993,6 +1053,7 @@ def main() -> int:
     reference_preflight: dict[str, Any] | None = None
     stdout_json: Any | None = None
     chat_summary_lines: list[str] | None = None
+    preferred_artifacts: list[dict[str, Any]] | None = None
 
     try:
         if args.demo:
@@ -1046,6 +1107,7 @@ def main() -> int:
             )
         stdout_json = _parse_stdout_json(run_result.stdout)
         chat_summary_lines = _extract_chat_summary_lines(stdout_json)
+        preferred_artifacts = _extract_preferred_artifacts(stdout_json)
         collected_artifacts = _copy_collected_artifacts(
             request, output_dir, execution_cwd
         )
@@ -1092,6 +1154,7 @@ def main() -> int:
         status=status,
         error_message=error_message,
         failure_summary=failure_summary,
+        preferred_artifacts=preferred_artifacts,
     )
 
     command_lines = [
@@ -1131,6 +1194,7 @@ def main() -> int:
         "stdout_json": stdout_json,
         "stderr": (run_result.stderr if run_result else ""),
         "chat_summary_lines": chat_summary_lines,
+        "preferred_artifacts": preferred_artifacts,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {
