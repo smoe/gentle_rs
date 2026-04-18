@@ -13,6 +13,7 @@ pub const DESIGN_FACT_SCHEMA: &str = "gentle.design_fact.v1";
 pub const DESIGN_DECISION_NODE_SCHEMA: &str = "gentle.design_decision_node.v1";
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = "gentle.construct_candidate.v1";
 pub const ANNOTATION_CANDIDATE_SCHEMA: &str = "gentle.annotation_candidate.v1";
+pub const ANNOTATION_CANDIDATE_SUMMARY_SCHEMA: &str = "gentle.annotation_candidate_summary.v1";
 pub const ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA: &str = "gentle.annotation_candidate_writeback.v1";
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str = "gentle.construct_reasoning_graph.v1";
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str = "gentle.construct_reasoning_store.v1";
@@ -40,6 +41,10 @@ fn default_construct_candidate_schema() -> String {
 
 fn default_annotation_candidate_schema() -> String {
     ANNOTATION_CANDIDATE_SCHEMA.to_string()
+}
+
+fn default_annotation_candidate_summary_schema() -> String {
+    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA.to_string()
 }
 
 fn default_annotation_candidate_writeback_schema() -> String {
@@ -765,6 +770,59 @@ impl Default for AnnotationCandidate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
+/// Collapsed transcript-aware summary over one or more overlapping annotation
+/// candidates that can be shown calmly on large genomic loci.
+pub struct AnnotationCandidateSummary {
+    #[serde(default = "default_annotation_candidate_summary_schema")]
+    pub schema: String,
+    pub summary_id: String,
+    pub seq_id: SeqId,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: Option<String>,
+    pub role: ConstructRole,
+    pub title: String,
+    pub subtitle: String,
+    pub annotation_ids: Vec<String>,
+    pub source_kinds: Vec<String>,
+    pub transcript_context_statuses: Vec<String>,
+    pub effect_tags: Vec<String>,
+    pub candidate_count: usize,
+    pub review_status_summary: String,
+    pub supporting_fact_labels: Vec<String>,
+    pub supporting_decision_titles: Vec<String>,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+impl Default for AnnotationCandidateSummary {
+    fn default() -> Self {
+        Self {
+            schema: default_annotation_candidate_summary_schema(),
+            summary_id: String::new(),
+            seq_id: String::new(),
+            start_0based: 0,
+            end_0based_exclusive: 0,
+            strand: None,
+            role: ConstructRole::Other,
+            title: String::new(),
+            subtitle: String::new(),
+            annotation_ids: vec![],
+            source_kinds: vec![],
+            transcript_context_statuses: vec![],
+            effect_tags: vec![],
+            candidate_count: 0,
+            review_status_summary: String::new(),
+            supporting_fact_labels: vec![],
+            supporting_decision_titles: vec![],
+            warnings: vec![],
+            notes: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 /// Result of writing one accepted construct-reasoning annotation candidate back
 /// into the sequence as an ordinary feature.
 pub struct AnnotationCandidateWriteback {
@@ -829,6 +887,7 @@ pub struct ConstructReasoningGraph {
     pub decisions: Vec<DesignDecisionNode>,
     pub candidates: Vec<ConstructCandidate>,
     pub annotation_candidates: Vec<AnnotationCandidate>,
+    pub annotation_candidate_summaries: Vec<AnnotationCandidateSummary>,
     pub notes: Vec<String>,
 }
 
@@ -847,6 +906,7 @@ impl Default for ConstructReasoningGraph {
             decisions: vec![],
             candidates: vec![],
             annotation_candidates: vec![],
+            annotation_candidate_summaries: vec![],
             notes: vec![],
         }
     }

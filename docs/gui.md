@@ -1603,6 +1603,14 @@ Controls:
    - The same side panel now also includes an `Annotation candidates` section
      listing the current graph-backed candidate annotations with their support
      summaries and transcript-aware warnings.
+   - The same side panel now also includes an `Annotation summaries` section
+     that collapses overlapping candidate spans into calmer locus-level rows
+     such as overlapping exon or transcript-aware variant summaries.
+     - clicked spans now also show which collapsed summary they belong to,
+       including candidate count and review-state summary
+     - this summary layer is intended to be the future integration point for
+       similarity-derived annotation summaries as well, so large genomic views
+       do not regress into raw overlay floods
   - Both the clicked-span detail view and the `Annotation candidates` section
     now expose shared-engine accept/reject/draft controls so reviewed
     automated-annotation candidates can be curated without inventing GUI-only

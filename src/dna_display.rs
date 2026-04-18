@@ -153,6 +153,11 @@ impl Default for VcfDisplayCriteria {
 pub struct ConstructReasoningOverlaySpan {
     pub annotation_id: String,
     pub evidence_id: String,
+    pub summary_id: String,
+    pub summary_title: String,
+    pub summary_subtitle: String,
+    pub summary_candidate_count: usize,
+    pub summary_review_status: String,
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub strand: Option<String>,
@@ -191,14 +196,41 @@ impl ConstructReasoningOverlay {
             .iter()
             .map(|row| (row.evidence_id.as_str(), row))
             .collect::<BTreeMap<_, _>>();
+        let summary_by_annotation_id = graph
+            .annotation_candidate_summaries
+            .iter()
+            .flat_map(|summary| {
+                summary
+                    .annotation_ids
+                    .iter()
+                    .map(|annotation_id| (annotation_id.as_str(), summary))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<BTreeMap<_, _>>();
         let mut evidence = graph
             .annotation_candidates
             .iter()
             .filter_map(|candidate| {
                 let source_evidence = evidence_by_id.get(candidate.evidence_id.as_str())?;
+                let summary = summary_by_annotation_id.get(candidate.annotation_id.as_str());
                 Some(ConstructReasoningOverlaySpan {
                     annotation_id: candidate.annotation_id.clone(),
                     evidence_id: candidate.evidence_id.clone(),
+                    summary_id: summary
+                        .map(|summary| summary.summary_id.clone())
+                        .unwrap_or_default(),
+                    summary_title: summary
+                        .map(|summary| summary.title.clone())
+                        .unwrap_or_default(),
+                    summary_subtitle: summary
+                        .map(|summary| summary.subtitle.clone())
+                        .unwrap_or_default(),
+                    summary_candidate_count: summary
+                        .map(|summary| summary.candidate_count)
+                        .unwrap_or(1),
+                    summary_review_status: summary
+                        .map(|summary| summary.review_status_summary.clone())
+                        .unwrap_or_else(|| candidate.editable_status.as_str().to_string()),
                     start_0based: candidate.start_0based,
                     end_0based_exclusive: candidate.end_0based_exclusive,
                     strand: candidate.strand.clone(),
@@ -1190,8 +1222,8 @@ impl Default for DnaDisplay {
 mod tests {
     use super::*;
     use crate::engine::{
-        AnnotationCandidate, ConstructObjective, DesignDecisionNode, DesignEvidence, DesignFact,
-        EvidenceScope,
+        AnnotationCandidate, AnnotationCandidateSummary, ConstructObjective, DesignDecisionNode,
+        DesignEvidence, DesignFact, EvidenceScope,
     };
 
     #[test]
@@ -1425,5 +1457,61 @@ mod tests {
 
         assert_eq!(overlay.evidence.len(), 1);
         assert_eq!(overlay.evidence[0].evidence_id, "annotated_promoter");
+    }
+
+    #[test]
+    fn construct_reasoning_overlay_attaches_annotation_summary_metadata() {
+        let overlay = ConstructReasoningOverlay::from_graph(&ConstructReasoningGraph {
+            graph_id: "graph_demo".to_string(),
+            seq_id: "demo".to_string(),
+            evidence: vec![DesignEvidence {
+                evidence_id: "variant_span".to_string(),
+                seq_id: "demo".to_string(),
+                scope: EvidenceScope::SequenceSpan,
+                start_0based: 64,
+                end_0based_exclusive: 65,
+                role: ConstructRole::Variant,
+                evidence_class: EvidenceClass::HardFact,
+                label: "rs-demo".to_string(),
+                rationale: "Variant marker".to_string(),
+                ..DesignEvidence::default()
+            }],
+            annotation_candidates: vec![AnnotationCandidate {
+                annotation_id: "annotation_variant_span".to_string(),
+                evidence_id: "variant_span".to_string(),
+                seq_id: "demo".to_string(),
+                start_0based: 64,
+                end_0based_exclusive: 65,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Variant,
+                label: "rs-demo".to_string(),
+                rationale: "Variant marker".to_string(),
+                source_kind: "supporting_annotation".to_string(),
+                ..AnnotationCandidate::default()
+            }],
+            annotation_candidate_summaries: vec![AnnotationCandidateSummary {
+                summary_id: "summary_variant".to_string(),
+                seq_id: "demo".to_string(),
+                start_0based: 64,
+                end_0based_exclusive: 65,
+                strand: Some("+".to_string()),
+                role: ConstructRole::Variant,
+                title: "Variant".to_string(),
+                subtitle: "Transcript interpretations disagree".to_string(),
+                annotation_ids: vec!["annotation_variant_span".to_string()],
+                candidate_count: 2,
+                review_status_summary: "mixed: accepted, draft".to_string(),
+                ..AnnotationCandidateSummary::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        });
+
+        assert_eq!(overlay.evidence.len(), 1);
+        assert_eq!(overlay.evidence[0].summary_id, "summary_variant");
+        assert_eq!(
+            overlay.evidence[0].summary_subtitle,
+            "Transcript interpretations disagree"
+        );
+        assert_eq!(overlay.evidence[0].summary_candidate_count, 2);
     }
 }

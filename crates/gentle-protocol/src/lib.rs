@@ -16,16 +16,17 @@ use std::{
 };
 
 pub use construct_reasoning::{
-    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
-    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-    AnnotationCandidate, AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA,
-    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,
-    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus, EvidenceClass,
-    EvidenceScope, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole,
-    HostProfileCatalog, HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate,
-    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
+    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
+    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
+    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
+    AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
+    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate,
+    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
+    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
+    DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus, EvidenceClass, EvidenceScope,
+    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
+    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
 };
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,

@@ -2986,6 +2986,16 @@ Construct reasoning graph foundation (implemented first slice):
       it contributes to
     - editable `draft|accepted|rejected|locked` status now persists on the
       candidate itself so reviewed annotation state survives graph refresh
+  - graph-backed annotation-summary layer:
+    - `gentle.annotation_candidate_summary.v1`
+    - one portable collapsed summary per overlapping annotation-candidate
+      cluster/signature on a sequence
+    - carries grouped annotation ids, transcript-context/effect-tag summaries,
+      support labels, and review-status summary so genomic views can stay calm
+      without hiding the reasoning lineage
+    - intended as the shared summary surface for future similarity-analysis
+      annotations as well, instead of creating a second adapter-local collapse
+      path
   - annotation-candidate write-back report:
     - `gentle.annotation_candidate_writeback.v1`
     - reports whether one accepted/locked generated candidate created a new
@@ -3003,11 +3013,13 @@ Construct reasoning graph foundation (implemented first slice):
       exists as `sequence_span` evidence
   - GUI-side hover/selection inspection for one evidence span at a time
     - selected spans now surface their annotation-candidate source kind,
-      supporting fact/decision labels, and transcript-aware summary when
-      available
+      supporting fact/decision labels, and collapsed annotation-summary context
+      when available
   - side-panel construct-reasoning inspector section for non-sequence facts and
     decision steps (host/helper/host-route restriction-methylation/medium/
     growth/selection context) without pretending they are coordinate spans
+  - side-panel `Annotation summaries` section for graph-backed collapsed
+    annotation rows that keep overlapping candidates readable on long loci
   - side-panel `Annotation candidates` section for graph-backed candidate
     annotations that now support shared-engine accept/reject/draft curation
     instead of only read-only inspection

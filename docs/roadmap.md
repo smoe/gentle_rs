@@ -4436,6 +4436,14 @@ Post-baseline follow-ups:
     and MCP all use that same mutation contract, and the returned
     `gentle.annotation_candidate_writeback.v1` report makes explicit whether a
     new feature was created or the candidate was already backed by one.
+  - Done (2026-04-18, transcript-aware annotation summaries): construct-
+    reasoning graphs now also persist portable
+    `annotation_candidate_summaries`, the DNA-window inspector shows a new
+    `Annotation summaries` section, and clicked spans report their collapsed
+    summary context instead of presenting every overlapping candidate as a
+    separate blob. This is also the intended future landing point for
+    similarity-analysis summaries so long genomic views stay calm as new
+    derived annotation families arrive.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

@@ -706,6 +706,16 @@ Current landed slice:
   living only in the GUI session
 - deterministic refresh now preserves reviewed status for matching annotation
   candidates across graph rebuilds
+- construct-reasoning graphs now also persist portable
+  `annotation_candidate_summaries` so overlapping annotation candidates can be
+  presented as calmer locus-level summaries instead of flooding large genomic
+  windows with one blob per raw supporting span
+- clicked spans and the side-panel inspector now surface those summary rows,
+  including collapsed candidate count, transcript-context aggregation, and
+  review-status summary
+- this summary layer is the intended integration point for future
+  similarity-analysis-driven annotation summaries so we do not create a second
+  presentation-only collapse path later
 - the DNA window exposes the same curation in both the clicked-span detail
   view and the `Annotation candidates` inspector section
 - accepted or locked generated candidates can now be written back as ordinary

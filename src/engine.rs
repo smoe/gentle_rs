@@ -335,6 +335,8 @@ pub const DESIGN_FACT_SCHEMA: &str = gentle_protocol::DESIGN_FACT_SCHEMA;
 pub const DESIGN_DECISION_NODE_SCHEMA: &str = gentle_protocol::DESIGN_DECISION_NODE_SCHEMA;
 pub const CONSTRUCT_CANDIDATE_SCHEMA: &str = gentle_protocol::CONSTRUCT_CANDIDATE_SCHEMA;
 pub const ANNOTATION_CANDIDATE_SCHEMA: &str = gentle_protocol::ANNOTATION_CANDIDATE_SCHEMA;
+pub const ANNOTATION_CANDIDATE_SUMMARY_SCHEMA: &str =
+    gentle_protocol::ANNOTATION_CANDIDATE_SUMMARY_SCHEMA;
 pub const CONSTRUCT_REASONING_GRAPH_SCHEMA: &str =
     gentle_protocol::CONSTRUCT_REASONING_GRAPH_SCHEMA;
 pub const CONSTRUCT_REASONING_STORE_SCHEMA: &str =
@@ -13422,6 +13424,360 @@ impl GentleEngine {
         candidate
     }
 
+    fn construct_reasoning_annotation_candidate_summary_group_key(
+        candidate: &AnnotationCandidate,
+    ) -> (
+        String,
+        ConstructRole,
+        Option<String>,
+        String,
+        String,
+        String,
+    ) {
+        (
+            candidate.seq_id.clone(),
+            candidate.role,
+            candidate.strand.clone(),
+            candidate.source_kind.clone(),
+            candidate.supporting_fact_ids.join("\u{1f}"),
+            candidate.supporting_decision_ids.join("\u{1f}"),
+        )
+    }
+
+    fn construct_reasoning_role_display_label(role: ConstructRole) -> &'static str {
+        match role {
+            ConstructRole::Promoter => "Promoter",
+            ConstructRole::Enhancer => "Enhancer",
+            ConstructRole::Gene => "Gene",
+            ConstructRole::Transcript => "Transcript",
+            ConstructRole::Exon => "Exon",
+            ConstructRole::Utr5Prime => "5' UTR",
+            ConstructRole::Cds => "CDS",
+            ConstructRole::Utr3Prime => "3' UTR",
+            ConstructRole::Terminator => "Terminator",
+            ConstructRole::Variant => "Variant",
+            ConstructRole::Linker => "Linker",
+            ConstructRole::Tag => "Tag",
+            ConstructRole::SignalPeptide => "Signal peptide",
+            ConstructRole::LocalizationSignal => "Localization signal",
+            ConstructRole::HomologyArm => "Homology arm",
+            ConstructRole::FusionBoundary => "Fusion boundary",
+            ConstructRole::RestrictionSite => "Restriction site",
+            ConstructRole::SpliceBoundary => "Splice boundary",
+            ConstructRole::Tfbs => "TFBS",
+            ConstructRole::ContextBaggage => "Context baggage",
+            ConstructRole::Other => "Other",
+        }
+    }
+
+    fn construct_reasoning_annotation_summary_review_status(
+        candidates: &[&AnnotationCandidate],
+    ) -> String {
+        let mut statuses = candidates
+            .iter()
+            .map(|candidate| candidate.editable_status.as_str().to_string())
+            .collect::<Vec<_>>();
+        statuses.sort();
+        statuses.dedup();
+        match statuses.len() {
+            0 => "draft".to_string(),
+            1 => statuses[0].clone(),
+            _ => format!("mixed: {}", statuses.join(", ")),
+        }
+    }
+
+    fn construct_reasoning_annotation_summary_title(
+        role: ConstructRole,
+        candidates: &[&AnnotationCandidate],
+    ) -> String {
+        let mut labels = candidates
+            .iter()
+            .filter_map(|candidate| {
+                let value = candidate.label.trim();
+                (!value.is_empty()).then(|| value.to_string())
+            })
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+        let count = candidates.len();
+        if labels.len() == 1 {
+            if count > 1 {
+                format!("{} ({count})", labels[0])
+            } else {
+                labels[0].clone()
+            }
+        } else if count > 1 {
+            format!(
+                "{} ({count})",
+                Self::construct_reasoning_role_display_label(role)
+            )
+        } else {
+            Self::construct_reasoning_role_display_label(role).to_string()
+        }
+    }
+
+    fn construct_reasoning_annotation_summary_subtitle(
+        role: ConstructRole,
+        candidate_count: usize,
+        transcript_context_statuses: &[String],
+    ) -> String {
+        if transcript_context_statuses
+            .iter()
+            .any(|status| status == "multi_transcript_ambiguous")
+        {
+            return "Transcript interpretations disagree".to_string();
+        }
+        if candidate_count > 1 {
+            return match role {
+                ConstructRole::Promoter => {
+                    format!("{candidate_count} overlapping promoter-linked candidates")
+                }
+                ConstructRole::Cds => format!("{candidate_count} overlapping coding candidates"),
+                ConstructRole::Exon => format!("{candidate_count} overlapping exon candidates"),
+                ConstructRole::SpliceBoundary => {
+                    format!("{candidate_count} overlapping splice-relevant candidates")
+                }
+                ConstructRole::Variant => {
+                    format!("{candidate_count} overlapping variant-linked candidates")
+                }
+                _ => format!("{candidate_count} overlapping candidates collapsed"),
+            };
+        }
+        match role {
+            ConstructRole::Promoter => "Promoter candidate".to_string(),
+            ConstructRole::Enhancer => "Enhancer candidate".to_string(),
+            ConstructRole::Cds => "Coding candidate".to_string(),
+            ConstructRole::Exon => "Exon candidate".to_string(),
+            ConstructRole::SpliceBoundary => "Splice-relevant candidate".to_string(),
+            ConstructRole::Variant => "Variant-linked candidate".to_string(),
+            ConstructRole::Transcript => "Transcript-linked candidate".to_string(),
+            _ => format!(
+                "{} candidate",
+                Self::construct_reasoning_role_display_label(role).to_ascii_lowercase()
+            ),
+        }
+    }
+
+    fn construct_reasoning_build_annotation_candidate_summary(
+        seq_id: &str,
+        role: ConstructRole,
+        strand: Option<&str>,
+        candidates: &[&AnnotationCandidate],
+    ) -> AnnotationCandidateSummary {
+        let start_0based = candidates
+            .iter()
+            .map(|candidate| candidate.start_0based)
+            .min()
+            .unwrap_or_default();
+        let end_0based_exclusive = candidates
+            .iter()
+            .map(|candidate| candidate.end_0based_exclusive)
+            .max()
+            .unwrap_or(start_0based);
+        let mut annotation_ids = candidates
+            .iter()
+            .map(|candidate| candidate.annotation_id.clone())
+            .collect::<Vec<_>>();
+        annotation_ids.sort();
+        annotation_ids.dedup();
+        let mut source_kinds = candidates
+            .iter()
+            .filter_map(|candidate| {
+                let value = candidate.source_kind.trim();
+                (!value.is_empty()).then(|| value.to_string())
+            })
+            .collect::<Vec<_>>();
+        source_kinds.sort();
+        source_kinds.dedup();
+        let mut transcript_context_statuses = candidates
+            .iter()
+            .filter_map(|candidate| candidate.transcript_context_status.clone())
+            .collect::<Vec<_>>();
+        transcript_context_statuses.sort();
+        transcript_context_statuses.dedup();
+        let mut effect_tags = candidates
+            .iter()
+            .flat_map(|candidate| candidate.effect_tags.iter().cloned())
+            .collect::<Vec<_>>();
+        effect_tags.sort();
+        effect_tags.dedup();
+        let mut supporting_fact_labels = candidates
+            .iter()
+            .flat_map(|candidate| candidate.supporting_fact_labels.iter().cloned())
+            .collect::<Vec<_>>();
+        supporting_fact_labels.sort();
+        supporting_fact_labels.dedup();
+        let mut supporting_decision_titles = candidates
+            .iter()
+            .flat_map(|candidate| candidate.supporting_decision_titles.iter().cloned())
+            .collect::<Vec<_>>();
+        supporting_decision_titles.sort();
+        supporting_decision_titles.dedup();
+        let mut warnings = candidates
+            .iter()
+            .flat_map(|candidate| candidate.warnings.iter().cloned())
+            .collect::<Vec<_>>();
+        warnings.sort();
+        warnings.dedup();
+        let mut notes = candidates
+            .iter()
+            .flat_map(|candidate| candidate.notes.iter().cloned())
+            .collect::<Vec<_>>();
+        notes.sort();
+        notes.dedup();
+        AnnotationCandidateSummary {
+            summary_id: format!(
+                "summary_{}_{}_{}_{}",
+                Self::normalize_id_token(role.as_str()),
+                start_0based,
+                end_0based_exclusive,
+                annotation_ids
+                    .first()
+                    .map(|value| Self::normalize_id_token(value))
+                    .unwrap_or_else(|| "annotation".to_string())
+            ),
+            seq_id: seq_id.to_string(),
+            start_0based,
+            end_0based_exclusive,
+            strand: strand.map(str::to_string),
+            role,
+            title: Self::construct_reasoning_annotation_summary_title(role, candidates),
+            subtitle: Self::construct_reasoning_annotation_summary_subtitle(
+                role,
+                candidates.len(),
+                &transcript_context_statuses,
+            ),
+            annotation_ids,
+            source_kinds,
+            transcript_context_statuses,
+            effect_tags,
+            candidate_count: candidates.len(),
+            review_status_summary: Self::construct_reasoning_annotation_summary_review_status(
+                candidates,
+            ),
+            supporting_fact_labels,
+            supporting_decision_titles,
+            warnings,
+            notes,
+            ..AnnotationCandidateSummary::default()
+        }
+    }
+
+    fn construct_reasoning_build_annotation_candidate_summaries(
+        annotation_candidates: &[AnnotationCandidate],
+    ) -> Vec<AnnotationCandidateSummary> {
+        let mut by_signature: BTreeMap<
+            (
+                String,
+                ConstructRole,
+                Option<String>,
+                String,
+                String,
+                String,
+            ),
+            Vec<&AnnotationCandidate>,
+        > = BTreeMap::new();
+        for candidate in annotation_candidates {
+            by_signature
+                .entry(Self::construct_reasoning_annotation_candidate_summary_group_key(candidate))
+                .or_default()
+                .push(candidate);
+        }
+
+        let mut summaries = Vec::new();
+        for ((seq_id, role, strand, _, _, _), mut candidates) in by_signature {
+            candidates.sort_by(|left, right| {
+                left.start_0based
+                    .cmp(&right.start_0based)
+                    .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                    .then(left.annotation_id.cmp(&right.annotation_id))
+            });
+            let mut cluster: Vec<&AnnotationCandidate> = Vec::new();
+            let mut cluster_end = 0usize;
+            for candidate in candidates {
+                if cluster.is_empty() {
+                    cluster_end = candidate.end_0based_exclusive;
+                    cluster.push(candidate);
+                } else if candidate.start_0based <= cluster_end {
+                    cluster_end = cluster_end.max(candidate.end_0based_exclusive);
+                    cluster.push(candidate);
+                } else {
+                    summaries.push(
+                        Self::construct_reasoning_build_annotation_candidate_summary(
+                            &seq_id,
+                            role,
+                            strand.as_deref(),
+                            &cluster,
+                        ),
+                    );
+                    cluster = vec![candidate];
+                    cluster_end = candidate.end_0based_exclusive;
+                }
+            }
+            if !cluster.is_empty() {
+                summaries.push(
+                    Self::construct_reasoning_build_annotation_candidate_summary(
+                        &seq_id,
+                        role,
+                        strand.as_deref(),
+                        &cluster,
+                    ),
+                );
+            }
+        }
+        summaries
+    }
+
+    fn normalize_annotation_candidate_summary(
+        mut summary: AnnotationCandidateSummary,
+        idx: usize,
+    ) -> AnnotationCandidateSummary {
+        summary.schema = ANNOTATION_CANDIDATE_SUMMARY_SCHEMA.to_string();
+        summary.summary_id = if summary.summary_id.trim().is_empty() {
+            format!(
+                "summary_{}_{}_{}_{}",
+                Self::normalize_id_token(summary.role.as_str()),
+                summary.start_0based,
+                summary.end_0based_exclusive,
+                idx
+            )
+        } else {
+            summary.summary_id.trim().to_string()
+        };
+        summary.seq_id = summary.seq_id.trim().to_string();
+        if summary.end_0based_exclusive < summary.start_0based {
+            std::mem::swap(&mut summary.start_0based, &mut summary.end_0based_exclusive);
+        }
+        summary.strand = summary
+            .strand
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        summary.title = summary.title.trim().to_string();
+        summary.subtitle = summary.subtitle.trim().to_string();
+        summary.review_status_summary = summary.review_status_summary.trim().to_string();
+        for values in [
+            &mut summary.annotation_ids,
+            &mut summary.source_kinds,
+            &mut summary.transcript_context_statuses,
+            &mut summary.effect_tags,
+            &mut summary.supporting_fact_labels,
+            &mut summary.supporting_decision_titles,
+        ] {
+            *values = values
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            values.sort();
+            values.dedup();
+        }
+        summary.candidate_count = summary.candidate_count.max(summary.annotation_ids.len());
+        Self::normalize_optional_note_text(&mut summary.warnings);
+        Self::normalize_optional_note_text(&mut summary.notes);
+        summary
+    }
+
     fn construct_reasoning_annotation_candidate_match_key(
         candidate: &AnnotationCandidate,
     ) -> (String, usize, usize, ConstructRole) {
@@ -13590,6 +13946,26 @@ impl GentleEngine {
                 .then(a.role.cmp(&b.role))
                 .then(a.label.cmp(&b.label))
                 .then(a.annotation_id.cmp(&b.annotation_id))
+        });
+        if graph.annotation_candidate_summaries.is_empty() {
+            graph.annotation_candidate_summaries =
+                Self::construct_reasoning_build_annotation_candidate_summaries(
+                    &graph.annotation_candidates,
+                );
+        }
+        graph.annotation_candidate_summaries = graph
+            .annotation_candidate_summaries
+            .into_iter()
+            .enumerate()
+            .map(|(idx, summary)| Self::normalize_annotation_candidate_summary(summary, idx))
+            .collect();
+        graph.annotation_candidate_summaries.sort_by(|a, b| {
+            a.start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.role.cmp(&b.role))
+                .then(a.title.cmp(&b.title))
+                .then(a.summary_id.cmp(&b.summary_id))
         });
         Self::normalize_optional_note_text(&mut graph.notes);
         graph

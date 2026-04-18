@@ -26685,6 +26685,60 @@ fn build_construct_reasoning_graph_records_transcript_ambiguous_variant_context(
                 .iter()
                 .any(|tag| tag == "transcript_context_ambiguous")
     }));
+    assert!(graph.annotation_candidate_summaries.iter().any(|row| {
+        row.role == ConstructRole::Variant
+            && row.subtitle == "Transcript interpretations disagree"
+            && row
+                .transcript_context_statuses
+                .iter()
+                .any(|status| status == "multi_transcript_ambiguous")
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_collapses_overlapping_annotation_candidates_into_summaries() {
+    let mut dna = DNAsequence::from_sequence("ATGGAATTTCCC").expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(0, 10),
+        qualifiers: vec![
+            ("label".into(), Some("TP73 exon 1".to_string())),
+            ("note".into(), Some("confirmed by cDNA mapping".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(2, 12),
+        qualifiers: vec![
+            ("label".into(), Some("TP73 exon 1 alt".to_string())),
+            ("evidence".into(), Some("supported by cDNA".to_string())),
+        ],
+    });
+    dna.update_computed_features();
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("summary_overlap_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("summary_overlap_demo", None, None)
+        .expect("build graph");
+
+    assert!(
+        graph
+            .annotation_candidates
+            .iter()
+            .filter(|row| row.role == ConstructRole::Exon)
+            .count()
+            >= 2
+    );
+    assert!(graph.annotation_candidate_summaries.iter().any(|row| {
+        row.role == ConstructRole::Exon
+            && row.candidate_count >= 2
+            && row.subtitle.contains("overlapping")
+    }));
 }
 
 #[test]

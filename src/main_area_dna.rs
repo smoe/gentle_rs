@@ -64,11 +64,11 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
-        CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
-        ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
-        DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
-        EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        AnnotationCandidateSummary, CandidateFeatureStrandRelation, CandidateRecord,
+        CandidateSetOperator, ConstructReasoningGraph, ConstructRole, DecisionMethod,
+        DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
+        EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
@@ -9517,6 +9517,11 @@ mod tests {
                 evidence: vec![ConstructReasoningOverlaySpan {
                     annotation_id: "annotation_promoter".to_string(),
                     evidence_id: "ev_promoter".to_string(),
+                    summary_id: "summary_promoter".to_string(),
+                    summary_title: "Promoter candidate".to_string(),
+                    summary_subtitle: "Transcript interpretations disagree".to_string(),
+                    summary_candidate_count: 2,
+                    summary_review_status: "draft".to_string(),
                     start_0based: 3,
                     end_0based_exclusive: 12,
                     strand: Some("+".to_string()),
@@ -9571,6 +9576,11 @@ mod tests {
             area.description_cache_details
                 .iter()
                 .any(|line| line.contains("transcript_context: multi_transcript_ambiguous"))
+        );
+        assert!(
+            area.description_cache_details
+                .iter()
+                .any(|line| line.contains("summary: Transcript interpretations disagree"))
         );
         assert!(area.description_cache_expert_view.is_none());
     }
@@ -9629,6 +9639,71 @@ mod tests {
                 .decision_entries
                 .iter()
                 .any(|entry| entry.title == "Evaluate Selection/Complementation Fit")
+        );
+    }
+
+    #[test]
+    fn refresh_description_cache_includes_annotation_summary_entries() {
+        let mut dna = DNAsequence::from_sequence("ATGCGTATGCGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "exon".into(),
+            location: gb_io::seq::Location::simple_range(0, 10),
+            qualifiers: vec![
+                ("label".into(), Some("TP73 exon 1".to_string())),
+                ("note".into(), Some("confirmed by cDNA mapping".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "exon".into(),
+            location: gb_io::seq::Location::simple_range(2, 12),
+            qualifiers: vec![
+                ("label".into(), Some("TP73 exon 1 alt".to_string())),
+                ("evidence".into(), Some("supported by cDNA".to_string())),
+            ],
+        });
+        dna.update_computed_features();
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_summary".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("seq_reasoning_summary", None, None)
+            .expect("build graph");
+        assert!(
+            graph.annotation_candidate_summaries.iter().any(|summary| {
+                summary.role == ConstructRole::Exon
+                    && summary.candidate_count >= 2
+                    && summary.subtitle.contains("overlapping")
+            }),
+            "graph summaries: {:?}",
+            graph.annotation_candidate_summaries
+        );
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area =
+            MainAreaDna::new(dna, Some("seq_reasoning_summary".to_string()), Some(engine));
+
+        area.focus_construct_reasoning_graph(&graph.graph_id);
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert!(
+            reasoning.annotation_summary_entries.iter().any(|entry| {
+                entry.title.contains("Exon")
+                    && entry
+                        .detail_lines
+                        .iter()
+                        .any(|line| line.contains("collapsed_candidates: 2"))
+                    && entry
+                        .detail_lines
+                        .iter()
+                        .any(|line| line.contains("overlapping exon candidates"))
+            }),
+            "summary entries: {:?}",
+            reasoning.annotation_summary_entries
         );
     }
 
@@ -10847,6 +10922,7 @@ struct ConstructReasoningInspectorCache {
     graph_id: String,
     objective_title: String,
     objective_goal: String,
+    annotation_summary_entries: Vec<ConstructReasoningInspectorEntry>,
     annotation_entries: Vec<ConstructReasoningInspectorEntry>,
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
     decision_entries: Vec<ConstructReasoningInspectorEntry>,
@@ -18828,6 +18904,73 @@ impl MainAreaDna {
         }
     }
 
+    fn construct_reasoning_inspector_entry_for_annotation_summary(
+        summary: &AnnotationCandidateSummary,
+    ) -> ConstructReasoningInspectorEntry {
+        let mut detail_lines = vec![
+            format!(
+                "role: {}",
+                Self::construct_reasoning_role_label(summary.role)
+            ),
+            format!("collapsed_candidates: {}", summary.candidate_count),
+        ];
+        if !summary.subtitle.trim().is_empty() {
+            detail_lines.push(format!("summary: {}", summary.subtitle.trim()));
+        }
+        if !summary.review_status_summary.trim().is_empty() {
+            detail_lines.push(format!(
+                "review_status: {}",
+                summary.review_status_summary.trim()
+            ));
+        }
+        if !summary.source_kinds.is_empty() {
+            detail_lines.push(format!("sources: {}", summary.source_kinds.join(", ")));
+        }
+        if !summary.transcript_context_statuses.is_empty() {
+            detail_lines.push(format!(
+                "transcript_contexts: {}",
+                summary.transcript_context_statuses.join(", ")
+            ));
+        }
+        if !summary.effect_tags.is_empty() {
+            detail_lines.push(format!("effect_tags: {}", summary.effect_tags.join(", ")));
+        }
+        if !summary.supporting_fact_labels.is_empty() {
+            detail_lines.push(format!(
+                "supports_facts: {}",
+                summary.supporting_fact_labels.join(", ")
+            ));
+        }
+        if !summary.supporting_decision_titles.is_empty() {
+            detail_lines.push(format!(
+                "supports_decisions: {}",
+                summary.supporting_decision_titles.join(", ")
+            ));
+        }
+        if !summary.annotation_ids.is_empty() {
+            detail_lines.push(format!(
+                "annotation_ids: {}",
+                summary.annotation_ids.join(", ")
+            ));
+        }
+        let mut warning_lines = summary.warnings.clone();
+        if summary
+            .transcript_context_statuses
+            .iter()
+            .any(|status| status == "multi_transcript_ambiguous")
+        {
+            warning_lines.push("Transcript interpretations remain ambiguous".to_string());
+        }
+        ConstructReasoningInspectorEntry {
+            title: summary.title.clone(),
+            detail_lines,
+            warning_lines,
+            annotation_id: None,
+            editable_status: None,
+            source_kind: None,
+        }
+    }
+
     fn construct_reasoning_inspector_entry_for_annotation_candidate(
         candidate: &AnnotationCandidate,
     ) -> ConstructReasoningInspectorEntry {
@@ -18886,6 +19029,11 @@ impl MainAreaDna {
     fn build_construct_reasoning_inspector_cache(
         graph: &ConstructReasoningGraph,
     ) -> ConstructReasoningInspectorCache {
+        let mut annotation_summary_entries = graph
+            .annotation_candidate_summaries
+            .iter()
+            .map(Self::construct_reasoning_inspector_entry_for_annotation_summary)
+            .collect::<Vec<_>>();
         let mut annotation_entries = graph
             .annotation_candidates
             .iter()
@@ -18901,6 +19049,7 @@ impl MainAreaDna {
             .iter()
             .map(Self::construct_reasoning_inspector_entry_for_decision)
             .collect::<Vec<_>>();
+        annotation_summary_entries.retain(|entry| !entry.title.trim().is_empty());
         annotation_entries.retain(|entry| !entry.title.trim().is_empty());
         fact_entries.retain(|entry| !entry.title.trim().is_empty());
         decision_entries.retain(|entry| !entry.title.trim().is_empty());
@@ -18908,6 +19057,7 @@ impl MainAreaDna {
             graph_id: graph.graph_id.clone(),
             objective_title: graph.objective.title.clone(),
             objective_goal: graph.objective.goal.clone(),
+            annotation_summary_entries,
             annotation_entries,
             fact_entries,
             decision_entries,
@@ -18976,6 +19126,21 @@ impl MainAreaDna {
         }
         if !span.source_kind.trim().is_empty() {
             details.push(format!("annotation_source: {}", span.source_kind.trim()));
+        }
+        if !span.summary_subtitle.trim().is_empty() {
+            details.push(format!("summary: {}", span.summary_subtitle.trim()));
+        }
+        if span.summary_candidate_count > 1 {
+            details.push(format!(
+                "collapsed_candidates: {}",
+                span.summary_candidate_count
+            ));
+        }
+        if !span.summary_review_status.trim().is_empty() {
+            details.push(format!(
+                "review_summary: {}",
+                span.summary_review_status.trim()
+            ));
         }
         if !span.supporting_fact_labels.is_empty() {
             details.push(format!(
@@ -43893,6 +44058,7 @@ impl MainAreaDna {
                 }
                 let reasoning_graph_id = reasoning.graph_id.clone();
                 if reasoning.annotation_entries.is_empty()
+                    && reasoning.annotation_summary_entries.is_empty()
                     && reasoning.fact_entries.is_empty()
                     && reasoning.decision_entries.is_empty()
                 {
@@ -43902,6 +44068,34 @@ impl MainAreaDna {
                         )
                         .size(detail_font_size),
                     );
+                }
+                if !reasoning.annotation_summary_entries.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Annotation summaries")
+                            .strong()
+                            .size(detail_font_size),
+                    );
+                    for entry in reasoning.annotation_summary_entries {
+                        egui::CollapsingHeader::new(entry.title.clone())
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                for line in &entry.detail_lines {
+                                    ui.label(
+                                        egui::RichText::new(line)
+                                            .monospace()
+                                            .size(detail_font_size),
+                                    );
+                                }
+                                for warning in &entry.warning_lines {
+                                    ui.label(
+                                        egui::RichText::new(format!("warning: {warning}"))
+                                            .monospace()
+                                            .size(detail_font_size)
+                                            .color(egui::Color32::from_rgb(176, 80, 32)),
+                                    );
+                                }
+                            });
+                    }
                 }
                 if !reasoning.annotation_entries.is_empty() {
                     ui.label(
