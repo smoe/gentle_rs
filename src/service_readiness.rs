@@ -244,10 +244,17 @@ fn build_summary_lines(
         "REBASE is active from the {} snapshot ({} enzymes).",
         resources.rebase.active_source, resources.rebase.active_item_count
     ));
-    lines.push(
-        "ATtRACT is known to GENtle but not yet integrated, so RNA-binding motif services are not available from it yet."
-            .to_string(),
-    );
+    if resources.attract.runtime_valid {
+        lines.push(format!(
+            "ATtRACT is active from the {} snapshot ({} motifs); splice-aware RBP evidence can now draw from the normalized consensus motif set.",
+            resources.attract.active_source, resources.attract.active_item_count
+        ));
+    } else {
+        lines.push(
+            "ATtRACT is known to GENtle, but no valid runtime snapshot is active yet; run `resources sync-attract ATtRACT.zip` before requesting splice-aware RBP evidence."
+                .to_string(),
+        );
+    }
     lines
 }
 

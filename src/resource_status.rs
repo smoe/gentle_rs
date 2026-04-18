@@ -4,7 +4,13 @@
 //! for shipped registries such as REBASE and JASPAR, and records clearly when a
 //! future/planned external source is not yet integrated.
 
-use crate::{enzymes::load_restriction_enzymes_from_json_text, tf_motifs::list_motif_summaries};
+use crate::{
+    attract_motifs::{
+        DEFAULT_ATTRACT_RESOURCE_PATH, list_motif_summaries as list_attract_motif_summaries,
+    },
+    enzymes::load_restriction_enzymes_from_json_text,
+    tf_motifs::list_motif_summaries,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -28,7 +34,7 @@ pub struct ResourceCatalogReport {
     pub generated_at_unix_ms: u128,
     pub rebase: ResourceSnapshotStatus,
     pub jaspar: ResourceSnapshotStatus,
-    pub attract: ExternalDatabaseStatus,
+    pub attract: AttractResourceStatus,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +59,23 @@ pub struct ExternalDatabaseStatus {
     pub support_status: String,
     pub homepage: String,
     pub download_url: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AttractResourceStatus {
+    pub resource_id: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub homepage: String,
+    pub download_url: Option<String>,
+    pub runtime_path: String,
+    pub runtime_exists: bool,
+    pub runtime_valid: bool,
+    pub runtime_item_count: Option<usize>,
+    pub runtime_error: Option<String>,
+    pub active_source: String,
+    pub active_item_count: usize,
     pub notes: Vec<String>,
 }
 
@@ -171,19 +194,95 @@ fn jaspar_status() -> ResourceSnapshotStatus {
     }
 }
 
-fn attract_status() -> ExternalDatabaseStatus {
-    ExternalDatabaseStatus {
+fn count_attract_snapshot_items(text: &str) -> Result<usize, String> {
+    let parsed: Value =
+        serde_json::from_str(text).map_err(|e| format!("Could not parse ATtRACT JSON: {e}"))?;
+    let schema = parsed
+        .get("schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if !schema.starts_with("gentle.attract_motifs.v") {
+        return Err(format!("Unexpected ATtRACT schema '{schema}'"));
+    }
+    if let Some(count) = parsed.get("motif_count").and_then(|v| v.as_u64()) {
+        return Ok(count as usize);
+    }
+    Ok(parsed
+        .get("motifs")
+        .and_then(|v| v.as_array())
+        .map(|rows| rows.len())
+        .unwrap_or(0))
+}
+
+fn attract_status() -> AttractResourceStatus {
+    let runtime_exists = std::path::Path::new(DEFAULT_ATTRACT_RESOURCE_PATH).exists();
+    let (runtime_valid, runtime_item_count, runtime_error) = if runtime_exists {
+        match fs::read_to_string(DEFAULT_ATTRACT_RESOURCE_PATH)
+            .map_err(|e| format!("Could not read runtime ATtRACT snapshot: {e}"))
+            .and_then(|text| count_attract_snapshot_items(&text))
+        {
+            Ok(count) if count > 0 => (true, Some(count), None),
+            Ok(count) => (
+                false,
+                Some(count),
+                Some("Runtime ATtRACT snapshot is empty".to_string()),
+            ),
+            Err(error) => (false, None, Some(error)),
+        }
+    } else {
+        (false, None, None)
+    };
+    let active_item_count = list_attract_motif_summaries().len();
+    let (support_status, active_source, notes) = if runtime_valid {
+        (
+            "runtime_snapshot".to_string(),
+            "runtime".to_string(),
+            vec![
+                "ATtRACT motifs are available from a normalized runtime snapshot.".to_string(),
+                "Current v1 integration scans the normalized consensus/IUPAC motifs from ATtRACT_db.txt deterministically and records PWM files as provenance only.".to_string(),
+                format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
+            ],
+        )
+    } else if active_item_count > 0 {
+        (
+            "session_override".to_string(),
+            "session_override".to_string(),
+            vec![
+                "ATtRACT motifs are currently loaded in this GENtle session from a non-default snapshot path.".to_string(),
+                format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
+                format!(
+                    "Persist the normalized snapshot at '{}' if you want `resources status` / `services status` to pick it up as the default runtime source too.",
+                    DEFAULT_ATTRACT_RESOURCE_PATH
+                ),
+            ],
+        )
+    } else {
+        (
+            "known_external_only".to_string(),
+            "unavailable".to_string(),
+            vec![
+                "ATtRACT is an RNA-binding protein and motif database.".to_string(),
+                "GENtle now knows how to normalize the published ZIP into a runtime snapshot, but no valid snapshot is active yet.".to_string(),
+                format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
+                "Use `resources sync-attract ATtRACT.zip` to turn the downloaded archive into GENtle's runtime snapshot.".to_string(),
+            ],
+        )
+    };
+    AttractResourceStatus {
         resource_id: "attract".to_string(),
         display_name: "ATtRACT".to_string(),
-        support_status: "not_yet_integrated".to_string(),
+        support_status,
         homepage: ATTRACT_INDEX_URL.to_string(),
         download_url: Some(ATTRACT_DOWNLOAD_URL.to_string()),
-        notes: vec![
-            "ATtRACT is an RNA-binding protein and motif database.".to_string(),
-            "GENtle does not yet import or score against ATtRACT snapshots.".to_string(),
-            format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
-            "Current service-readiness reporting covers integrated resources only; ATtRACT is listed here so callers can stay explicit about that gap.".to_string(),
-        ],
+        runtime_path: DEFAULT_ATTRACT_RESOURCE_PATH.to_string(),
+        runtime_exists,
+        runtime_valid,
+        runtime_item_count,
+        runtime_error,
+        active_source,
+        active_item_count,
+        notes,
     }
 }
 

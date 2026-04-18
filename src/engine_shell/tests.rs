@@ -13,11 +13,12 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, ConstructObjective, ConstructRole, Container, ContainerKind, EditableStatus,
-    InlineSequenceTopology, PrimerDesignProgress, ProteinExternalOpinionSource,
+    ArrangementMode, AttractSplicingEvidenceSettings, ConstructObjective, ConstructRole, Container,
+    ContainerKind, EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource,
     ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
     RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, SequenceScanTarget,
+    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
+    SequenceScanTarget,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -32,11 +33,13 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
 
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
+static ATTRACT_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 struct EnvVarGuard {
     key: String,
@@ -74,6 +77,11 @@ fn cache_dir_env_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn attract_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn with_blast_async_test_overrides<R>(
     max_concurrent: usize,
     worker_delay_ms: u64,
@@ -99,6 +107,34 @@ fn resource_fixture_path(name: &str) -> String {
         "{}/test_files/fixtures/resources/{name}",
         env!("CARGO_MANIFEST_DIR")
     )
+}
+
+fn write_synthetic_attract_zip(dir: &Path) -> std::path::PathBuf {
+    let unique = ATTRACT_RELOAD_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let case_dir = dir.join(format!("attract_case_{unique}"));
+    fs::create_dir_all(&case_dir).expect("create attract case dir");
+    let db_path = case_dir.join("ATtRACT_db.txt");
+    let pwm_path = case_dir.join("pwm.txt");
+    fs::write(
+        &db_path,
+        "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
+    )
+    .expect("write attract db");
+    fs::write(&pwm_path, "M001\nA\t1\n").expect("write pwm placeholder");
+    let archive_path = dir.join(format!("attract_{unique}.zip"));
+    let output = Command::new("zip")
+        .arg("-jq")
+        .arg(&archive_path)
+        .arg(&db_path)
+        .arg(&pwm_path)
+        .output()
+        .expect("run zip");
+    assert!(
+        output.status.success(),
+        "zip command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    archive_path
 }
 
 fn primer3_fixture_path(name: &str) -> String {
@@ -11282,6 +11318,19 @@ fn parse_resources_summarize_jaspar_with_options() {
 }
 
 #[test]
+fn parse_resources_sync_attract_with_output() {
+    let cmd = parse_shell_line("resources sync-attract ATtRACT.zip out.attract.json")
+        .expect("parse resources sync-attract");
+    match cmd {
+        ShellCommand::ResourcesSyncAttract { input, output } => {
+            assert_eq!(input, "ATtRACT.zip".to_string());
+            assert_eq!(output, Some("out.attract.json".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_status() {
     let cmd = parse_shell_line("resources status").expect("parse resources status");
     match cmd {
@@ -11295,6 +11344,31 @@ fn parse_services_status() {
     let cmd = parse_shell_line("services status").expect("parse services status");
     match cmd {
         ShellCommand::ServicesStatus => {}
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_attract_inspect_splicing() {
+    let cmd = parse_shell_line(
+        "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --all-transcripts --no-fallback",
+    )
+    .expect("parse attract inspect-splicing");
+    match cmd {
+        ShellCommand::InspectSplicingAttract {
+            seq_id,
+            feature_id,
+            settings,
+        } => {
+            assert_eq!(seq_id, "seq_1".to_string());
+            assert_eq!(feature_id, 5);
+            assert_eq!(settings.scope, SplicingScopePreset::TargetGroupTargetStrand);
+            assert_eq!(settings.requested_organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(settings.boundary_flank_bp, 12);
+            assert_eq!(settings.minimum_quality_score, 3.0);
+            assert!(!settings.transcript_strand_only);
+            assert!(!settings.allow_species_fallback);
+        }
         other => panic!("unexpected command: {other:?}"),
     }
 }
@@ -11413,6 +11487,125 @@ fn execute_resources_summarize_jaspar_writes_report_and_returns_payload() {
 }
 
 #[test]
+fn execute_resources_sync_attract_with_local_fixture() {
+    let _serial = attract_test_lock().lock().expect("attract test lock");
+    struct ReloadResetGuard;
+    impl Drop for ReloadResetGuard {
+        fn drop(&mut self) {
+            crate::attract_motifs::reload();
+        }
+    }
+    let _guard = ReloadResetGuard;
+
+    let td = tempdir().expect("tempdir");
+    let archive_path = write_synthetic_attract_zip(td.path());
+    let output_path = td.path().join("attract.sync.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSyncAttract {
+            input: archive_path.to_string_lossy().to_string(),
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources sync-attract");
+
+    assert!(!out.state_changed);
+    assert_eq!(out.output["report"]["resource"].as_str(), Some("attract"));
+    assert_eq!(out.output["report"]["item_count"].as_u64(), Some(2));
+    assert_eq!(
+        out.output["report"]["output"].as_str(),
+        Some(output_path.to_string_lossy().as_ref())
+    );
+
+    let written = fs::read_to_string(&output_path).expect("read synced ATtRACT output");
+    let snapshot = serde_json::from_str::<serde_json::Value>(&written).expect("parse JSON");
+    assert_eq!(
+        snapshot.get("schema").and_then(|v| v.as_str()),
+        Some("gentle.attract_motifs.v1")
+    );
+    assert_eq!(
+        snapshot.get("motif_count").and_then(|v| v.as_u64()),
+        Some(2)
+    );
+    assert_eq!(crate::attract_motifs::list_motif_summaries().len(), 2);
+}
+
+#[test]
+fn execute_attract_inspect_splicing_uses_shared_engine_view() {
+    let _serial = attract_test_lock().lock().expect("attract test lock");
+    struct ReloadResetGuard;
+    impl Drop for ReloadResetGuard {
+        fn drop(&mut self) {
+            crate::attract_motifs::reload();
+        }
+    }
+    let _guard = ReloadResetGuard;
+    let td = tempdir().expect("tempdir");
+    let archive_path = write_synthetic_attract_zip(td.path());
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence("TTTTGAAGAACCCTCTTGGGAAAAAAAAAA").expect("dna");
+    dna.features_mut().push(Feature {
+        kind: "SOURCE".into(),
+        location: Location::simple_range(0, 30),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))],
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(0, 10),
+            Location::simple_range(20, 30),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("NM_TP73_1".to_string())),
+            ("label".into(), Some("NM_TP73_1".to_string())),
+        ],
+    });
+    state.sequences.insert("tp73".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSyncAttract {
+            input: archive_path.to_string_lossy().to_string(),
+            output: Some(
+                td.path()
+                    .join("attract.sync.json")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+        },
+    )
+    .expect("sync attract");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::InspectSplicingAttract {
+            seq_id: "tp73".to_string(),
+            feature_id: 1,
+            settings: AttractSplicingEvidenceSettings {
+                scope: SplicingScopePreset::TargetGroupTargetStrand,
+                transcript_strand_only: true,
+                boundary_flank_bp: 2,
+                requested_organism: None,
+                allow_species_fallback: true,
+                minimum_quality_score: 0.0,
+            },
+        },
+    )
+    .expect("inspect attract splicing");
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.attract_splicing_evidence.v1")
+    );
+    assert_eq!(out.output["hit_count"].as_u64(), Some(2));
+    assert_eq!(
+        out.output["summary_rows"][0]["gene_name"].as_str(),
+        Some("PTBP1")
+    );
+}
+
+#[test]
 fn execute_resources_status_reports_builtin_or_runtime_sources() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let out = execute_shell_command(&mut engine, &ShellCommand::ResourcesStatus)
@@ -11434,7 +11627,7 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
     );
     assert_eq!(
         out.output["attract"]["support_status"].as_str(),
-        Some("not_yet_integrated")
+        Some("known_external_only")
     );
     assert_eq!(
         out.output["attract"]["display_name"].as_str(),

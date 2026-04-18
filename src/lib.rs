@@ -16,6 +16,8 @@ pub mod agent_bridge;
 pub mod amino_acids;
 /// Top-level GUI application wiring and event loop state.
 pub mod app;
+/// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
+pub mod attract_motifs;
 /// Shared DNA display configuration and visibility policies.
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.
@@ -90,7 +92,7 @@ pub mod render_sequence;
 pub mod render_tfbs_score_tracks;
 /// Runtime status helpers for built-in and overrideable external resources.
 pub mod resource_status;
-/// Resource synchronization (REBASE/JASPAR) parsing and snapshot writing.
+/// Resource synchronization (REBASE/JASPAR/ATtRACT) parsing and snapshot writing.
 pub mod resource_sync;
 /// Restriction-enzyme site model and cut geometry utilities.
 pub mod restriction_enzyme;

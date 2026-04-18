@@ -1,7 +1,18 @@
-//! Resource synchronization (REBASE/JASPAR) parsing and snapshot writing.
+//! Resource synchronization (REBASE/JASPAR/ATtRACT) parsing and snapshot
+//! writing.
 
+use crate::attract_motifs::{
+    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot,
+    DEFAULT_ATTRACT_RESOURCE_PATH,
+};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs,
+    path::Path,
+    process::Command,
+};
+use tempfile::NamedTempFile;
 
 pub const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 pub const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
@@ -50,6 +61,22 @@ struct JasparMotifSnapshot {
     fetched_at_unix_ms: u128,
     motif_count: usize,
     motifs: Vec<JasparMotifRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AttractDbHeaderMap {
+    gene_name: Option<usize>,
+    gene_id: Option<usize>,
+    organism: Option<usize>,
+    matrix_id: Option<usize>,
+    motif: Option<usize>,
+    len: Option<usize>,
+    experiment: Option<usize>,
+    family: Option<usize>,
+    domain: Option<usize>,
+    pubmed: Option<usize>,
+    quality_score: Option<usize>,
+    source_database: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,6 +428,287 @@ fn read_text_input(path_or_url: &str) -> Result<String, String> {
     }
 }
 
+fn read_binary_input(path_or_url: &str) -> Result<Vec<u8>, String> {
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        let response = std::panic::catch_unwind(|| reqwest::blocking::get(path_or_url))
+            .map_err(|_| {
+                format!("Could not fetch URL '{path_or_url}': networking backend panicked")
+            })?
+            .map_err(|e| format!("Could not fetch URL '{path_or_url}': {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Could not fetch URL '{path_or_url}': HTTP {}",
+                response.status()
+            ));
+        }
+        response
+            .bytes()
+            .map(|bytes| bytes.to_vec())
+            .map_err(|e| format!("Could not read URL response '{path_or_url}': {e}"))
+    } else {
+        fs::read(path_or_url).map_err(|e| format!("Could not read file '{path_or_url}': {e}"))
+    }
+}
+
+fn with_local_binary_input_path<T>(
+    path_or_url: &str,
+    mut f: impl FnMut(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        let bytes = read_binary_input(path_or_url)?;
+        let mut temp = NamedTempFile::new()
+            .map_err(|e| format!("Could not create temporary file for '{path_or_url}': {e}"))?;
+        std::io::Write::write_all(&mut temp, &bytes)
+            .map_err(|e| format!("Could not write temporary file for '{path_or_url}': {e}"))?;
+        f(temp.path())
+    } else {
+        f(Path::new(path_or_url))
+    }
+}
+
+fn run_unzip(args: &[&str], archive_path: &Path, member: Option<&str>) -> Result<Vec<u8>, String> {
+    let mut command = Command::new("unzip");
+    for arg in args {
+        command.arg(arg);
+    }
+    command.arg(archive_path);
+    if let Some(member) = member {
+        command.arg(member);
+    }
+    let output = command.output().map_err(|e| {
+        format!(
+            "Could not run unzip for archive '{}': {e}",
+            archive_path.display()
+        )
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            format!("exit status {}", output.status)
+        } else {
+            stderr
+        };
+        return Err(format!(
+            "Could not read ATtRACT archive '{}': {detail}",
+            archive_path.display()
+        ));
+    }
+    Ok(output.stdout)
+}
+
+fn list_zip_members(archive_path: &Path) -> Result<Vec<String>, String> {
+    let bytes = run_unzip(&["-Z1"], archive_path, None)?;
+    Ok(String::from_utf8_lossy(&bytes)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect())
+}
+
+fn read_zip_member_text(archive_path: &Path, member: &str) -> Result<String, String> {
+    let bytes = run_unzip(&["-p"], archive_path, Some(member))?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
+}
+
+fn normalized_column_name(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn column_value(record: &csv::StringRecord, idx: Option<usize>) -> Option<String> {
+    idx.and_then(|idx| record.get(idx))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn normalize_iupac_motif(raw: &str) -> Option<String> {
+    let cleaned = raw
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .map(|ch| ch.to_ascii_uppercase())
+        .filter(|ch| crate::iupac_code::IupacCode::is_valid_letter(*ch as u8))
+        .map(|ch| if ch == 'U' { 'T' } else { ch })
+        .collect::<String>();
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
+fn sanitize_snapshot_token(raw: &str) -> String {
+    raw.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn attract_header_map(headers: &csv::StringRecord) -> AttractDbHeaderMap {
+    let mut map = AttractDbHeaderMap::default();
+    for (idx, header) in headers.iter().enumerate() {
+        match normalized_column_name(header).as_str() {
+            "genename" | "gene" | "officialgenename" => map.gene_name = Some(idx),
+            "geneid" => map.gene_id = Some(idx),
+            "organism" | "species" => map.organism = Some(idx),
+            "matrixid" | "motifid" => map.matrix_id = Some(idx),
+            "motif" | "sequence" | "reportedsequence" => map.motif = Some(idx),
+            "len" | "length" | "sequencelength" => map.len = Some(idx),
+            "experiment" | "experiments" | "experimentdescription" => map.experiment = Some(idx),
+            "family" => map.family = Some(idx),
+            "domain" => map.domain = Some(idx),
+            "pubmed" | "pubmedid" => map.pubmed = Some(idx),
+            "qualityscore" | "score" | "qscore" => map.quality_score = Some(idx),
+            "database" | "sourcedatabase" => map.source_database = Some(idx),
+            _ => {}
+        }
+    }
+    map
+}
+
+fn parse_attract_db_text(
+    text: &str,
+    source_label: &str,
+    archive_members: &[String],
+) -> Result<AttractMotifSnapshot, String> {
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .flexible(true)
+        .has_headers(true)
+        .from_reader(text.as_bytes());
+    let headers = reader
+        .headers()
+        .map_err(|e| format!("Could not parse ATtRACT_db.txt header from '{source_label}': {e}"))?
+        .clone();
+    let map = attract_header_map(&headers);
+    if map.gene_name.is_none()
+        || map.organism.is_none()
+        || map.matrix_id.is_none()
+        || map.motif.is_none()
+    {
+        return Err(format!(
+            "ATtRACT_db.txt from '{source_label}' is missing required columns (need gene name, organism, matrix id, motif)"
+        ));
+    }
+
+    let mut motifs = Vec::<AttractMotifRecord>::new();
+    let mut warnings = Vec::<String>::new();
+    let mut seen_entry_ids = BTreeSet::<String>::new();
+    for (row_idx, row) in reader.records().enumerate() {
+        let record = row.map_err(|e| {
+            format!(
+                "Could not parse ATtRACT_db.txt row {} from '{}': {e}",
+                row_idx + 2,
+                source_label
+            )
+        })?;
+        let gene_name = match column_value(&record, map.gene_name) {
+            Some(value) => value,
+            None => continue,
+        };
+        let organism = match column_value(&record, map.organism) {
+            Some(value) => value,
+            None => continue,
+        };
+        let matrix_id = match column_value(&record, map.matrix_id) {
+            Some(value) => value,
+            None => continue,
+        };
+        let Some(motif_iupac) =
+            column_value(&record, map.motif).and_then(|value| normalize_iupac_motif(&value))
+        else {
+            warnings.push(format!(
+                "Skipped ATtRACT row {} ('{}' / '{}') because the motif field could not be normalized to IUPAC DNA.",
+                row_idx + 2,
+                gene_name,
+                matrix_id
+            ));
+            continue;
+        };
+        let len = column_value(&record, map.len)
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or_else(|| motif_iupac.len());
+        let gene_id = column_value(&record, map.gene_id);
+        let experiment = column_value(&record, map.experiment);
+        let family = column_value(&record, map.family);
+        let domain = column_value(&record, map.domain);
+        let pubmed_id = column_value(&record, map.pubmed);
+        let quality_score = column_value(&record, map.quality_score)
+            .and_then(|value| value.replace(',', ".").parse::<f64>().ok());
+        let source_database = column_value(&record, map.source_database);
+        let base_entry_id = format!(
+            "{}__{}__{}",
+            sanitize_snapshot_token(&gene_name),
+            sanitize_snapshot_token(&organism),
+            sanitize_snapshot_token(&matrix_id)
+        );
+        let mut entry_id = base_entry_id.clone();
+        let mut duplicate = 1usize;
+        while !seen_entry_ids.insert(entry_id.clone()) {
+            duplicate += 1;
+            entry_id = format!("{base_entry_id}__{duplicate}");
+        }
+        motifs.push(AttractMotifRecord {
+            entry_id,
+            matrix_id,
+            gene_name,
+            gene_id,
+            organism,
+            motif_iupac,
+            length: len,
+            experiment,
+            family,
+            domain,
+            pubmed_id,
+            quality_score,
+            source_database,
+            model_kind: "consensus_iupac".to_string(),
+            pwm_present: archive_members.iter().any(|member| {
+                Path::new(member)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.eq_ignore_ascii_case("pwm.txt"))
+                    .unwrap_or(false)
+            }),
+        });
+    }
+
+    if motifs.is_empty() {
+        return Err(format!(
+            "No ATtRACT motifs were parsed from '{}'; check the archive contents and db columns",
+            source_label
+        ));
+    }
+    if archive_members.iter().any(|member| {
+        Path::new(member)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("pwm.txt"))
+            .unwrap_or(false)
+    }) {
+        warnings.push(
+            "ATtRACT PWM members were detected in the ZIP archive, but this first integration normalizes and scans the published consensus/IUPAC motifs from ATtRACT_db.txt only."
+                .to_string(),
+        );
+    }
+
+    Ok(AttractMotifSnapshot {
+        schema: ATTRACT_MOTIF_SNAPSHOT_SCHEMA.to_string(),
+        source: source_label.to_string(),
+        fetched_at_unix_ms: now_unix_ms(),
+        motif_count: motifs.len(),
+        archive_members: archive_members.to_vec(),
+        warnings,
+        motifs,
+    })
+}
+
 pub fn sync_rebase(
     input: &str,
     output: Option<&str>,
@@ -463,9 +771,73 @@ pub fn sync_jaspar(input: &str, output: Option<&str>) -> Result<SyncReport, Stri
     })
 }
 
+pub fn sync_attract(input: &str, output: Option<&str>) -> Result<SyncReport, String> {
+    let output = output.unwrap_or(DEFAULT_ATTRACT_RESOURCE_PATH).to_string();
+    let snapshot = with_local_binary_input_path(input, |archive_path| {
+        let archive_members = list_zip_members(archive_path)?;
+        let db_member = archive_members
+            .iter()
+            .find(|member| {
+                Path::new(member.as_str())
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.eq_ignore_ascii_case("ATtRACT_db.txt"))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "ATtRACT archive '{}' does not contain ATtRACT_db.txt",
+                    archive_path.display()
+                )
+            })?;
+        let db_text = read_zip_member_text(archive_path, &db_member)?;
+        parse_attract_db_text(&db_text, input, &archive_members)
+    })?;
+    ensure_parent_dir(&output)?;
+    let json = serde_json::to_string_pretty(&snapshot)
+        .map_err(|e| format!("Could not serialize ATtRACT resource snapshot: {e}"))?;
+    fs::write(&output, json)
+        .map_err(|e| format!("Could not write ATtRACT output '{output}': {e}"))?;
+    Ok(SyncReport {
+        source: input.to_string(),
+        output,
+        item_count: snapshot.motif_count,
+        resource: "attract".to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    fn write_synthetic_attract_zip() -> std::path::PathBuf {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.keep();
+        let db_path = root.join("ATtRACT_db.txt");
+        let pwm_path = root.join("pwm.txt");
+        fs::write(
+            &db_path,
+            "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
+        )
+        .expect("write attract db");
+        fs::write(&pwm_path, "M001\nA\t1\n").expect("write pwm placeholder");
+        let archive_path = root.join("attract.zip");
+        let output = Command::new("zip")
+            .arg("-jq")
+            .arg(&archive_path)
+            .arg(&db_path)
+            .arg(&pwm_path)
+            .output()
+            .expect("run zip");
+        assert!(
+            output.status.success(),
+            "zip command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        archive_path
+    }
 
     #[test]
     fn parses_rebase_edge_fixture_and_extracts_cut_geometry() {
@@ -515,5 +887,36 @@ T [0 0 0]
 ";
         let err = parse_jaspar_motifs(broken).expect_err("should fail");
         assert!(err.contains("equal length"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn parses_attract_edge_archive_with_consensus_records() {
+        let archive_path = write_synthetic_attract_zip();
+        let snapshot =
+            with_local_binary_input_path(archive_path.to_string_lossy().as_ref(), |path| {
+                let members = list_zip_members(path)?;
+                let db_member = members
+                    .iter()
+                    .find(|member| member.ends_with("ATtRACT_db.txt"))
+                    .cloned()
+                    .expect("db member");
+                let db_text = read_zip_member_text(path, &db_member)?;
+                parse_attract_db_text(&db_text, archive_path.to_string_lossy().as_ref(), &members)
+            })
+            .expect("parse attract archive");
+        assert_eq!(snapshot.schema, ATTRACT_MOTIF_SNAPSHOT_SCHEMA);
+        assert_eq!(snapshot.motif_count, 2);
+        assert_eq!(snapshot.motifs[0].gene_name, "SRSF1");
+        assert_eq!(snapshot.motifs[0].motif_iupac, "GAAGAA");
+        assert_eq!(snapshot.motifs[1].motif_iupac, "TCTT");
+        assert!(snapshot.motifs.iter().all(|row| row.pwm_present));
+        assert!(
+            snapshot
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("consensus/IUPAC")),
+            "warnings: {:?}",
+            snapshot.warnings
+        );
     }
 }

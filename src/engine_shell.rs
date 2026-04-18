@@ -24,14 +24,15 @@ use crate::{
         AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
         invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
+    attract_motifs,
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
-        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        AttractSplicingEvidenceSettings, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
+        CANDIDATE_SETS_METADATA_KEY, CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
+        CandidateFeatureStrandRelation, CandidateMacroTemplateParam, CandidateObjectiveDirection,
+        CandidateObjectiveSpec, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
@@ -583,6 +584,11 @@ pub enum ShellCommand {
         seq_id: String,
         target: FeatureExpertTarget,
     },
+    InspectSplicingAttract {
+        seq_id: String,
+        feature_id: usize,
+        settings: AttractSplicingEvidenceSettings,
+    },
     RenderFeatureExpertSvg {
         seq_id: String,
         target: FeatureExpertTarget,
@@ -890,6 +896,10 @@ pub enum ShellCommand {
     ImportPool {
         input: String,
         prefix: String,
+    },
+    ResourcesSyncAttract {
+        input: String,
+        output: Option<String>,
     },
     ResourcesSyncRebase {
         input: String,
@@ -4871,6 +4881,18 @@ impl ShellCommand {
                     target.describe()
                 )
             }
+            Self::InspectSplicingAttract {
+                seq_id,
+                feature_id,
+                settings,
+            } => format!(
+                "inspect ATtRACT splice-aware evidence for '{seq_id}' feature n-{} (scope={}, organism={}, flank_bp={}, strand_only={})",
+                feature_id,
+                settings.scope.as_str(),
+                settings.requested_organism.as_deref().unwrap_or("auto"),
+                settings.boundary_flank_bp,
+                settings.transcript_strand_only
+            ),
             Self::RenderFeatureExpertSvg {
                 seq_id,
                 target,
@@ -5446,7 +5468,15 @@ impl ShellCommand {
                 random_seed,
                 output.as_deref().unwrap_or("-"),
             ),
-            Self::ResourcesStatus => "inspect active REBASE/JASPAR resource status".to_string(),
+            Self::ResourcesSyncAttract { input, output } => {
+                let output = output.clone().unwrap_or_else(|| {
+                    crate::attract_motifs::DEFAULT_ATTRACT_RESOURCE_PATH.to_string()
+                });
+                format!("sync ATtRACT from '{input}' to '{output}'")
+            }
+            Self::ResourcesStatus => {
+                "inspect active REBASE/JASPAR/ATtRACT resource status".to_string()
+            }
             Self::ServicesStatus => {
                 "inspect combined service readiness for canonical references/helpers/resources"
                     .to_string()
@@ -8961,6 +8991,113 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
         "circular" => Ok(RenderSvgMode::Circular),
         other => Err(format!(
             "Unknown render mode '{other}', expected 'linear' or 'circular'"
+        )),
+    }
+}
+
+fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all_overlapping_both_strands" | "all-overlapping-both-strands" | "all" => {
+            Ok(SplicingScopePreset::AllOverlappingBothStrands)
+        }
+        "target_group_any_strand" | "target-group-any-strand" | "target-any" => {
+            Ok(SplicingScopePreset::TargetGroupAnyStrand)
+        }
+        "all_overlapping_target_strand" | "all-overlapping-target-strand" | "all-target" => {
+            Ok(SplicingScopePreset::AllOverlappingTargetStrand)
+        }
+        "target_group_target_strand" | "target-group-target-strand" | "target" => {
+            Ok(SplicingScopePreset::TargetGroupTargetStrand)
+        }
+        other => Err(format!(
+            "Unknown splicing scope '{other}' (expected all_overlapping_both_strands, target_group_any_strand, all_overlapping_target_strand, or target_group_target_strand)"
+        )),
+    }
+}
+
+fn parse_attract_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "attract requires a subcommand: inspect-splicing SEQ_ID FEATURE_ID [--scope SCOPE] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "inspect-splicing" => {
+            if tokens.len() < 4 {
+                return Err("attract inspect-splicing requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid splicing feature id '{}': {e}", tokens[3]))?;
+            let mut settings = AttractSplicingEvidenceSettings::default();
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scope",
+                            "attract inspect-splicing",
+                        )?;
+                        settings.scope = parse_splicing_scope_token(&raw)?;
+                    }
+                    "--organism" => {
+                        settings.requested_organism = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--organism",
+                            "attract inspect-splicing",
+                        )?);
+                    }
+                    "--flank-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--flank-bp",
+                            "attract inspect-splicing",
+                        )?;
+                        settings.boundary_flank_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --flank-bp value '{raw}': {e}"))?;
+                    }
+                    "--min-score" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-score",
+                            "attract inspect-splicing",
+                        )?;
+                        settings.minimum_quality_score = raw
+                            .replace(',', ".")
+                            .parse::<f64>()
+                            .map_err(|e| format!("Invalid --min-score value '{raw}': {e}"))?;
+                    }
+                    "--all-transcripts" => {
+                        settings.transcript_strand_only = false;
+                        idx += 1;
+                    }
+                    "--no-fallback" => {
+                        settings.allow_species_fallback = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for attract inspect-splicing"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::InspectSplicingAttract {
+                seq_id,
+                feature_id,
+                settings,
+            })
+        }
+        other => Err(format!(
+            "Unknown attract subcommand '{other}' (expected inspect-splicing)"
         )),
     }
 }
@@ -14226,13 +14363,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             parse_construct_reasoning_command(tokens)
         }
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
+        "attract" => parse_attract_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, summarize-jaspar or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, summarize-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -14394,6 +14532,30 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                     })
                 }
+                "sync-attract" => {
+                    if tokens.len() < 3 {
+                        return Err("resources sync-attract requires INPUT.zip_or_URL".to_string());
+                    }
+                    let input = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        let value = tokens[idx].as_str();
+                        if value.starts_with("--") {
+                            return Err(format!(
+                                "Unknown option '{value}' for resources sync-attract"
+                            ));
+                        }
+                        if output.is_some() {
+                            return Err(format!(
+                                "Unexpected extra positional argument '{value}' for resources sync-attract"
+                            ));
+                        }
+                        output = Some(value.to_string());
+                        idx += 1;
+                    }
+                    Ok(ShellCommand::ResourcesSyncAttract { input, output })
+                }
                 "status" => {
                     if tokens.len() != 2 {
                         return Err("resources status takes no additional arguments".to_string());
@@ -14401,7 +14563,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar or summarize-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, summarize-jaspar or sync-attract)"
                 )),
             }
         }
@@ -17042,6 +17204,17 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ResourcesSyncAttract { input, output } => {
+            let report = resource_sync::sync_attract(input, output.as_deref())?;
+            attract_motifs::reload_from_path(Some(report.output.as_str()));
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
             })
         }
         ShellCommand::ResourcesStatus => Ok(ShellRunResult {
@@ -20346,6 +20519,20 @@ fn execute_sequence_analysis_command(
                     .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
             })
         }
+        ShellCommand::InspectSplicingAttract {
+            seq_id,
+            feature_id,
+            settings,
+        } => {
+            let view = engine
+                .inspect_splicing_attract_evidence(seq_id, *feature_id, settings)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize ATtRACT splicing view: {e}"))?,
+            })
+        }
         ShellCommand::RenderFeatureExpertSvg {
             seq_id,
             target,
@@ -22655,6 +22842,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
+            | ShellCommand::ResourcesSyncAttract { .. }
     ) {
         return execute_export_import_and_resource_command(engine, command);
     }
@@ -22791,6 +22979,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::DotplotList { .. }
             | ShellCommand::DotplotShow { .. }
             | ShellCommand::InspectFeatureExpert { .. }
+            | ShellCommand::InspectSplicingAttract { .. }
             | ShellCommand::RenderFeatureExpertSvg { .. }
             | ShellCommand::PanelsImportIsoform { .. }
             | ShellCommand::PanelsInspectIsoform { .. }
@@ -23048,6 +23237,7 @@ fn execute_shell_command_with_options_inner(
             }
         }
         ShellCommand::InspectFeatureExpert { .. }
+        | ShellCommand::InspectSplicingAttract { .. }
         | ShellCommand::RenderFeatureExpertSvg { .. }
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }
@@ -23624,7 +23814,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ServicesStatus
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
-        | ShellCommand::ResourcesSummarizeJaspar { .. } => {
+        | ShellCommand::ResourcesSummarizeJaspar { .. }
+        | ShellCommand::ResourcesSyncAttract { .. } => {
             execute_export_import_and_resource_command(engine, command)?
         }
         ShellCommand::RoutinesList { .. }

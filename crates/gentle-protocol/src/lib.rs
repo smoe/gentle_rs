@@ -1131,6 +1131,8 @@ pub struct SplicingEventSummary {
 pub struct SplicingExpertView {
     pub seq_id: String,
     pub target_feature_id: usize,
+    #[serde(default)]
+    pub scope: SplicingScopePreset,
     pub group_label: String,
     pub strand: String,
     pub region_start_1based: usize,
@@ -1146,6 +1148,141 @@ pub struct SplicingExpertView {
     pub intron_signals: Vec<SplicingIntronSignal>,
     pub junctions: Vec<SplicingJunctionArc>,
     pub events: Vec<SplicingEventSummary>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AttractSpeciesMatchMode {
+    #[default]
+    ExactOrganism,
+    FallbackAllCompatible,
+}
+
+impl AttractSpeciesMatchMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactOrganism => "exact_organism",
+            Self::FallbackAllCompatible => "fallback_all_compatible",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AttractRegionClass {
+    #[default]
+    ExonBody,
+    DonorFlank,
+    AcceptorFlank,
+    IntronBody,
+}
+
+impl AttractRegionClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExonBody => "exon_body",
+            Self::DonorFlank => "donor_flank",
+            Self::AcceptorFlank => "acceptor_flank",
+            Self::IntronBody => "intron_body",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AttractSplicingEvidenceSettings {
+    pub scope: SplicingScopePreset,
+    pub transcript_strand_only: bool,
+    pub boundary_flank_bp: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_organism: Option<String>,
+    pub allow_species_fallback: bool,
+    pub minimum_quality_score: f64,
+}
+
+impl Default for AttractSplicingEvidenceSettings {
+    fn default() -> Self {
+        Self {
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            transcript_strand_only: true,
+            boundary_flank_bp: 25,
+            requested_organism: None,
+            allow_species_fallback: true,
+            minimum_quality_score: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AttractSplicingEvidenceSummaryRow {
+    pub gene_name: String,
+    pub organism: String,
+    pub matrix_id: String,
+    pub motif_iupac: String,
+    pub model_kind: String,
+    pub hit_count: usize,
+    pub strongest_score: f64,
+    pub exon_body_hits: usize,
+    pub donor_flank_hits: usize,
+    pub acceptor_flank_hits: usize,
+    pub intron_body_hits: usize,
+    #[serde(default)]
+    pub supporting_transcript_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AttractSplicingEvidenceHitRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub transcript_strand: String,
+    pub gene_name: String,
+    pub organism: String,
+    pub matrix_id: String,
+    pub motif_iupac: String,
+    pub model_kind: String,
+    pub region_class: AttractRegionClass,
+    pub region_start_1based: usize,
+    pub region_end_1based: usize,
+    pub region_local_start_1based: usize,
+    pub region_local_end_1based: usize,
+    pub matched_sequence: String,
+    pub quality_score: f64,
+    #[serde(default)]
+    pub exact_species_match: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AttractSplicingEvidenceView {
+    pub schema: String,
+    pub seq_id: String,
+    pub target_feature_id: usize,
+    pub scope: SplicingScopePreset,
+    pub group_label: String,
+    pub target_strand: String,
+    pub settings: AttractSplicingEvidenceSettings,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_organism: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_organism: Option<String>,
+    pub species_match_mode: AttractSpeciesMatchMode,
+    pub scanned_transcript_count: usize,
+    pub scanned_window_count: usize,
+    pub unique_rbp_count: usize,
+    pub hit_count: usize,
+    pub active_resource_source: String,
+    pub active_resource_item_count: usize,
+    #[serde(default)]
+    pub summary_rows: Vec<AttractSplicingEvidenceSummaryRow>,
+    #[serde(default)]
+    pub hit_rows: Vec<AttractSplicingEvidenceHitRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

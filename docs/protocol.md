@@ -4257,6 +4257,66 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - these are intentionally framed as heuristics, not a splice predictor
   - if `seed_feature_id` is omitted, engine selects one overlapping mRNA feature deterministically from the requested span
   - default `scope`: `target_group_target_strand`
+- ATtRACT splice-aware evidence inspection:
+  - normalized runtime motif snapshot schema:
+    - `gentle.attract_motifs.v1`
+    - records one deterministic ATtRACT motif row per normalized
+      `ATtRACT_db.txt` entry, including:
+      - `entry_id`
+      - `matrix_id`
+      - `gene_name`
+      - `organism`
+      - `motif_iupac`
+      - optional provenance fields such as `experiment`, `family`, `domain`,
+        `pubmed_id`, and `quality_score`
+      - `model_kind` (currently `consensus_iupac`)
+      - `pwm_present` so downstream consumers can distinguish “PWM existed in
+        the archive” from “PWM scoring was actually used”
+  - inspection payload schema:
+    - `gentle.attract_splicing_evidence.v1`
+    - `AttractSplicingEvidenceSettings`
+      - `scope`
+      - `transcript_strand_only`
+      - `boundary_flank_bp`
+      - optional `requested_organism`
+      - `allow_species_fallback`
+      - `minimum_quality_score`
+    - `AttractSpeciesMatchMode`:
+      - `exact_organism`
+      - `fallback_all_compatible`
+    - `AttractRegionClass`:
+      - `exon_body`
+      - `donor_flank`
+      - `acceptor_flank`
+      - `intron_body`
+    - summary rows:
+      - grouped by factor / organism / matrix id
+      - include strongest score, hit count, region-class counts, and
+        supporting transcript ids
+    - hit rows:
+      - transcript identity/strand
+      - factor / organism / matrix id / motif
+      - region class
+      - genomic coordinates
+      - local coordinates within the scanned exon/intron window
+      - matched sequence
+      - quality score
+      - exact-species flag
+    - provenance:
+      - active ATtRACT source label
+      - active resource item count
+      - requested/resolved organism
+      - species-match mode
+      - scan warnings
+  - current v1 scan semantics:
+    - transcript-strand aware by default
+    - scans exon bodies and intron bodies from the selected splicing group
+    - promotes hits to `donor_flank` / `acceptor_flank` when they fall within
+      `boundary_flank_bp` of the corresponding splice boundary
+    - exact-organism match is preferred; broader fallback is explicit and
+      recorded in the payload
+    - PWM matrices are not yet scored directly; normalized consensus/IUPAC
+      motifs are the deterministic scan path in this first milestone
 - Pairwise alignment operation:
   - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
   - `mode`: `global | local` (default `global`)
@@ -4266,6 +4326,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
 - Shared-shell command family:
   - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 

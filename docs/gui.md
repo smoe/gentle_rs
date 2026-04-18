@@ -570,6 +570,39 @@ Feature tree grouping:
     `Open RNA-read Mapping Workspace...`
   - saved reports drive score density, thresholded cDNA support, mapped cDNA
     support, read-effects inspection, and report-driven review
+- The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
+  - engine-owned, splice-aware motif interpretation over the selected splicing
+    group; the GUI is only a viewer/filter for the shared payload
+  - settings exposed in-panel:
+    - requested organism
+    - minimum ATtRACT quality score
+    - donor/acceptor flank size
+    - transcript-strand-only toggle
+    - explicit species-fallback toggle
+  - provenance strip reports:
+    - active ATtRACT source (`runtime`, `session_override`, ...)
+    - active motif count
+    - scanned transcript/window counts
+    - total hit count and unique RBP count
+    - resolved organism and species-match mode
+  - warnings are shown explicitly when the engine had to fall back beyond an
+    exact species match or when no transcript survived the active strand filter
+  - `RBP summary` table groups by factor / organism / motif model and reports:
+    - hit count
+    - strongest score
+    - region-class distribution
+    - supporting transcript ids
+  - `Hit rows` table lists:
+    - transcript
+    - factor / matrix id
+    - region class
+    - genomic and local coordinates
+    - motif and matched sequence
+    - score
+  - current v1 scan is deliberately conservative:
+    - normalized consensus/IUPAC motifs from `ATtRACT_db.txt`
+    - PWM file presence is recorded as provenance only
+    - no dense lane overlay or exon-exon junction scan yet
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:
   - direct launcher now also exists in the DNA sequence window toolbar as

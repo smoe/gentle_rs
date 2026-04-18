@@ -2375,8 +2375,13 @@ Resource sync commands:
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
     counts and whether GENtle is currently using a runtime override or the
     built-in snapshot.
-  - Also records `ATtRACT` explicitly as a not-yet-integrated external
-    database so callers can stay honest about current scope.
+  - Also reports normalized ATtRACT runtime status:
+    - `known_external_only` = homepage/ZIP URL known, but no active normalized
+      snapshot
+    - `runtime_snapshot` = `data/resources/attract.motifs.json` is present and
+      active
+    - `session_override` = the current session has loaded an ATtRACT snapshot
+      from a non-default path
   - Includes the current ATtRACT homepage plus published ZIP download URL:
     `https://attract.cnic.es/attract/static/ATtRACT.zip`.
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
@@ -2399,6 +2404,25 @@ Resource sync commands:
   - Omitting `--motif` and `--motifs` summarizes the full active local JASPAR registry.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
+- `resources sync-attract INPUT.zip_or_URL [OUTPUT.attract.json]`
+  - Normalizes the published ATtRACT ZIP into GENtle’s runtime motif snapshot.
+  - `INPUT` may be a local ZIP path or an `https://...` URL.
+  - Default output: `data/resources/attract.motifs.json`.
+  - Current v1 normalization reads `ATtRACT_db.txt`, keeps deterministic
+    consensus/IUPAC motif records, and records `pwm.txt` presence as provenance
+    and a warning rather than silently pretending PWM scoring exists already.
+- `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]`
+  - Runs the shared engine-owned splice-aware ATtRACT inspection route over the
+    selected Splicing Expert group.
+  - Default behavior:
+    - transcript-strand only
+    - exact organism match first
+    - optional fallback to all normalized ATtRACT entries when no exact match
+      exists
+    - region classification returned as `exon_body`, `donor_flank`,
+      `acceptor_flank`, or `intron_body`
+  - Returns grouped RBP summary rows plus detailed hit rows from the same
+    payload the GUI uses.
 
 Agent bridge commands:
 

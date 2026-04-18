@@ -9,6 +9,9 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
+use crate::attract_motifs::{
+    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot,
+};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
@@ -23,6 +26,7 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
 
 const EXTERNAL_PRIMER_BINARY_TEST_ENV: &str = "GENTLE_TEST_EXTERNAL_BINARIES";
@@ -57,6 +61,11 @@ fn find_local_prepared_human_grch38_catalog_and_cache() -> Option<(String, Strin
         }
     }
     None
+}
+
+fn attract_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn seq(s: &str) -> DNAsequence {
@@ -158,6 +167,27 @@ fn synthetic_ensembl_entry(
         raw_sequence_json: "{}".to_string(),
         raw_feature_json: "[]".to_string(),
     }
+}
+
+fn load_synthetic_attract_snapshot(records: Vec<AttractMotifRecord>) -> tempfile::TempDir {
+    let temp = tempdir().expect("tempdir");
+    let snapshot = AttractMotifSnapshot {
+        schema: ATTRACT_MOTIF_SNAPSHOT_SCHEMA.to_string(),
+        source: "synthetic".to_string(),
+        fetched_at_unix_ms: 0,
+        motif_count: records.len(),
+        archive_members: vec!["ATtRACT_db.txt".to_string()],
+        warnings: vec![],
+        motifs: records,
+    };
+    let path = temp.path().join("attract.synthetic.json");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&snapshot).expect("serialize synthetic attract snapshot"),
+    )
+    .expect("write attract snapshot");
+    crate::attract_motifs::reload_from_path(Some(path.to_string_lossy().as_ref()));
+    temp
 }
 
 fn formula_test_sequence() -> DNAsequence {
@@ -23188,6 +23218,7 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
     let splicing = SplicingExpertView {
         seq_id: "seq".to_string(),
         target_feature_id: 1,
+        scope: SplicingScopePreset::AllOverlappingBothStrands,
         group_label: "GENE1".to_string(),
         strand: "+".to_string(),
         region_start_1based: 1,
@@ -23319,6 +23350,195 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
 
     assert_eq!(exon_counts, vec![1, 0, 1]);
     assert_eq!(junction_counts, vec![0, 1, 0]);
+}
+
+#[test]
+fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_regions() {
+    let _serial = attract_test_lock().lock().expect("attract test lock");
+    struct ReloadResetGuard;
+    impl Drop for ReloadResetGuard {
+        fn drop(&mut self) {
+            crate::attract_motifs::reload();
+        }
+    }
+    let _guard = ReloadResetGuard;
+    let _snapshot = load_synthetic_attract_snapshot(vec![
+        AttractMotifRecord {
+            entry_id: "srsf1_hs".to_string(),
+            matrix_id: "M001".to_string(),
+            gene_name: "SRSF1".to_string(),
+            gene_id: Some("ENSG00000136450".to_string()),
+            organism: "Homo sapiens".to_string(),
+            motif_iupac: "GAAGAA".to_string(),
+            length: 6,
+            experiment: Some("SELEX".to_string()),
+            family: Some("SR".to_string()),
+            domain: Some("RRM".to_string()),
+            pubmed_id: Some("12345".to_string()),
+            quality_score: Some(4.2),
+            source_database: None,
+            model_kind: "consensus_iupac".to_string(),
+            pwm_present: false,
+        },
+        AttractMotifRecord {
+            entry_id: "ptbp1_hs".to_string(),
+            matrix_id: "M002".to_string(),
+            gene_name: "PTBP1".to_string(),
+            gene_id: Some("ENSG00000011304".to_string()),
+            organism: "Homo sapiens".to_string(),
+            motif_iupac: "TCTT".to_string(),
+            length: 4,
+            experiment: Some("CLIP".to_string()),
+            family: Some("hnRNP".to_string()),
+            domain: Some("RRM".to_string()),
+            pubmed_id: Some("23456".to_string()),
+            quality_score: Some(3.1),
+            source_database: None,
+            model_kind: "consensus_iupac".to_string(),
+            pwm_present: false,
+        },
+        AttractMotifRecord {
+            entry_id: "ptbp1_mm".to_string(),
+            matrix_id: "M003".to_string(),
+            gene_name: "PTBP1".to_string(),
+            gene_id: Some("ENSMUSG00000025746".to_string()),
+            organism: "Mus musculus".to_string(),
+            motif_iupac: "TCTT".to_string(),
+            length: 4,
+            experiment: Some("CLIP".to_string()),
+            family: Some("hnRNP".to_string()),
+            domain: Some("RRM".to_string()),
+            pubmed_id: Some("34567".to_string()),
+            quality_score: Some(2.5),
+            source_database: None,
+            model_kind: "consensus_iupac".to_string(),
+            pwm_present: false,
+        },
+    ]);
+
+    let mut dna = DNAsequence::from_sequence("TTTTGAAGAACCCTCTTGGGAAAAAAAAAA").expect("valid dna");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "SOURCE".into(),
+        location: gb_io::seq::Location::simple_range(0, 30),
+        qualifiers: vec![("organism".into(), Some("Homo sapiens".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 10),
+            gb_io::seq::Location::simple_range(20, 30),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("NM_TP73_1".to_string())),
+            ("label".into(), Some("NM_TP73_1".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let view = engine
+        .inspect_splicing_attract_evidence(
+            "tp73",
+            1,
+            &AttractSplicingEvidenceSettings {
+                scope: SplicingScopePreset::TargetGroupTargetStrand,
+                transcript_strand_only: true,
+                boundary_flank_bp: 2,
+                requested_organism: None,
+                allow_species_fallback: true,
+                minimum_quality_score: 0.0,
+            },
+        )
+        .expect("inspect attract evidence");
+
+    assert_eq!(
+        view.species_match_mode,
+        AttractSpeciesMatchMode::ExactOrganism
+    );
+    assert_eq!(view.summary_rows.len(), 2);
+    assert_eq!(view.hit_count, 2);
+    assert!(
+        view.hit_rows
+            .iter()
+            .all(|row| row.organism == "Homo sapiens")
+    );
+    assert!(view.hit_rows.iter().any(|row| {
+        row.gene_name == "SRSF1" && row.region_class == AttractRegionClass::DonorFlank
+    }));
+    assert!(view.hit_rows.iter().any(|row| {
+        row.gene_name == "PTBP1" && row.region_class == AttractRegionClass::IntronBody
+    }));
+}
+
+#[test]
+fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_missing() {
+    let _serial = attract_test_lock().lock().expect("attract test lock");
+    struct ReloadResetGuard;
+    impl Drop for ReloadResetGuard {
+        fn drop(&mut self) {
+            crate::attract_motifs::reload();
+        }
+    }
+    let _guard = ReloadResetGuard;
+    let _snapshot = load_synthetic_attract_snapshot(vec![AttractMotifRecord {
+        entry_id: "srsf1_hs".to_string(),
+        matrix_id: "M001".to_string(),
+        gene_name: "SRSF1".to_string(),
+        gene_id: None,
+        organism: "Homo sapiens".to_string(),
+        motif_iupac: "GAAGAA".to_string(),
+        length: 6,
+        experiment: None,
+        family: None,
+        domain: None,
+        pubmed_id: None,
+        quality_score: Some(4.2),
+        source_database: None,
+        model_kind: "consensus_iupac".to_string(),
+        pwm_present: false,
+    }]);
+    let mut dna = DNAsequence::from_sequence("TTTTGAAGAACCCTCTTGGGAAAAAAAAAA").expect("valid dna");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "SOURCE".into(),
+        location: gb_io::seq::Location::simple_range(0, 30),
+        qualifiers: vec![("organism".into(), Some("Rattus norvegicus".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 10),
+            gb_io::seq::Location::simple_range(20, 30),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("NM_TP73_1".to_string())),
+            ("label".into(), Some("NM_TP73_1".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let view = engine
+        .inspect_splicing_attract_evidence(
+            "tp73",
+            1,
+            &AttractSplicingEvidenceSettings {
+                requested_organism: Some("Rattus norvegicus".to_string()),
+                ..AttractSplicingEvidenceSettings::default()
+            },
+        )
+        .expect("inspect attract evidence");
+    assert_eq!(
+        view.species_match_mode,
+        AttractSpeciesMatchMode::FallbackAllCompatible
+    );
+    assert_eq!(view.hit_count, 1);
+    assert!(
+        view.warnings
+            .iter()
+            .any(|warning| warning.contains("falling back"))
+    );
 }
 
 #[test]

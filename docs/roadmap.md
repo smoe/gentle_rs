@@ -596,8 +596,8 @@ order. Durable architecture constraints and decisions remain in
   visible and auditable.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
   with anchor-aware coordinate remapping.
-- Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI
-  and scripting adapters.
+- Resource ingestion/update path for REBASE, JASPAR, and ATtRACT snapshots
+  across GUI/CLI and scripting adapters.
 - Shared JASPAR entry presentation now exists too:
   `SummarizeJasparEntries` plus `resources summarize-jaspar` derive one
   maximizing sequence, one minimizing sequence, and deterministic random-DNA
@@ -609,6 +609,16 @@ order. Durable architecture constraints and decisions remain in
   (default `10000 bp` random background, deterministic seed, cached/exportable
   JSON artifact) so regression work can detect scoring drift across JASPAR
   updates or matrix/scanning changes.
+- ATtRACT integration baseline now exists too:
+  - `resources sync-attract INPUT.zip_or_URL [OUTPUT]` now normalizes the
+    published ATtRACT ZIP into `gentle.attract_motifs.v1`
+  - `resources status` / `services status` now distinguish
+    `known_external_only`, `runtime_snapshot`, and `session_override` for
+    ATtRACT instead of treating it as URL-only metadata
+  - v1 integration is deliberately conservative and explicit:
+    normalized consensus/IUPAC motifs from `ATtRACT_db.txt` are scanned
+    deterministically, while `pwm.txt` presence is recorded as provenance and
+    a warning rather than silently claiming PWM scoring
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor
@@ -627,6 +637,24 @@ order. Durable architecture constraints and decisions remain in
     - `inspect-feature-expert` / `render-feature-expert-svg`
     - `panels import-isoform` / `panels inspect-isoform` /
       `panels render-isoform-svg`
+  - Splicing Expert now also has a first shared ATtRACT interpretation layer:
+    - engine-owned `inspect_splicing_attract_evidence(...)` builds a splice-
+      aware ATtRACT view over the selected splicing group
+    - shell/CLI parity exists through
+      `attract inspect-splicing SEQ_ID FEATURE_ID ...`
+    - GUI now renders the same payload in an `ATtRACT / RBP evidence` section
+      with factor/transcript/region filters, summary rows, and detailed hits
+    - v1 scan semantics:
+      - transcript-strand only by default
+      - exact organism match first, explicit fallback second
+      - region classes:
+        `exon_body`, `donor_flank`, `acceptor_flank`, `intron_body`
+    - immediate follow-up gaps on this track:
+      - add direct PWM scoring when ATtRACT PWM payloads are available
+      - consider lightweight lane overlays/density badges once payload counts
+        and CPU behavior are well characterized
+      - strengthen GUI cache invalidation beyond motif-count changes so a
+        same-count snapshot swap cannot leave stale evidence cached
 - Transcript derivation baseline is now additive and parity-wired:
   - engine operation `DeriveTranscriptSequences` derives cDNA/transcript
     sequences from `mRNA`/`transcript` features
@@ -1094,8 +1122,9 @@ order. Durable architecture constraints and decisions remain in
           summary without inventing presentation logic from raw files alone
         - enrich the new service-readiness surface further so it can report
           richer active-job details (queue/worker identity, stronger stale-job
-          detection) and any future ATtRACT integration state, not only
-          best-effort phase/progress hints
+          detection) and deeper ATtRACT runtime detail (for example active
+          snapshot version/content hash), not only best-effort phase/progress
+          hints
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

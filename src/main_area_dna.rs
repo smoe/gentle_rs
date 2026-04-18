@@ -64,7 +64,8 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
-        AnnotationCandidateSummary, CandidateFeatureStrandRelation, CandidateRecord,
+        AnnotationCandidateSummary, AttractRegionClass, AttractSplicingEvidenceSettings,
+        AttractSplicingEvidenceView, CandidateFeatureStrandRelation, CandidateRecord,
         CandidateSetOperator, ConstructReasoningGraph, ConstructRole, DecisionMethod,
         DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
@@ -1975,6 +1976,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2047,6 +2049,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2097,6 +2100,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2176,6 +2180,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3214,6 +3219,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3255,6 +3261,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 0,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3422,6 +3429,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -4645,6 +4653,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 7,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 101,
@@ -4753,6 +4762,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 3,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 10,
@@ -5146,6 +5156,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -6518,6 +6529,7 @@ mod tests {
         area.splicing_expert_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -6652,6 +6664,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -6685,6 +6698,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7077,6 +7091,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7137,6 +7152,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 10,
@@ -7229,6 +7245,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7713,6 +7730,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7766,6 +7784,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "TP73.ncbi".to_string(),
             target_feature_id: 42,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7950,6 +7969,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8080,6 +8100,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8790,6 +8811,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 0,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -10886,6 +10908,8 @@ pub struct MainAreaDna {
     cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
+    attract_evidence_ui: AttractEvidenceUiState,
+    cached_splicing_attract_evidence: Option<CachedSplicingAttractEvidence>,
     rna_read_statistics_tab: RnaReadEvidenceSourceTab,
     rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview,
     rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter,
@@ -11016,6 +11040,55 @@ struct ConstructReasoningOverlaySyncKey {
     seq_id: String,
     focused_graph_id: Option<String>,
     engine_operation_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum AttractRegionFilter {
+    #[default]
+    All,
+    ExonBody,
+    DonorFlank,
+    AcceptorFlank,
+    IntronBody,
+}
+
+#[derive(Clone, Debug)]
+struct AttractEvidenceUiState {
+    requested_organism: String,
+    minimum_quality_score: String,
+    boundary_flank_bp: String,
+    transcript_strand_only: bool,
+    allow_species_fallback: bool,
+    factor_filter: String,
+    transcript_filter: String,
+    region_filter: AttractRegionFilter,
+    selected_summary_key: Option<String>,
+}
+
+impl Default for AttractEvidenceUiState {
+    fn default() -> Self {
+        let defaults = AttractSplicingEvidenceSettings::default();
+        Self {
+            requested_organism: String::new(),
+            minimum_quality_score: format!("{:.1}", defaults.minimum_quality_score),
+            boundary_flank_bp: defaults.boundary_flank_bp.to_string(),
+            transcript_strand_only: defaults.transcript_strand_only,
+            allow_species_fallback: defaults.allow_species_fallback,
+            factor_filter: String::new(),
+            transcript_filter: String::new(),
+            region_filter: AttractRegionFilter::All,
+            selected_summary_key: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CachedSplicingAttractEvidence {
+    seq_id: String,
+    target_feature_id: usize,
+    settings: AttractSplicingEvidenceSettings,
+    active_item_count: usize,
+    view: Arc<AttractSplicingEvidenceView>,
 }
 
 #[derive(Clone, Debug)]
@@ -11416,6 +11489,8 @@ impl MainAreaDna {
             cached_saved_rna_read_progress: None,
             cached_rna_read_alignment_inspections: vec![],
             cached_rna_read_alignment_detail: None,
+            attract_evidence_ui: AttractEvidenceUiState::default(),
+            cached_splicing_attract_evidence: None,
             rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
             rna_read_mapped_cdna_subview: RnaReadMappedCdnaSubview::ReadEffects,
             rna_read_alignment_effect_filter: RnaReadAlignmentEffectFilter::AllAligned,
@@ -21413,6 +21488,7 @@ impl MainAreaDna {
                                 );
                                 ui.set_min_size(content_min_size);
                                 self.render_splicing_expert_transcript_quick_actions(ui, &view);
+                                self.render_splicing_attract_evidence_section(ui, &view);
                                 self.render_splicing_rna_read_evidence_section(ui, &view);
                                 self.render_splicing_expert_view_ui(
                                     ui,
@@ -21441,6 +21517,7 @@ impl MainAreaDna {
                         );
                         ui.set_min_size(content_min_size);
                         self.render_splicing_expert_transcript_quick_actions(ui, &view);
+                        self.render_splicing_attract_evidence_section(ui, &view);
                         self.render_splicing_rna_read_evidence_section(ui, &view);
                         self.render_splicing_expert_view_ui(ui, &view, "splicing_window_viewport");
                     });
@@ -23229,6 +23306,371 @@ impl MainAreaDna {
             self.save_engine_ops_state();
         }
         ui.separator();
+    }
+
+    fn attract_region_filter_label(filter: AttractRegionFilter) -> &'static str {
+        match filter {
+            AttractRegionFilter::All => "all regions",
+            AttractRegionFilter::ExonBody => "exon body",
+            AttractRegionFilter::DonorFlank => "donor flank",
+            AttractRegionFilter::AcceptorFlank => "acceptor flank",
+            AttractRegionFilter::IntronBody => "intron body",
+        }
+    }
+
+    fn attract_summary_key(gene_name: &str, organism: &str, matrix_id: &str) -> String {
+        format!(
+            "{}|{}|{}",
+            gene_name.to_ascii_uppercase(),
+            organism.to_ascii_uppercase(),
+            matrix_id.to_ascii_uppercase()
+        )
+    }
+
+    fn current_splicing_attract_settings_for_view(
+        &self,
+        view: &SplicingExpertView,
+    ) -> AttractSplicingEvidenceSettings {
+        AttractSplicingEvidenceSettings {
+            scope: view.scope,
+            transcript_strand_only: self.attract_evidence_ui.transcript_strand_only,
+            boundary_flank_bp: self
+                .attract_evidence_ui
+                .boundary_flank_bp
+                .trim()
+                .parse::<usize>()
+                .unwrap_or_else(|_| AttractSplicingEvidenceSettings::default().boundary_flank_bp),
+            requested_organism: {
+                let trimmed = self.attract_evidence_ui.requested_organism.trim();
+                (!trimmed.is_empty()).then_some(trimmed.to_string())
+            },
+            allow_species_fallback: self.attract_evidence_ui.allow_species_fallback,
+            minimum_quality_score: self
+                .attract_evidence_ui
+                .minimum_quality_score
+                .trim()
+                .replace(',', ".")
+                .parse::<f64>()
+                .unwrap_or(0.0),
+        }
+    }
+
+    fn cached_splicing_attract_evidence_for_view(
+        &mut self,
+        view: &SplicingExpertView,
+    ) -> Result<Arc<AttractSplicingEvidenceView>, String> {
+        let settings = self.current_splicing_attract_settings_for_view(view);
+        let active_item_count = crate::attract_motifs::list_motif_summaries().len();
+        if let Some(cached) = self.cached_splicing_attract_evidence.as_ref()
+            && cached.seq_id == view.seq_id
+            && cached.target_feature_id == view.target_feature_id
+            && cached.settings == settings
+            && cached.active_item_count == active_item_count
+        {
+            return Ok(cached.view.clone());
+        }
+        let Some(engine) = self.engine.clone() else {
+            return Err("No engine attached".to_string());
+        };
+        let inspected = match engine.read() {
+            Ok(guard) => guard.inspect_splicing_attract_evidence(
+                view.seq_id.as_str(),
+                view.target_feature_id,
+                &settings,
+            ),
+            Err(_) => Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Engine lock poisoned while inspecting ATtRACT evidence".to_string(),
+            }),
+        }
+        .map_err(|e| e.message)?;
+        let cached = Arc::new(inspected);
+        self.cached_splicing_attract_evidence = Some(CachedSplicingAttractEvidence {
+            seq_id: view.seq_id.clone(),
+            target_feature_id: view.target_feature_id,
+            settings,
+            active_item_count,
+            view: cached.clone(),
+        });
+        Ok(cached)
+    }
+
+    fn render_splicing_attract_evidence_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        egui::CollapsingHeader::new("ATtRACT / RBP evidence")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(
+                            "Splice-aware ATtRACT evidence is generated from the normalized ZIP snapshot and scanned against the selected splicing geometry on the engine side.",
+                        )
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Organism");
+                    ui.text_edit_singleline(&mut self.attract_evidence_ui.requested_organism);
+                    ui.label("Min quality");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.attract_evidence_ui.minimum_quality_score,
+                        )
+                        .desired_width(52.0),
+                    );
+                    ui.label("Flank bp");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.attract_evidence_ui.boundary_flank_bp)
+                            .desired_width(48.0),
+                    );
+                    ui.checkbox(
+                        &mut self.attract_evidence_ui.transcript_strand_only,
+                        "Target strand only",
+                    );
+                    ui.checkbox(
+                        &mut self.attract_evidence_ui.allow_species_fallback,
+                        "Fallback when no exact species match",
+                    );
+                });
+
+                let evidence = match self.cached_splicing_attract_evidence_for_view(view) {
+                    Ok(view) => view,
+                    Err(err) => {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "ATtRACT evidence unavailable: {err}"
+                            ))
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                        ui.separator();
+                        return;
+                    }
+                };
+                ui.small(format!(
+                    "Snapshot={} motifs={} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={}",
+                    evidence.active_resource_source,
+                    evidence.active_resource_item_count,
+                    evidence.scanned_transcript_count,
+                    evidence.scanned_window_count,
+                    evidence.hit_count,
+                    evidence.unique_rbp_count,
+                    evidence
+                        .resolved_organism
+                        .as_deref()
+                        .unwrap_or("unspecified"),
+                    evidence.species_match_mode.as_str()
+                ));
+                for warning in evidence.warnings.iter().take(2) {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Factor filter");
+                    ui.text_edit_singleline(&mut self.attract_evidence_ui.factor_filter);
+                    ui.label("Transcript filter");
+                    ui.text_edit_singleline(&mut self.attract_evidence_ui.transcript_filter);
+                    egui::ComboBox::from_id_salt((
+                        "attract_region_filter",
+                        view.seq_id.as_str(),
+                        view.target_feature_id,
+                    ))
+                    .selected_text(Self::attract_region_filter_label(
+                        self.attract_evidence_ui.region_filter,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for filter in [
+                            AttractRegionFilter::All,
+                            AttractRegionFilter::ExonBody,
+                            AttractRegionFilter::DonorFlank,
+                            AttractRegionFilter::AcceptorFlank,
+                            AttractRegionFilter::IntronBody,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.attract_evidence_ui.region_filter,
+                                filter,
+                                Self::attract_region_filter_label(filter),
+                            );
+                        }
+                    });
+                    if ui.button("Clear factor selection").clicked() {
+                        self.attract_evidence_ui.selected_summary_key = None;
+                    }
+                });
+
+                let factor_filter = self.attract_evidence_ui.factor_filter.trim().to_ascii_lowercase();
+                let transcript_filter =
+                    self.attract_evidence_ui.transcript_filter.trim().to_ascii_lowercase();
+                let min_quality = self
+                    .attract_evidence_ui
+                    .minimum_quality_score
+                    .trim()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .unwrap_or(0.0);
+                let filtered_summaries = evidence
+                    .summary_rows
+                    .iter()
+                    .filter(|row| {
+                        factor_filter.is_empty()
+                            || row.gene_name.to_ascii_lowercase().contains(&factor_filter)
+                            || row.matrix_id.to_ascii_lowercase().contains(&factor_filter)
+                            || row.motif_iupac.to_ascii_lowercase().contains(&factor_filter)
+                    })
+                    .filter(|row| row.strongest_score >= min_quality)
+                    .collect::<Vec<_>>();
+                ui.separator();
+                ui.label(egui::RichText::new("RBP summary").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(format!(
+                        "attract_summary_rows_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .max_height(140.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new(format!(
+                            "attract_summary_grid_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        ))
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small("Factor");
+                            ui.small("Organism");
+                            ui.small("Model");
+                            ui.small("Hits");
+                            ui.small("Best");
+                            ui.small("Regions");
+                            ui.small("Transcripts");
+                            ui.end_row();
+                            for row in filtered_summaries.iter() {
+                                let key = Self::attract_summary_key(
+                                    &row.gene_name,
+                                    &row.organism,
+                                    &row.matrix_id,
+                                );
+                                let selected = self
+                                    .attract_evidence_ui
+                                    .selected_summary_key
+                                    .as_deref()
+                                    .map(|probe| probe == key)
+                                    .unwrap_or(false);
+                                if ui
+                                    .selectable_label(selected, row.gene_name.as_str())
+                                    .clicked()
+                                {
+                                    self.attract_evidence_ui.selected_summary_key =
+                                        Some(key.clone());
+                                }
+                                ui.small(&row.organism);
+                                ui.small(format!("{} ({})", row.matrix_id, row.motif_iupac));
+                                ui.small(row.hit_count.to_string());
+                                ui.small(format!("{:.2}", row.strongest_score));
+                                ui.small(format!(
+                                    "E{} D{} A{} I{}",
+                                    row.exon_body_hits,
+                                    row.donor_flank_hits,
+                                    row.acceptor_flank_hits,
+                                    row.intron_body_hits
+                                ));
+                                ui.small(row.supporting_transcript_ids.join(", "));
+                                ui.end_row();
+                            }
+                        });
+                    });
+
+                let filtered_hits = evidence
+                    .hit_rows
+                    .iter()
+                    .filter(|row| {
+                        factor_filter.is_empty()
+                            || row.gene_name.to_ascii_lowercase().contains(&factor_filter)
+                            || row.matrix_id.to_ascii_lowercase().contains(&factor_filter)
+                            || row.motif_iupac.to_ascii_lowercase().contains(&factor_filter)
+                    })
+                    .filter(|row| {
+                        transcript_filter.is_empty()
+                            || row.transcript_id.to_ascii_lowercase().contains(&transcript_filter)
+                            || row.transcript_label.to_ascii_lowercase().contains(&transcript_filter)
+                    })
+                    .filter(|row| row.quality_score >= min_quality)
+                    .filter(|row| match self.attract_evidence_ui.region_filter {
+                        AttractRegionFilter::All => true,
+                        AttractRegionFilter::ExonBody => {
+                            row.region_class == AttractRegionClass::ExonBody
+                        }
+                        AttractRegionFilter::DonorFlank => {
+                            row.region_class == AttractRegionClass::DonorFlank
+                        }
+                        AttractRegionFilter::AcceptorFlank => {
+                            row.region_class == AttractRegionClass::AcceptorFlank
+                        }
+                        AttractRegionFilter::IntronBody => {
+                            row.region_class == AttractRegionClass::IntronBody
+                        }
+                    })
+                    .filter(|row| {
+                        self.attract_evidence_ui
+                            .selected_summary_key
+                            .as_deref()
+                            .map(|probe| {
+                                probe
+                                    == Self::attract_summary_key(
+                                        &row.gene_name,
+                                        &row.organism,
+                                        &row.matrix_id,
+                                    )
+                            })
+                            .unwrap_or(true)
+                    })
+                    .collect::<Vec<_>>();
+                ui.label(egui::RichText::new("Hit rows").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(format!(
+                        "attract_hit_rows_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .max_height(180.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new(format!(
+                            "attract_hits_grid_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        ))
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small("Transcript");
+                            ui.small("Factor");
+                            ui.small("Region");
+                            ui.small("Coords");
+                            ui.small("Motif");
+                            ui.small("Score");
+                            ui.end_row();
+                            for row in filtered_hits {
+                                ui.small(&row.transcript_id);
+                                ui.small(format!("{} ({})", row.gene_name, row.matrix_id));
+                                ui.small(row.region_class.as_str());
+                                ui.small(format!(
+                                    "{}..{} [local {}..{}]",
+                                    row.region_start_1based,
+                                    row.region_end_1based,
+                                    row.region_local_start_1based,
+                                    row.region_local_end_1based
+                                ));
+                                ui.small(format!(
+                                    "{} -> {}",
+                                    row.motif_iupac, row.matched_sequence
+                                ));
+                                ui.small(format!("{:.2}", row.quality_score));
+                                ui.end_row();
+                            }
+                        });
+                    });
+                ui.separator();
+            });
     }
 
     fn render_rna_read_mapping_window(&mut self, ctx: &egui::Context) {

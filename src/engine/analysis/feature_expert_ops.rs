@@ -10,6 +10,7 @@
 //! - feature-centric summaries that feed both engine reports and expert views
 
 use super::*;
+use crate::attract_motifs;
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinEntrySummary, build_entry_from_rest_payloads,
     normalize_entry_id as normalize_ensembl_protein_entry_id,
@@ -17,13 +18,18 @@ use crate::ensembl_protein::{
 };
 use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
-use gentle_protocol::SplicingIntronSignal;
+use gentle_protocol::{
+    AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
+    AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
+    AttractSplicingEvidenceView, SplicingIntronSignal,
+};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
 const DBSNP_REFSNP_ENV_VAR: &str = "GENTLE_NCBI_DBSNP_REFSNP_URL";
 const DEFAULT_ENSEMBL_REST_ENDPOINT: &str = "https://rest.ensembl.org";
 const ENSEMBL_REST_BASE_ENV_VAR: &str = "GENTLE_ENSEMBL_REST_BASE_URL";
+const ATTRACT_SPLICING_EVIDENCE_SCHEMA: &str = "gentle.attract_splicing_evidence.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DbsnpResolvedPlacement {
@@ -7267,6 +7273,7 @@ impl GentleEngine {
         Ok(SplicingExpertView {
             seq_id: seq_id.to_string(),
             target_feature_id: feature_id,
+            scope,
             group_label: target_group,
             strand: if target_is_reverse {
                 "-".to_string()
@@ -7285,6 +7292,387 @@ impl GentleEngine {
             intron_signals,
             junctions,
             events,
+        })
+    }
+
+    fn sequence_source_organism(dna: &DNAsequence) -> Option<String> {
+        dna.features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("SOURCE"))
+            .and_then(|feature| {
+                feature
+                    .qualifier_values("organism")
+                    .find(|value| !value.trim().is_empty())
+                    .map(|value| value.trim().to_string())
+            })
+    }
+
+    fn normalized_species_token(raw: &str) -> String {
+        raw.chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() {
+                    ch.to_ascii_lowercase()
+                } else {
+                    ' '
+                }
+            })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn attract_interval_distance_bp(
+        start_1based: usize,
+        end_1based: usize,
+        position_1based: usize,
+    ) -> usize {
+        if position_1based < start_1based {
+            start_1based.saturating_sub(position_1based)
+        } else if position_1based > end_1based {
+            position_1based.saturating_sub(end_1based)
+        } else {
+            0
+        }
+    }
+
+    fn classify_attract_region_for_interval(
+        view: &SplicingExpertView,
+        transcript_feature_id: usize,
+        interval_start_1based: usize,
+        interval_end_1based: usize,
+        default_region: AttractRegionClass,
+        flank_bp: usize,
+    ) -> AttractRegionClass {
+        let mut best: Option<(usize, AttractRegionClass)> = None;
+        for boundary in view
+            .boundaries
+            .iter()
+            .filter(|row| row.transcript_feature_id == transcript_feature_id)
+        {
+            let class = if boundary.side.eq_ignore_ascii_case("donor") {
+                AttractRegionClass::DonorFlank
+            } else if boundary.side.eq_ignore_ascii_case("acceptor") {
+                AttractRegionClass::AcceptorFlank
+            } else {
+                continue;
+            };
+            let distance = Self::attract_interval_distance_bp(
+                interval_start_1based,
+                interval_end_1based,
+                boundary.position_1based,
+            );
+            if distance > flank_bp {
+                continue;
+            }
+            match best {
+                Some((best_distance, _)) if best_distance <= distance => {}
+                _ => best = Some((distance, class)),
+            }
+        }
+        best.map(|(_, class)| class).unwrap_or(default_region)
+    }
+
+    fn scan_attract_hits_in_segment(
+        &self,
+        dna: &DNAsequence,
+        view: &SplicingExpertView,
+        transcript: &SplicingTranscriptLane,
+        range: &SplicingRange,
+        default_region: AttractRegionClass,
+        motifs: &[crate::attract_motifs::AttractMotifRecord],
+        settings: &AttractSplicingEvidenceSettings,
+        exact_species_normalized: Option<&str>,
+    ) -> Vec<AttractSplicingEvidenceHitRow> {
+        let start_1based = range.start_1based.min(range.end_1based);
+        let end_1based = range.start_1based.max(range.end_1based);
+        if start_1based == 0 || end_1based < start_1based {
+            return vec![];
+        }
+        let raw_sequence =
+            Self::sequence_slice_upper(dna, start_1based.saturating_sub(1), end_1based);
+        if raw_sequence.is_empty() {
+            return vec![];
+        }
+        let oriented_bytes = if transcript.strand.trim() == "-" {
+            Self::reverse_complement_bytes(raw_sequence.as_bytes())
+        } else {
+            raw_sequence.as_bytes().to_vec()
+        };
+        let mut hits = Vec::<AttractSplicingEvidenceHitRow>::new();
+        for motif in motifs {
+            if motif.motif_iupac.is_empty() {
+                continue;
+            }
+            if motif.quality_score.unwrap_or(0.0) < settings.minimum_quality_score {
+                continue;
+            }
+            let motif_len = motif.motif_iupac.len();
+            if oriented_bytes.len() < motif_len {
+                continue;
+            }
+            let pattern = motif.motif_iupac.as_bytes();
+            let exact_species_match = exact_species_normalized
+                .map(|token| Self::normalized_species_token(&motif.organism) == token)
+                .unwrap_or(false);
+            for offset in 0..=(oriented_bytes.len() - motif_len) {
+                if !Self::iupac_match_at(&oriented_bytes, pattern, offset) {
+                    continue;
+                }
+                let (genomic_start_1based, genomic_end_1based) = if transcript.strand.trim() == "-"
+                {
+                    let genomic_end = end_1based.saturating_sub(offset);
+                    let genomic_start = genomic_end.saturating_sub(motif_len.saturating_sub(1));
+                    (genomic_start, genomic_end)
+                } else {
+                    let genomic_start = start_1based.saturating_add(offset);
+                    let genomic_end = genomic_start.saturating_add(motif_len.saturating_sub(1));
+                    (genomic_start, genomic_end)
+                };
+                let region_class = Self::classify_attract_region_for_interval(
+                    view,
+                    transcript.transcript_feature_id,
+                    genomic_start_1based,
+                    genomic_end_1based,
+                    default_region,
+                    settings.boundary_flank_bp,
+                );
+                hits.push(AttractSplicingEvidenceHitRow {
+                    transcript_feature_id: transcript.transcript_feature_id,
+                    transcript_id: transcript.transcript_id.clone(),
+                    transcript_label: transcript.label.clone(),
+                    transcript_strand: transcript.strand.clone(),
+                    gene_name: motif.gene_name.clone(),
+                    organism: motif.organism.clone(),
+                    matrix_id: motif.matrix_id.clone(),
+                    motif_iupac: motif.motif_iupac.clone(),
+                    model_kind: motif.model_kind.clone(),
+                    region_class,
+                    region_start_1based: genomic_start_1based,
+                    region_end_1based: genomic_end_1based,
+                    region_local_start_1based: offset.saturating_add(1),
+                    region_local_end_1based: offset.saturating_add(motif_len),
+                    matched_sequence: String::from_utf8_lossy(
+                        &oriented_bytes[offset..offset + motif_len],
+                    )
+                    .to_string(),
+                    quality_score: motif.quality_score.unwrap_or(0.0),
+                    exact_species_match,
+                    warnings: vec![],
+                });
+            }
+        }
+        hits
+    }
+
+    pub fn inspect_splicing_attract_evidence(
+        &self,
+        seq_id: &str,
+        feature_id: usize,
+        settings: &AttractSplicingEvidenceSettings,
+    ) -> Result<AttractSplicingEvidenceView, EngineError> {
+        let motifs = attract_motifs::all_motifs();
+        if motifs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No ATtRACT runtime snapshot is active yet. Run `resources sync-attract ATtRACT.zip` first.".to_string(),
+            });
+        }
+        let view = self.build_splicing_expert_view(seq_id, feature_id, settings.scope)?;
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let requested_organism = settings
+            .requested_organism
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .or_else(|| Self::sequence_source_organism(dna));
+        let normalized_requested = requested_organism
+            .as_deref()
+            .map(Self::normalized_species_token)
+            .filter(|value| !value.is_empty());
+
+        let exact_species_matches = normalized_requested
+            .as_deref()
+            .map(|token| {
+                motifs
+                    .iter()
+                    .filter(|motif| Self::normalized_species_token(&motif.organism) == *token)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let (motifs_for_scan, species_match_mode, mut warnings) = if !exact_species_matches
+            .is_empty()
+        {
+            (
+                exact_species_matches,
+                AttractSpeciesMatchMode::ExactOrganism,
+                vec![],
+            )
+        } else if normalized_requested.is_some() && settings.allow_species_fallback {
+            (
+                motifs.clone(),
+                AttractSpeciesMatchMode::FallbackAllCompatible,
+                vec![format!(
+                    "No exact ATtRACT organism match was found for '{}'; falling back to all normalized ATtRACT entries.",
+                    requested_organism.as_deref().unwrap_or("")
+                )],
+            )
+        } else if normalized_requested.is_some() {
+            (
+                vec![],
+                AttractSpeciesMatchMode::ExactOrganism,
+                vec![format!(
+                    "No exact ATtRACT organism match was found for '{}' and species fallback is disabled.",
+                    requested_organism.as_deref().unwrap_or("")
+                )],
+            )
+        } else {
+            (
+                motifs.clone(),
+                AttractSpeciesMatchMode::ExactOrganism,
+                vec![],
+            )
+        };
+
+        let mut hit_rows = Vec::<AttractSplicingEvidenceHitRow>::new();
+        let mut scanned_transcripts = 0usize;
+        let mut scanned_windows = 0usize;
+        for transcript in &view.transcripts {
+            if settings.transcript_strand_only && transcript.strand.trim() != view.strand.trim() {
+                continue;
+            }
+            scanned_transcripts += 1;
+            for exon in &transcript.exons {
+                scanned_windows += 1;
+                hit_rows.extend(self.scan_attract_hits_in_segment(
+                    dna,
+                    &view,
+                    transcript,
+                    exon,
+                    AttractRegionClass::ExonBody,
+                    &motifs_for_scan,
+                    settings,
+                    normalized_requested.as_deref(),
+                ));
+            }
+            for intron in &transcript.introns {
+                scanned_windows += 1;
+                hit_rows.extend(self.scan_attract_hits_in_segment(
+                    dna,
+                    &view,
+                    transcript,
+                    intron,
+                    AttractRegionClass::IntronBody,
+                    &motifs_for_scan,
+                    settings,
+                    normalized_requested.as_deref(),
+                ));
+            }
+        }
+        if scanned_transcripts == 0 {
+            warnings.push(
+                "No transcripts remained after applying the transcript-strand filter.".to_string(),
+            );
+        }
+        hit_rows.sort_by(|a, b| {
+            a.region_start_1based
+                .cmp(&b.region_start_1based)
+                .then_with(|| a.region_end_1based.cmp(&b.region_end_1based))
+                .then_with(|| a.gene_name.cmp(&b.gene_name))
+                .then_with(|| a.matrix_id.cmp(&b.matrix_id))
+                .then_with(|| a.transcript_id.cmp(&b.transcript_id))
+        });
+
+        #[derive(Default)]
+        struct SummaryAccum {
+            gene_name: String,
+            organism: String,
+            matrix_id: String,
+            motif_iupac: String,
+            model_kind: String,
+            hit_count: usize,
+            strongest_score: f64,
+            exon_body_hits: usize,
+            donor_flank_hits: usize,
+            acceptor_flank_hits: usize,
+            intron_body_hits: usize,
+            supporting_transcript_ids: BTreeSet<String>,
+        }
+
+        let mut summary = BTreeMap::<(String, String, String), SummaryAccum>::new();
+        for hit in &hit_rows {
+            let key = (
+                hit.gene_name.to_ascii_uppercase(),
+                hit.organism.to_ascii_uppercase(),
+                hit.matrix_id.to_ascii_uppercase(),
+            );
+            let entry = summary.entry(key).or_insert_with(|| SummaryAccum {
+                gene_name: hit.gene_name.clone(),
+                organism: hit.organism.clone(),
+                matrix_id: hit.matrix_id.clone(),
+                motif_iupac: hit.motif_iupac.clone(),
+                model_kind: hit.model_kind.clone(),
+                ..Default::default()
+            });
+            entry.hit_count += 1;
+            entry.strongest_score = entry.strongest_score.max(hit.quality_score);
+            entry
+                .supporting_transcript_ids
+                .insert(hit.transcript_id.clone());
+            match hit.region_class {
+                AttractRegionClass::ExonBody => entry.exon_body_hits += 1,
+                AttractRegionClass::DonorFlank => entry.donor_flank_hits += 1,
+                AttractRegionClass::AcceptorFlank => entry.acceptor_flank_hits += 1,
+                AttractRegionClass::IntronBody => entry.intron_body_hits += 1,
+            }
+        }
+        let summary_rows = summary
+            .into_values()
+            .map(|row| AttractSplicingEvidenceSummaryRow {
+                gene_name: row.gene_name,
+                organism: row.organism,
+                matrix_id: row.matrix_id,
+                motif_iupac: row.motif_iupac,
+                model_kind: row.model_kind,
+                hit_count: row.hit_count,
+                strongest_score: row.strongest_score,
+                exon_body_hits: row.exon_body_hits,
+                donor_flank_hits: row.donor_flank_hits,
+                acceptor_flank_hits: row.acceptor_flank_hits,
+                intron_body_hits: row.intron_body_hits,
+                supporting_transcript_ids: row.supporting_transcript_ids.into_iter().collect(),
+            })
+            .collect::<Vec<_>>();
+        let resource_status = crate::resource_status::resource_catalog_status();
+        Ok(AttractSplicingEvidenceView {
+            schema: ATTRACT_SPLICING_EVIDENCE_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            target_feature_id: feature_id,
+            scope: settings.scope,
+            group_label: view.group_label.clone(),
+            target_strand: view.strand.clone(),
+            settings: settings.clone(),
+            requested_organism: requested_organism.clone(),
+            resolved_organism: requested_organism,
+            species_match_mode,
+            scanned_transcript_count: scanned_transcripts,
+            scanned_window_count: scanned_windows,
+            unique_rbp_count: summary_rows.len(),
+            hit_count: hit_rows.len(),
+            active_resource_source: resource_status.attract.active_source,
+            active_resource_item_count: resource_status.attract.active_item_count,
+            summary_rows,
+            hit_rows,
+            warnings,
         })
     }
 
