@@ -169,6 +169,24 @@ Information-preserving transfer default (decision):
 - Gene-level annotation is considered core cloning context and should not be
   omitted by default.
 
+Internal-first execution rule:
+
+- When GENtle already exposes a shared engine/CLI/GUI route for a biological
+  task, development, tutorials, figure generation, and agent workflows should
+  prefer that internal route before reaching for an ad-hoc external tool.
+- The main motivation is bug-finding: exercising the internal path is how we
+  discover missing metadata, clipped intervals, awkward command surfaces, and
+  parity gaps before users do.
+- External tools remain acceptable for upstream validation, reproducibility
+  checks, or bootstrapping when the internal route is genuinely unavailable or
+  unreasonable.
+- If an external path is materially easier than a nearby internal GENtle path,
+  treat that as a product signal:
+  - improve the internal path,
+  - or explicitly de-emphasize/remove the partial local path,
+  - but do not silently let the external workaround become the de facto
+    product behavior.
+
 Tooltip coverage rule:
 
 - Every actionable GUI button must include a concise, context-sensitive

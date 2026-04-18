@@ -989,6 +989,20 @@ order. Durable architecture constraints and decisions remain in
           `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
           `true_log_odds_quantile` are all available in GUI, shell, CLI, JSON,
           and SVG export paths
+        - internal-first case-study derivation is now an explicit expectation:
+          when a prepared reference exists, promoter figures/tutorials should be
+          derived through shared GENtle extraction routes first because that is
+          how we expose bugs in clipping, TSS handling, and adapter parity
+        - the TERT reverse-strand promoter path has now been exercised that way:
+          `ExtractGenomeGene` + projected transcript TSS recovery +
+          `ExtractGenomeRegion` reproduces the `1000 bp upstream / 200 bp into
+          transcribed area` slice, and the resulting internally derived
+          sequence matches the upstream Ensembl region exactly
+        - remaining convenience gap:
+          there is still no single dedicated op/command for "derive unclipped
+          promoter slice from one gene/transcript TSS", so reverse-strand
+          promoter case studies currently require a two-step internal chain
+          rather than one direct promoter-slice command
         - it now also exports a portable handoff bundle directly from the GUI:
           promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
           SVG previews, `report.md`, `result.json`, and replay `commands.sh`

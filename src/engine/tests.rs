@@ -13545,6 +13545,155 @@ fn test_extract_genome_gene_coding_with_promoter_extends_minus_strand_on_five_pr
 }
 
 #[test]
+fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_extraction() {
+    let td = tempdir().unwrap();
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let ann = root.join("toy.gtf");
+    let sequence: String = (0..3000)
+        .map(|idx| match ((idx * 37) + (idx / 7)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).unwrap();
+    fs::write(
+        &ann,
+        concat!(
+            "chr1\tsrc\tgene\t1001\t2000\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t1201\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\";\n",
+            "chr1\tsrc\texon\t1201\t1400\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t1801\t1950\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+        ),
+    )
+    .unwrap();
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        ),
+    )
+    .unwrap();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::ExtractGenomeGene {
+            genome_id: "ToyGenome".to_string(),
+            gene_query: "NEG1".to_string(),
+            occurrence: None,
+            output_id: Some("neg1_gene".to_string()),
+            extract_mode: None,
+            promoter_upstream_bp: None,
+            annotation_scope: Some(GenomeAnnotationScope::Full),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::AnnotatePromoterWindows {
+            input: "neg1_gene".to_string(),
+            gene_label: Some("NEG1".to_string()),
+            transcript_id: Some("TX1".to_string()),
+            upstream_bp: 100,
+            downstream_bp: 20,
+            collapse_mode: PromoterWindowCollapseMode::Transcript,
+        })
+        .unwrap();
+
+    let gene_seq = engine
+        .state()
+        .sequences
+        .get("neg1_gene")
+        .expect("expected extracted gene");
+    let promoter_feature = gene_seq
+        .features()
+        .iter()
+        .find(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("promoter")
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "TX1")
+        })
+        .expect("expected transcript-derived promoter window");
+    let promoter_range = GentleEngine::construct_reasoning_first_range_for_feature(promoter_feature)
+        .expect("promoter range");
+    assert_eq!(
+        promoter_range,
+        (929, 1000),
+        "gene-only extraction should clip the reverse-strand promoter to the available locus edge"
+    );
+
+    let transcript_feature = gene_seq
+        .features()
+        .iter()
+        .find(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "TX1")
+        })
+        .expect("expected projected transcript feature");
+    assert!(crate::feature_location::feature_is_reverse(transcript_feature));
+    let transcript_tss_1based = transcript_feature
+        .qualifier_values("genomic_end_1based")
+        .find_map(|value| value.parse::<usize>().ok())
+        .expect("reverse-strand transcript TSS should be projected from genomic_end_1based");
+    let promoter_start_1based = transcript_tss_1based.saturating_sub(20);
+    let promoter_end_1based = transcript_tss_1based.saturating_add(100);
+    assert_eq!((promoter_start_1based, promoter_end_1based), (1930, 2050));
+
+    engine
+        .apply(Operation::ExtractGenomeRegion {
+            genome_id: "ToyGenome".to_string(),
+            chromosome: "chr1".to_string(),
+            start_1based: promoter_start_1based,
+            end_1based: promoter_end_1based,
+            output_id: Some("neg1_promoter_full".to_string()),
+            annotation_scope: Some(GenomeAnnotationScope::Full),
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path_str),
+            cache_dir: None,
+        })
+        .unwrap();
+    let promoter_seq = engine
+        .state()
+        .sequences
+        .get("neg1_promoter_full")
+        .expect("expected promoter region extract");
+    let expected = sequence[(promoter_start_1based - 1)..promoter_end_1based].to_string();
+    assert_eq!(promoter_seq.get_forward_string(), expected);
+}
+
+#[test]
 fn test_extract_genome_gene_include_annotation_false_disables_projection() {
     let td = tempdir().unwrap();
     let root = td.path();
