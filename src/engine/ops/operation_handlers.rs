@@ -5774,6 +5774,7 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             restriction_site_scan: None,
+            jaspar_entry_expert_view: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
@@ -12554,6 +12555,40 @@ impl GentleEngine {
                     report.random_sequence_length_bp
                 ));
                 result.jaspar_entry_presentation = Some(report);
+            }
+            Operation::InspectJasparEntry {
+                motif,
+                random_sequence_length_bp,
+                random_seed,
+                include_remote_metadata,
+                path,
+            } => {
+                let mut report = self.inspect_jaspar_entry(
+                    &motif,
+                    random_sequence_length_bp,
+                    random_seed,
+                    include_remote_metadata,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_entry_expert_view_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR expert view for '{}' to '{}'",
+                        report.motif_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "JASPAR expert view for '{}' prepared {} score family panel(s){}",
+                    report.motif_id,
+                    report.score_panels.len(),
+                    if report.include_remote_metadata {
+                        " with optional remote metadata"
+                    } else {
+                        ""
+                    }
+                ));
+                result.jaspar_entry_expert_view = Some(report);
             }
             Operation::InspectSequenceContextView {
                 seq_id,

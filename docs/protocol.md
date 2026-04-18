@@ -364,6 +364,47 @@ Behavior notes:
   - min/max/mean/stddev plus `p01/p05/p25/p50/p75/p95/p99` summaries for both
     bit-based score families
 
+## JASPAR expert contract
+
+GENtle also exposes a portable single-entry JASPAR expert contract for the
+GUI, shell/CLI, and agent surfaces when they need a richer inspection view than
+the registry-wide summary:
+
+- which local entries are available is still governed by the active local
+  JASPAR snapshot
+- one selected entry can be expanded into:
+  - its count matrix
+  - a simple sequence-logo payload derived from per-column base frequencies and
+    information content
+  - multiple score-family distributions (`llr_bits`, `true_log_odds_bits`)
+  - optional remote JASPAR metadata such as assigned species, collection, tax
+    group, class, and family
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json'
+```
+
+First-class operation route:
+
+```json
+{"InspectJasparEntry":{"motif":"SP1","random_sequence_length_bp":10000,"random_seed":123,"include_remote_metadata":true,"path":"jaspar.expert.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_entry_expert.v1`
+
+Behavior notes:
+
+- remote metadata enrichment is optional and best-effort; the expert still
+  works from the local registry when offline or when the REST request fails
+- score panels include compact histogram bins so GUI/agent consumers can show
+  actual distribution shape instead of only percentiles
+- count-matrix and logo payloads come from the same local matrix counts GENtle
+  uses for motif scoring, rather than a separate presentation-only transform
+
 ## Draft design resources
 
 ### `gentle.gibson_assembly_plan.v1`

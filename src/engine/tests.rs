@@ -26381,9 +26381,7 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
     assert!(row.maximizing_llr_quantile >= 0.99);
     assert!(row.maximizing_llr_quantile >= row.minimizing_llr_quantile);
     assert!(row.maximizing_true_log_odds_bits >= row.minimizing_true_log_odds_bits);
-    assert!(
-        row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile
-    );
+    assert!(row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile);
 }
 
 #[test]
@@ -26424,6 +26422,116 @@ fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
         json.get("resolved_entry_count")
             .and_then(|value| value.as_u64()),
         Some(2)
+    );
+}
+
+#[test]
+fn inspect_jaspar_entry_builds_columns_and_score_panels() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .inspect_jaspar_entry("SP1", 10_000, 12345, false)
+        .expect("inspect jaspar entry");
+
+    assert_eq!(report.schema, "gentle.jaspar_entry_expert.v1");
+    assert_eq!(report.motif_id, "MA0079.5");
+    assert_eq!(report.motif_name.as_deref(), Some("SP1"));
+    assert_eq!(report.consensus_iupac, "GGGGCGGGG");
+    assert_eq!(report.motif_length_bp, 9);
+    assert_eq!(report.columns.len(), 9);
+    assert_eq!(report.score_panels.len(), 2);
+    assert!(report.remote_metadata.is_none());
+    let first = report.columns.first().expect("first column");
+    assert_eq!(first.position_1based, 1);
+    assert!(first.total_count > 0.0);
+    assert!(first.information_content_bits >= 0.0);
+    assert!(
+        report
+            .score_panels
+            .iter()
+            .any(|panel| panel.score_kind == TfbsScoreTrackValueKind::LlrBits
+                && !panel.maximizing_sequence.is_empty()
+                && panel.maximizing_score >= panel.minimizing_score)
+    );
+    assert!(report.score_panels.iter().any(|panel| panel.score_kind
+        == TfbsScoreTrackValueKind::TrueLogOddsBits
+        && panel.distribution.sample_count > 0));
+}
+
+#[test]
+fn parse_jaspar_remote_metadata_value_extracts_species_assignments() {
+    let value = serde_json::json!({
+        "collection": "CORE",
+        "tax_group": "vertebrates",
+        "class": "C2H2 zinc finger factors",
+        "family": "Three-zinc finger Kruppel-related",
+        "data_type": "ChIP-seq",
+        "species": [
+            {"tax_id": 9606, "name": "Homo sapiens"},
+            {"tax_id": "10090", "name": "Mus musculus", "common_name": "mouse"}
+        ]
+    });
+    let metadata = GentleEngine::parse_jaspar_remote_metadata_value(
+        &value,
+        "https://jaspar.elixir.no/api/v1/matrix/MA0079.5/?format=json",
+    );
+    assert_eq!(metadata.collection.as_deref(), Some("CORE"));
+    assert_eq!(metadata.tax_group.as_deref(), Some("vertebrates"));
+    assert_eq!(
+        metadata.tf_class.as_deref(),
+        Some("C2H2 zinc finger factors")
+    );
+    assert_eq!(
+        metadata.tf_family.as_deref(),
+        Some("Three-zinc finger Kruppel-related")
+    );
+    assert_eq!(metadata.data_type.as_deref(), Some("ChIP-seq"));
+    assert_eq!(metadata.species_assignments.len(), 2);
+    assert_eq!(
+        metadata.species_assignments[0].scientific_name,
+        "Homo sapiens"
+    );
+    assert_eq!(
+        metadata.species_assignments[1].common_name.as_deref(),
+        Some("mouse")
+    );
+}
+
+#[test]
+fn apply_inspect_jaspar_entry_operation_returns_report_and_writes_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.expert.json");
+    let mut engine = GentleEngine::new();
+
+    let result = engine
+        .apply(Operation::InspectJasparEntry {
+            motif: "SP1".to_string(),
+            random_sequence_length_bp: 512,
+            random_seed: 77,
+            include_remote_metadata: false,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("apply jaspar inspect");
+
+    let report = result
+        .jaspar_entry_expert_view
+        .expect("jaspar entry expert view");
+    assert_eq!(report.motif_name.as_deref(), Some("SP1"));
+    assert_eq!(report.random_sequence_length_bp, 512);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("JASPAR expert view"))
+    );
+    let written = fs::read_to_string(&output_path).expect("read written JASPAR expert JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.jaspar_entry_expert.v1")
+    );
+    assert_eq!(
+        json.get("motif_name").and_then(|value| value.as_str()),
+        Some("SP1")
     );
 }
 

@@ -643,6 +643,134 @@ pub struct JasparEntryPresentationReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One species assignment reported by optional remote JASPAR metadata.
+pub struct JasparSpeciesAssignment {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_id: Option<String>,
+    pub scientific_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Optional JASPAR REST metadata enrichment for one local motif entry.
+pub struct JasparRemoteMetadata {
+    pub source_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<String>,
+    #[serde(default)]
+    pub species_assignments: Vec<JasparSpeciesAssignment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One matrix column expanded for GUI/CLI expert inspection and simple logo
+/// rendering.
+pub struct JasparExpertColumn {
+    pub position_1based: usize,
+    pub total_count: f64,
+    pub dominant_base: String,
+    pub a_count: f64,
+    pub c_count: f64,
+    pub g_count: f64,
+    pub t_count: f64,
+    pub a_fraction: f64,
+    pub c_fraction: f64,
+    pub g_fraction: f64,
+    pub t_fraction: f64,
+    pub information_content_bits: f64,
+    pub a_logo_bits: f64,
+    pub c_logo_bits: f64,
+    pub g_logo_bits: f64,
+    pub t_logo_bits: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One histogram bin for a JASPAR score-family distribution.
+pub struct JasparScoreDistributionBin {
+    pub start_score: f64,
+    pub end_score: f64,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One score-family panel inside the JASPAR entry expert view.
+pub struct JasparScoreDistributionPanel {
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub label: String,
+    pub maximizing_sequence: String,
+    pub maximizing_score: f64,
+    pub maximizing_quantile: f64,
+    pub minimizing_sequence: String,
+    pub minimizing_score: f64,
+    pub minimizing_quantile: f64,
+    pub distribution: JasparScoreDistributionSummary,
+    #[serde(default)]
+    pub histogram_bins: Vec<JasparScoreDistributionBin>,
+}
+
+impl Default for JasparScoreDistributionPanel {
+    fn default() -> Self {
+        Self {
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
+            label: String::new(),
+            maximizing_sequence: String::new(),
+            maximizing_score: 0.0,
+            maximizing_quantile: 0.0,
+            minimizing_sequence: String::new(),
+            minimizing_score: 0.0,
+            minimizing_quantile: 0.0,
+            distribution: JasparScoreDistributionSummary::default(),
+            histogram_bins: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Detailed expert-oriented view for one local JASPAR entry, including the
+/// count matrix, a simple logo payload, multiple score families, and optional
+/// remote species metadata.
+pub struct JasparEntryExpertView {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
+    pub registry_entry_count: usize,
+    pub requested_token: String,
+    pub random_sequence_length_bp: usize,
+    pub random_seed: u64,
+    pub background_model: String,
+    pub include_remote_metadata: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_metadata: Option<JasparRemoteMetadata>,
+    #[serde(default)]
+    pub columns: Vec<JasparExpertColumn>,
+    #[serde(default)]
+    pub score_panels: Vec<JasparScoreDistributionPanel>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One visible feature-class lane summarized in a sequence-context view.
 pub struct SequenceContextVisibleClass {
     pub class_id: String,
@@ -1722,6 +1850,8 @@ pub struct OpResult {
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jaspar_entry_expert_view: Option<JasparEntryExpertView>,
     pub jaspar_entry_presentation: Option<JasparEntryPresentationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,

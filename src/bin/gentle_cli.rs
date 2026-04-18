@@ -714,6 +714,7 @@ fn usage() {
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
+  gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli services status\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
   gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
@@ -2565,7 +2566,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "resources requires a subcommand: status, sync-rebase, sync-jaspar or summarize-jaspar"
+                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, summarize-jaspar or inspect-jaspar"
                         .to_string(),
                 );
             }
@@ -2754,8 +2755,78 @@ fn run() -> Result<(), String> {
                         .map_err(|e| e.to_string())?;
                     print_json(&json!({ "result": op_result }))
                 }
+                "inspect-jaspar" => {
+                    if args.len() <= cmd_idx + 2 {
+                        return Err(
+                            "resources inspect-jaspar requires MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]".to_string(),
+                        );
+                    }
+                    let motif = args[cmd_idx + 2].clone();
+                    let mut random_sequence_length_bp =
+                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
+                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
+                    let mut fetch_remote = false;
+                    let mut output: Option<String> = None;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--random-length" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --random-length".to_string());
+                                }
+                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --random-length '{}' for resources inspect-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--seed" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --seed".to_string());
+                                }
+                                random_seed = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --seed '{}' for resources inspect-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--fetch-remote" => {
+                                fetch_remote = true;
+                                idx += 1;
+                            }
+                            "--output" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for resources inspect-jaspar",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let mut engine = GentleEngine::new();
+                    let op_result = engine
+                        .apply(Operation::InspectJasparEntry {
+                            motif,
+                            random_sequence_length_bp,
+                            random_seed,
+                            include_remote_metadata: fetch_remote,
+                            path: output,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    print_json(&json!({ "result": op_result }))
+                }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar or summarize-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, summarize-jaspar or inspect-jaspar)"
                 )),
             }
         }
@@ -3994,6 +4065,24 @@ mod tests {
             ShellCommand::ResourcesSummarizeJaspar { .. }
         ));
 
+        let inspect = parse_shell_tokens(&[
+            "resources".to_string(),
+            "inspect-jaspar".to_string(),
+            "SP1".to_string(),
+            "--random-length".to_string(),
+            "2048".to_string(),
+            "--seed".to_string(),
+            "5".to_string(),
+            "--fetch-remote".to_string(),
+            "--output".to_string(),
+            "jaspar.expert.json".to_string(),
+        ])
+        .expect("parse resources inspect-jaspar");
+        assert!(matches!(
+            inspect,
+            ShellCommand::ResourcesInspectJaspar { .. }
+        ));
+
         let import_pool = parse_shell_tokens(&[
             "import-pool".to_string(),
             "demo.pool.gentle.json".to_string(),
@@ -4624,6 +4713,67 @@ mod tests {
 
         assert_eq!(forwarded_changed, shared_changed);
         assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_resources_inspect_jaspar_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("jaspar.expert.json");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "inspect-jaspar".to_string(),
+            "SP1".to_string(),
+            "--random-length".to_string(),
+            "512".to_string(),
+            "--seed".to_string(),
+            "7".to_string(),
+            "--output".to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        let forwarded_report = &forwarded_output["result"]["jaspar_entry_expert_view"];
+        let shared_report = &shared_output["result"]["jaspar_entry_expert_view"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(forwarded_report["motif_id"], shared_report["motif_id"]);
+        assert_eq!(forwarded_report["motif_name"], shared_report["motif_name"]);
+        assert_eq!(
+            forwarded_report["random_sequence_length_bp"],
+            shared_report["random_sequence_length_bp"]
+        );
+        assert_eq!(
+            forwarded_report["random_seed"],
+            shared_report["random_seed"]
+        );
+        assert_eq!(
+            forwarded_report["consensus_iupac"],
+            shared_report["consensus_iupac"]
+        );
+        assert_eq!(forwarded_report["columns"], shared_report["columns"]);
+        assert_eq!(
+            forwarded_report["score_panels"],
+            shared_report["score_panels"]
+        );
         assert_eq!(
             forwarded_state
                 .sequences

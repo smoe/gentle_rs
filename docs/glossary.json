@@ -1,5 +1,5 @@
 {
-   "command_count": 334,
+   "command_count": 335,
    "commands": [
       {
          "aliases": [
@@ -1212,6 +1212,20 @@
          "path": "resources summarize-jaspar",
          "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
          "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectJasparEntry"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources inspect-jaspar",
+         "summary": "Inspect one local JASPAR entry with matrix/logo payloads, multiple score distributions, and optional remote species metadata.",
+         "usage": "resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]"
       },
       {
          "aliases": [],

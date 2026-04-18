@@ -611,6 +611,15 @@ order. Durable architecture constraints and decisions remain in
     exon / intron geometry
   - future ATtRACT PWM support should reuse shared motif-statistics helpers
     under the engine without collapsing those higher-level payloads into one
+- Shared single-entry JASPAR expert inspection is now in place too:
+  `InspectJasparEntry` plus `resources inspect-jaspar` expose one richer
+  portable entry view with:
+  - local count matrix columns
+  - a simple sequence-logo payload
+  - compact histogram-backed score distributions for multiple score families
+  - optional remote JASPAR metadata/species assignments
+  - a dedicated app-level `File -> JASPAR Expert...` window that reuses the
+    same engine-owned payload instead of inventing GUI-only motif logic
 - Next operational step for that path:
   add a routine registry-wide snapshot/benchmark over all local JASPAR entries
   (default `10000 bp` random background, deterministic seed, cached/exportable

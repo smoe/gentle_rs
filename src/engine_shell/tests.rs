@@ -11330,6 +11330,30 @@ fn parse_resources_sync_attract_with_output() {
 }
 
 #[test]
+fn parse_resources_inspect_jaspar_with_options() {
+    let cmd = parse_shell_line(
+        "resources inspect-jaspar SP1 --random-length 2048 --seed 5 --fetch-remote --output jaspar.expert.json",
+    )
+    .expect("parse resources inspect-jaspar");
+    match cmd {
+        ShellCommand::ResourcesInspectJaspar {
+            motif,
+            random_sequence_length_bp,
+            random_seed,
+            fetch_remote,
+            output,
+        } => {
+            assert_eq!(motif, "SP1".to_string());
+            assert_eq!(random_sequence_length_bp, 2048);
+            assert_eq!(random_seed, 5);
+            assert!(fetch_remote);
+            assert_eq!(output.as_deref(), Some("jaspar.expert.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_status() {
     let cmd = parse_shell_line("resources status").expect("parse resources status");
     match cmd {
@@ -11529,6 +11553,43 @@ fn execute_resources_sync_attract_with_local_fixture() {
         Some(2)
     );
     assert_eq!(crate::attract_motifs::list_motif_summaries().len(), 2);
+}
+
+#[test]
+fn execute_resources_inspect_jaspar_writes_report_and_returns_payload() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.expert.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesInspectJaspar {
+            motif: "SP1".to_string(),
+            random_sequence_length_bp: 512,
+            random_seed: 42,
+            fetch_remote: false,
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources inspect-jaspar");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["result"]["jaspar_entry_expert_view"]["schema"].as_str(),
+        Some("gentle.jaspar_entry_expert.v1")
+    );
+    assert_eq!(
+        out.output["result"]["jaspar_entry_expert_view"]["motif_name"].as_str(),
+        Some("SP1")
+    );
+    let written = fs::read_to_string(&output_path).expect("read JASPAR expert JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("score_panels")
+            .and_then(|value| value.as_array())
+            .map(|rows| rows.len()),
+        Some(2)
+    );
 }
 
 #[test]

@@ -1,14 +1,17 @@
-//! Shared JASPAR entry presentation helpers.
+//! Shared JASPAR entry presentation and expert-inspection helpers.
 //!
-//! This module owns the deterministic "show me what this motif likes and what
-//! random DNA does" report used by shell/CLI/agent resource inspection paths.
+//! This module owns the deterministic "show me what this motif likes, what
+//! random DNA does, and what JASPAR says about it" reports used by shell/CLI,
+//! agents, and the dedicated GUI expert window.
 //!
 //! Look here for:
 //! - per-entry max/min scoring sequence derivation
 //! - deterministic pseudorandom background scoring summaries
-//! - JSON export helpers for JASPAR presentation reports
+//! - expert-column/logo payload derivation from local PFMs
+//! - optional JASPAR REST metadata enrichment and JSON export helpers
 
 use super::*;
+use serde_json::Value;
 
 impl GentleEngine {
     fn jaspar_extreme_sequence(score_matrix: &[[f64; 4]], pick_max: bool) -> String {
@@ -50,6 +53,31 @@ impl GentleEngine {
         out
     }
 
+    fn scan_single_jaspar_scores(sequence: &[u8], score_matrix: &[[f64; 4]]) -> Vec<f64> {
+        if score_matrix.is_empty() || sequence.len() < score_matrix.len() {
+            return vec![];
+        }
+        let mut scores = Vec::with_capacity(
+            sequence
+                .len()
+                .saturating_sub(score_matrix.len())
+                .saturating_add(1)
+                .saturating_mul(2),
+        );
+        let len = score_matrix.len();
+        for start in 0..=(sequence.len() - len) {
+            let window = &sequence[start..start + len];
+            if let Some(score) = Self::score_matrix_window(window, score_matrix) {
+                scores.push(score);
+            }
+            let rc_window = Self::reverse_complement_bytes(window);
+            if let Some(score) = Self::score_matrix_window(&rc_window, score_matrix) {
+                scores.push(score);
+            }
+        }
+        scores
+    }
+
     fn summarize_jaspar_score_distribution(scores: &[f64]) -> JasparScoreDistributionSummary {
         fn percentile(sorted_scores: &[f64], fraction: f64) -> f64 {
             if sorted_scores.is_empty() {
@@ -66,8 +94,7 @@ impl GentleEngine {
 
         let sample_count = scores.len();
         let mut sorted_scores = scores.to_vec();
-        sorted_scores
-            .sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+        sorted_scores.sort_by(|left, right| left.total_cmp(right));
 
         let sum = scores.iter().sum::<f64>();
         let mean_score = sum / sample_count as f64;
@@ -96,6 +123,406 @@ impl GentleEngine {
             positive_fraction: scores.iter().filter(|score| **score > 0.0).count() as f64
                 / sample_count as f64,
         }
+    }
+
+    fn summarize_jaspar_score_histogram(
+        scores: &[f64],
+        bin_count: usize,
+    ) -> Vec<JasparScoreDistributionBin> {
+        if scores.is_empty() || bin_count == 0 {
+            return vec![];
+        }
+        let min_score = scores.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_score = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if !min_score.is_finite() || !max_score.is_finite() {
+            return vec![];
+        }
+        if (max_score - min_score).abs() <= f64::EPSILON {
+            return vec![JasparScoreDistributionBin {
+                start_score: min_score,
+                end_score: max_score,
+                count: scores.len(),
+            }];
+        }
+
+        let width = (max_score - min_score) / bin_count as f64;
+        let mut counts = vec![0usize; bin_count];
+        for score in scores {
+            let raw_idx = ((score - min_score) / width).floor() as isize;
+            let idx = raw_idx.clamp(0, bin_count.saturating_sub(1) as isize) as usize;
+            counts[idx] = counts[idx].saturating_add(1);
+        }
+        counts
+            .into_iter()
+            .enumerate()
+            .map(|(idx, count)| {
+                let start_score = min_score + width * idx as f64;
+                let end_score = if idx + 1 == bin_count {
+                    max_score
+                } else {
+                    min_score + width * (idx + 1) as f64
+                };
+                JasparScoreDistributionBin {
+                    start_score,
+                    end_score,
+                    count,
+                }
+            })
+            .collect()
+    }
+
+    fn jaspar_score_distribution_panel(
+        score_kind: TfbsScoreTrackValueKind,
+        label: &str,
+        score_matrix: &[[f64; 4]],
+        random_background: &[u8],
+    ) -> JasparScoreDistributionPanel {
+        let maximizing_sequence = Self::jaspar_extreme_sequence(score_matrix, true);
+        let minimizing_sequence = Self::jaspar_extreme_sequence(score_matrix, false);
+        let maximizing_score =
+            Self::score_matrix_window(maximizing_sequence.as_bytes(), score_matrix).unwrap_or(0.0);
+        let minimizing_score =
+            Self::score_matrix_window(minimizing_sequence.as_bytes(), score_matrix).unwrap_or(0.0);
+        let scores = Self::scan_single_jaspar_scores(random_background, score_matrix);
+        let mut sorted_scores = scores.clone();
+        sorted_scores.sort_by(|left, right| left.total_cmp(right));
+        JasparScoreDistributionPanel {
+            score_kind,
+            label: label.to_string(),
+            maximizing_sequence,
+            maximizing_score,
+            maximizing_quantile: Self::empirical_quantile(&sorted_scores, maximizing_score),
+            minimizing_sequence,
+            minimizing_score,
+            minimizing_quantile: Self::empirical_quantile(&sorted_scores, minimizing_score),
+            distribution: Self::summarize_jaspar_score_distribution(&scores),
+            histogram_bins: Self::summarize_jaspar_score_histogram(&scores, 40),
+        }
+    }
+
+    fn jaspar_expert_columns(matrix_counts: &[[f64; 4]]) -> Vec<JasparExpertColumn> {
+        const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
+        matrix_counts
+            .iter()
+            .enumerate()
+            .map(|(idx, counts)| {
+                let total_count = counts.iter().sum::<f64>();
+                let fractions = if total_count > 0.0 {
+                    [
+                        counts[0] / total_count,
+                        counts[1] / total_count,
+                        counts[2] / total_count,
+                        counts[3] / total_count,
+                    ]
+                } else {
+                    [0.0; 4]
+                };
+                let information_content_bits = if total_count > 0.0 {
+                    let entropy = fractions
+                        .iter()
+                        .copied()
+                        .filter(|value| *value > 0.0)
+                        .map(|value| value * value.log2())
+                        .sum::<f64>();
+                    (2.0 + entropy).max(0.0)
+                } else {
+                    0.0
+                };
+                let dominant_idx = counts
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .max_by(|left, right| left.1.total_cmp(&right.1))
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0);
+                JasparExpertColumn {
+                    position_1based: idx + 1,
+                    total_count,
+                    dominant_base: BASES[dominant_idx].to_string(),
+                    a_count: counts[0],
+                    c_count: counts[1],
+                    g_count: counts[2],
+                    t_count: counts[3],
+                    a_fraction: fractions[0],
+                    c_fraction: fractions[1],
+                    g_fraction: fractions[2],
+                    t_fraction: fractions[3],
+                    information_content_bits,
+                    a_logo_bits: fractions[0] * information_content_bits,
+                    c_logo_bits: fractions[1] * information_content_bits,
+                    g_logo_bits: fractions[2] * information_content_bits,
+                    t_logo_bits: fractions[3] * information_content_bits,
+                }
+            })
+            .collect()
+    }
+
+    fn read_jaspar_text_input(path_or_url: &str) -> Result<String, EngineError> {
+        if let Some(path) = path_or_url.strip_prefix("file://") {
+            return std::fs::read_to_string(path).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read JASPAR metadata file '{path}': {e}"),
+            });
+        }
+        if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+            let response = std::panic::catch_unwind(|| reqwest::blocking::get(path_or_url))
+                .map_err(|_| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not fetch JASPAR metadata URL '{path_or_url}': networking backend panicked"
+                    ),
+                })?
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not fetch JASPAR metadata URL '{path_or_url}': {e}"),
+                })?;
+            if !response.status().is_success() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not fetch JASPAR metadata URL '{path_or_url}': HTTP {}",
+                        response.status()
+                    ),
+                });
+            }
+            return response.text().map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read JASPAR metadata response '{path_or_url}': {e}"),
+            });
+        }
+        std::fs::read_to_string(path_or_url).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not read JASPAR metadata file '{path_or_url}': {e}"),
+        })
+    }
+
+    fn jaspar_remote_string(value: &Value) -> Option<String> {
+        match value {
+            Value::String(text) => {
+                let trimmed = text.trim();
+                (!trimmed.is_empty()).then_some(trimmed.to_string())
+            }
+            Value::Number(number) => Some(number.to_string()),
+            Value::Object(object) => ["name", "label", "value", "scientific_name", "species"]
+                .iter()
+                .find_map(|key| object.get(*key).and_then(Self::jaspar_remote_string)),
+            _ => None,
+        }
+    }
+
+    fn jaspar_remote_lookup(value: &Value, keys: &[&str]) -> Option<String> {
+        keys.iter()
+            .find_map(|key| value.get(*key).and_then(Self::jaspar_remote_string))
+    }
+
+    pub(crate) fn parse_jaspar_species_assignments_value(
+        value: Option<&Value>,
+    ) -> Vec<JasparSpeciesAssignment> {
+        let mut out = vec![];
+        let Some(value) = value else {
+            return out;
+        };
+        match value {
+            Value::Array(rows) => {
+                for row in rows {
+                    match row {
+                        Value::Object(object) => {
+                            let scientific_name = ["name", "species", "scientific_name"]
+                                .iter()
+                                .find_map(|key| {
+                                    object.get(*key).and_then(Self::jaspar_remote_string)
+                                });
+                            let common_name = ["common_name", "display_name", "common"]
+                                .iter()
+                                .find_map(|key| {
+                                    object.get(*key).and_then(Self::jaspar_remote_string)
+                                });
+                            let tax_id = ["tax_id", "taxon_id", "id"].iter().find_map(|key| {
+                                object.get(*key).and_then(Self::jaspar_remote_string)
+                            });
+                            if let Some(scientific_name) = scientific_name {
+                                out.push(JasparSpeciesAssignment {
+                                    tax_id,
+                                    scientific_name,
+                                    common_name,
+                                });
+                            }
+                        }
+                        Value::String(text) => {
+                            let trimmed = text.trim();
+                            if !trimmed.is_empty() {
+                                out.push(JasparSpeciesAssignment {
+                                    tax_id: None,
+                                    scientific_name: trimmed.to_string(),
+                                    common_name: None,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Value::Object(_) | Value::String(_) => {
+                let scientific_name = Self::jaspar_remote_string(value);
+                if let Some(scientific_name) = scientific_name {
+                    out.push(JasparSpeciesAssignment {
+                        tax_id: Self::jaspar_remote_lookup(value, &["tax_id", "taxon_id", "id"]),
+                        scientific_name,
+                        common_name: Self::jaspar_remote_lookup(
+                            value,
+                            &["common_name", "display_name", "common"],
+                        ),
+                    });
+                }
+            }
+            _ => {}
+        }
+        out.sort_by(|left, right| {
+            left.scientific_name
+                .to_ascii_uppercase()
+                .cmp(&right.scientific_name.to_ascii_uppercase())
+                .then_with(|| left.tax_id.cmp(&right.tax_id))
+        });
+        out.dedup_by(|left, right| {
+            left.tax_id == right.tax_id
+                && left
+                    .scientific_name
+                    .eq_ignore_ascii_case(&right.scientific_name)
+        });
+        out
+    }
+
+    pub(crate) fn parse_jaspar_remote_metadata_value(
+        value: &Value,
+        source_url: &str,
+    ) -> JasparRemoteMetadata {
+        JasparRemoteMetadata {
+            source_url: source_url.to_string(),
+            collection: Self::jaspar_remote_lookup(value, &["collection"]),
+            tax_group: Self::jaspar_remote_lookup(value, &["tax_group", "taxon"]),
+            tf_class: Self::jaspar_remote_lookup(value, &["tf_class", "class"]),
+            tf_family: Self::jaspar_remote_lookup(value, &["tf_family", "family"]),
+            data_type: Self::jaspar_remote_lookup(value, &["data_type", "experiment_type"]),
+            species_assignments: Self::parse_jaspar_species_assignments_value(value.get("species")),
+        }
+    }
+
+    fn jaspar_remote_metadata_url(motif_id: &str) -> String {
+        format!("https://jaspar.elixir.no/api/v1/matrix/{motif_id}/?format=json")
+    }
+
+    fn fetch_jaspar_remote_metadata(
+        &self,
+        motif_id: &str,
+    ) -> Result<JasparRemoteMetadata, EngineError> {
+        let url = Self::jaspar_remote_metadata_url(motif_id);
+        let text = Self::read_jaspar_text_input(&url)?;
+        let value = serde_json::from_str::<Value>(&text).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse JASPAR metadata response for '{motif_id}': {e}"),
+        })?;
+        Ok(Self::parse_jaspar_remote_metadata_value(&value, &url))
+    }
+
+    pub(crate) fn inspect_jaspar_entry(
+        &self,
+        motif: &str,
+        random_sequence_length_bp: usize,
+        random_seed: u64,
+        include_remote_metadata: bool,
+    ) -> Result<JasparEntryExpertView, EngineError> {
+        let motif = motif.trim();
+        if motif.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "InspectJasparEntry requires non-empty motif".to_string(),
+            });
+        }
+        if random_sequence_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "InspectJasparEntry requires random_sequence_length_bp >= 1".to_string(),
+            });
+        }
+
+        let motif_definition =
+            tf_motifs::resolve_motif_definition(motif).ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "JASPAR entry '{}' was not found in the local motif registry",
+                    motif
+                ),
+            })?;
+        let (llr_matrix, true_log_odds_matrix) =
+            Self::prepare_scoring_matrices(&motif_definition.matrix_counts);
+        let motif_length_bp = llr_matrix.len();
+        if motif_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "JASPAR entry '{}' has no usable scoring columns",
+                    motif_definition.id
+                ),
+            });
+        }
+        if random_sequence_length_bp < motif_length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "InspectJasparEntry requires random_sequence_length_bp ({}) >= motif length ({}) for '{}'",
+                    random_sequence_length_bp, motif_length_bp, motif_definition.id
+                ),
+            });
+        }
+
+        let random_background =
+            Self::deterministic_random_dna_bytes(random_sequence_length_bp, random_seed);
+        let mut warnings = vec![];
+        let remote_metadata = if include_remote_metadata {
+            match self.fetch_jaspar_remote_metadata(&motif_definition.id) {
+                Ok(metadata) => Some(metadata),
+                Err(err) => {
+                    warnings.push(err.message);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        Ok(JasparEntryExpertView {
+            schema: JASPAR_ENTRY_EXPERT_VIEW_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            motif_id: motif_definition.id,
+            motif_name: motif_definition.name,
+            consensus_iupac: motif_definition.consensus_iupac,
+            motif_length_bp,
+            registry_entry_count: tf_motifs::all_motif_ids().len(),
+            requested_token: motif.to_string(),
+            random_sequence_length_bp,
+            random_seed,
+            background_model: "uniform_acgt_lcg".to_string(),
+            include_remote_metadata,
+            remote_metadata,
+            columns: Self::jaspar_expert_columns(&motif_definition.matrix_counts),
+            score_panels: vec![
+                Self::jaspar_score_distribution_panel(
+                    TfbsScoreTrackValueKind::LlrBits,
+                    "LLR bits",
+                    &llr_matrix,
+                    &random_background,
+                ),
+                Self::jaspar_score_distribution_panel(
+                    TfbsScoreTrackValueKind::TrueLogOddsBits,
+                    "True log-odds bits",
+                    &true_log_odds_matrix,
+                    &random_background,
+                ),
+            ],
+            warnings,
+        })
     }
 
     pub(crate) fn summarize_jaspar_entries(
@@ -165,67 +592,36 @@ impl GentleEngine {
                 });
             }
 
-            let maximizing_sequence = Self::jaspar_extreme_sequence(&llr_matrix, true);
-            let minimizing_sequence = Self::jaspar_extreme_sequence(&llr_matrix, false);
-            let maximizing_bytes = maximizing_sequence.as_bytes();
-            let minimizing_bytes = minimizing_sequence.as_bytes();
-            let maximizing_llr_bits =
-                Self::score_matrix_window(maximizing_bytes, &llr_matrix).unwrap_or(0.0);
-            let minimizing_llr_bits =
-                Self::score_matrix_window(minimizing_bytes, &llr_matrix).unwrap_or(0.0);
-            let maximizing_true_log_odds_bits =
-                Self::score_matrix_window(maximizing_bytes, &true_log_odds_matrix).unwrap_or(0.0);
-            let minimizing_true_log_odds_bits =
-                Self::score_matrix_window(minimizing_bytes, &true_log_odds_matrix).unwrap_or(0.0);
-
-            let hits = Self::scan_tf_scores(
-                &random_background,
+            let llr_panel = Self::jaspar_score_distribution_panel(
+                TfbsScoreTrackValueKind::LlrBits,
+                "LLR bits",
                 &llr_matrix,
-                &true_log_odds_matrix,
-                |_, _| {},
+                &random_background,
             );
-            let llr_scores = hits.iter().map(|hit| hit.2).collect::<Vec<_>>();
-            let true_log_odds_scores = hits.iter().map(|hit| hit.4).collect::<Vec<_>>();
-            let mut sorted_llr_scores = llr_scores.clone();
-            sorted_llr_scores.sort_by(|left, right| {
-                left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            let mut sorted_true_log_odds_scores = true_log_odds_scores.clone();
-            sorted_true_log_odds_scores.sort_by(|left, right| {
-                left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
-            });
+            let true_log_odds_panel = Self::jaspar_score_distribution_panel(
+                TfbsScoreTrackValueKind::TrueLogOddsBits,
+                "True log-odds bits",
+                &true_log_odds_matrix,
+                &random_background,
+            );
 
             rows.push(JasparEntryPresentationRow {
                 motif_id: motif.id,
                 motif_name: motif.name,
                 consensus_iupac: motif.consensus_iupac,
                 motif_length_bp: llr_matrix.len(),
-                maximizing_sequence,
-                minimizing_sequence,
-                maximizing_llr_bits,
-                maximizing_llr_quantile: Self::empirical_quantile(
-                    &sorted_llr_scores,
-                    maximizing_llr_bits,
-                ),
-                minimizing_llr_bits,
-                minimizing_llr_quantile: Self::empirical_quantile(
-                    &sorted_llr_scores,
-                    minimizing_llr_bits,
-                ),
-                maximizing_true_log_odds_bits,
-                maximizing_true_log_odds_quantile: Self::empirical_quantile(
-                    &sorted_true_log_odds_scores,
-                    maximizing_true_log_odds_bits,
-                ),
-                minimizing_true_log_odds_bits,
-                minimizing_true_log_odds_quantile: Self::empirical_quantile(
-                    &sorted_true_log_odds_scores,
-                    minimizing_true_log_odds_bits,
-                ),
-                llr_bits_distribution: Self::summarize_jaspar_score_distribution(&llr_scores),
-                true_log_odds_bits_distribution: Self::summarize_jaspar_score_distribution(
-                    &true_log_odds_scores,
-                ),
+                maximizing_sequence: llr_panel.maximizing_sequence.clone(),
+                minimizing_sequence: llr_panel.minimizing_sequence.clone(),
+                maximizing_llr_bits: llr_panel.maximizing_score,
+                maximizing_llr_quantile: llr_panel.maximizing_quantile,
+                minimizing_llr_bits: llr_panel.minimizing_score,
+                minimizing_llr_quantile: llr_panel.minimizing_quantile,
+                maximizing_true_log_odds_bits: true_log_odds_panel.maximizing_score,
+                maximizing_true_log_odds_quantile: true_log_odds_panel.maximizing_quantile,
+                minimizing_true_log_odds_bits: true_log_odds_panel.minimizing_score,
+                minimizing_true_log_odds_quantile: true_log_odds_panel.minimizing_quantile,
+                llr_bits_distribution: llr_panel.distribution,
+                true_log_odds_bits_distribution: true_log_odds_panel.distribution,
             });
         }
 
@@ -269,5 +665,13 @@ impl GentleEngine {
         path: &str,
     ) -> Result<(), EngineError> {
         self.write_pretty_json_file(report, path, "JASPAR entry presentation report")
+    }
+
+    pub(crate) fn write_jaspar_entry_expert_view_json(
+        &self,
+        report: &JasparEntryExpertView,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        self.write_pretty_json_file(report, path, "JASPAR entry expert view")
     }
 }

@@ -3663,6 +3663,7 @@ Use the top application menu:
 - `File -> Close Project`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
+- `File -> JASPAR Expert...`
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
 - `File -> Quit`
@@ -4037,6 +4038,20 @@ Resource import behavior:
   - Parses a JASPAR PFM input file and updates
     `data/resources/jaspar.motifs.json`.
   - TF motif lookups for anchored extraction use the refreshed motif registry.
+- `JASPAR Expert...`
+  - Opens an app-level motif expert for the active local JASPAR registry.
+  - The left side filters and lists the locally available motif entries by ID
+    and name.
+  - The detail pane shows:
+    - the count matrix,
+    - a sequence logo derived from local per-column frequencies/information
+      content,
+    - score distributions for multiple score families (`llr_bits`,
+      `true_log_odds_bits`),
+    - and optional remote JASPAR metadata/species assignments when REST
+      enrichment is requested.
+  - The expert stays useful offline because the local matrix/logo/distribution
+    view does not depend on the remote fetch succeeding.
 
 Supported in the current flow:
 

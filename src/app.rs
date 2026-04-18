@@ -34,6 +34,9 @@ mod help_docs;
 #[path = "app/window_registry.rs"]
 mod window_registry;
 
+#[path = "app/jaspar_expert.rs"]
+mod jaspar_expert;
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -65,14 +68,15 @@ use crate::{
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
         ConstructReasoningGraph, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DbSnpFetchProgress, DbSnpFetchStage, DisplaySettings, DisplayTarget, Engine, EngineError,
-        ErrorCode, FeatureExpertTarget, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
-        GenomeTrackSyncReport, GentleEngine, HostProfileRecord, LineageMacroPortBinding,
-        LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult, Operation,
-        OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
-        ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, DbSnpFetchStage,
+        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
+        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
+        JasparEntryExpertView, LineageMacroPortBinding, LinearSequenceLetterLayoutMode,
+        MacroTemplateSuggestion, OpResult, Operation, OperationProgress, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        ProjectState, ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
@@ -928,8 +932,16 @@ pub struct GENtleApp {
     show_planning_dialog: bool,
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
+    show_jaspar_expert_dialog: bool,
     pcr_design_seq_id: String,
     sequencing_confirmation_seq_id: String,
+    jaspar_expert_filter: String,
+    jaspar_expert_selected_motif_id: String,
+    jaspar_expert_random_length_bp: String,
+    jaspar_expert_random_seed: String,
+    jaspar_expert_fetch_remote_metadata: bool,
+    jaspar_expert_status: String,
+    jaspar_expert_view: Option<JasparEntryExpertView>,
     gibson_destination_seq_id: String,
     gibson_opening_mode: GibsonUiOpeningMode,
     gibson_opening_start_0based: String,
@@ -2527,8 +2539,20 @@ impl Default for GENtleApp {
             show_planning_dialog: false,
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
+            show_jaspar_expert_dialog: false,
             pcr_design_seq_id: String::new(),
             sequencing_confirmation_seq_id: String::new(),
+            jaspar_expert_filter: String::new(),
+            jaspar_expert_selected_motif_id: tf_motifs::list_motif_summaries()
+                .first()
+                .map(|row| row.id.clone())
+                .unwrap_or_default(),
+            jaspar_expert_random_length_bp: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP
+                .to_string(),
+            jaspar_expert_random_seed: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED.to_string(),
+            jaspar_expert_fetch_remote_metadata: false,
+            jaspar_expert_status: String::new(),
+            jaspar_expert_view: None,
             gibson_destination_seq_id: String::new(),
             gibson_opening_mode: GibsonUiOpeningMode::DefinedSite,
             gibson_opening_start_0based: String::new(),
@@ -6381,6 +6405,7 @@ Error: `{err}`"
         self.show_sequencing_confirmation_dialog = false;
         self.show_routine_assistant_dialog = false;
         self.show_agent_assistant_dialog = false;
+        self.show_jaspar_expert_dialog = false;
         self.show_uniprot_dialog = false;
         self.show_genbank_dialog = false;
         self.pcr_design_seq_id.clear();
@@ -10507,6 +10532,19 @@ Error: `{err}`"
     fn open_agent_assistant_dialog(&mut self) {
         self.refresh_agent_system_catalog();
         self.show_agent_assistant_dialog = true;
+    }
+
+    fn open_jaspar_expert_dialog(&mut self) {
+        if self.show_jaspar_expert_dialog {
+            return;
+        }
+        if self.jaspar_expert_selected_motif_id.trim().is_empty() {
+            self.jaspar_expert_selected_motif_id = tf_motifs::list_motif_summaries()
+                .first()
+                .map(|row| row.id.clone())
+                .unwrap_or_default();
+        }
+        self.show_jaspar_expert_dialog = true;
     }
 
     fn open_uniprot_dialog(&mut self) {
@@ -14929,6 +14967,7 @@ Error: `{err}`"
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 restriction_site_scan: None,
+                jaspar_entry_expert_view: None,
                 jaspar_entry_presentation: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
@@ -30163,6 +30202,7 @@ Error: `{err}`"
         self.show_rack_dialog = false;
         self.show_place_arrangement_rack_dialog = false;
         self.show_routine_assistant_dialog = false;
+        self.show_jaspar_expert_dialog = false;
         self.gibson_destination_seq_id.clear();
         self.gibson_show_all_unique_cutters = false;
         self.gibson_opening_start_0based.clear();
@@ -30765,6 +30805,14 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.prompt_import_jaspar_resource();
+                    ui.close();
+                }
+                if ui
+                    .button("JASPAR Expert...")
+                    .on_hover_text("Inspect local JASPAR motifs, sequence logos, and score distributions")
+                    .clicked()
+                {
+                    self.open_jaspar_expert_dialog();
                     ui.close();
                 }
                 if ui
@@ -42843,6 +42891,7 @@ impl GENtleApp {
             self.render_rack_dialog(ctx);
             self.render_pcr_design_dialog(ctx);
             self.render_sequencing_confirmation_dialog(ctx);
+            self.render_jaspar_expert_dialog(ctx);
             self.render_planning_dialog(ctx);
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
@@ -50542,6 +50591,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 restriction_site_scan: None,
+                jaspar_entry_expert_view: None,
                 jaspar_entry_presentation: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
@@ -50613,6 +50663,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 restriction_site_scan: None,
+                jaspar_entry_expert_view: None,
                 jaspar_entry_presentation: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
@@ -50669,6 +50720,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 restriction_site_scan: None,
+                jaspar_entry_expert_view: None,
                 jaspar_entry_presentation: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
@@ -50730,6 +50782,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             restriction_site_scan: None,
+            jaspar_entry_expert_view: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
             sequence_context_bundle: None,

@@ -455,6 +455,7 @@ const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
+const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
 const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
@@ -3423,6 +3424,17 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    InspectJasparEntry {
+        motif: String,
+        #[serde(default = "default_jaspar_presentation_random_sequence_length_bp")]
+        random_sequence_length_bp: usize,
+        #[serde(default = "default_jaspar_presentation_random_seed")]
+        random_seed: u64,
+        #[serde(default)]
+        include_remote_metadata: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     AnnotatePromoterWindows {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4721,6 +4733,7 @@ impl GentleEngine {
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
+                "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
                 "AnnotatePromoterWindows".to_string(),
                 "SummarizeVariantPromoterContext".to_string(),
@@ -6621,6 +6634,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
+                | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
