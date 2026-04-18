@@ -993,10 +993,10 @@ order. Durable architecture constraints and decisions remain in
           `InspectSequenceContextView`, so ClawBio can ask for one compact,
           viewport-aware genomic-environment summary instead of inferring one
           from separate SVG + BED outputs
-        - next on the same track is
-          `ExportSequenceContextBundle`, which should package the current
-          sequence-view SVG plus the coordinate-bearing companion text/table
-          into one deterministic artifact set for chat/bundle consumers
+        - the matching bundle export is now implemented in baseline form:
+          `ExportSequenceContextBundle` packages the current sequence-view SVG
+          plus the coordinate-bearing companion text/table into one
+          deterministic artifact set for chat/bundle consumers
         - another immediate chat-facing improvement is reference-availability
           disclosure:
           when users ask about Ensembl access, ClawBio should surface the local
@@ -1028,6 +1028,10 @@ order. Durable architecture constraints and decisions remain in
           failing command, execution cwd, exit code, and a short
           stderr/stdout preview so remote ClawBio deployments are easier to
           debug without manual log spelunking
+        - the wrapper also now resolves relative `--input` request paths
+          against the copied ClawBio skill layout itself, not only the current
+          cwd, so example requests keep working when ClawBio launches the skill
+          from a different working directory
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for
@@ -1036,7 +1040,7 @@ order. Durable architecture constraints and decisions remain in
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
           flow, not only code/controller verified
-        - finish the broader sequence-context bundle/manifest layer so
+        - enrich the sequence-context bundle/manifest layer further so
           ClawBio can pick one "best first figure" and one compact textual
           summary without inventing presentation logic from raw files alone
         - enrich the new service-readiness surface further so it can report

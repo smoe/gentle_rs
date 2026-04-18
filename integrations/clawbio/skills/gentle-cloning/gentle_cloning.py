@@ -68,6 +68,8 @@ def _now_utc_iso() -> str:
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        raise SkillError(f"request JSON file '{path}' does not exist") from e
     except json.JSONDecodeError as e:
         raise SkillError(f"invalid JSON in '{path}': {e}") from e
 
@@ -114,6 +116,8 @@ def _request_path_candidates(raw_path: str, script_path: Path) -> list[Path]:
         return [path]
 
     candidates: list[Path] = [Path.cwd() / path]
+    for base in script_path.resolve().parents:
+        candidates.append(base / path)
     configured_repo_root = os.environ.get("GENTLE_REPO_ROOT", "").strip()
     if configured_repo_root:
         candidates.append(Path(configured_repo_root) / path)
@@ -139,6 +143,19 @@ def _resolve_request_path(raw_path: str, script_path: Path) -> str:
         if candidate.exists():
             return str(candidate.resolve())
     return raw_path
+
+
+def _resolve_existing_request_file(raw_path: str, script_path: Path) -> Path:
+    trimmed = raw_path.strip()
+    candidates = _request_path_candidates(trimmed, script_path)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    tried = ", ".join(f"`{candidate}`" for candidate in candidates)
+    raise SkillError(
+        f"request JSON file '{raw_path}' was not found. "
+        f"Current cwd: `{Path.cwd()}`. Tried: {tried}"
+    )
 
 
 def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
@@ -703,7 +720,7 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
 
 def _write_report(
     path: Path,
-    request: Request,
+    request: Request | None,
     resolution: CliResolution | None,
     execution_cwd: Path,
     command: list[str] | None,
@@ -728,9 +745,9 @@ def _write_report(
         f"- Started (UTC): `{started_utc}`",
         f"- Ended (UTC): `{ended_utc}`",
         f"- Status: `{status}`",
-        f"- Mode: `{request.mode}`",
+        f"- Mode: `{request.mode if request is not None else 'unknown'}`",
     ]
-    if request.state_path:
+    if request is not None and request.state_path:
         lines.append(f"- State path: `{request.state_path}`")
     if resolution is not None:
         lines.append(f"- Resolver: `{resolution.label}`")
@@ -911,7 +928,7 @@ def main() -> int:
     repro_dir.mkdir(parents=True, exist_ok=True)
 
     started = _now_utc_iso()
-    request: Request
+    request: Request | None = None
     run_result: subprocess.CompletedProcess[str] | None = None
     command: list[str] | None = None
     resolution: CliResolution | None = None
@@ -930,7 +947,7 @@ def main() -> int:
         else:
             if not args.input:
                 raise SkillError("--input is required unless --demo is used")
-            payload = _read_json(Path(args.input))
+            payload = _read_json(_resolve_existing_request_file(args.input, Path(__file__)))
             request = _coerce_request(payload)
 
         try:
@@ -980,11 +997,10 @@ def main() -> int:
             request, output_dir, execution_cwd
         )
     except subprocess.TimeoutExpired as e:
-        request = request if "request" in locals() else _default_demo_request()
+        request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
         status = "timeout"
     except SkillError as e:
-        request = request if "request" in locals() else _default_demo_request()
         if (
             failure_summary is None
             and reference_preflight is not None
@@ -995,7 +1011,7 @@ def main() -> int:
         if status != "degraded_demo":
             status = "failed"
     except Exception as e:  # pragma: no cover - defensive boundary
-        request = request if "request" in locals() else _default_demo_request()
+        request = request if request is not None else _default_demo_request()
         error_message = f"unexpected error: {type(e).__name__}: {e}"
         status = "failed"
 
@@ -1052,7 +1068,7 @@ def main() -> int:
     result_payload = {
         "schema": RESULT_SCHEMA,
         "status": status,
-        "request": dataclasses.asdict(request),
+        "request": (dataclasses.asdict(request) if request is not None else None),
         "started_utc": started,
         "ended_utc": ended,
         "resolver": (dataclasses.asdict(resolution) if resolution else None),

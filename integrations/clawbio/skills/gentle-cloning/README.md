@@ -81,6 +81,10 @@ The shortest investigation path is:
 2. run the skill directly from the ClawBio checkout:
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38`
+   - the wrapper now resolves relative `--input` paths not only from the
+     current cwd, but also from the copied skill layout itself, so these
+     example paths keep working even when ClawBio launches the skill from a
+     different working directory
 3. inspect whether those direct runs succeed and produce `report.md` /
    `result.json`
    - failed runs now also surface the failing command, execution cwd, exit
