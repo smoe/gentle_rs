@@ -172,6 +172,10 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
         '{"op_id":"op-demo","messages":["bundle exported"],'
         '"sequence_context_bundle":{"schema":"gentle.sequence_context_bundle.v1",'
         '"seq_id":"rs9923231_vkorc1",'
+        '"artifacts":['
+        '{"artifact_id":"context_svg","path":"artifacts/context.svg","caption":"Context figure","recommended_use":"best_first_figure","presentation_rank":0,"is_best_first_artifact":true},'
+        '{"artifact_id":"context_summary_text","path":"artifacts/context_summary.txt","caption":"Summary text","recommended_use":"compact_chat_summary","presentation_rank":2,"is_best_first_artifact":false}'
+        '],'
         '"sequence_context_view":{"schema":"gentle.sequence_context_view.v1",'
         '"summary_lines":["VKORC1 context around rs9923231","Visible classes: gene, mrna, variation"]}}}\n'
         "JSON\n",
@@ -206,8 +210,28 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
         "VKORC1 context around rs9923231",
         "Visible classes: gene, mrna, variation",
     ]
+    assert result["preferred_artifacts"] == [
+        {
+            "artifact_id": "context_svg",
+            "path": "artifacts/context.svg",
+            "caption": "Context figure",
+            "recommended_use": "best_first_figure",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+        },
+        {
+            "artifact_id": "context_summary_text",
+            "path": "artifacts/context_summary.txt",
+            "caption": "Summary text",
+            "recommended_use": "compact_chat_summary",
+            "presentation_rank": 2,
+            "is_best_first_artifact": False,
+        },
+    ]
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Chat Summary" in report
+    assert "## Preferred Artifacts" in report
+    assert "artifacts/context.svg" in report
     assert "- VKORC1 context around rs9923231" in report
     assert "- Visible classes: gene, mrna, variation" in report
 

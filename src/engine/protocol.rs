@@ -495,6 +495,21 @@ pub struct SequenceContextViewReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One exported artifact within a sequence-context bundle, with deterministic
+/// presentation metadata for chat/report consumers.
+pub struct SequenceContextBundleArtifact {
+    pub artifact_id: String,
+    pub path: String,
+    pub media_type: String,
+    pub artifact_kind: String,
+    pub caption: String,
+    pub recommended_use: String,
+    pub presentation_rank: usize,
+    pub is_best_first_artifact: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Portable deterministic artifact manifest for one DNA-sequence view bundle.
 ///
 /// This packages the current sequence-view SVG with the shared compact
@@ -522,6 +537,12 @@ pub struct SequenceContextBundleExport {
     pub include_restriction_sites: bool,
     #[serde(default)]
     pub restriction_enzymes: Vec<String>,
+    #[serde(default)]
+    pub artifacts: Vec<SequenceContextBundleArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_first_artifact_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_first_artifact_path: Option<String>,
     pub sequence_context_view: SequenceContextViewReport,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feature_bed_export: Option<SequenceFeatureBedExportReport>,

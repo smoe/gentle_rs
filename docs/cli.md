@@ -337,6 +337,9 @@ Included follow-on analysis/planning/graphics examples:
       for one compact chat-facing summary of the currently interesting genomic
       environment before attaching a larger SVG/BED bundle
     - `ExportSequenceContextBundle { seq_id, mode?, viewport_start_0based?, viewport_end_0based_exclusive?, coordinate_mode?, include_feature_bed?, include_text_summary?, include_restriction_sites?, restriction_enzymes[], output_dir }`
+      - the resulting bundle manifest now carries ranked artifact metadata plus
+        one explicit `best_first_artifact_*` selection so chat/report layers can
+        choose a first figure deterministically
       for one deterministic DNA-window export directory containing SVG +
       summary JSON/text + optional BED companion artifacts
 

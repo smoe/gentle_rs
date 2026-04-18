@@ -25288,6 +25288,21 @@ fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
     assert!(Path::new(bundle.summary_text_path.as_deref().expect("summary text path")).exists());
     assert!(Path::new(bundle.feature_bed_path.as_deref().expect("bed path")).exists());
     assert!(Path::new(&bundle.bundle_json_path).exists());
+    assert_eq!(bundle.best_first_artifact_id.as_deref(), Some("context_svg"));
+    assert_eq!(bundle.best_first_artifact_path.as_deref(), Some(bundle.svg_path.as_str()));
+    assert_eq!(bundle.artifacts.first().map(|artifact| artifact.artifact_id.as_str()), Some("context_svg"));
+    assert_eq!(
+        bundle.artifacts.first().map(|artifact| artifact.recommended_use.as_str()),
+        Some("best_first_figure")
+    );
+    assert!(bundle
+        .artifacts
+        .iter()
+        .any(|artifact| artifact.artifact_id == "context_summary_text"));
+    assert!(bundle
+        .artifacts
+        .iter()
+        .any(|artifact| artifact.artifact_id == "context_feature_bed"));
     assert!(result.messages.iter().any(|message| {
         message.contains("Sequence-context bundle for 'tp73_ctx'")
             && message.contains("context.svg")
@@ -25317,6 +25332,8 @@ fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
     assert!(bed.contains("rs-demo"));
     let bundle_json = fs::read_to_string(&bundle.bundle_json_path).expect("read bundle json");
     assert!(bundle_json.contains("\"schema\": \"gentle.sequence_context_bundle.v1\""));
+    assert!(bundle_json.contains("\"best_first_artifact_id\": \"context_svg\""));
+    assert!(bundle_json.contains("\"recommended_use\": \"best_first_figure\""));
 }
 
 #[test]
