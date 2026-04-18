@@ -135,6 +135,82 @@ def test_result_payload_promotes_sequence_context_chat_summary(tmp_path: Path) -
     assert "- Visible classes: gene, mrna, variation" in report
 
 
+def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "op",
+                "operation": {
+                    "ExportSequenceContextBundle": {
+                        "seq_id": "rs9923231_vkorc1",
+                        "mode": "linear",
+                        "viewport_start_0based": 2400,
+                        "viewport_end_0based_exclusive": 3501,
+                        "coordinate_mode": "genomic",
+                        "include_feature_bed": True,
+                        "include_text_summary": True,
+                        "include_restriction_sites": False,
+                        "restriction_enzymes": [],
+                        "output_dir": "artifacts/rs9923231_vkorc1.context_bundle",
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"op_id":"op-demo","messages":["bundle exported"],'
+        '"sequence_context_bundle":{"schema":"gentle.sequence_context_bundle.v1",'
+        '"seq_id":"rs9923231_vkorc1",'
+        '"sequence_context_view":{"schema":"gentle.sequence_context_view.v1",'
+        '"summary_lines":["VKORC1 context around rs9923231","Visible classes: gene, mrna, variation"]}}}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["stdout_json"]["sequence_context_bundle"]["schema"] == (
+        "gentle.sequence_context_bundle.v1"
+    )
+    assert result["chat_summary_lines"] == [
+        "VKORC1 context around rs9923231",
+        "Visible classes: gene, mrna, variation",
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Chat Summary" in report
+    assert "- VKORC1 context around rs9923231" in report
+    assert "- Visible classes: gene, mrna, variation" in report
+
+
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
     fake_runtime = tmp_path / "apptainer"
     capture_path = tmp_path / "apptainer_args.txt"
@@ -617,6 +693,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             180,
         ),
+        "request_export_sequence_context_bundle_rs9923231_vkorc1.json": (
+            "op",
+            None,
+            300,
+        ),
         "request_export_bed_rs9923231_vkorc1_context_features.json": (
             "shell",
             "features export-bed rs9923231_vkorc1 artifacts/rs9923231_vkorc1.context.features.bed --coordinate-mode genomic --kind gene --kind mRNA --kind variation --sort start --include-source --include-qualifiers",
@@ -701,6 +782,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_genbank_fetch_pbr322.json",
             "request_dbsnp_fetch_rs9923231.json",
             "request_inspect_sequence_context_rs9923231_vkorc1.json",
+            "request_export_sequence_context_bundle_rs9923231_vkorc1.json",
             "request_render_svg_rs9923231_vkorc1_linear.json",
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
@@ -762,6 +844,28 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                     "limit": 20,
                 }
             }
+        if name == "request_export_sequence_context_bundle_rs9923231_vkorc1.json":
+            assert payload["operation"] == {
+                "ExportSequenceContextBundle": {
+                    "seq_id": "rs9923231_vkorc1",
+                    "mode": "linear",
+                    "viewport_start_0based": 2400,
+                    "viewport_end_0based_exclusive": 3501,
+                    "coordinate_mode": "genomic",
+                    "include_feature_bed": True,
+                    "include_text_summary": True,
+                    "include_restriction_sites": False,
+                    "restriction_enzymes": [],
+                    "output_dir": "artifacts/rs9923231_vkorc1.context_bundle",
+                }
+            }
+            assert payload["expected_artifacts"] == [
+                "artifacts/rs9923231_vkorc1.context_bundle/bundle.json",
+                "artifacts/rs9923231_vkorc1.context_bundle/context.svg",
+                "artifacts/rs9923231_vkorc1.context_bundle/context_summary.json",
+                "artifacts/rs9923231_vkorc1.context_bundle/context_summary.txt",
+                "artifacts/rs9923231_vkorc1.context_bundle/context_features.bed",
+            ]
         if name == "request_render_feature_expert_pgex_fasta_tfbs_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.tfbs.expert.svg"

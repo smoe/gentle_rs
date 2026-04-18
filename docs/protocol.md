@@ -3861,6 +3861,35 @@ Sequence-context view summary contract (implemented baseline):
       coordinates when qualifiers or anchor geometry make them available
     - `summary_lines[]` for compact relay into chat/report layers
 
+Sequence-context bundle export contract (implemented baseline):
+
+- Raw/shared operation:
+  - `{"ExportSequenceContextBundle":{"seq_id":"rs9923231_16_31093368_31099368","mode":"linear","viewport_start_0based":2400,"viewport_end_0based_exclusive":3501,"coordinate_mode":"genomic","include_feature_bed":true,"include_text_summary":true,"include_restriction_sites":false,"restriction_enzymes":[],"output_dir":"artifacts/rs9923231.context_bundle"}}`
+- Execution semantics:
+  - non-mutating artifact export for one DNA-sequence-view context
+  - writes one deterministic output directory containing:
+    - `context.svg`
+    - `context_summary.json`
+    - optional `context_summary.txt`
+    - optional `context_features.bed`
+    - `bundle.json` manifest
+  - reuses the same shared `InspectSequenceContextView` report for the compact
+    summary component instead of inventing a second export-only summary format
+  - reuses the existing `ExportFeaturesBed` path for the BED companion when
+    `include_feature_bed=true`
+  - defaults to current display-visible classes for the BED feature query, so
+    the coordinate-bearing table tracks the same viewer focus as the summary
+- Response/report schema:
+  - `gentle.sequence_context_bundle.v1`
+  - fields include:
+    - `seq_id`, `output_dir`
+    - `svg_path`, `summary_json_path`, optional `summary_text_path`,
+      optional `feature_bed_path`, `bundle_json_path`
+    - `include_text_summary`, `include_feature_bed`,
+      `include_restriction_sites`, `restriction_enzymes[]`
+    - embedded `sequence_context_view`
+    - optional embedded `feature_bed_export`
+
 Dotplot + flexibility operation contract (implemented baseline):
 
 - Dotplot operation:

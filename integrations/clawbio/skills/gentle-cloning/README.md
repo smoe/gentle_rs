@@ -96,6 +96,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genbank_fetch_pbr322.json --output /tmp/gentle_fetch_pbr322
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json --output /tmp/gentle_fetch_rs9923231
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_sequence_context_rs9923231_vkorc1.json --output /tmp/gentle_rs9923231_context_summary
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_sequence_context_bundle_rs9923231_vkorc1.json --output /tmp/gentle_rs9923231_context_bundle
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json --output /tmp/gentle_rs9923231_context_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_context_svg_auto_prepare.json --output /tmp/gentle_rs9923231_context_demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json --output /tmp/gentle_rs9923231_context_bed
@@ -143,6 +144,13 @@ Notes:
   - the wrapper now promotes that report into `result.json.stdout_json` and
     `result.json.chat_summary_lines[]` so OpenClaw/ClawBio can relay the
     summary directly
+- `request_export_sequence_context_bundle_rs9923231_vkorc1.json` is the
+  matching one-shot bundle route after `request_dbsnp_fetch_rs9923231.json`;
+  it writes the SVG, summary JSON/text, BED companion, and bundle manifest into
+  one deterministic artifact directory for the same viewport
+  - the wrapper also promotes the nested compact summary into
+    `result.json.chat_summary_lines[]` when the exported bundle contains the
+    shared `sequence_context_view` payload
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
@@ -271,6 +279,10 @@ Included follow-on analysis/planning/graphics requests:
   - returns one compact viewport-aware context summary for chat/report layers
   - prefer `result.json.chat_summary_lines[]` as the first reply, then attach
     SVG/BED follow-ons as needed
+- `examples/request_export_sequence_context_bundle_rs9923231_vkorc1.json`
+  - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+  - exports one deterministic directory containing SVG + summary JSON/text +
+    BED + manifest for the same genomic-context window
 - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context SVG

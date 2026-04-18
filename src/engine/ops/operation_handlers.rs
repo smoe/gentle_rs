@@ -5732,6 +5732,7 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             sequence_context_view: None,
+            sequence_context_bundle: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
@@ -12183,6 +12184,42 @@ impl GentleEngine {
                     report.viewport_end_0based_exclusive
                 ));
                 result.sequence_context_view = Some(report);
+            }
+            Operation::ExportSequenceContextBundle {
+                seq_id,
+                mode,
+                viewport_start_0based,
+                viewport_end_0based_exclusive,
+                coordinate_mode,
+                include_feature_bed,
+                include_text_summary,
+                include_restriction_sites,
+                restriction_enzymes,
+                output_dir,
+            } => {
+                let bundle = self.export_sequence_context_bundle(
+                    &seq_id,
+                    mode,
+                    viewport_start_0based,
+                    viewport_end_0based_exclusive,
+                    coordinate_mode,
+                    include_feature_bed,
+                    include_text_summary,
+                    include_restriction_sites,
+                    &restriction_enzymes,
+                    &output_dir,
+                    Some(result.op_id.as_str()),
+                    Some(run_id),
+                )?;
+                result.messages.push(format!(
+                    "Sequence-context bundle for '{}' wrote SVG '{}'{}{} into '{}'",
+                    bundle.seq_id,
+                    bundle.svg_path,
+                    bundle.summary_text_path.as_ref().map(|path| format!(", summary text '{}'", path)).unwrap_or_default(),
+                    bundle.feature_bed_path.as_ref().map(|path| format!(", BED '{}'", path)).unwrap_or_default(),
+                    bundle.output_dir
+                ));
+                result.sequence_context_bundle = Some(bundle);
             }
             Operation::AnnotatePromoterWindows {
                 input,

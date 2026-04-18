@@ -1787,10 +1787,20 @@ order. Durable architecture constraints and decisions remain in
           automatically for DNA-window-style questions instead of relying only
           on skill/documentation guidance
       - `ExportSequenceContextBundle { seq_id, mode?, viewport?, coordinate_mode?, include_feature_bed?, include_text_summary?, include_restriction_sites?, restriction_enzymes[]?, output_dir }`
-        - unified "sequence context bundle" export that emits the DNA-window
-          SVG plus a coordinate-bearing tabular/text companion in one
-          deterministic payload for ClawBio/OpenClaw and similar run-bundle
-          consumers
+        - first baseline is now implemented as a shared non-mutating export:
+          one output directory with `context.svg`, `context_summary.json`,
+          optional `context_summary.txt`, optional `context_features.bed`, and
+          a `bundle.json` manifest embedding the same summary/BED reports
+        - a shipped ClawBio example request now covers the VKORC1 / rs9923231
+          genomic-context story end to end
+        - the ClawBio wrapper now also relays the bundle's embedded compact
+          summary through `result.json.chat_summary_lines[]`, so chat-first
+          agents can answer from the same export request before attaching the
+          larger SVG/BED artifacts
+        - next follow-up on that contract:
+          teach the bundle route to mirror GUI restriction-site visibility modes
+          more exactly when callers request restriction rows without an explicit
+          enzyme list
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

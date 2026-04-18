@@ -25234,6 +25234,92 @@ fn apply_export_features_bed_operation_writes_requested_file() {
 }
 
 #[test]
+fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
+    let td = tempdir().expect("tempdir");
+    let output_dir = td.path().join("context_bundle");
+
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(10, 70),
+        qualifiers: vec![
+            ("label".into(), Some("TP73".to_string())),
+            ("chromosome".into(), Some("chr1".to_string())),
+            ("genomic_start_1based".into(), Some("1001".to_string())),
+            ("genomic_end_1based".into(), Some("1060".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(32, 33),
+        qualifiers: vec![("label".into(), Some("rs-demo".to_string()))],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73_ctx".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::ExportSequenceContextBundle {
+            seq_id: "tp73_ctx".to_string(),
+            mode: Some(RenderSvgMode::Linear),
+            viewport_start_0based: Some(0),
+            viewport_end_0based_exclusive: Some(120),
+            coordinate_mode: Some(FeatureBedCoordinateMode::Auto),
+            include_feature_bed: Some(true),
+            include_text_summary: Some(true),
+            include_restriction_sites: Some(false),
+            restriction_enzymes: vec![],
+            output_dir: output_dir.to_string_lossy().into_owned(),
+        })
+        .expect("apply ExportSequenceContextBundle");
+
+    let bundle = result
+        .sequence_context_bundle
+        .expect("sequence_context_bundle payload");
+    assert_eq!(bundle.schema, "gentle.sequence_context_bundle.v1");
+    assert_eq!(bundle.seq_id, "tp73_ctx");
+    assert_eq!(bundle.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(bundle.sequence_context_view.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert!(bundle.include_feature_bed);
+    assert!(bundle.include_text_summary);
+    assert!(Path::new(&bundle.svg_path).exists());
+    assert!(Path::new(&bundle.summary_json_path).exists());
+    assert!(Path::new(bundle.summary_text_path.as_deref().expect("summary text path")).exists());
+    assert!(Path::new(bundle.feature_bed_path.as_deref().expect("bed path")).exists());
+    assert!(Path::new(&bundle.bundle_json_path).exists());
+    assert!(result.messages.iter().any(|message| {
+        message.contains("Sequence-context bundle for 'tp73_ctx'")
+            && message.contains("context.svg")
+    }));
+
+    let svg = fs::read_to_string(&bundle.svg_path).expect("read svg");
+    assert!(svg.contains("<svg"));
+    let summary_json = fs::read_to_string(&bundle.summary_json_path).expect("read summary json");
+    assert!(summary_json.contains("\"schema\": \"gentle.sequence_context_view.v1\""));
+    let summary_text = fs::read_to_string(
+        bundle
+            .summary_text_path
+            .as_deref()
+            .expect("summary text path"),
+    )
+    .expect("read summary text");
+    assert!(summary_text.contains("visible classes:"));
+    assert!(summary_text.contains("top labels:"));
+    let bed = fs::read_to_string(
+        bundle
+            .feature_bed_path
+            .as_deref()
+            .expect("bed path"),
+    )
+    .expect("read bed");
+    assert!(bed.contains("TP73"));
+    assert!(bed.contains("rs-demo"));
+    let bundle_json = fs::read_to_string(&bundle.bundle_json_path).expect("read bundle json");
+    assert!(bundle_json.contains("\"schema\": \"gentle.sequence_context_bundle.v1\""));
+}
+
+#[test]
 fn summarize_tfbs_region_groups_focus_hits_and_compares_context_density() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(250)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

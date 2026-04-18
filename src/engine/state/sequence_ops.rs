@@ -1041,6 +1041,7 @@ impl GentleEngine {
             }
             Operation::SaveFile { seq_id, .. }
             | Operation::RenderSequenceSvg { seq_id, .. }
+            | Operation::ExportSequenceContextBundle { seq_id, .. }
             | Operation::RenderDotplotSvg { seq_id, .. }
             | Operation::RenderFeatureExpertSvg { seq_id, .. }
             | Operation::RenderIsoformArchitectureSvg { seq_id, .. }
@@ -1297,6 +1298,7 @@ impl GentleEngine {
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }
+            Operation::ExportSequenceContextBundle { output_dir, .. } => push(output_dir),
             Operation::SummarizeRnaReadGeneSupport {
                 path: Some(path), ..
             } => push(path),

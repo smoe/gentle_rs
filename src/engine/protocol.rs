@@ -492,6 +492,40 @@ pub struct SequenceContextViewReport {
     pub summary_lines: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable deterministic artifact manifest for one DNA-sequence view bundle.
+///
+/// This packages the current sequence-view SVG with the shared compact
+/// sequence-context summary and an optional coordinate-bearing BED companion so
+/// bundle-oriented callers can consume one operation result instead of
+/// assembling multiple exports manually.
+pub struct SequenceContextBundleExport {
+    pub schema: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub output_dir: String,
+    pub svg_path: String,
+    pub summary_json_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_text_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_bed_path: Option<String>,
+    pub bundle_json_path: String,
+    pub include_text_summary: bool,
+    pub include_feature_bed: bool,
+    pub include_restriction_sites: bool,
+    #[serde(default)]
+    pub restriction_enzymes: Vec<String>,
+    pub sequence_context_view: SequenceContextViewReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_bed_export: Option<SequenceFeatureBedExportReport>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// How transcript-derived promoter windows are collapsed before annotation or
@@ -1441,6 +1475,8 @@ pub struct OpResult {
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_context_bundle: Option<SequenceContextBundleExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

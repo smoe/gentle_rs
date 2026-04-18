@@ -168,6 +168,7 @@ Use this when the user wants the DNA sequence window in headless form:
 Current shared GENtle routes behind this capability:
 
 - `InspectSequenceContextView`
+- `ExportSequenceContextBundle`
 - `RenderSequenceSvg`
 - `SetLinearViewport`
 - `SetDisplayVisibility`
@@ -180,6 +181,15 @@ Expected outputs:
 - one compact textual/JSON context summary for chat-first replies
   - when the route is `InspectSequenceContextView`, the wrapper now exposes it
     via `result.json.stdout_json` plus `result.json.chat_summary_lines[]`
+- one deterministic export directory when the route is
+  `ExportSequenceContextBundle`
+  - `context.svg`
+  - `context_summary.json`
+  - optional `context_summary.txt`
+  - optional `context_features.bed`
+  - `bundle.json`
+  - when the bundle embeds the shared `sequence_context_view`, the wrapper also
+    surfaces its `summary_lines[]` through `result.json.chat_summary_lines[]`
 - one SVG map
 - one BED/tabular coordinate export
 - one reproducibility bundle from the ClawBio wrapper
@@ -418,6 +428,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json \
   --output /tmp/gentle_clawbio_fetch_rs9923231
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_export_sequence_context_bundle_rs9923231_vkorc1.json \
+  --output /tmp/gentle_clawbio_rs9923231_context_bundle
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json \
   --output /tmp/gentle_clawbio_rs9923231_context_svg

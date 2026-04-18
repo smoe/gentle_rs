@@ -447,6 +447,7 @@ const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
 const SEQUENCE_CONTEXT_VIEW_SCHEMA: &str = "gentle.sequence_context_view.v1";
+const SEQUENCE_CONTEXT_BUNDLE_SCHEMA: &str = "gentle.sequence_context_bundle.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
@@ -3618,6 +3619,26 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<usize>,
     },
+    ExportSequenceContextBundle {
+        seq_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<RenderSvgMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        viewport_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        viewport_end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        coordinate_mode: Option<FeatureBedCoordinateMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_feature_bed: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_text_summary: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_restriction_sites: Option<bool>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        restriction_enzymes: Vec<String>,
+        output_dir: String,
+    },
     ScoreCandidateSetExpression {
         set_name: String,
         metric: String,
@@ -4639,6 +4660,7 @@ impl GentleEngine {
                 "ExportGuideProtocolText".to_string(),
                 "ExportFeaturesBed".to_string(),
                 "InspectSequenceContextView".to_string(),
+                "ExportSequenceContextBundle".to_string(),
                 "ScoreCandidateSetExpression".to_string(),
                 "ScoreCandidateSetDistance".to_string(),
                 "FilterCandidateSet".to_string(),
@@ -6459,6 +6481,7 @@ impl GentleEngine {
                 | Operation::ExportProcessRunBundle { .. }
                 | Operation::ExportFeaturesBed { .. }
                 | Operation::InspectSequenceContextView { .. }
+                | Operation::ExportSequenceContextBundle { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
@@ -9768,6 +9791,274 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn write_pretty_json_file<T: Serialize>(
+        &self,
+        value: &T,
+        path: &str,
+        artifact_label: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(value).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize {artifact_label} for '{path}': {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write {artifact_label} to '{path}': {e}"),
+        })
+    }
+
+    fn write_text_file(
+        &self,
+        path: &str,
+        contents: &str,
+        artifact_label: &str,
+    ) -> Result<(), EngineError> {
+        std::fs::write(path, contents).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write {artifact_label} to '{path}': {e}"),
+        })
+    }
+
+    fn sequence_feature_bed_columns() -> Vec<String> {
+        [
+            "chrom",
+            "chrom_start_0based",
+            "chrom_end_0based_exclusive",
+            "name",
+            "score_0_to_1000",
+            "strand",
+            "kind",
+            "row_id",
+            "coordinate_source",
+            "qualifiers_json",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
+    fn empty_sequence_feature_bed_export_report(
+        seq_id: &str,
+        path: &str,
+        coordinate_mode: FeatureBedCoordinateMode,
+        include_restriction_sites: bool,
+        restriction_enzymes: Vec<String>,
+        query: SequenceFeatureQuery,
+    ) -> SequenceFeatureBedExportReport {
+        SequenceFeatureBedExportReport {
+            schema: FEATURE_BED_EXPORT_REPORT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            path: path.to_string(),
+            coordinate_mode: coordinate_mode.as_str().to_string(),
+            include_restriction_sites,
+            restriction_enzyme_filters: restriction_enzymes,
+            bed_columns: Self::sequence_feature_bed_columns(),
+            matched_sequence_feature_count: 0,
+            matched_restriction_site_count: 0,
+            matched_row_count: 0,
+            exportable_row_count: 0,
+            exported_row_count: 0,
+            offset: 0,
+            limit: query.limit,
+            local_coordinate_row_count: 0,
+            genomic_coordinate_row_count: 0,
+            skipped_missing_genomic_coordinates: 0,
+            query,
+        }
+    }
+
+    pub fn export_sequence_context_bundle(
+        &self,
+        seq_id: &str,
+        mode: Option<RenderSvgMode>,
+        viewport_start_0based: Option<usize>,
+        viewport_end_0based_exclusive: Option<usize>,
+        coordinate_mode: Option<FeatureBedCoordinateMode>,
+        include_feature_bed: Option<bool>,
+        include_text_summary: Option<bool>,
+        include_restriction_sites: Option<bool>,
+        restriction_enzymes: &[String],
+        output_dir: &str,
+        op_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Result<SequenceContextBundleExport, EngineError> {
+        let output_dir = output_dir.trim();
+        if output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "export_sequence_context_bundle requires non-empty output_dir"
+                    .to_string(),
+            });
+        }
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "export_sequence_context_bundle requires non-empty seq_id".to_string(),
+            });
+        }
+
+        let mode = mode.unwrap_or(RenderSvgMode::Linear);
+        let coordinate_mode = coordinate_mode.unwrap_or(FeatureBedCoordinateMode::Auto);
+        let include_feature_bed = include_feature_bed.unwrap_or(true);
+        let include_text_summary = include_text_summary.unwrap_or(true);
+        let include_restriction_sites = include_restriction_sites.unwrap_or(false);
+        let restriction_enzymes = restriction_enzymes
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let mut sequence_context_view = self.inspect_sequence_context_view(
+            seq_id,
+            Some(mode.clone()),
+            viewport_start_0based,
+            viewport_end_0based_exclusive,
+            &[],
+            Some(coordinate_mode),
+            None,
+        )?;
+        sequence_context_view.op_id = op_id.map(str::to_string);
+        sequence_context_view.run_id = run_id.map(str::to_string);
+
+        let output_dir_path = PathBuf::from(output_dir);
+        std::fs::create_dir_all(&output_dir_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create sequence-context bundle directory '{}': {e}",
+                output_dir
+            ),
+        })?;
+
+        let svg_path = output_dir_path.join("context.svg");
+        let summary_json_path = output_dir_path.join("context_summary.json");
+        let summary_text_path = include_text_summary.then(|| output_dir_path.join("context_summary.txt"));
+        let feature_bed_path = include_feature_bed.then(|| output_dir_path.join("context_features.bed"));
+        let bundle_json_path = output_dir_path.join("bundle.json");
+
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let mut display = self.state.display.clone();
+        if matches!(mode, RenderSvgMode::Linear) && sequence_context_view.sequence_length_bp > 0 {
+            display.linear_view_start_bp = sequence_context_view.viewport_start_0based;
+            display.linear_view_span_bp = sequence_context_view.viewport_span_bp.max(1);
+        }
+        let svg = match mode {
+            RenderSvgMode::Linear => export_linear_svg(dna, &display),
+            RenderSvgMode::Circular => export_circular_svg(dna, &display),
+        };
+        self.write_text_file(
+            svg_path.to_string_lossy().as_ref(),
+            &svg,
+            "sequence-context SVG",
+        )?;
+        self.write_pretty_json_file(
+            &sequence_context_view,
+            summary_json_path.to_string_lossy().as_ref(),
+            "sequence-context summary JSON",
+        )?;
+        if let Some(summary_text_path) = summary_text_path.as_ref() {
+            let summary_text = if sequence_context_view.summary_lines.is_empty() {
+                String::new()
+            } else {
+                format!("{}\n", sequence_context_view.summary_lines.join("\n"))
+            };
+            self.write_text_file(
+                summary_text_path.to_string_lossy().as_ref(),
+                &summary_text,
+                "sequence-context summary text",
+            )?;
+        }
+
+        let feature_bed_export = if let Some(feature_bed_path) = feature_bed_path.as_ref() {
+            let visible_kinds = sequence_context_view
+                .visible_classes
+                .iter()
+                .flat_map(|class| Self::sequence_context_feature_kinds_for_class(&class.class_id))
+                .copied()
+                .map(str::to_string)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let query = SequenceFeatureQuery {
+                seq_id: seq_id.to_string(),
+                include_qualifiers: true,
+                kind_in: visible_kinds.clone(),
+                start_0based: Some(sequence_context_view.viewport_start_0based),
+                end_0based_exclusive: Some(sequence_context_view.viewport_end_0based_exclusive),
+                range_relation: SequenceFeatureRangeRelation::Overlap,
+                sort_by: SequenceFeatureSortBy::Start,
+                ..SequenceFeatureQuery::default()
+            };
+            if visible_kinds.is_empty() && !include_restriction_sites {
+                File::create(feature_bed_path).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not create empty sequence-context BED '{}': {e}",
+                        feature_bed_path.display()
+                    ),
+                })?;
+                Some(Self::empty_sequence_feature_bed_export_report(
+                    seq_id,
+                    feature_bed_path.to_string_lossy().as_ref(),
+                    coordinate_mode,
+                    include_restriction_sites,
+                    restriction_enzymes.clone(),
+                    query,
+                ))
+            } else {
+                Some(self.export_sequence_features_bed(
+                    query,
+                    feature_bed_path.to_string_lossy().as_ref(),
+                    coordinate_mode,
+                    include_restriction_sites,
+                    &restriction_enzymes,
+                )?)
+            }
+        } else {
+            None
+        };
+
+        let bundle = SequenceContextBundleExport {
+            schema: SEQUENCE_CONTEXT_BUNDLE_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: op_id.map(str::to_string),
+            run_id: run_id.map(str::to_string),
+            output_dir: output_dir.to_string(),
+            svg_path: svg_path.to_string_lossy().into_owned(),
+            summary_json_path: summary_json_path.to_string_lossy().into_owned(),
+            summary_text_path: summary_text_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
+            feature_bed_path: feature_bed_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
+            bundle_json_path: bundle_json_path.to_string_lossy().into_owned(),
+            include_text_summary,
+            include_feature_bed,
+            include_restriction_sites,
+            restriction_enzymes,
+            sequence_context_view,
+            feature_bed_export,
+        };
+        self.write_pretty_json_file(
+            &bundle,
+            bundle_json_path.to_string_lossy().as_ref(),
+            "sequence-context bundle manifest",
+        )?;
+        Ok(bundle)
+    }
+
     fn tfbs_summary_group_name(feature: &gb_io::seq::Feature, feature_id: usize) -> String {
         Self::first_nonempty_feature_qualifier(
             feature,
@@ -10048,24 +10339,6 @@ impl GentleEngine {
         include_restriction_sites: bool,
         restriction_enzymes: &[String],
     ) -> Result<SequenceFeatureBedExportReport, EngineError> {
-        fn bed_columns() -> Vec<String> {
-            [
-                "chrom",
-                "chrom_start_0based",
-                "chrom_end_0based_exclusive",
-                "name",
-                "score_0_to_1000",
-                "strand",
-                "kind",
-                "row_id",
-                "coordinate_source",
-                "qualifiers_json",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
-        }
-
         fn bed_safe_field(raw: &str) -> String {
             let sanitized = raw.replace(['\t', '\n', '\r'], " ");
             let trimmed = sanitized.trim();
@@ -10678,7 +10951,7 @@ impl GentleEngine {
             coordinate_mode: coordinate_mode.as_str().to_string(),
             include_restriction_sites,
             restriction_enzyme_filters: normalized_restriction_filters,
-            bed_columns: bed_columns(),
+            bed_columns: Self::sequence_feature_bed_columns(),
             matched_sequence_feature_count,
             matched_restriction_site_count,
             matched_row_count,

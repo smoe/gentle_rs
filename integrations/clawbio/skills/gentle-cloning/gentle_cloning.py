@@ -541,16 +541,33 @@ def _parse_stdout_json(stdout: str) -> Any | None:
         return None
 
 
-def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
-    if not isinstance(stdout_json, dict):
+def _summary_lines_from_sequence_context_view(candidate: Any) -> list[str] | None:
+    if not isinstance(candidate, dict):
         return None
-    if stdout_json.get("schema") != "gentle.sequence_context_view.v1":
+    if candidate.get("schema") != "gentle.sequence_context_view.v1":
         return None
-    raw_lines = stdout_json.get("summary_lines")
+    raw_lines = candidate.get("summary_lines")
     if not isinstance(raw_lines, list):
         return None
     lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
     return lines or None
+
+
+def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+    for candidate in (
+        stdout_json,
+        stdout_json.get("sequence_context_view"),
+        stdout_json.get("sequence_context_bundle"),
+        stdout_json.get("sequence_context_bundle", {}).get("sequence_context_view")
+        if isinstance(stdout_json.get("sequence_context_bundle"), dict)
+        else None,
+    ):
+        lines = _summary_lines_from_sequence_context_view(candidate)
+        if lines:
+            return lines
+    return None
 
 
 def _write_report(
