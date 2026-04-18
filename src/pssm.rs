@@ -1,4 +1,23 @@
-//! Position-specific scoring matrix (motif) primitives.
+//! Position-specific scoring matrix primitives for motif statistics.
+//!
+//! This module is the older low-level motif-math layer in GENtle.
+//! It currently provides:
+//! - parsing of simple 4-column PSSM/JASPAR-like text
+//! - optional JASPAR ELIXIR fetch for one matrix id
+//! - normalization and simple log-odds preparation
+//! - direct sequence scanning against one prepared matrix
+//!
+//! In the current product architecture, this module sits below the more
+//! adapter-facing JASPAR/TFBS flows:
+//! - `tf_motifs` owns the active local TF motif registry
+//! - `SummarizeJasparEntries` owns deterministic entry-level motif statistics
+//! - `SummarizeTfbsScoreTracks` / `RenderTfbsScoreTracksSvg` own shared
+//!   score-track reporting and rendering contracts
+//!
+//! ATtRACT splice-aware evidence is intentionally separate at the contract
+//! level. If ATtRACT later gains PWM/PSSM-backed scoring, that work should
+//! reuse shared motif math without collapsing splice-aware RBP evidence into
+//! the generic TFBS score-track contracts.
 
 use anyhow::{Result, anyhow};
 use serde_json::Value;
@@ -11,6 +30,10 @@ use std::num::ParseFloatError;
 // Should consider falling back on https://docs.rs/bio/latest/src/bio/pattern_matching/pssm/mod.rs.html
 
 #[derive(Debug, Clone, Default)]
+/// One position-specific scoring matrix together with its preparation state.
+///
+/// `matrix` is stored row-major by motif position, with one score/count for
+/// `A/C/G/T` in that order.
 pub struct PSSM {
     accession: String,
     description: String,
@@ -20,6 +43,7 @@ pub struct PSSM {
 }
 
 impl PSSM {
+    /// Creates a new matrix without normalization or log-odds preparation.
     pub fn new(accession: String, description: String, matrix: Vec<Vec<f64>>) -> Self {
         PSSM {
             accession,
@@ -29,15 +53,19 @@ impl PSSM {
         }
     }
 
+    /// Returns the stable accession / matrix id for this motif.
     pub fn accession(&self) -> &str {
         &self.accession
     }
 
+    /// Returns the free-form description/header text for this motif.
     pub fn description(&self) -> &str {
         &self.description
     }
 
-    // Method to normalize the PSSM by its colsums
+    /// Normalizes each nucleotide column by its total count.
+    ///
+    /// This is idempotent and only applies once.
     pub fn normalize(&mut self) {
         if self.is_normalized {
             return;
@@ -62,7 +90,10 @@ impl PSSM {
         }
     }
 
-    // Put Log Odds against background of 0.25
+    /// Converts non-zero entries into log-odds scores against a flat 0.25
+    /// background after normalization-style preparation by the caller.
+    ///
+    /// Zero entries become negative infinity.
     pub fn prepare_log_odds_to_background(&mut self) {
         if self.log_odds_prepared {
             return;
@@ -79,6 +110,11 @@ impl PSSM {
         }
     }
 
+    /// Parses one simple 4-column PSSM text file.
+    ///
+    /// Expected format:
+    /// - first line starts with `>`
+    /// - remaining lines contain exactly four numeric columns
     pub fn from_pssm_file(filename: &str) -> Result<Self> {
         let file = File::open(filename)?;
         let reader = io::BufReader::new(file);
@@ -115,6 +151,8 @@ impl PSSM {
         })
     }
 
+    /// Fetches one JASPAR matrix through the ELIXIR API and parses the
+    /// returned JASPAR text into one or more `PSSM`s.
     pub fn from_elixir_api(id: &str) -> Result<HashMap<String, PSSM>> {
         let url = format!("https://jaspar.elixir.no/api/v1/matrix/{id}/?format=jaspar");
         let text = std::panic::catch_unwind(|| -> std::result::Result<String, reqwest::Error> {
@@ -137,7 +175,7 @@ impl PSSM {
         Ok(pssms)
     }
 
-    // Function to parse the JASPAR file and return a HashMap of PSSMs
+    /// Parses one JASPAR text file into a map keyed by accession.
     pub fn from_jaspar_file(filename: &str) -> Result<HashMap<String, PSSM>> {
         let file = File::open(filename)?;
         let reader = io::BufReader::new(file);
@@ -151,6 +189,7 @@ impl PSSM {
         Ok(pssms)
     }
 
+    /// Parses a JSON motif snapshot containing per-base PFM rows into `PSSM`s.
     pub fn from_json_file(filename: &str) -> Result<HashMap<String, PSSM>> {
         let file = File::open(filename)?;
         let reader = io::BufReader::new(file);
@@ -196,6 +235,8 @@ impl PSSM {
         Ok(pssms)
     }
 
+    /// Scans one DNA string and returns `(start_0based, score)` hits that meet
+    /// or exceed `threshold`.
     pub fn scan_sequence(&self, dna_sequence: &str, threshold: f64) -> Vec<(usize, f64)> {
         let window_size = self.matrix.len();
         let mut hits = Vec::new();

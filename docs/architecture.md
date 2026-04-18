@@ -1500,6 +1500,31 @@ TFBS expert semantics:
 - Instruction text is part of the shared model so GUI and exported SVG can show
   consistent explanatory wording.
 
+Motif-layering rule:
+
+- GENtle now has two related but distinct motif-interpretation families:
+  - generic DNA motif statistics and score tracks (currently JASPAR/TFBS/PSSM)
+  - splice-aware RNA-binding motif interpretation (currently ATtRACT/RBP)
+- Generic motif statistics are sequence-window centric:
+  - matrix normalization
+  - log-odds or related score transforms
+  - per-position/per-window score summaries
+  - score-oriented exports/figures over a chosen DNA span
+- Splice-aware RBP interpretation is context centric:
+  - transcript-strand filtering
+  - exon / donor flank / acceptor flank / intron classification
+  - explicit organism fallback behavior
+  - provenance tied to one local motif resource snapshot
+- Shared math should be reused where biologically appropriate, but the product
+  contracts must stay distinct:
+  - TFBS/PSSM score-track contracts must not silently become splice-evidence
+    contracts
+  - ATtRACT splice-evidence payloads must not silently collapse into generic
+    promoter/TF score tracks
+- If ATtRACT gains PWM/PSSM-backed scoring, that work should reuse one shared
+  motif-statistics helper layer under the engine while preserving the
+  higher-level RBP/splicing payload semantics.
+
 Restriction-site expert semantics:
 
 - Render a compact top/bottom strand view for the recognized site context.

@@ -145,6 +145,22 @@ Grouping policy:
 GENtle also exposes a portable continuous TFBS/PSSM score-track contract for one
 selected sequence span.
 
+Boundary note:
+
+- This is GENtle's generic DNA motif-statistics surface today.
+- It is the right contract for:
+  - local JASPAR/TF motif scoring
+  - score-track figures and JSON reports over one DNA span
+  - deterministic motif benchmark/report flows such as
+    `SummarizeJasparEntries`
+- It is intentionally distinct from splice-aware ATtRACT/RBP evidence:
+  - TFBS/PSSM score tracks describe score landscapes over one selected DNA span
+  - ATtRACT evidence describes transcript-aware splice-region hits with exon /
+    donor flank / acceptor flank / intron classification
+- If future ATtRACT PWM scoring reuses PSSM-like math, that reuse should live
+  in a lower shared helper layer while keeping the adapter-facing contracts
+  distinct.
+
 Current shared-shell route:
 
 ```bash
@@ -4321,6 +4337,12 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       recorded in the payload
     - PWM matrices are not yet scored directly; normalized consensus/IUPAC
       motifs are the deterministic scan path in this first milestone
+  - contract boundary:
+    - this is an RBP/splicing interpretation payload, not the generic
+      TFBS/PSSM score-track payload
+    - future PWM/PSSM-backed ATtRACT scoring should reuse shared motif math
+      under the engine without collapsing these higher-level payloads into one
+      another
 - Pairwise alignment operation:
   - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
   - `mode`: `global | local` (default `global`)

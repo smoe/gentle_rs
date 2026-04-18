@@ -604,6 +604,13 @@ order. Durable architecture constraints and decisions remain in
   score distributions for selected or all local JASPAR entries, so agents and
   command-line users can inspect motif behavior without leaving GENtle’s own
   scoring path.
+- Motif-layer boundary is now explicit:
+  - JASPAR/TFBS/PSSM currently owns the generic DNA motif-statistics layer
+    (entry summaries, score tracks, promoter/variant neighborhood figures)
+  - ATtRACT currently owns splice-aware RBP interpretation over transcript /
+    exon / intron geometry
+  - future ATtRACT PWM support should reuse shared motif-statistics helpers
+    under the engine without collapsing those higher-level payloads into one
 - Next operational step for that path:
   add a routine registry-wide snapshot/benchmark over all local JASPAR entries
   (default `10000 bp` random background, deterministic seed, cached/exportable
@@ -650,6 +657,9 @@ order. Durable architecture constraints and decisions remain in
       - region classes:
         `exon_body`, `donor_flank`, `acceptor_flank`, `intron_body`
     - immediate follow-up gaps on this track:
+      - reuse the shared motif/PSSM math layer once PWM-backed ATtRACT scoring
+        is implemented, instead of creating a second unrelated motif-statistics
+        stack
       - add direct PWM scoring when ATtRACT PWM payloads are available
       - consider lightweight lane overlays/density badges once payload counts
         and CPU behavior are well characterized
