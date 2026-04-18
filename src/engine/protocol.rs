@@ -2729,6 +2729,10 @@ pub struct QpcrDesignReport {
     pub max_assays: usize,
     pub assay_count: usize,
     #[serde(default)]
+    pub best_assay_probe_placement: String,
+    #[serde(default)]
+    pub best_assay_summary: String,
+    #[serde(default)]
     pub assays: Vec<QpcrAssayRecord>,
     #[serde(default)]
     pub rejection_summary: QpcrDesignRejectionSummary,
@@ -2749,6 +2753,10 @@ pub struct QpcrDesignReportSummary {
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub assay_count: usize,
+    #[serde(default)]
+    pub best_assay_probe_placement: String,
+    #[serde(default)]
+    pub best_assay_summary: String,
     #[serde(default)]
     pub backend_used: String,
 }

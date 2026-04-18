@@ -2792,11 +2792,17 @@ qPCR form:
     - the same built-in protocol id remains usable from shared shell / direct
       CLI as `protocol-cartoon render-svg pcr.assay.qpcr OUTPUT.svg`
   - qPCR mode now also shows:
-    - a saved-report assay preview with forward / reverse / probe geometry for
-      the top ranked assays
-    - a live qPCR cartoon-geometry summary derived from the selected saved
-      report when available, or from the current ROI + constraint defaults
-      otherwise
+    - a selectable saved-report assay preview with forward / reverse / probe
+      geometry for the top ranked assays
+    - the currently selected saved assay now drives the live qPCR
+      cartoon-geometry summary instead of always using assay rank `#1`
+    - when a matching splicing expert view is active on the same template, the
+      assay preview also annotates qPCR candidates as single-exon,
+      junction-spanning, or junction-crossing and explains that context in
+      plain language
+    - the live qPCR cartoon-geometry summary is still derived from the selected
+      saved report when available, or from the current ROI + constraint
+      defaults otherwise
 
 Buttons:
 

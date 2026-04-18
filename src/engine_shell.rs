@@ -18848,6 +18848,7 @@ fn execute_primers_command(
         source: serde_json::Value,
         roi_start_0based: usize,
         roi_end_0based_exclusive: usize,
+        rationale: serde_json::Value,
     ) -> ShellRunResult {
         let operation =
             build_seeded_qpcr_operation(template, roi_start_0based, roi_end_0based_exclusive);
@@ -18859,6 +18860,7 @@ fn execute_primers_command(
                 "source": source,
                 "roi_start_0based": roi_start_0based,
                 "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                "rationale": rationale,
                 "operation": operation,
                 "protocol_cartoon": {
                     "protocol": "pcr.assay.qpcr",
@@ -18976,6 +18978,20 @@ fn execute_primers_command(
                 }),
                 roi_start_0based,
                 roi_end_0based_exclusive,
+                json!({
+                    "summary": "Feature span reused as qPCR ROI seed so the assay request starts from one explicit annotated interval.",
+                    "why_this_roi": format!(
+                        "Feature n-{} on '{}' was resolved to ROI {}..{} and forwarded directly into DesignQpcrAssays.",
+                        feature_id, seq_id, roi_start_0based, roi_end_0based_exclusive
+                    ),
+                    "recommended_defaults": {
+                        "min_amplicon_bp": 120,
+                        "max_amplicon_bp": 1200,
+                        "max_tm_delta_c": 2.0,
+                        "max_probe_tm_delta_c": 10.0,
+                        "max_assays": 200
+                    }
+                }),
             ))
         }
         ShellCommand::PrimersSeedQpcrFromSplicing { seq_id, feature_id } => {
@@ -19018,6 +19034,26 @@ fn execute_primers_command(
                 }),
                 roi_start_0based,
                 roi_end_0based_exclusive,
+                json!({
+                    "summary": "Splicing-group region reused as qPCR ROI seed so assay design stays anchored to the saved transcript-evidence window.",
+                    "why_this_roi": format!(
+                        "Splicing group '{}' for feature n-{} on '{}' contributed ROI {}..{} with transcript_count={} and unique_exon_count={}.",
+                        splicing.group_label,
+                        feature_id,
+                        seq_id,
+                        roi_start_0based,
+                        roi_end_0based_exclusive,
+                        splicing.transcript_count,
+                        splicing.unique_exon_count
+                    ),
+                    "recommended_defaults": {
+                        "min_amplicon_bp": 120,
+                        "max_amplicon_bp": 1200,
+                        "max_tm_delta_c": 2.0,
+                        "max_probe_tm_delta_c": 10.0,
+                        "max_assays": 200
+                    }
+                }),
             ))
         }
         ShellCommand::PrimersDesign {

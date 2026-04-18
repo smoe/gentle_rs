@@ -2303,6 +2303,8 @@ fn test_design_qpcr_assays_internal_reports_pair_evaluation_budget_truncation() 
         .get_qpcr_design_report("budget_capped_qpcr")
         .expect("qPCR report by id");
     assert_eq!(report.backend.used, "internal");
+    assert!(!report.best_assay_probe_placement.trim().is_empty());
+    assert!(report.best_assay_summary.contains("assay #"));
     assert!(
         report
             .rejection_summary
