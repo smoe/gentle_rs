@@ -11087,7 +11087,7 @@ struct CachedSplicingAttractEvidence {
     seq_id: String,
     target_feature_id: usize,
     settings: AttractSplicingEvidenceSettings,
-    active_item_count: usize,
+    active_fingerprint: Option<String>,
     view: Arc<AttractSplicingEvidenceView>,
 }
 
@@ -23360,12 +23360,12 @@ impl MainAreaDna {
         view: &SplicingExpertView,
     ) -> Result<Arc<AttractSplicingEvidenceView>, String> {
         let settings = self.current_splicing_attract_settings_for_view(view);
-        let active_item_count = crate::attract_motifs::list_motif_summaries().len();
+        let active_fingerprint = crate::attract_motifs::active_snapshot_fingerprint();
         if let Some(cached) = self.cached_splicing_attract_evidence.as_ref()
             && cached.seq_id == view.seq_id
             && cached.target_feature_id == view.target_feature_id
             && cached.settings == settings
-            && cached.active_item_count == active_item_count
+            && cached.active_fingerprint == active_fingerprint
         {
             return Ok(cached.view.clone());
         }
@@ -23389,7 +23389,7 @@ impl MainAreaDna {
             seq_id: view.seq_id.clone(),
             target_feature_id: view.target_feature_id,
             settings,
-            active_item_count,
+            active_fingerprint,
             view: cached.clone(),
         });
         Ok(cached)
@@ -23451,9 +23451,17 @@ impl MainAreaDna {
                     }
                 };
                 ui.small(format!(
-                    "Snapshot={} motifs={} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={}",
+                    "Snapshot={} motifs={}{} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={}",
                     evidence.active_resource_source,
                     evidence.active_resource_item_count,
+                    evidence
+                        .active_resource_fingerprint
+                        .as_deref()
+                        .map(|fingerprint| format!(
+                            " | fp={}",
+                            fingerprint.chars().take(17).collect::<String>()
+                        ))
+                        .unwrap_or_default(),
                     evidence.scanned_transcript_count,
                     evidence.scanned_window_count,
                     evidence.hit_count,

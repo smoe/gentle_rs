@@ -17,8 +17,7 @@ use crate::engine::{
     ContainerKind, EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource,
     ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
     RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
-    SequenceScanTarget,
+    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, SequenceScanTarget,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -11597,6 +11596,12 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
     assert_eq!(
         out.output["schema"].as_str(),
         Some("gentle.attract_splicing_evidence.v1")
+    );
+    assert!(
+        out.output["active_resource_fingerprint"]
+            .as_str()
+            .map(|value| value.starts_with("sha1:"))
+            .unwrap_or(false)
     );
     assert_eq!(out.output["hit_count"].as_u64(), Some(2));
     assert_eq!(

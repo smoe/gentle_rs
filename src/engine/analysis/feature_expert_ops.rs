@@ -7670,6 +7670,7 @@ impl GentleEngine {
             hit_count: hit_rows.len(),
             active_resource_source: resource_status.attract.active_source,
             active_resource_item_count: resource_status.attract.active_item_count,
+            active_resource_fingerprint: resource_status.attract.active_fingerprint,
             summary_rows,
             hit_rows,
             warnings,

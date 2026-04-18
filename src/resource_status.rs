@@ -6,7 +6,9 @@
 
 use crate::{
     attract_motifs::{
-        DEFAULT_ATTRACT_RESOURCE_PATH, list_motif_summaries as list_attract_motif_summaries,
+        DEFAULT_ATTRACT_RESOURCE_PATH,
+        active_snapshot_fingerprint as active_attract_snapshot_fingerprint,
+        list_motif_summaries as list_attract_motif_summaries, snapshot_fingerprint_from_text,
     },
     enzymes::load_restriction_enzymes_from_json_text,
     tf_motifs::list_motif_summaries,
@@ -73,9 +75,11 @@ pub struct AttractResourceStatus {
     pub runtime_exists: bool,
     pub runtime_valid: bool,
     pub runtime_item_count: Option<usize>,
+    pub runtime_fingerprint: Option<String>,
     pub runtime_error: Option<String>,
     pub active_source: String,
     pub active_item_count: usize,
+    pub active_fingerprint: Option<String>,
     pub notes: Vec<String>,
 }
 
@@ -217,23 +221,28 @@ fn count_attract_snapshot_items(text: &str) -> Result<usize, String> {
 
 fn attract_status() -> AttractResourceStatus {
     let runtime_exists = std::path::Path::new(DEFAULT_ATTRACT_RESOURCE_PATH).exists();
-    let (runtime_valid, runtime_item_count, runtime_error) = if runtime_exists {
+    let (runtime_valid, runtime_item_count, runtime_fingerprint, runtime_error) = if runtime_exists
+    {
         match fs::read_to_string(DEFAULT_ATTRACT_RESOURCE_PATH)
             .map_err(|e| format!("Could not read runtime ATtRACT snapshot: {e}"))
-            .and_then(|text| count_attract_snapshot_items(&text))
-        {
-            Ok(count) if count > 0 => (true, Some(count), None),
-            Ok(count) => (
+            .and_then(|text| {
+                let count = count_attract_snapshot_items(&text)?;
+                Ok((count, snapshot_fingerprint_from_text(&text)))
+            }) {
+            Ok((count, fingerprint)) if count > 0 => (true, Some(count), fingerprint, None),
+            Ok((count, fingerprint)) => (
                 false,
                 Some(count),
+                fingerprint,
                 Some("Runtime ATtRACT snapshot is empty".to_string()),
             ),
-            Err(error) => (false, None, Some(error)),
+            Err(error) => (false, None, None, Some(error)),
         }
     } else {
-        (false, None, None)
+        (false, None, None, None)
     };
     let active_item_count = list_attract_motif_summaries().len();
+    let active_fingerprint = active_attract_snapshot_fingerprint();
     let (support_status, active_source, notes) = if runtime_valid {
         (
             "runtime_snapshot".to_string(),
@@ -279,9 +288,11 @@ fn attract_status() -> AttractResourceStatus {
         runtime_exists,
         runtime_valid,
         runtime_item_count,
+        runtime_fingerprint,
         runtime_error,
         active_source,
         active_item_count,
+        active_fingerprint,
         notes,
     }
 }

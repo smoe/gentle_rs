@@ -175,6 +175,7 @@ fn load_synthetic_attract_snapshot(records: Vec<AttractMotifRecord>) -> tempfile
         schema: ATTRACT_MOTIF_SNAPSHOT_SCHEMA.to_string(),
         source: "synthetic".to_string(),
         fetched_at_unix_ms: 0,
+        snapshot_fingerprint: None,
         motif_count: records.len(),
         archive_members: vec!["ATtRACT_db.txt".to_string()],
         warnings: vec![],
@@ -23456,6 +23457,12 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
         view.species_match_mode,
         AttractSpeciesMatchMode::ExactOrganism
     );
+    assert!(
+        view.active_resource_fingerprint
+            .as_deref()
+            .map(|value| value.starts_with("sha1:"))
+            .unwrap_or(false)
+    );
     assert_eq!(view.summary_rows.len(), 2);
     assert_eq!(view.hit_count, 2);
     assert!(
@@ -23532,6 +23539,12 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
     assert_eq!(
         view.species_match_mode,
         AttractSpeciesMatchMode::FallbackAllCompatible
+    );
+    assert!(
+        view.active_resource_fingerprint
+            .as_deref()
+            .map(|value| value.starts_with("sha1:"))
+            .unwrap_or(false)
     );
     assert_eq!(view.hit_count, 1);
     assert!(

@@ -653,8 +653,9 @@ order. Durable architecture constraints and decisions remain in
       - add direct PWM scoring when ATtRACT PWM payloads are available
       - consider lightweight lane overlays/density badges once payload counts
         and CPU behavior are well characterized
-      - strengthen GUI cache invalidation beyond motif-count changes so a
-        same-count snapshot swap cannot leave stale evidence cached
+      - keep tightening provenance/export surfaces so the ATtRACT snapshot
+        fingerprint remains visible anywhere the evidence can be reviewed or
+        exported
 - Transcript derivation baseline is now additive and parity-wired:
   - engine operation `DeriveTranscriptSequences` derives cDNA/transcript
     sequences from `mRNA`/`transcript` features

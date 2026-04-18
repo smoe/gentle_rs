@@ -1277,6 +1277,8 @@ pub struct AttractSplicingEvidenceView {
     pub hit_count: usize,
     pub active_resource_source: String,
     pub active_resource_item_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_resource_fingerprint: Option<String>,
     #[serde(default)]
     pub summary_rows: Vec<AttractSplicingEvidenceSummaryRow>,
     #[serde(default)]

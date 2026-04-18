@@ -7,6 +7,7 @@
 //! before full PWM scoring is implemented.
 
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 use std::{
     fs,
     sync::{LazyLock, RwLock},
@@ -55,6 +56,8 @@ pub struct AttractMotifSnapshot {
     pub source: String,
     pub fetched_at_unix_ms: u128,
     pub motif_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_fingerprint: Option<String>,
     #[serde(default)]
     pub archive_members: Vec<String>,
     #[serde(default)]
@@ -78,16 +81,22 @@ pub struct AttractMotifSummary {
 #[derive(Debug, Clone, Default)]
 pub struct AttractMotifDb {
     snapshot: Option<AttractMotifSnapshot>,
+    snapshot_fingerprint: Option<String>,
 }
 
 impl AttractMotifDb {
     fn from_json(text: &str) -> Option<Self> {
-        let snapshot = serde_json::from_str::<AttractMotifSnapshot>(text).ok()?;
+        let mut snapshot = serde_json::from_str::<AttractMotifSnapshot>(text).ok()?;
         if !snapshot.schema.starts_with("gentle.attract_motifs.v") {
             return None;
         }
+        let fingerprint = snapshot_fingerprint_from_text(text);
+        if snapshot.snapshot_fingerprint.is_none() {
+            snapshot.snapshot_fingerprint = fingerprint.clone();
+        }
         Some(Self {
             snapshot: Some(snapshot),
+            snapshot_fingerprint: fingerprint,
         })
     }
 
@@ -107,6 +116,10 @@ impl AttractMotifDb {
             .as_ref()
             .map(|snapshot| snapshot.motifs.clone())
             .unwrap_or_default()
+    }
+
+    fn active_snapshot_fingerprint(&self) -> Option<String> {
+        self.snapshot_fingerprint.clone()
     }
 
     fn list_summaries(&self) -> Vec<AttractMotifSummary> {
@@ -175,4 +188,21 @@ pub fn all_motifs() -> Vec<AttractMotifRecord> {
         .ok()
         .map(|db| db.all_motifs())
         .unwrap_or_default()
+}
+
+pub fn active_snapshot_fingerprint() -> Option<String> {
+    ATTRACT_MOTIFS
+        .read()
+        .ok()
+        .and_then(|db| db.active_snapshot_fingerprint())
+}
+
+pub fn snapshot_fingerprint_from_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut hasher = Sha1::new();
+    hasher.update(trimmed.as_bytes());
+    Some(format!("sha1:{:x}", hasher.finalize()))
 }

@@ -582,6 +582,8 @@ Feature tree grouping:
   - provenance strip reports:
     - active ATtRACT source (`runtime`, `session_override`, ...)
     - active motif count
+    - active snapshot fingerprint (shortened in the panel, full value retained
+      in the shared payload)
     - scanned transcript/window counts
     - total hit count and unique RBP count
     - resolved organism and species-match mode

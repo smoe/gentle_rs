@@ -2382,6 +2382,10 @@ Resource sync commands:
       active
     - `session_override` = the current session has loaded an ATtRACT snapshot
       from a non-default path
+  - ATtRACT status now also exposes deterministic provenance for the active and
+    runtime snapshots:
+    - `runtime_fingerprint`
+    - `active_fingerprint`
   - Includes the current ATtRACT homepage plus published ZIP download URL:
     `https://attract.cnic.es/attract/static/ATtRACT.zip`.
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
@@ -2423,6 +2427,9 @@ Resource sync commands:
       `acceptor_flank`, or `intron_body`
   - Returns grouped RBP summary rows plus detailed hit rows from the same
     payload the GUI uses.
+  - Payload provenance now also includes `active_resource_fingerprint` so CLI,
+    GUI, and exported reports can tie the evidence back to the exact normalized
+    ATtRACT snapshot content rather than only a motif count.
 
 Agent bridge commands:
 
