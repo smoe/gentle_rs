@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-17
+Last updated: 2026-04-18
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -4468,6 +4468,16 @@ Post-baseline follow-ups:
     separate blob. This is also the intended future landing point for
     similarity-analysis summaries so long genomic views stay calm as new
     derived annotation families arrive.
+  - Done (2026-04-18, similarity/repeat/mobile-element baseline): the shared
+    construct-reasoning graph now emits generated `repeat_region` annotations
+    for low-complexity windows, homopolymer/tandem-repeat segments, and
+    direct/inverted repeat clusters, plus soft-hypothesis
+    `mobile_element` annotations for cautious `Alu-like SINE candidate`
+    regions. The same graph now also derives `sequence_complexity_context`,
+    `repeat_architecture_context`, `mobile_element_context`, and
+    `similarity_operational_risk_context` facts/decisions so PCR/slippage,
+    mapping ambiguity, inversion risk, and cloning-instability review can stay
+    inspectable without flooding the sequence window with raw similarity hits.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

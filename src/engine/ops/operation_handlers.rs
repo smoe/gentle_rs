@@ -12254,8 +12254,16 @@ impl GentleEngine {
                     "Sequence-context bundle for '{}' wrote SVG '{}'{}{} into '{}'",
                     bundle.seq_id,
                     bundle.svg_path,
-                    bundle.summary_text_path.as_ref().map(|path| format!(", summary text '{}'", path)).unwrap_or_default(),
-                    bundle.feature_bed_path.as_ref().map(|path| format!(", BED '{}'", path)).unwrap_or_default(),
+                    bundle
+                        .summary_text_path
+                        .as_ref()
+                        .map(|path| format!(", summary text '{}'", path))
+                        .unwrap_or_default(),
+                    bundle
+                        .feature_bed_path
+                        .as_ref()
+                        .map(|path| format!(", BED '{}'", path))
+                        .unwrap_or_default(),
                     bundle.output_dir
                 ));
                 result.sequence_context_bundle = Some(bundle);

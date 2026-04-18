@@ -25280,12 +25280,23 @@ fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
     assert_eq!(bundle.schema, "gentle.sequence_context_bundle.v1");
     assert_eq!(bundle.seq_id, "tp73_ctx");
     assert_eq!(bundle.op_id.as_deref(), Some(result.op_id.as_str()));
-    assert_eq!(bundle.sequence_context_view.op_id.as_deref(), Some(result.op_id.as_str()));
+    assert_eq!(
+        bundle.sequence_context_view.op_id.as_deref(),
+        Some(result.op_id.as_str())
+    );
     assert!(bundle.include_feature_bed);
     assert!(bundle.include_text_summary);
     assert!(Path::new(&bundle.svg_path).exists());
     assert!(Path::new(&bundle.summary_json_path).exists());
-    assert!(Path::new(bundle.summary_text_path.as_deref().expect("summary text path")).exists());
+    assert!(
+        Path::new(
+            bundle
+                .summary_text_path
+                .as_deref()
+                .expect("summary text path")
+        )
+        .exists()
+    );
     assert!(Path::new(bundle.feature_bed_path.as_deref().expect("bed path")).exists());
     assert!(Path::new(&bundle.bundle_json_path).exists());
     assert_eq!(bundle.best_first_artifact_id.as_deref(), Some("context_svg"));
@@ -25321,13 +25332,8 @@ fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
     .expect("read summary text");
     assert!(summary_text.contains("visible classes:"));
     assert!(summary_text.contains("top labels:"));
-    let bed = fs::read_to_string(
-        bundle
-            .feature_bed_path
-            .as_deref()
-            .expect("bed path"),
-    )
-    .expect("read bed");
+    let bed = fs::read_to_string(bundle.feature_bed_path.as_deref().expect("bed path"))
+        .expect("read bed");
     assert!(bed.contains("TP73"));
     assert!(bed.contains("rs-demo"));
     let bundle_json = fs::read_to_string(&bundle.bundle_json_path).expect("read bundle json");
@@ -26149,6 +26155,159 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
             .iter()
             .all(|row| row.role != ConstructRole::RestrictionSite)
     );
+}
+
+#[test]
+fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational_risk_context() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("repeat_similarity_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("repeat_similarity_demo", None, None)
+        .expect("build graph");
+
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::RepeatRegion && row.label == "Low-complexity region"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::RepeatRegion && row.label.starts_with("Homopolymer run")
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::RepeatRegion && row.label == "Direct repeat cluster"
+    }));
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::RepeatRegion && row.label == "Inverted repeat cluster"
+    }));
+
+    let complexity_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "sequence_complexity_context")
+        .expect("sequence complexity fact");
+    assert!(
+        complexity_fact
+            .value_json
+            .get("low_complexity_region_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(
+        complexity_fact
+            .value_json
+            .get("homopolymer_run_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+
+    let repeat_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "repeat_architecture_context")
+        .expect("repeat architecture fact");
+    assert!(
+        repeat_fact
+            .value_json
+            .get("direct_repeat_cluster_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(
+        repeat_fact
+            .value_json
+            .get("inverted_repeat_cluster_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+
+    let risk_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "similarity_operational_risk_context")
+        .expect("similarity operational risk fact");
+    assert!(
+        risk_fact
+            .value_json
+            .get("polymerase_slippage_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(
+        risk_fact
+            .value_json
+            .get("inversion_risk_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::RepeatRegion && row.source_kind == "generated_annotation"
+    }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
+    let monomer = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATG";
+    let sequence = format!(
+        "{}{}{}{}",
+        "ACGT".repeat(12),
+        monomer,
+        format!("AATAAAATACA{monomer}"),
+        "AAAAAAAAAAAAAAAA"
+    );
+    let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("alu_like_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("alu_like_demo", None, None)
+        .expect("build graph");
+
+    assert!(graph.evidence.iter().any(|row| {
+        row.role == ConstructRole::MobileElement
+            && row.label == "Alu-like SINE candidate"
+            && row.evidence_class == EvidenceClass::SoftHypothesis
+    }));
+    let mobile_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mobile_element_context")
+        .expect("mobile element fact");
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("alu_like_candidates_detected")
+    );
+    assert!(
+        mobile_fact
+            .value_json
+            .get("alu_like_candidate_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(graph.annotation_candidates.iter().any(|row| {
+        row.role == ConstructRole::MobileElement && row.source_kind == "generated_annotation"
+    }));
 }
 
 #[test]

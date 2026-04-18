@@ -3105,6 +3105,22 @@ Construct reasoning graph foundation (implemented first slice):
     - `routines list` / `routines compare` planning estimates and GUI Routine
       Assistant traces can therefore explain when adapter/linker capture or
       variant-derived assay context boosted one routine family over another
+  - sequence-complexity / similarity / mobile-element reasoning baseline:
+    - generated `repeat_region` spans for:
+      - low-complexity windows
+      - homopolymer / tandem-repeat segments
+      - direct-repeat clusters
+      - inverted-repeat clusters
+    - generated `mobile_element` spans for cautious `Alu-like SINE candidate`
+      calls
+    - fact/decision layer now includes:
+      - `sequence_complexity_context`
+      - `repeat_architecture_context`
+      - `mobile_element_context`
+      - `similarity_operational_risk_context`
+    - current intent is inspectable structural context and operational review,
+      not final repeat-family taxonomy; curated repeat catalogs can refine the
+      same graph later without changing the adapter contract shape
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - dbSNP / VCF-generated variant markers => `hard_fact`

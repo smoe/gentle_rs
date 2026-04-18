@@ -552,6 +552,8 @@ impl RenderDnaLinear {
             ConstructRole::HomologyArm | ConstructRole::FusionBoundary => {
                 Color32::from_rgb(124, 58, 237)
             }
+            ConstructRole::RepeatRegion => Color32::from_rgb(71, 85, 105),
+            ConstructRole::MobileElement => Color32::from_rgb(168, 85, 247),
             ConstructRole::RestrictionSite => Color32::from_rgb(185, 28, 28),
             ConstructRole::SpliceBoundary => Color32::from_rgb(202, 138, 4),
             ConstructRole::Tfbs => Color32::from_rgb(190, 24, 93),

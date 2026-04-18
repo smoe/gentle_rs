@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-13
+Last updated: 2026-04-18
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1064,6 +1064,10 @@ Sequence-linked construct reasoning graph direction:
     methylation-sensitive motifs, complementation genes carried on the
     construct, or repeat/self-similarity windows) should render as DNA-window
     overlays.
+  - repeat/self-similarity and future mobile-element/RepeatMasker-style
+    findings should enter the same engine-owned `annotation_candidates` /
+    `annotation_candidate_summaries` pathway rather than inventing a second
+    adapter-local overlay or raw glyph track for similarity analysis.
   - frontends must not fake non-sequence host facts as anonymous sequence spans
     just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque

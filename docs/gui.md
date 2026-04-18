@@ -1611,6 +1611,14 @@ Controls:
      - this summary layer is intended to be the future integration point for
        similarity-derived annotation summaries as well, so large genomic views
        do not regress into raw overlay floods
+   - Generated repeat/similarity annotations now also land here in the same
+     calmer style:
+     - low-complexity regions
+     - homopolymer / tandem-repeat segments
+     - direct-repeat and inverted-repeat clusters
+     - cautious `Alu-like SINE candidate` mobile-element calls
+     - operational-risk facts stay in the non-sequence inspector instead of
+       duplicating every underlying seed/hit on the map
   - Both the clicked-span detail view and the `Annotation candidates` section
     now expose shared-engine accept/reject/draft controls so reviewed
     automated-annotation candidates can be curated without inventing GUI-only

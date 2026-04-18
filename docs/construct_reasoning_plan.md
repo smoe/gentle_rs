@@ -716,6 +716,16 @@ Current landed slice:
 - this summary layer is the intended integration point for future
   similarity-analysis-driven annotation summaries so we do not create a second
   presentation-only collapse path later
+- generated repeat/similarity/mobile-element annotations now also use that same
+  path:
+  - low-complexity windows
+  - homopolymer / tandem-repeat segments
+  - direct-repeat and inverted-repeat clusters
+  - cautious Alu-like SINE candidates
+- the graph now derives explicit `sequence_complexity_context`,
+  `repeat_architecture_context`, `mobile_element_context`, and
+  `similarity_operational_risk_context` facts/decisions so low complexity is
+  inspectable by axis rather than collapsed into one opaque warning
 - the DNA window exposes the same curation in both the clicked-span detail
   view and the `Annotation candidates` inspector section
 - accepted or locked generated candidates can now be written back as ordinary

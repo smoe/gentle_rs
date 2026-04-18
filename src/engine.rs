@@ -468,6 +468,19 @@ const ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG: &str = "annotate_promoter_windows
 const CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_TAG: &str = "generated";
 const CONSTRUCT_REASONING_ANNOTATION_WRITEBACK_GENERATED_BY: &str =
     "ConstructReasoningWriteAnnotation";
+const LOW_COMPLEXITY_WINDOW_BP: usize = 96;
+const LOW_COMPLEXITY_STEP_BP: usize = 24;
+const LOW_COMPLEXITY_SCORE_THRESHOLD: f64 = 0.45;
+const LOW_COMPLEXITY_HOMOPOLYMER_THRESHOLD_BP: usize = 9;
+const HOMOPOLYMER_ANNOTATION_THRESHOLD_BP: usize = 10;
+const TANDEM_REPEAT_MIN_TOTAL_BP: usize = 18;
+const DIRECT_REPEAT_SEED_BP: usize = 12;
+const DIRECT_REPEAT_MAX_CLUSTER_GAP_BP: usize = 512;
+const INVERTED_REPEAT_SEED_BP: usize = 10;
+const INVERTED_REPEAT_MAX_SPAN_BP: usize = 256;
+const ALU_LIKE_MIN_BP: usize = 240;
+const ALU_LIKE_MAX_BP: usize = 340;
+const ALU_LIKE_POLYA_MIN_BP: usize = 12;
 
 fn default_tfbs_region_summary_min_focus_occurrences() -> usize {
     1
@@ -10068,8 +10081,7 @@ impl GentleEngine {
         if output_dir.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "export_sequence_context_bundle requires non-empty output_dir"
-                    .to_string(),
+                message: "export_sequence_context_bundle requires non-empty output_dir".to_string(),
             });
         }
         let seq_id = seq_id.trim();
@@ -10117,8 +10129,10 @@ impl GentleEngine {
 
         let svg_path = output_dir_path.join("context.svg");
         let summary_json_path = output_dir_path.join("context_summary.json");
-        let summary_text_path = include_text_summary.then(|| output_dir_path.join("context_summary.txt"));
-        let feature_bed_path = include_feature_bed.then(|| output_dir_path.join("context_features.bed"));
+        let summary_text_path =
+            include_text_summary.then(|| output_dir_path.join("context_summary.txt"));
+        let feature_bed_path =
+            include_feature_bed.then(|| output_dir_path.join("context_features.bed"));
         let bundle_json_path = output_dir_path.join("bundle.json");
 
         let dna = self
@@ -13622,6 +13636,8 @@ impl GentleEngine {
             ConstructRole::LocalizationSignal => "Localization signal",
             ConstructRole::HomologyArm => "Homology arm",
             ConstructRole::FusionBoundary => "Fusion boundary",
+            ConstructRole::RepeatRegion => "Repeat/similarity",
+            ConstructRole::MobileElement => "Mobile element",
             ConstructRole::RestrictionSite => "Restriction site",
             ConstructRole::SpliceBoundary => "Splice boundary",
             ConstructRole::Tfbs => "TFBS",
@@ -13694,6 +13710,12 @@ impl GentleEngine {
                 }
                 ConstructRole::Cds => format!("{candidate_count} overlapping coding candidates"),
                 ConstructRole::Exon => format!("{candidate_count} overlapping exon candidates"),
+                ConstructRole::RepeatRegion => {
+                    format!("{candidate_count} overlapping repeat/similarity candidates")
+                }
+                ConstructRole::MobileElement => {
+                    format!("{candidate_count} overlapping mobile-element candidates")
+                }
                 ConstructRole::SpliceBoundary => {
                     format!("{candidate_count} overlapping splice-relevant candidates")
                 }
@@ -13708,6 +13730,8 @@ impl GentleEngine {
             ConstructRole::Enhancer => "Enhancer candidate".to_string(),
             ConstructRole::Cds => "Coding candidate".to_string(),
             ConstructRole::Exon => "Exon candidate".to_string(),
+            ConstructRole::RepeatRegion => "Repeat/similarity candidate".to_string(),
+            ConstructRole::MobileElement => "Mobile-element candidate".to_string(),
             ConstructRole::SpliceBoundary => "Splice-relevant candidate".to_string(),
             ConstructRole::Variant => "Variant-linked candidate".to_string(),
             ConstructRole::Transcript => "Transcript-linked candidate".to_string(),
@@ -14481,6 +14505,8 @@ impl GentleEngine {
             ConstructRole::LocalizationSignal => "misc_feature",
             ConstructRole::HomologyArm => "misc_feature",
             ConstructRole::FusionBoundary => "misc_feature",
+            ConstructRole::RepeatRegion => "repeat_region",
+            ConstructRole::MobileElement => "mobile_element",
             ConstructRole::Tfbs | ConstructRole::SpliceBoundary => "regulatory",
             ConstructRole::RestrictionSite
             | ConstructRole::ContextBaggage
@@ -14829,6 +14855,10 @@ impl GentleEngine {
             "PROMOTER" => Some(ConstructRole::Promoter),
             "ENHANCER" => Some(ConstructRole::Enhancer),
             "TERMINATOR" => Some(ConstructRole::Terminator),
+            "REPEAT_REGION" | "REPEAT" => Some(ConstructRole::RepeatRegion),
+            "MOBILE_ELEMENT" | "SINE" | "LINE" | "LTR" | "RETROTRANSPOSON" => {
+                Some(ConstructRole::MobileElement)
+            }
             "VARIATION" | "VARIANT" | "SNP" | "SNV" | "MUTATION" => Some(ConstructRole::Variant),
             "SIG_PEPTIDE" | "SIGNAL_PEPTIDE" => Some(ConstructRole::SignalPeptide),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Some(ConstructRole::Tfbs),
@@ -14845,6 +14875,13 @@ impl GentleEngine {
                     Some(ConstructRole::Enhancer)
                 } else if hint.contains("terminator") {
                     Some(ConstructRole::Terminator)
+                } else if hint.contains("alu")
+                    || hint.contains("sine")
+                    || hint.contains("retrotransposon")
+                {
+                    Some(ConstructRole::MobileElement)
+                } else if hint.contains("repeat") || hint.contains("low complexity") {
+                    Some(ConstructRole::RepeatRegion)
                 } else if hint.contains("splice") {
                     Some(ConstructRole::SpliceBoundary)
                 } else if hint.contains("tfbs") || hint.contains("binding") {
@@ -14874,6 +14911,9 @@ impl GentleEngine {
             return EvidenceClass::ReliableAnnotation;
         }
         if role == ConstructRole::Tfbs {
+            return EvidenceClass::SoftHypothesis;
+        }
+        if role == ConstructRole::MobileElement {
             return EvidenceClass::SoftHypothesis;
         }
         if matches!(role, ConstructRole::Exon | ConstructRole::SpliceBoundary)
@@ -14930,6 +14970,12 @@ impl GentleEngine {
         if role == ConstructRole::Tfbs {
             return "TFBS-style annotation is kept as a soft hypothesis because binding evidence is context-sensitive.".to_string();
         }
+        if role == ConstructRole::MobileElement {
+            return "Mobile-element style annotation is kept as a soft hypothesis until a curated repeat-family catalog confirms the family assignment.".to_string();
+        }
+        if role == ConstructRole::RepeatRegion {
+            return "Repeat/similarity annotation imported from the sequence record as inspectable structural context.".to_string();
+        }
         if evidence_class == EvidenceClass::HardFact {
             return format!(
                 "{} annotation is treated as a hard fact because its qualifiers explicitly hint at cDNA/mRNA confirmation.",
@@ -14940,6 +14986,916 @@ impl GentleEngine {
             "{} annotation imported from the sequence record as reliable construct-planning context.",
             role.as_str()
         )
+    }
+
+    fn construct_reasoning_nucleotide_index(base: u8) -> Option<usize> {
+        match base.to_ascii_uppercase() {
+            b'A' => Some(0),
+            b'C' => Some(1),
+            b'G' => Some(2),
+            b'T' => Some(3),
+            _ => None,
+        }
+    }
+
+    fn construct_reasoning_longest_homopolymer_run(bytes: &[u8]) -> usize {
+        let mut best = 0usize;
+        let mut current = 0usize;
+        let mut current_base = 0u8;
+        for base in bytes.iter().map(|value| value.to_ascii_uppercase()) {
+            if Self::construct_reasoning_nucleotide_index(base).is_none() {
+                current = 0;
+                current_base = 0;
+                continue;
+            }
+            if current > 0 && base == current_base {
+                current += 1;
+            } else {
+                current = 1;
+                current_base = base;
+            }
+            best = best.max(current);
+        }
+        best
+    }
+
+    fn construct_reasoning_normalized_entropy(bytes: &[u8]) -> f64 {
+        let mut counts = [0usize; 4];
+        let mut total = 0usize;
+        for base in bytes {
+            if let Some(idx) = Self::construct_reasoning_nucleotide_index(*base) {
+                counts[idx] += 1;
+                total += 1;
+            }
+        }
+        if total == 0 {
+            return 0.0;
+        }
+        let entropy = counts
+            .into_iter()
+            .filter(|count| *count > 0)
+            .map(|count| {
+                let p = count as f64 / total as f64;
+                -(p * p.log2())
+            })
+            .sum::<f64>();
+        (entropy / 2.0).clamp(0.0, 1.0)
+    }
+
+    fn construct_reasoning_unique_kmer_ratio(bytes: &[u8], k: usize) -> f64 {
+        if k == 0 {
+            return 1.0;
+        }
+        let Some(total) = bytes.len().checked_sub(k).map(|value| value + 1) else {
+            return 1.0;
+        };
+        let mut unique = HashSet::new();
+        let mut valid = 0usize;
+        for window in bytes.windows(k) {
+            if window
+                .iter()
+                .all(|base| Self::construct_reasoning_nucleotide_index(*base).is_some())
+            {
+                unique.insert(
+                    window
+                        .iter()
+                        .map(|value| value.to_ascii_uppercase())
+                        .collect::<Vec<_>>(),
+                );
+                valid += 1;
+            }
+        }
+        if valid == 0 {
+            return 0.0;
+        }
+        (unique.len() as f64 / total as f64).clamp(0.0, 1.0)
+    }
+
+    fn construct_reasoning_most_common_base_run(bytes: &[u8]) -> Option<(char, usize)> {
+        let mut best = 0usize;
+        let mut best_base = None;
+        let mut current = 0usize;
+        let mut current_base = 0u8;
+        for base in bytes.iter().map(|value| value.to_ascii_uppercase()) {
+            if Self::construct_reasoning_nucleotide_index(base).is_none() {
+                current = 0;
+                current_base = 0;
+                continue;
+            }
+            if current > 0 && base == current_base {
+                current += 1;
+            } else {
+                current = 1;
+                current_base = base;
+            }
+            if current > best {
+                best = current;
+                best_base = Some(base as char);
+            }
+        }
+        best_base.map(|base| (base, best))
+    }
+
+    fn construct_reasoning_kmer_is_low_value(kmer: &[u8]) -> bool {
+        if kmer
+            .iter()
+            .any(|base| Self::construct_reasoning_nucleotide_index(*base).is_none())
+        {
+            return true;
+        }
+        let distinct = kmer
+            .iter()
+            .map(|base| base.to_ascii_uppercase())
+            .collect::<BTreeSet<_>>()
+            .len();
+        distinct < 3
+            || Self::construct_reasoning_longest_homopolymer_run(kmer)
+                >= kmer.len().saturating_sub(2)
+    }
+
+    fn construct_reasoning_shared_kmer_fraction(left: &[u8], right: &[u8], k: usize) -> f64 {
+        if k == 0 || left.len() < k || right.len() < k {
+            return 0.0;
+        }
+        let left_set = left
+            .windows(k)
+            .filter(|window| {
+                window
+                    .iter()
+                    .all(|base| Self::construct_reasoning_nucleotide_index(*base).is_some())
+            })
+            .map(|window| {
+                window
+                    .iter()
+                    .map(|value| value.to_ascii_uppercase())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<BTreeSet<_>>();
+        let right_set = right
+            .windows(k)
+            .filter(|window| {
+                window
+                    .iter()
+                    .all(|base| Self::construct_reasoning_nucleotide_index(*base).is_some())
+            })
+            .map(|window| {
+                window
+                    .iter()
+                    .map(|value| value.to_ascii_uppercase())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<BTreeSet<_>>();
+        let denom = left_set.len().min(right_set.len());
+        if denom == 0 {
+            return 0.0;
+        }
+        let shared = left_set.intersection(&right_set).count();
+        (shared as f64 / denom as f64).clamp(0.0, 1.0)
+    }
+
+    fn construct_reasoning_push_generated_sequence_evidence(
+        evidence: &mut Vec<DesignEvidence>,
+        seq_id: &str,
+        evidence_id: String,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        strand: Option<String>,
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+        label: String,
+        rationale: String,
+        score: Option<f64>,
+        confidence: Option<f64>,
+        specificity_bias: Option<f64>,
+        sensitivity_bias: Option<f64>,
+        mut context_tags: Vec<String>,
+        mut provenance_refs: Vec<String>,
+        notes: Vec<String>,
+    ) {
+        context_tags.push("generated".to_string());
+        context_tags.sort();
+        context_tags.dedup();
+        provenance_refs.sort();
+        provenance_refs.dedup();
+        evidence.push(DesignEvidence {
+            evidence_id,
+            seq_id: seq_id.to_string(),
+            start_0based,
+            end_0based_exclusive,
+            strand,
+            role,
+            evidence_class,
+            label,
+            rationale,
+            score,
+            confidence,
+            specificity_bias,
+            sensitivity_bias,
+            context_tags,
+            provenance_kind: "derived_sequence_similarity".to_string(),
+            provenance_refs,
+            notes,
+            ..DesignEvidence::default()
+        });
+    }
+
+    fn build_construct_reasoning_sequence_similarity_evidence(
+        seq_id: &str,
+        dna: &DNAsequence,
+    ) -> Vec<DesignEvidence> {
+        #[derive(Clone, Debug)]
+        struct LowComplexitySpan {
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            complexity_score: f64,
+            normalized_entropy: f64,
+            unique_kmer_ratio: f64,
+            longest_homopolymer: usize,
+        }
+
+        #[derive(Clone, Debug)]
+        struct MotifRepeatSpan {
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            label: String,
+            risk_score: f64,
+            context_tags: Vec<String>,
+            notes: Vec<String>,
+        }
+
+        #[derive(Clone, Debug)]
+        struct RepeatClusterSpan {
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            label: String,
+            seed_examples: Vec<String>,
+            pair_count: usize,
+            risk_score: f64,
+            context_tags: Vec<String>,
+            notes: Vec<String>,
+        }
+
+        #[derive(Clone, Debug)]
+        struct AluLikeSpan {
+            start_0based: usize,
+            end_0based_exclusive: usize,
+            strand: String,
+            tail_length_bp: usize,
+            arm_similarity: f64,
+            candidate_length_bp: usize,
+            score: f64,
+        }
+
+        fn merge_low_complexity_spans(spans: Vec<LowComplexitySpan>) -> Vec<LowComplexitySpan> {
+            let mut spans = spans;
+            spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
+            let mut merged: Vec<LowComplexitySpan> = vec![];
+            for span in spans {
+                if let Some(last) = merged.last_mut() {
+                    if span.start_0based
+                        <= last
+                            .end_0based_exclusive
+                            .saturating_add(LOW_COMPLEXITY_STEP_BP)
+                    {
+                        last.end_0based_exclusive =
+                            last.end_0based_exclusive.max(span.end_0based_exclusive);
+                        last.complexity_score = last.complexity_score.min(span.complexity_score);
+                        last.normalized_entropy =
+                            last.normalized_entropy.min(span.normalized_entropy);
+                        last.unique_kmer_ratio = last.unique_kmer_ratio.min(span.unique_kmer_ratio);
+                        last.longest_homopolymer =
+                            last.longest_homopolymer.max(span.longest_homopolymer);
+                        continue;
+                    }
+                }
+                merged.push(span);
+            }
+            merged
+        }
+
+        fn merge_repeat_cluster_spans(
+            mut spans: Vec<RepeatClusterSpan>,
+            max_gap_bp: usize,
+        ) -> Vec<RepeatClusterSpan> {
+            spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
+            let mut merged: Vec<RepeatClusterSpan> = vec![];
+            for span in spans {
+                if let Some(last) = merged.last_mut() {
+                    if last.label == span.label
+                        && span.start_0based <= last.end_0based_exclusive.saturating_add(max_gap_bp)
+                    {
+                        last.end_0based_exclusive =
+                            last.end_0based_exclusive.max(span.end_0based_exclusive);
+                        last.pair_count = last.pair_count.max(span.pair_count);
+                        last.risk_score = last.risk_score.max(span.risk_score);
+                        last.seed_examples.extend(span.seed_examples);
+                        last.seed_examples.sort();
+                        last.seed_examples.dedup();
+                        last.context_tags.extend(span.context_tags);
+                        last.context_tags.sort();
+                        last.context_tags.dedup();
+                        last.notes.extend(span.notes);
+                        last.notes.sort();
+                        last.notes.dedup();
+                        continue;
+                    }
+                }
+                merged.push(span);
+            }
+            merged
+        }
+
+        fn merge_alu_like_spans(mut spans: Vec<AluLikeSpan>) -> Vec<AluLikeSpan> {
+            spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
+            let mut merged: Vec<AluLikeSpan> = vec![];
+            for span in spans {
+                if let Some(last) = merged.last_mut() {
+                    if last.strand == span.strand
+                        && span.start_0based <= last.end_0based_exclusive.saturating_add(24)
+                    {
+                        if span.score > last.score {
+                            last.start_0based = last.start_0based.min(span.start_0based);
+                            last.end_0based_exclusive =
+                                last.end_0based_exclusive.max(span.end_0based_exclusive);
+                            last.tail_length_bp = last.tail_length_bp.max(span.tail_length_bp);
+                            last.arm_similarity = last.arm_similarity.max(span.arm_similarity);
+                            last.candidate_length_bp =
+                                last.end_0based_exclusive.saturating_sub(last.start_0based);
+                            last.score = span.score.max(last.score);
+                        }
+                        continue;
+                    }
+                }
+                merged.push(span);
+            }
+            merged
+        }
+
+        let bytes = dna
+            .forward_bytes()
+            .iter()
+            .map(|base| base.to_ascii_uppercase())
+            .collect::<Vec<_>>();
+        if bytes.is_empty() {
+            return vec![];
+        }
+
+        let mut evidence = vec![];
+
+        let low_complexity_window = LOW_COMPLEXITY_WINDOW_BP.min(bytes.len()).max(1);
+        let low_complexity_step = LOW_COMPLEXITY_STEP_BP.min(low_complexity_window).max(1);
+        let mut low_complexity_raw = vec![];
+        let mut scan_starts = (0..=bytes.len().saturating_sub(low_complexity_window))
+            .step_by(low_complexity_step)
+            .collect::<Vec<_>>();
+        if scan_starts.is_empty() {
+            scan_starts.push(0);
+        } else {
+            let last_start = bytes.len().saturating_sub(low_complexity_window);
+            if scan_starts.last().copied() != Some(last_start) {
+                scan_starts.push(last_start);
+            }
+        }
+        for start_0based in scan_starts {
+            let end_0based_exclusive = start_0based + low_complexity_window;
+            let window = &bytes[start_0based..end_0based_exclusive];
+            let normalized_entropy = Self::construct_reasoning_normalized_entropy(window);
+            let unique_kmer_ratio = Self::construct_reasoning_unique_kmer_ratio(window, 3);
+            let longest_homopolymer = Self::construct_reasoning_longest_homopolymer_run(window);
+            let complexity_score =
+                (normalized_entropy * 0.55 + unique_kmer_ratio * 0.45).clamp(0.0, 1.0);
+            if complexity_score <= LOW_COMPLEXITY_SCORE_THRESHOLD
+                || longest_homopolymer >= LOW_COMPLEXITY_HOMOPOLYMER_THRESHOLD_BP
+            {
+                low_complexity_raw.push(LowComplexitySpan {
+                    start_0based,
+                    end_0based_exclusive,
+                    complexity_score,
+                    normalized_entropy,
+                    unique_kmer_ratio,
+                    longest_homopolymer,
+                });
+            }
+        }
+        for (idx, span) in merge_low_complexity_spans(low_complexity_raw)
+            .into_iter()
+            .enumerate()
+        {
+            let slice = &bytes[span.start_0based..span.end_0based_exclusive];
+            let normalized_entropy = Self::construct_reasoning_normalized_entropy(slice);
+            let unique_kmer_ratio = Self::construct_reasoning_unique_kmer_ratio(slice, 3);
+            let longest_homopolymer = Self::construct_reasoning_longest_homopolymer_run(slice);
+            let complexity_score =
+                (normalized_entropy * 0.55 + unique_kmer_ratio * 0.45).clamp(0.0, 1.0);
+            let risk_score = (1.0 - complexity_score).max(
+                ((longest_homopolymer.saturating_sub(LOW_COMPLEXITY_HOMOPOLYMER_THRESHOLD_BP))
+                    as f64
+                    / 12.0)
+                    .clamp(0.0, 1.0),
+            );
+            let mut tags = vec![
+                "low_complexity".to_string(),
+                "repeat_region".to_string(),
+                "mapping_ambiguity_risk".to_string(),
+            ];
+            if longest_homopolymer >= HOMOPOLYMER_ANNOTATION_THRESHOLD_BP {
+                tags.push("polymerase_slippage_risk".to_string());
+            }
+            let dominant_run = Self::construct_reasoning_most_common_base_run(slice)
+                .map(|(base, run)| format!("dominant_run={base}x{run}"))
+                .unwrap_or_else(|| "dominant_run=unknown".to_string());
+            Self::construct_reasoning_push_generated_sequence_evidence(
+                &mut evidence,
+                seq_id,
+                format!(
+                    "similarity_low_complexity_{}_{}_{}",
+                    span.start_0based, span.end_0based_exclusive, idx
+                ),
+                span.start_0based,
+                span.end_0based_exclusive,
+                Some("+".to_string()),
+                ConstructRole::RepeatRegion,
+                EvidenceClass::ContextEvidence,
+                "Low-complexity region".to_string(),
+                "Merged sequence window shows reduced composition entropy and/or k-mer diversity, so it is kept as generated repeat/similarity context rather than a hard biological claim.".to_string(),
+                Some(risk_score),
+                Some(0.72),
+                Some(0.52),
+                Some(0.83),
+                tags,
+                vec!["low_complexity_scan".to_string()],
+                vec![
+                    format!("complexity_score={complexity_score:.3}"),
+                    format!("normalized_entropy={normalized_entropy:.3}"),
+                    format!("unique_trimer_ratio={unique_kmer_ratio:.3}"),
+                    format!("longest_homopolymer={longest_homopolymer}"),
+                    dominant_run,
+                ],
+            );
+        }
+
+        let mut tandem_repeat_spans = vec![];
+        let mut pos = 0usize;
+        while pos < bytes.len() {
+            let mut best: Option<MotifRepeatSpan> = None;
+            for motif_len in 1..=6usize {
+                if pos + motif_len > bytes.len() {
+                    break;
+                }
+                let motif = &bytes[pos..pos + motif_len];
+                if motif
+                    .iter()
+                    .any(|base| Self::construct_reasoning_nucleotide_index(*base).is_none())
+                {
+                    continue;
+                }
+                let mut repeat_count = 1usize;
+                while pos + (repeat_count + 1) * motif_len <= bytes.len()
+                    && bytes[pos + repeat_count * motif_len..pos + (repeat_count + 1) * motif_len]
+                        == *motif
+                {
+                    repeat_count += 1;
+                }
+                let total_len = repeat_count * motif_len;
+                let meets_threshold = if motif_len == 1 {
+                    repeat_count >= HOMOPOLYMER_ANNOTATION_THRESHOLD_BP
+                } else {
+                    repeat_count >= 3 && total_len >= TANDEM_REPEAT_MIN_TOTAL_BP
+                };
+                if !meets_threshold {
+                    continue;
+                }
+                let label = if motif_len == 1 {
+                    format!("Homopolymer run ({} x{repeat_count})", motif[0] as char)
+                } else {
+                    format!(
+                        "Tandem repeat (({}) x{repeat_count})",
+                        String::from_utf8_lossy(motif)
+                    )
+                };
+                let mut tags = vec![
+                    "repeat_region".to_string(),
+                    if motif_len == 1 {
+                        "homopolymer_run".to_string()
+                    } else {
+                        "tandem_repeat".to_string()
+                    },
+                    "polymerase_slippage_risk".to_string(),
+                ];
+                if motif_len == 1 || motif_len <= 3 {
+                    tags.push("low_complexity".to_string());
+                }
+                let risk_score = ((total_len as f64 / 32.0).min(1.0)
+                    + (repeat_count as f64 / 8.0).min(1.0))
+                    / 2.0;
+                let span = MotifRepeatSpan {
+                    start_0based: pos,
+                    end_0based_exclusive: pos + total_len,
+                    label,
+                    risk_score: risk_score.clamp(0.0, 1.0),
+                    context_tags: tags,
+                    notes: vec![
+                        format!("motif_len={motif_len}"),
+                        format!("repeat_count={repeat_count}"),
+                        format!("total_bp={total_len}"),
+                    ],
+                };
+                if best
+                    .as_ref()
+                    .map(|candidate| {
+                        candidate
+                            .end_0based_exclusive
+                            .saturating_sub(candidate.start_0based)
+                    })
+                    .unwrap_or_default()
+                    < total_len
+                {
+                    best = Some(span);
+                }
+            }
+            if let Some(span) = best {
+                pos = span.end_0based_exclusive;
+                tandem_repeat_spans.push(span);
+            } else {
+                pos += 1;
+            }
+        }
+        for (idx, span) in tandem_repeat_spans.into_iter().enumerate() {
+            Self::construct_reasoning_push_generated_sequence_evidence(
+                &mut evidence,
+                seq_id,
+                format!(
+                    "similarity_repeat_{}_{}_{}",
+                    span.start_0based, span.end_0based_exclusive, idx
+                ),
+                span.start_0based,
+                span.end_0based_exclusive,
+                Some("+".to_string()),
+                ConstructRole::RepeatRegion,
+                EvidenceClass::ContextEvidence,
+                span.label,
+                "Exact tandem motif reuse is a sequence-determined repeat pattern. GENtle keeps it as generated repeat context because downstream operational risk depends on the experiment.".to_string(),
+                Some(span.risk_score),
+                Some(0.88),
+                Some(0.81),
+                Some(0.63),
+                span.context_tags,
+                vec!["exact_tandem_repeat_scan".to_string()],
+                span.notes,
+            );
+        }
+
+        let mut direct_repeat_raw = vec![];
+        if bytes.len() >= DIRECT_REPEAT_SEED_BP {
+            let mut seed_positions: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+            for (start_0based, window) in bytes.windows(DIRECT_REPEAT_SEED_BP).enumerate() {
+                if Self::construct_reasoning_kmer_is_low_value(window) {
+                    continue;
+                }
+                seed_positions
+                    .entry(window.to_vec())
+                    .or_default()
+                    .push(start_0based);
+            }
+            for (seed, positions) in seed_positions {
+                if positions.len() < 2 {
+                    continue;
+                }
+                let mut cluster_start = positions[0];
+                let mut cluster_end = positions[0] + DIRECT_REPEAT_SEED_BP;
+                let mut cluster_count = 1usize;
+                for position in positions.iter().copied().skip(1) {
+                    if position <= cluster_end.saturating_add(DIRECT_REPEAT_MAX_CLUSTER_GAP_BP) {
+                        cluster_end = position + DIRECT_REPEAT_SEED_BP;
+                        cluster_count += 1;
+                    } else {
+                        if cluster_count >= 2 {
+                            let risk_score = ((cluster_count as f64 / 4.0).min(1.0)
+                                + ((cluster_end.saturating_sub(cluster_start)) as f64 / 600.0)
+                                    .min(1.0))
+                                / 2.0;
+                            let mut tags = vec![
+                                "repeat_region".to_string(),
+                                "direct_repeat".to_string(),
+                                "repeat_dense".to_string(),
+                                "mapping_ambiguity_risk".to_string(),
+                            ];
+                            if cluster_count >= 3 {
+                                tags.push("cloning_stability_risk".to_string());
+                            }
+                            direct_repeat_raw.push(RepeatClusterSpan {
+                                start_0based: cluster_start,
+                                end_0based_exclusive: cluster_end,
+                                label: "Direct repeat cluster".to_string(),
+                                seed_examples: vec![String::from_utf8_lossy(&seed).to_string()],
+                                pair_count: cluster_count,
+                                risk_score: risk_score.clamp(0.0, 1.0),
+                                context_tags: tags,
+                                notes: vec![format!("repeat_seed_count={cluster_count}")],
+                            });
+                        }
+                        cluster_start = position;
+                        cluster_end = position + DIRECT_REPEAT_SEED_BP;
+                        cluster_count = 1;
+                    }
+                }
+                if cluster_count >= 2 {
+                    let risk_score = ((cluster_count as f64 / 4.0).min(1.0)
+                        + ((cluster_end.saturating_sub(cluster_start)) as f64 / 600.0).min(1.0))
+                        / 2.0;
+                    let mut tags = vec![
+                        "repeat_region".to_string(),
+                        "direct_repeat".to_string(),
+                        "repeat_dense".to_string(),
+                        "mapping_ambiguity_risk".to_string(),
+                    ];
+                    if cluster_count >= 3 {
+                        tags.push("cloning_stability_risk".to_string());
+                    }
+                    direct_repeat_raw.push(RepeatClusterSpan {
+                        start_0based: cluster_start,
+                        end_0based_exclusive: cluster_end,
+                        label: "Direct repeat cluster".to_string(),
+                        seed_examples: vec![String::from_utf8_lossy(&seed).to_string()],
+                        pair_count: cluster_count,
+                        risk_score: risk_score.clamp(0.0, 1.0),
+                        context_tags: tags,
+                        notes: vec![format!("repeat_seed_count={cluster_count}")],
+                    });
+                }
+            }
+        }
+        for (idx, span) in merge_repeat_cluster_spans(direct_repeat_raw, DIRECT_REPEAT_SEED_BP)
+            .into_iter()
+            .enumerate()
+        {
+            let mut notes = span.notes;
+            notes.push(format!("seed_examples={}", span.seed_examples.join(",")));
+            Self::construct_reasoning_push_generated_sequence_evidence(
+                &mut evidence,
+                seq_id,
+                format!(
+                    "similarity_direct_repeat_{}_{}_{}",
+                    span.start_0based, span.end_0based_exclusive, idx
+                ),
+                span.start_0based,
+                span.end_0based_exclusive,
+                Some("+".to_string()),
+                ConstructRole::RepeatRegion,
+                EvidenceClass::ContextEvidence,
+                span.label,
+                "Exact local k-mer reuse suggests a direct-repeat cluster. GENtle keeps this as generated similarity context because downstream risk depends on whether PCR, mapping, or cloning stability matters for the current task.".to_string(),
+                Some(span.risk_score),
+                Some(0.84),
+                Some(0.79),
+                Some(0.67),
+                span.context_tags,
+                vec!["direct_repeat_cluster_scan".to_string()],
+                notes,
+            );
+        }
+
+        let mut inverted_repeat_raw = vec![];
+        if bytes.len() >= INVERTED_REPEAT_SEED_BP {
+            let mut seed_positions: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+            for (start_0based, window) in bytes.windows(INVERTED_REPEAT_SEED_BP).enumerate() {
+                if Self::construct_reasoning_kmer_is_low_value(window) {
+                    continue;
+                }
+                seed_positions
+                    .entry(window.to_vec())
+                    .or_default()
+                    .push(start_0based);
+            }
+            let mut seen_pairs = HashSet::new();
+            for (seed, positions) in &seed_positions {
+                let rc_seed = Self::reverse_complement_bytes(seed);
+                let Some(partners) = seed_positions.get(&rc_seed) else {
+                    continue;
+                };
+                for left in positions.iter().copied() {
+                    for right in partners.iter().copied() {
+                        if right <= left {
+                            continue;
+                        }
+                        if right.saturating_sub(left) > INVERTED_REPEAT_MAX_SPAN_BP {
+                            break;
+                        }
+                        if !seen_pairs.insert((left, right)) {
+                            continue;
+                        }
+                        let span_len = right + INVERTED_REPEAT_SEED_BP - left;
+                        let risk_score = ((span_len as f64 / 220.0).min(1.0) + 0.6) / 1.6;
+                        inverted_repeat_raw.push(RepeatClusterSpan {
+                            start_0based: left,
+                            end_0based_exclusive: right + INVERTED_REPEAT_SEED_BP,
+                            label: "Inverted repeat cluster".to_string(),
+                            seed_examples: vec![String::from_utf8_lossy(seed).to_string()],
+                            pair_count: 1,
+                            risk_score: risk_score.clamp(0.0, 1.0),
+                            context_tags: vec![
+                                "repeat_region".to_string(),
+                                "inverted_repeat".to_string(),
+                                "palindromic_repeat_risk".to_string(),
+                                "inversion_risk".to_string(),
+                                "cloning_stability_risk".to_string(),
+                            ],
+                            notes: vec![format!("span_bp={span_len}")],
+                        });
+                    }
+                }
+            }
+        }
+        for (idx, span) in merge_repeat_cluster_spans(inverted_repeat_raw, INVERTED_REPEAT_SEED_BP)
+            .into_iter()
+            .enumerate()
+        {
+            let mut notes = span.notes;
+            notes.push(format!("seed_examples={}", span.seed_examples.join(",")));
+            notes.push("interpretation=palindromic_or_inverted_seed_reuse".to_string());
+            Self::construct_reasoning_push_generated_sequence_evidence(
+                &mut evidence,
+                seq_id,
+                format!(
+                    "similarity_inverted_repeat_{}_{}_{}",
+                    span.start_0based, span.end_0based_exclusive, idx
+                ),
+                span.start_0based,
+                span.end_0based_exclusive,
+                Some("+".to_string()),
+                ConstructRole::RepeatRegion,
+                EvidenceClass::ContextEvidence,
+                span.label,
+                "Local reverse-complement seed reuse suggests an inverted-repeat/palindromic cluster, which can matter for inversion or cloning-instability review without being a standalone biological fact.".to_string(),
+                Some(span.risk_score),
+                Some(0.82),
+                Some(0.76),
+                Some(0.61),
+                span.context_tags,
+                vec!["inverted_repeat_cluster_scan".to_string()],
+                notes,
+            );
+        }
+
+        let mut alu_like_raw = vec![];
+        let mut poly_a_runs = vec![];
+        let mut run_start = None;
+        for (idx, base) in bytes.iter().copied().enumerate() {
+            if base == b'A' {
+                run_start.get_or_insert(idx);
+            } else if let Some(start) = run_start.take() {
+                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
+                    poly_a_runs.push((start, idx));
+                }
+            }
+        }
+        if let Some(start) = run_start.take() {
+            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
+                poly_a_runs.push((start, bytes.len()));
+            }
+        }
+        for (tail_start, tail_end) in poly_a_runs {
+            for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
+                if tail_start < candidate_length_bp {
+                    continue;
+                }
+                let start_0based = tail_start - candidate_length_bp;
+                let end_0based_exclusive = tail_end;
+                let body = &bytes[start_0based..tail_start];
+                let body_mid = body.len() / 2;
+                if body_mid < 60 {
+                    continue;
+                }
+                let left = &body[..body_mid];
+                let right = &body[body_mid..];
+                let arm_similarity = Self::construct_reasoning_shared_kmer_fraction(left, right, 8);
+                let linker_start = body_mid.saturating_sub(12);
+                let linker_end = (body_mid + 12).min(body.len());
+                let linker = &body[linker_start..linker_end];
+                let at_fraction = if linker.is_empty() {
+                    0.0
+                } else {
+                    linker
+                        .iter()
+                        .filter(|base| matches!(base.to_ascii_uppercase(), b'A' | b'T'))
+                        .count() as f64
+                        / linker.len() as f64
+                };
+                let score = (arm_similarity * 0.55
+                    + at_fraction * 0.15
+                    + ((tail_end - tail_start) as f64 / 24.0).min(1.0) * 0.30)
+                    .clamp(0.0, 1.0);
+                if arm_similarity >= 0.18 && score >= 0.55 {
+                    alu_like_raw.push(AluLikeSpan {
+                        start_0based,
+                        end_0based_exclusive,
+                        strand: "+".to_string(),
+                        tail_length_bp: tail_end - tail_start,
+                        arm_similarity,
+                        candidate_length_bp: end_0based_exclusive - start_0based,
+                        score,
+                    });
+                }
+            }
+        }
+
+        let mut poly_t_runs = vec![];
+        let mut run_start = None;
+        for (idx, base) in bytes.iter().copied().enumerate() {
+            if base == b'T' {
+                run_start.get_or_insert(idx);
+            } else if let Some(start) = run_start.take() {
+                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
+                    poly_t_runs.push((start, idx));
+                }
+            }
+        }
+        if let Some(start) = run_start.take() {
+            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
+                poly_t_runs.push((start, bytes.len()));
+            }
+        }
+        for (tail_start, tail_end) in poly_t_runs {
+            for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
+                if tail_end + candidate_length_bp > bytes.len() {
+                    continue;
+                }
+                let start_0based = tail_start;
+                let end_0based_exclusive = tail_end + candidate_length_bp;
+                let body = Self::reverse_complement_bytes(&bytes[tail_end..end_0based_exclusive]);
+                let body_mid = body.len() / 2;
+                if body_mid < 60 {
+                    continue;
+                }
+                let left = &body[..body_mid];
+                let right = &body[body_mid..];
+                let arm_similarity = Self::construct_reasoning_shared_kmer_fraction(left, right, 8);
+                let linker_start = body_mid.saturating_sub(12);
+                let linker_end = (body_mid + 12).min(body.len());
+                let linker = &body[linker_start..linker_end];
+                let at_fraction = if linker.is_empty() {
+                    0.0
+                } else {
+                    linker
+                        .iter()
+                        .filter(|base| matches!(base.to_ascii_uppercase(), b'A' | b'T'))
+                        .count() as f64
+                        / linker.len() as f64
+                };
+                let score = (arm_similarity * 0.55
+                    + at_fraction * 0.15
+                    + ((tail_end - tail_start) as f64 / 24.0).min(1.0) * 0.30)
+                    .clamp(0.0, 1.0);
+                if arm_similarity >= 0.18 && score >= 0.55 {
+                    alu_like_raw.push(AluLikeSpan {
+                        start_0based,
+                        end_0based_exclusive,
+                        strand: "-".to_string(),
+                        tail_length_bp: tail_end - tail_start,
+                        arm_similarity,
+                        candidate_length_bp: end_0based_exclusive - start_0based,
+                        score,
+                    });
+                }
+            }
+        }
+        for (idx, span) in merge_alu_like_spans(alu_like_raw).into_iter().enumerate() {
+            Self::construct_reasoning_push_generated_sequence_evidence(
+                &mut evidence,
+                seq_id,
+                format!(
+                    "similarity_alu_like_{}_{}_{}",
+                    span.start_0based, span.end_0based_exclusive, idx
+                ),
+                span.start_0based,
+                span.end_0based_exclusive,
+                Some(span.strand.clone()),
+                ConstructRole::MobileElement,
+                EvidenceClass::SoftHypothesis,
+                "Alu-like SINE candidate".to_string(),
+                "Region shows a two-arm repeat structure with an A-rich tail consistent with a cautious Alu-like SINE heuristic. This remains a soft hypothesis until a curated repeat-family catalog is integrated.".to_string(),
+                Some(span.score),
+                Some(0.46),
+                Some(0.71),
+                Some(0.37),
+                vec![
+                    "alu_like".to_string(),
+                    "mobile_element".to_string(),
+                    "sine".to_string(),
+                    "retrotransposon".to_string(),
+                    "repeat_region".to_string(),
+                ],
+                vec!["alu_like_sine_heuristic".to_string()],
+                vec![
+                    format!("candidate_length_bp={}", span.candidate_length_bp),
+                    format!("tail_length_bp={}", span.tail_length_bp),
+                    format!("arm_similarity={:.3}", span.arm_similarity),
+                    "family_assignment=soft_heuristic".to_string(),
+                ],
+            );
+        }
+
+        evidence
     }
 
     fn push_construct_reasoning_objective_context_evidence(
@@ -15371,6 +16327,7 @@ impl GentleEngine {
             promoter_upstream_bp,
             promoter_downstream_bp,
         ));
+        evidence.extend(Self::build_construct_reasoning_sequence_similarity_evidence(seq_id, dna));
         evidence
     }
 
@@ -17717,6 +18674,322 @@ impl GentleEngine {
                 vec!["fact_helper_context".to_string()],
                 json!({
                     "status": helper_status,
+                }),
+            ));
+        }
+
+        let repeat_region_rows = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan && row.role == ConstructRole::RepeatRegion
+            })
+            .collect::<Vec<_>>();
+        let mobile_element_rows = evidence
+            .iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan && row.role == ConstructRole::MobileElement
+            })
+            .collect::<Vec<_>>();
+        let has_similarity_tag =
+            |row: &DesignEvidence, tag: &str| row.context_tags.iter().any(|value| value == tag);
+        let similarity_labels = |rows: &[&DesignEvidence]| {
+            rows.iter()
+                .filter_map(|row| {
+                    let value = row.label.trim();
+                    (!value.is_empty()).then(|| value.to_string())
+                })
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        let similarity_ids = |rows: &[&DesignEvidence]| {
+            rows.iter()
+                .map(|row| row.evidence_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        let similarity_max_score =
+            |rows: &[&DesignEvidence]| rows.iter().filter_map(|row| row.score).fold(0.0, f64::max);
+
+        let low_complexity_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "low_complexity"))
+            .collect::<Vec<_>>();
+        let homopolymer_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "homopolymer_run"))
+            .collect::<Vec<_>>();
+        let tandem_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "tandem_repeat"))
+            .collect::<Vec<_>>();
+        let direct_repeat_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "direct_repeat"))
+            .collect::<Vec<_>>();
+        let inverted_repeat_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "inverted_repeat"))
+            .collect::<Vec<_>>();
+        let slippage_risk_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "polymerase_slippage_risk"))
+            .collect::<Vec<_>>();
+        let mapping_ambiguity_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "mapping_ambiguity_risk"))
+            .collect::<Vec<_>>();
+        let inversion_risk_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| {
+                has_similarity_tag(row, "inversion_risk")
+                    || has_similarity_tag(row, "palindromic_repeat_risk")
+            })
+            .collect::<Vec<_>>();
+        let cloning_risk_rows = repeat_region_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "cloning_stability_risk"))
+            .collect::<Vec<_>>();
+        let alu_like_rows = mobile_element_rows
+            .iter()
+            .copied()
+            .filter(|row| has_similarity_tag(row, "alu_like"))
+            .collect::<Vec<_>>();
+
+        if !low_complexity_rows.is_empty()
+            || !homopolymer_rows.is_empty()
+            || !tandem_rows.is_empty()
+        {
+            let complexity_status = if !homopolymer_rows.is_empty() || !tandem_rows.is_empty() {
+                "repeat_patterns_detected"
+            } else {
+                "low_complexity_detected"
+            };
+            let complexity_label = match complexity_status {
+                "repeat_patterns_detected" => {
+                    "Low-complexity / tandem-repeat context detected".to_string()
+                }
+                _ => "Low-complexity context detected".to_string(),
+            };
+            let mut rationale_bits = vec![];
+            if !low_complexity_rows.is_empty() {
+                rationale_bits.push(format!(
+                    "{} low-complexity region(s)",
+                    low_complexity_rows.len()
+                ));
+            }
+            if !homopolymer_rows.is_empty() {
+                rationale_bits.push(format!("{} homopolymer run(s)", homopolymer_rows.len()));
+            }
+            if !tandem_rows.is_empty() {
+                rationale_bits.push(format!("{} tandem repeat(s)", tandem_rows.len()));
+            }
+            let complexity_rationale = format!(
+                "Sequence-derived complexity heuristics detected {}. These are kept as generated structural annotations rather than hard biological facts because their practical meaning depends on the downstream task.",
+                rationale_bits.join(", ")
+            );
+            let mut complexity_evidence_ids = similarity_ids(&low_complexity_rows);
+            complexity_evidence_ids.extend(similarity_ids(&homopolymer_rows));
+            complexity_evidence_ids.extend(similarity_ids(&tandem_rows));
+            complexity_evidence_ids.sort();
+            complexity_evidence_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_sequence_complexity_context",
+                "sequence_complexity_context",
+                complexity_label,
+                complexity_rationale.clone(),
+                complexity_evidence_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": complexity_status,
+                    "low_complexity_region_count": low_complexity_rows.len(),
+                    "homopolymer_run_count": homopolymer_rows.len(),
+                    "tandem_repeat_count": tandem_rows.len(),
+                    "labels": similarity_labels(&low_complexity_rows),
+                    "homopolymer_labels": similarity_labels(&homopolymer_rows),
+                    "tandem_repeat_labels": similarity_labels(&tandem_rows),
+                    "max_low_complexity_risk_score": similarity_max_score(&low_complexity_rows),
+                    "max_polymerase_slippage_risk_score": similarity_max_score(&slippage_risk_rows),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_sequence_complexity_context",
+                "evaluate_sequence_complexity_context",
+                "Evaluate Sequence Complexity".to_string(),
+                complexity_rationale,
+                complexity_evidence_ids,
+                vec!["fact_sequence_complexity_context".to_string()],
+                json!({
+                    "status": complexity_status,
+                }),
+            ));
+        }
+
+        if !direct_repeat_rows.is_empty() || !inverted_repeat_rows.is_empty() {
+            let repeat_architecture_status = if !inverted_repeat_rows.is_empty() {
+                "direct_and_inverted_repeat_clusters"
+            } else {
+                "direct_repeat_clusters"
+            };
+            let repeat_architecture_label = if !inverted_repeat_rows.is_empty() {
+                "Repeat/similarity architecture detected".to_string()
+            } else {
+                "Direct repeat architecture detected".to_string()
+            };
+            let repeat_architecture_rationale = format!(
+                "Sequence-derived repeat scanning detected {} direct-repeat cluster(s) and {} inverted-repeat cluster(s). These exact sequence patterns are kept as generated structural context because inversion or recombination relevance depends on the workflow.",
+                direct_repeat_rows.len(),
+                inverted_repeat_rows.len()
+            );
+            let mut repeat_architecture_ids = similarity_ids(&direct_repeat_rows);
+            repeat_architecture_ids.extend(similarity_ids(&inverted_repeat_rows));
+            repeat_architecture_ids.sort();
+            repeat_architecture_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_repeat_architecture_context",
+                "repeat_architecture_context",
+                repeat_architecture_label,
+                repeat_architecture_rationale.clone(),
+                repeat_architecture_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": repeat_architecture_status,
+                    "direct_repeat_cluster_count": direct_repeat_rows.len(),
+                    "inverted_repeat_cluster_count": inverted_repeat_rows.len(),
+                    "direct_repeat_labels": similarity_labels(&direct_repeat_rows),
+                    "inverted_repeat_labels": similarity_labels(&inverted_repeat_rows),
+                    "max_direct_repeat_risk_score": similarity_max_score(&direct_repeat_rows),
+                    "max_inverted_repeat_risk_score": similarity_max_score(&inverted_repeat_rows),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_repeat_architecture_context",
+                "evaluate_repeat_architecture_context",
+                "Evaluate Repeat/Similarity Architecture".to_string(),
+                repeat_architecture_rationale,
+                repeat_architecture_ids,
+                vec!["fact_repeat_architecture_context".to_string()],
+                json!({
+                    "status": repeat_architecture_status,
+                }),
+            ));
+        }
+
+        if !mobile_element_rows.is_empty() {
+            let mobile_element_status = if !alu_like_rows.is_empty() {
+                "alu_like_candidates_detected"
+            } else {
+                "mobile_element_candidates_detected"
+            };
+            let mobile_element_label = match mobile_element_status {
+                "alu_like_candidates_detected" => {
+                    "Alu-like mobile-element context detected".to_string()
+                }
+                _ => "Mobile-element context detected".to_string(),
+            };
+            let mobile_element_rationale = if !alu_like_rows.is_empty() {
+                format!(
+                    "Sequence-derived mobile-element heuristics detected {} Alu-like SINE candidate(s). These remain soft hypotheses until a curated repeat-family catalog or external masker confirms the family assignment.",
+                    alu_like_rows.len()
+                )
+            } else {
+                format!(
+                    "Sequence-derived mobile-element heuristics detected {} candidate region(s), but none currently match the narrower Alu-like rule.",
+                    mobile_element_rows.len()
+                )
+            };
+            let mobile_element_ids = similarity_ids(&mobile_element_rows);
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_mobile_element_context",
+                "mobile_element_context",
+                mobile_element_label,
+                mobile_element_rationale.clone(),
+                mobile_element_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": mobile_element_status,
+                    "mobile_element_candidate_count": mobile_element_rows.len(),
+                    "alu_like_candidate_count": alu_like_rows.len(),
+                    "labels": similarity_labels(&mobile_element_rows),
+                    "max_mobile_element_score": similarity_max_score(&mobile_element_rows),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_mobile_element_context",
+                "evaluate_mobile_element_context",
+                "Evaluate Mobile-Element Context".to_string(),
+                mobile_element_rationale,
+                mobile_element_ids,
+                vec!["fact_mobile_element_context".to_string()],
+                json!({
+                    "status": mobile_element_status,
+                }),
+            ));
+        }
+
+        if !slippage_risk_rows.is_empty()
+            || !mapping_ambiguity_rows.is_empty()
+            || !inversion_risk_rows.is_empty()
+            || !cloning_risk_rows.is_empty()
+        {
+            let similarity_risk_status = if !inversion_risk_rows.is_empty() {
+                "review_needed_inversion_and_repeat_risk"
+            } else if !cloning_risk_rows.is_empty() {
+                "review_needed_cloning_repeat_risk"
+            } else {
+                "review_needed_repeat_risk"
+            };
+            let similarity_risk_rationale = format!(
+                "Sequence-derived repeat/complexity annotations imply {} slippage-risk span(s), {} mapping-ambiguity span(s), {} inversion-risk span(s), and {} cloning-stability span(s). GENtle keeps these as operational review cues because the practical severity depends on PCR, mapping, nanopore, or cloning intent.",
+                slippage_risk_rows.len(),
+                mapping_ambiguity_rows.len(),
+                inversion_risk_rows.len(),
+                cloning_risk_rows.len()
+            );
+            let mut similarity_risk_ids = similarity_ids(&slippage_risk_rows);
+            similarity_risk_ids.extend(similarity_ids(&mapping_ambiguity_rows));
+            similarity_risk_ids.extend(similarity_ids(&inversion_risk_rows));
+            similarity_risk_ids.extend(similarity_ids(&cloning_risk_rows));
+            similarity_risk_ids.sort();
+            similarity_risk_ids.dedup();
+            facts.push(Self::construct_reasoning_build_fact(
+                "fact_similarity_operational_risk_context",
+                "similarity_operational_risk_context",
+                "Similarity/low-complexity operational risks detected".to_string(),
+                similarity_risk_rationale.clone(),
+                similarity_risk_ids.clone(),
+                json!({
+                    "seq_id": seq_id,
+                    "status": similarity_risk_status,
+                    "polymerase_slippage_risk_count": slippage_risk_rows.len(),
+                    "mapping_ambiguity_risk_count": mapping_ambiguity_rows.len(),
+                    "inversion_risk_count": inversion_risk_rows.len(),
+                    "cloning_stability_risk_count": cloning_risk_rows.len(),
+                    "max_risk_score": similarity_max_score(&slippage_risk_rows)
+                        .max(similarity_max_score(&mapping_ambiguity_rows))
+                        .max(similarity_max_score(&inversion_risk_rows))
+                        .max(similarity_max_score(&cloning_risk_rows)),
+                }),
+            ));
+            decisions.push(Self::construct_reasoning_build_decision(
+                "decision_evaluate_similarity_operational_risk",
+                "evaluate_similarity_operational_risk",
+                "Evaluate Similarity/Repeat Operational Risk".to_string(),
+                similarity_risk_rationale,
+                similarity_risk_ids,
+                vec!["fact_similarity_operational_risk_context".to_string()],
+                json!({
+                    "status": similarity_risk_status,
                 }),
             ));
         }

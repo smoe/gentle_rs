@@ -9717,6 +9717,51 @@ mod tests {
     }
 
     #[test]
+    fn refresh_description_cache_includes_similarity_reasoning_facts() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
+        );
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_similarity".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("seq_reasoning_similarity", None, None)
+            .expect("build graph");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(
+            dna,
+            Some("seq_reasoning_similarity".to_string()),
+            Some(engine),
+        );
+
+        area.focus_construct_reasoning_graph(&graph.graph_id);
+        area.refresh_description_cache();
+
+        let reasoning = area
+            .description_cache_construct_reasoning
+            .as_ref()
+            .expect("construct reasoning cache");
+        assert!(reasoning.fact_entries.iter().any(|entry| {
+            entry.title == "Low-complexity / tandem-repeat context detected"
+                || entry.title == "Low-complexity context detected"
+        }));
+        assert!(
+            reasoning
+                .fact_entries
+                .iter()
+                .any(|entry| entry.title == "Similarity/low-complexity operational risks detected")
+        );
+    }
+
+    #[test]
     fn focus_construct_reasoning_graph_prefers_requested_graph() {
         let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -18222,6 +18267,8 @@ impl MainAreaDna {
             ConstructRole::LocalizationSignal => "Localization signal",
             ConstructRole::HomologyArm => "Homology arm",
             ConstructRole::FusionBoundary => "Fusion boundary",
+            ConstructRole::RepeatRegion => "Repeat/similarity",
+            ConstructRole::MobileElement => "Mobile element",
             ConstructRole::RestrictionSite => "Restriction site",
             ConstructRole::SpliceBoundary => "Splice boundary",
             ConstructRole::Tfbs => "TFBS",
@@ -18728,6 +18775,133 @@ impl MainAreaDna {
                 if !review_items.is_empty() {
                     detail_lines.push(format!("review: {}", review_items.join(", ")));
                     warning_lines.extend(review_items);
+                }
+            }
+            "sequence_complexity_context" => {
+                let low_complexity = fact
+                    .value_json
+                    .get("low_complexity_region_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let homopolymers = fact
+                    .value_json
+                    .get("homopolymer_run_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let tandem = fact
+                    .value_json
+                    .get("tandem_repeat_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                detail_lines.push(format!(
+                    "counts: low_complexity={low_complexity}, homopolymers={homopolymers}, tandem_repeats={tandem}"
+                ));
+                let labels = Self::construct_reasoning_json_string_list(&fact.value_json, "labels");
+                if !labels.is_empty() {
+                    detail_lines.push(format!("regions: {}", labels.join(", ")));
+                }
+                let homopolymer_labels = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "homopolymer_labels",
+                );
+                if !homopolymer_labels.is_empty() {
+                    detail_lines.push(format!("homopolymers: {}", homopolymer_labels.join(", ")));
+                }
+                let tandem_labels = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "tandem_repeat_labels",
+                );
+                if !tandem_labels.is_empty() {
+                    detail_lines.push(format!("tandem: {}", tandem_labels.join(", ")));
+                }
+            }
+            "repeat_architecture_context" => {
+                let direct = fact
+                    .value_json
+                    .get("direct_repeat_cluster_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let inverted = fact
+                    .value_json
+                    .get("inverted_repeat_cluster_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                detail_lines.push(format!("clusters: direct={direct}, inverted={inverted}"));
+                let direct_labels = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "direct_repeat_labels",
+                );
+                if !direct_labels.is_empty() {
+                    detail_lines.push(format!("direct: {}", direct_labels.join(", ")));
+                }
+                let inverted_labels = Self::construct_reasoning_json_string_list(
+                    &fact.value_json,
+                    "inverted_repeat_labels",
+                );
+                if !inverted_labels.is_empty() {
+                    detail_lines.push(format!("inverted: {}", inverted_labels.join(", ")));
+                }
+            }
+            "mobile_element_context" => {
+                let mobile = fact
+                    .value_json
+                    .get("mobile_element_candidate_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let alu_like = fact
+                    .value_json
+                    .get("alu_like_candidate_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                detail_lines.push(format!(
+                    "candidates: mobile_elements={mobile}, alu_like={alu_like}"
+                ));
+                let labels = Self::construct_reasoning_json_string_list(&fact.value_json, "labels");
+                if !labels.is_empty() {
+                    detail_lines.push(format!("labels: {}", labels.join(", ")));
+                }
+                if alu_like > 0 {
+                    warning_lines.push(
+                        "Alu-like calls are still heuristic until a curated repeat-family catalog is integrated"
+                            .to_string(),
+                    );
+                }
+            }
+            "similarity_operational_risk_context" => {
+                let slippage = fact
+                    .value_json
+                    .get("polymerase_slippage_risk_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let mapping = fact
+                    .value_json
+                    .get("mapping_ambiguity_risk_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let inversion = fact
+                    .value_json
+                    .get("inversion_risk_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let cloning = fact
+                    .value_json
+                    .get("cloning_stability_risk_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                detail_lines.push(format!(
+                    "risks: slippage={slippage}, mapping={mapping}, inversion={inversion}, cloning={cloning}"
+                ));
+                if inversion > 0 {
+                    warning_lines.push(
+                        "Inverted-repeat evidence suggests localized inversion/recombination review"
+                            .to_string(),
+                    );
+                }
+                if slippage > 0 {
+                    warning_lines.push(
+                        "Low-complexity/tandem-repeat evidence suggests polymerase slippage review"
+                            .to_string(),
+                    );
                 }
             }
             "selection_context" => {
