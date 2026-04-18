@@ -186,6 +186,140 @@ Behavior notes:
   useful for figure/report contexts where one wants to show that only some
   factors cross into positive support while the others remain below zero.
 
+## Stateless sequence-scan contract
+
+Implemented additive contract:
+
+- shared non-mutating sequence-inspection routes can accept either:
+  - a stored project sequence, or
+  - inline ASCII DNA text without first materializing a project-state record
+- intended consumers:
+  - GUI selection-first actions (`current selection`, `visible span`,
+    `whole sequence`)
+  - CLI/shared shell
+  - JS/Lua/Python wrappers
+  - MCP/agent wrappers including ClawBio/OpenClaw-style low-latency helpers
+
+Implemented shared operand shape:
+
+- `SequenceScanTarget`
+- stored-sequence form:
+
+```json
+{
+  "kind": "seq_id",
+  "seq_id": "tp73_region",
+  "span_start_0based": 700,
+  "span_end_0based_exclusive": 1200
+}
+```
+
+- inline-sequence form:
+
+```json
+{
+  "kind": "inline_sequence",
+  "sequence_text": "ACGTACGTACGT",
+  "topology": "linear",
+  "id_hint": "inline_tp73_window",
+  "span_start_0based": 0,
+  "span_end_0based_exclusive": 12
+}
+```
+
+Semantics:
+
+- inline `sequence_text` is normalized through the same parsing path used for
+  in-memory DNA sequences
+- `topology` matters for full-span scans where circular wrap-around changes hit
+  detection
+- span fields remain local to the supplied operand:
+  - for `seq_id`, local sequence coordinates on the stored record
+  - for inline text, coordinates on the submitted text after normalization
+- inspection remains non-mutating unless the caller explicitly chooses a second
+  promote/export/materialize step
+
+Implemented first-class operation on top of that operand:
+
+- `FindRestrictionSites { target, enzymes?, max_sites_per_enzyme?, include_cut_geometry?, path? }`
+  - purpose:
+    - non-mutating REBASE-backed scan for recognition sites and cleavage
+      geometry directly on one operand
+  - result schema:
+    - `gentle.restriction_site_scan.v1`
+  - report fields:
+    - `target_kind`
+    - `target_label`
+    - `source_sequence_length_bp`
+    - `scan_start_0based`
+    - `scan_end_0based_exclusive`
+    - `scan_length_bp`
+    - `scan_topology`
+    - `enzyme_filters`
+    - `enzymes_scanned`
+    - `matched_site_count`
+    - `skipped_enzyme_names_due_to_max_sites`
+    - `rows[]`
+  - row fields:
+    - `enzyme_name`
+    - `recognition_sequence`
+    - local scan coordinates:
+      - `recognition_start_0based`
+      - `recognition_end_0based_exclusive`
+    - source-sequence coordinates:
+      - `source_recognition_start_0based`
+      - `source_recognition_end_0based_exclusive`
+    - optional cut geometry:
+      - `forward_cut_0based`
+      - `reverse_cut_0based`
+      - `opening_start_0based`
+      - `opening_end_0based_exclusive`
+      - source-space equivalents for the same cut/opening positions
+    - `end_geometry`
+  - `enzymes=[]` means:
+    - use the current shared preferred restriction-enzyme list
+    - if that list is empty, fall back to the default preferred enzyme set
+
+Still planned:
+
+- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
+  - purpose:
+    - non-mutating thresholded JASPAR/IUPAC hit scan using the same scoring
+      path as `AnnotateTfbs`, but without creating sequence features by default
+  - result schema (tentative):
+    - `gentle.tfbs_hit_scan.v1`
+  - expected row fields:
+    - `motif_id`
+    - `motif_name`
+    - `start_0based`
+    - `end_0based_exclusive`
+    - `reverse`
+    - `llr_bits`
+    - `llr_quantile`
+    - `true_log_odds_bits`
+    - `true_log_odds_quantile`
+  - GUI or shell follow-up may later choose to promote selected hits into
+    persistent `TFBS` features, but that promotion is intentionally separate
+
+- `SummarizeTfbsScoreTracks`
+  - additive follow-up:
+    - accept the same `target` operand in addition to the current `seq_id`
+      route
+
+UX parity expectations:
+
+- GUI:
+  - DNA-window actions can now call the shared restriction-site scan for:
+    - current selection
+    - current visible span
+    - whole active sequence
+- CLI/shared shell:
+  - one command family accepts either stored `SEQ_ID` or inline
+    `--sequence-text`
+- testing:
+  - deterministic parity tests compare inline-target results against stored
+    `seq_id` results for the same sequence/span
+
 ## Draft design resources
 
 ### `gentle.gibson_assembly_plan.v1`

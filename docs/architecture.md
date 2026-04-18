@@ -115,6 +115,17 @@ Strategic aims:
 8. Make sequence/feature transfer pathways explicit and deterministic,
    including in-app selection extraction and planned cross-application
    clipboard interchange through the same engine operation contracts.
+9. Keep low-latency sequence inspection state-optional when biology does not
+   require persisted project context:
+   - if an operation only needs sequence letters, optional topology, and an
+     optional local span, the shared engine contract should accept either:
+     - a stored `seq_id`, or
+     - inline ASCII sequence text through the same operand model
+   - GUI selection actions, CLI/shared-shell calls, MCP/agent wrappers, and
+     external tools such as ClawBio/OpenClaw should all reuse that same
+     contract rather than forking separate "quick scan" logic
+   - promoting an inline/stateless inspection result into project state
+     remains an explicit second step, not an automatic side effect
 
 Test-data provenance rule:
 
