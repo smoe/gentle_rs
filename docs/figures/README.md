@@ -354,6 +354,38 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+`tp73_upstream_tfbs_score_tracks.workflow.json` renders a README-facing stacked
+TFBS/PSSM score-track figure for a TP73 promoter-proximal window. The workflow
+loads the local `test_files/tp73.ncbi.gb` locus, keeps the continuous score
+tracks for `TP53`, `TP63`, `TP73`, `PATZ1`, `SP1`, `BACH2`, and `REST` over the
+internal TP73 transcript-start neighborhood `15564..16764` (`1000 bp`
+upstream plus `200 bp` into the transcribed region around
+`XM_047429524.1`), and writes the shared SVG
+`tp73_upstream_tfbs_score_tracks.svg` through `RenderTfbsScoreTracksSvg`.
+
+This figure intentionally uses `clip_negative=false`. In this local TP73 slice,
+`SP1` is the clearest positive-support factor, while the remaining requested
+motifs are still useful to show as continuous background scores instead of
+flattening them to zero. When a transcription start falls inside or directly at
+the edge of the plotted span, the renderer also adds a short hooked-arrow TSS
+cue above the score tracks.
+
+`tp73_upstream_tfbs_score_tracks.png` is the README-friendly raster derivative
+of that shared export.
+
+Regenerate the TP73 TFBS score-track assets from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_upstream_tfbs_score_tracks.state.json \
+  workflow @docs/figures/tp73_upstream_tfbs_score_tracks.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_upstream_tfbs_score_tracks.svg \
+  docs/figures/tp73_upstream_tfbs_score_tracks.png
+```
+
 `toy_shared_exon_anchor_source.gb` is a hand-crafted 150 bp synthetic teaching
 locus with four short exons and three transcripts. All three transcripts share
 exon `85..108`, but one starts later (`delta 5'`) and one ends earlier

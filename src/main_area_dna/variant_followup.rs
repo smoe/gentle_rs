@@ -196,6 +196,7 @@ impl MainAreaDna {
             score_track_motifs: Self::promoter_design_default_motifs(&gene_label),
             score_track_start_0based: "0".to_string(),
             score_track_end_0based_exclusive: seq_len.to_string(),
+            score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             score_track_clip_negative: true,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
@@ -445,50 +446,22 @@ impl MainAreaDna {
         &mut self,
         path: Option<String>,
     ) -> Option<TfbsScoreTrackReport> {
-        let seq_id = match self.variant_followup_input_seq_id() {
-            Ok(value) => value,
-            Err(err) => {
-                self.op_status = err;
-                return None;
-            }
-        };
-        let motifs =
-            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
-        if motifs.is_empty() {
-            self.op_status =
-                "Promoter design score tracks require at least one TF motif token".to_string();
-            return None;
-        }
-        let start_0based = match Self::parse_optional_usize_text(
-            &self.variant_followup_ui.score_track_start_0based,
-            "score-track start bp",
-        ) {
-            Ok(value) => value.unwrap_or(0),
-            Err(err) => {
-                self.op_status = err;
-                return None;
-            }
-        };
-        let end_0based_exclusive = match Self::parse_optional_usize_text(
-            &self.variant_followup_ui.score_track_end_0based_exclusive,
-            "score-track end bp",
-        ) {
-            Ok(value) => value.unwrap_or_else(|| {
-                self.variant_followup_sequence_len(&seq_id)
-                    .unwrap_or(start_0based)
-            }),
-            Err(err) => {
-                self.op_status = err;
-                return None;
-            }
-        };
+        let (seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative) =
+            match self.variant_followup_score_track_request() {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err;
+                    return None;
+                }
+            };
         let result =
             self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
                 seq_id,
                 motifs,
                 start_0based,
                 end_0based_exclusive,
-                clip_negative: self.variant_followup_ui.score_track_clip_negative,
+                score_kind,
+                clip_negative,
                 path,
             });
         if let Some(report) = result.and_then(|row| row.tfbs_score_tracks) {
@@ -501,6 +474,92 @@ impl MainAreaDna {
 
     fn summarize_variant_followup_score_tracks(&mut self) {
         let _ = self.run_variant_followup_score_tracks(None);
+    }
+
+    fn variant_followup_score_track_request(
+        &self,
+    ) -> Result<
+        (
+            String,
+            Vec<String>,
+            usize,
+            usize,
+            TfbsScoreTrackValueKind,
+            bool,
+        ),
+        String,
+    > {
+        let seq_id = self.variant_followup_input_seq_id()?;
+        let motifs =
+            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+        if motifs.is_empty() {
+            return Err(
+                "Promoter design score tracks require at least one TF motif token".to_string(),
+            );
+        }
+        let start_0based = Self::parse_optional_usize_text(
+            &self.variant_followup_ui.score_track_start_0based,
+            "score-track start bp",
+        )?
+        .unwrap_or(0);
+        let end_0based_exclusive = Self::parse_optional_usize_text(
+            &self.variant_followup_ui.score_track_end_0based_exclusive,
+            "score-track end bp",
+        )?
+        .unwrap_or_else(|| {
+            self.variant_followup_sequence_len(&seq_id)
+                .unwrap_or(start_0based)
+        });
+        if start_0based >= end_0based_exclusive {
+            return Err(format!(
+                "Promoter design score tracks require start < end (got {}..{})",
+                start_0based, end_0based_exclusive
+            ));
+        }
+        Ok((
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            self.variant_followup_ui.score_track_value_kind,
+            self.variant_followup_ui.score_track_clip_negative,
+        ))
+    }
+
+    fn export_variant_followup_score_tracks_svg(&mut self) {
+        let (seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative) =
+            match self.variant_followup_score_track_request() {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err.clone();
+                    self.op_error_popup = Some(err);
+                    return;
+                }
+            };
+        let default_name = format!(
+            "{}_tfbs_score_tracks.svg",
+            Self::sanitize_export_name_component(&seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Promoter design TF score-track SVG export canceled".to_string();
+            return;
+        };
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::RenderTfbsScoreTracksSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                path: path.display().to_string(),
+            });
+        if let Some(report) = result.and_then(|row| row.tfbs_score_tracks) {
+            self.variant_followup_ui.cached_score_tracks = Some(report);
+        }
     }
 
     fn annotate_variant_followup_promoter_windows(&mut self) {
@@ -1814,8 +1873,8 @@ impl MainAreaDna {
                     report.tracks.len(),
                     report.view_start_0based,
                     report.view_end_0based_exclusive,
-                    report.score_kind,
-                    if report.clip_negative {
+                    report.score_kind.as_str(),
+                    if report.clip_negative && report.score_kind.supports_negative_values() {
                         " | negative values clipped to 0"
                     } else {
                         ""
@@ -1986,6 +2045,27 @@ impl MainAreaDna {
                 {
                     score_track_params_changed = true;
                 }
+                egui::ComboBox::from_id_salt("promoter_design_score_track_value_kind")
+                    .selected_text(self.variant_followup_ui.score_track_value_kind.as_str())
+                    .show_ui(ui, |ui| {
+                        for value_kind in [
+                            TfbsScoreTrackValueKind::LlrBits,
+                            TfbsScoreTrackValueKind::LlrQuantile,
+                            TfbsScoreTrackValueKind::TrueLogOddsBits,
+                            TfbsScoreTrackValueKind::TrueLogOddsQuantile,
+                        ] {
+                            if ui
+                                .selectable_value(
+                                    &mut self.variant_followup_ui.score_track_value_kind,
+                                    value_kind,
+                                    value_kind.as_str(),
+                                )
+                                .changed()
+                            {
+                                score_track_params_changed = true;
+                            }
+                        }
+                    });
                 if ui
                     .checkbox(
                         &mut self.variant_followup_ui.score_track_clip_negative,
@@ -1996,6 +2076,12 @@ impl MainAreaDna {
                     score_track_params_changed = true;
                 }
             });
+            ui.small(
+                egui::RichText::new(
+                    "Choose raw bits or empirical quantiles. Negative clipping only affects the bit-based score kinds.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
             ui.end_row();
 
             ui.label("Gene label");
@@ -2124,6 +2210,18 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.summarize_variant_followup_score_tracks();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Export TF score tracks SVG..."),
+                )
+                .on_hover_text(
+                    "Write the current promoter TF score-track plot as a shared SVG figure through the same engine-owned rendering path used by headless exports.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_score_tracks_svg();
             }
             if ui
                 .add_enabled(

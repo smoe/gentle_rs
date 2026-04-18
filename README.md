@@ -354,6 +354,37 @@ cargo run --quiet --bin gentle_examples_docs -- \
   --drop-dotplot-metadata
 ```
 
+### TP73 Upstream TF Score Tracks
+
+![GENtle TP73 upstream TFBS score tracks](docs/figures/tp73_upstream_tfbs_score_tracks.png)
+
+GENtle can now also export the continuous TFBS/PSSM score-track plot itself as a
+shared figure, not just as a GUI-only panel or JSON array dump. This TP73
+example uses the local `test_files/tp73.ncbi.gb` locus and shows one
+promoter-proximal internal transcript-start neighborhood (`15564..16764`),
+covering `1000 bp` upstream plus `200 bp` into the transcribed region around
+the internal TP73 start at `XM_047429524.1`, for `TP53`, `TP63`, `TP73`,
+`PATZ1`, `SP1`, `BACH2`, and `REST`. When a transcription start is immediately
+adjacent to or inside the rendered window, the shared export now marks it with
+a short hooked arrow so strand direction reads directly from the figure. The
+figure is deliberately rendered without negative clipping, because in this slice
+`SP1` provides the clearest positive support while the other requested factors
+are still informative as full continuous score traces rather than being
+flattened to zero.
+
+The figure was generated with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_upstream_tfbs_score_tracks.state.json \
+  workflow @docs/figures/tp73_upstream_tfbs_score_tracks.workflow.json
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tp73_upstream_tfbs_score_tracks.svg \
+  docs/figures/tp73_upstream_tfbs_score_tracks.png
+```
+
 ### Ongoing Work With ClawBio
 
 ![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)

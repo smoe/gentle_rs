@@ -5935,6 +5935,42 @@ impl GentleEngine {
                     seq_id, dotplot_id, path
                 ));
             }
+            Operation::RenderTfbsScoreTracksSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_score_tracks(
+                    &seq_id,
+                    &motifs,
+                    start_0based,
+                    end_0based_exclusive,
+                    score_kind,
+                    clip_negative,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                let svg = crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&report);
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write TFBS score-track SVG to '{}': {e}", path),
+                })?;
+                result.messages.push(format!(
+                    "Wrote TFBS score-track SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
+                    seq_id,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
+                    report.clip_negative,
+                    path
+                ));
+                result.tfbs_score_tracks = Some(report);
+            }
             Operation::RenderFeatureExpertSvg {
                 seq_id,
                 target,
@@ -12126,6 +12162,7 @@ impl GentleEngine {
                 motifs,
                 start_0based,
                 end_0based_exclusive,
+                score_kind,
                 clip_negative,
                 path,
             } => {
@@ -12134,6 +12171,7 @@ impl GentleEngine {
                     &motifs,
                     start_0based,
                     end_0based_exclusive,
+                    score_kind,
                     clip_negative,
                 )?;
                 report.op_id = Some(result.op_id.clone());
@@ -12146,11 +12184,12 @@ impl GentleEngine {
                     ));
                 }
                 result.messages.push(format!(
-                    "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with clip_negative={}",
+                    "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with score_kind={} clip_negative={}",
                     report.seq_id,
                     report.tracks.len(),
                     report.view_start_0based,
                     report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
                     report.clip_negative
                 ));
                 result.tfbs_score_tracks = Some(report);

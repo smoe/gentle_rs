@@ -3673,6 +3673,14 @@ Tutorial projects:
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
     reporter construction.
+  - the same score-track panel now also lets users switch the exported/painted
+    value kind between `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
+    `true_log_odds_quantile`, so promoter inspection is not locked to one
+    scoring view.
+  - the same window now also exposes `Export TF score tracks SVG...`, which
+    goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
+    GUI-only painter and can therefore reproduce the same stacked figure style
+    from shell/CLI workflows and README assets.
   - the same window now also exposes `Export handoff bundle`, which writes a
     portable ClawBio-facing bundle containing:
     - promoter-context JSON

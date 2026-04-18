@@ -140,6 +140,52 @@ Grouping policy:
 - otherwise `name`
 - otherwise `tf_id`
 
+## TFBS score-track contract
+
+GENtle also exposes a portable continuous TFBS/PSSM score-track contract for one
+selected sequence span.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]'
+```
+
+First-class operation routes:
+
+```json
+{"SummarizeTfbsScoreTracks":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_quantile","clip_negative":false}}
+```
+
+```json
+{"RenderTfbsScoreTracksSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_quantile","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
+```
+
+Portable schema:
+
+- `gentle.tfbs_score_tracks.v1`
+
+Behavior notes:
+
+- `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
+  score arrays.
+- `score_kind` selects which per-window value is exported:
+  - `llr_bits`
+  - `llr_quantile`
+  - `true_log_odds_bits`
+  - `true_log_odds_quantile`
+- `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
+  deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
+- The shared report also carries transcription-start markers for covered or
+  directly adjacent starts, and the SVG renderer shows them as short hooked
+  arrows so strand direction survives figure-oriented exports.
+- `clip_negative=true` is the default presentation mode for promoter-design
+  inspection on the bit-based score kinds because it suppresses negative-only
+  windows and leaves only positive support.
+- `clip_negative=false` keeps the full continuous score landscape, which is
+  useful for figure/report contexts where one wants to show that only some
+  factors cross into positive support while the others remain below zero.
+
 ## Draft design resources
 
 ### `gentle.gibson_assembly_plan.v1`
@@ -834,17 +880,24 @@ Current draft operations:
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
   - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
-- `SummarizeTfbsScoreTracks { seq_id, motifs, start_0based, end_0based_exclusive, clip_negative, path? }`
+- `SummarizeTfbsScoreTracks { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path? }`
   - non-mutating continuous motif-score export for Promoter design and headless
     ClawBio/OpenClaw-style inspection
   - returns schema `gentle.tfbs_score_tracks.v1`
   - reports per-position forward and reverse score tracks for each requested
     TF/PSSM token across one shared span
-  - `clip_negative=true` clamps negative scores to `0.0`, which is the
-    intended display mode for promoter-design plots when only positive support
-    should be shown
+  - `score_kind` accepts `llr_bits`, `llr_quantile`, `true_log_odds_bits`, or
+    `true_log_odds_quantile`
+  - `clip_negative=true` clamps negative scores to `0.0` for the bit-based
+    kinds, which is the intended display mode for promoter-design plots when
+    only positive support should be shown
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
+- `RenderTfbsScoreTracksSvg { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path }`
+  - shared stacked SVG renderer for the same TFBS score-track payload
+  - writes a deterministic figure suitable for GUI/CLI/agent/README parity
+  - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
+    also returns that report in `OpResult.tfbs_score_tracks`
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`

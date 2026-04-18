@@ -477,6 +477,10 @@ fn default_tfbs_score_track_clip_negative() -> bool {
     true
 }
 
+fn default_tfbs_score_track_value_kind() -> TfbsScoreTrackValueKind {
+    TfbsScoreTrackValueKind::LlrBits
+}
+
 fn default_promoter_window_upstream_bp() -> usize {
     DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP
 }
@@ -2543,6 +2547,16 @@ pub enum Operation {
         #[serde(default)]
         overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef>,
     },
+    RenderTfbsScoreTracksSvg {
+        seq_id: SeqId,
+        motifs: Vec<String>,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        path: String,
+    },
     RenderFeatureExpertSvg {
         seq_id: SeqId,
         target: FeatureExpertTarget,
@@ -3333,6 +3347,8 @@ pub enum Operation {
         motifs: Vec<String>,
         start_0based: usize,
         end_0based_exclusive: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
         #[serde(default = "default_tfbs_score_track_clip_negative")]
         clip_negative: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4541,6 +4557,7 @@ impl GentleEngine {
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
                 "RenderDotplotSvg".to_string(),
+                "RenderTfbsScoreTracksSvg".to_string(),
                 "RenderFeatureExpertSvg".to_string(),
                 "RenderIsoformArchitectureSvg".to_string(),
                 "RenderRnaStructureSvg".to_string(),
@@ -6501,6 +6518,7 @@ impl GentleEngine {
             Operation::SaveFile { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
+                | Operation::RenderTfbsScoreTracksSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }

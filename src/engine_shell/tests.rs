@@ -4282,6 +4282,34 @@ fn parse_features_tfbs_summary_with_context_filters() {
 }
 
 #[test]
+fn parse_features_tfbs_score_tracks_svg_with_range_and_negative_scores() {
+    let cmd = parse_shell_line(
+        "features tfbs-score-tracks-svg seq_a /tmp/seq_a.tfbs.svg --motif SP1 --motif TP73 --range 2900..3100 --score-kind true_log_odds_quantile --allow-negative",
+    )
+    .expect("parse features tfbs-score-tracks-svg");
+    match cmd {
+        ShellCommand::FeaturesTfbsScoreTracksSvg {
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(motifs, vec!["SP1".to_string(), "TP73".to_string()]);
+            assert_eq!(start_0based, 2900);
+            assert_eq!(end_0based_exclusive, 3100);
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::TrueLogOddsQuantile);
+            assert!(!clip_negative);
+            assert_eq!(output, "/tmp/seq_a.tfbs.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_variant_reporter_fragments_with_context_options() {
     let cmd = parse_shell_line(
         "variant reporter-fragments seq_a --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500 --max-candidates 3 --path out.json",
@@ -9178,6 +9206,49 @@ fn execute_features_tfbs_summary_returns_grouped_counts_and_densities() {
         run.output["rows"][0]["outside_focus_occurrences"].as_u64(),
         Some(1)
     );
+}
+
+#[test]
+fn execute_features_tfbs_score_tracks_svg_shell_command_writes_svg_and_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tp73_context".to_string(),
+        DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("tp73_tracks.svg");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScoreTracksSvg {
+            seq_id: "tp73_context".to_string(),
+            motifs: vec!["TP73".to_string(), "SP1".to_string(), "BACH2".to_string()],
+            start_0based: 0,
+            end_0based_exclusive: 120,
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
+            clip_negative: true,
+            output: output.display().to_string(),
+        },
+    )
+    .expect("features tfbs-score-tracks-svg");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["result"]["tfbs_score_tracks"]["schema"].as_str(),
+        Some("gentle.tfbs_score_tracks.v1")
+    );
+    assert_eq!(
+        run.output["result"]["tfbs_score_tracks"]["tracks"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    let svg = fs::read_to_string(&output).expect("read svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Continuous TF motif score tracks"));
+    assert!(svg.contains("tp73_context"));
+    assert!(svg.contains("SP1"));
 }
 
 #[test]

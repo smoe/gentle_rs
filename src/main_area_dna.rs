@@ -96,8 +96,8 @@ use crate::{
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, TfbsScoreTrackReport, VariantAlleleChoice,
-        VariantPromoterContextReport, Workflow,
+        TfThresholdOverride, TfbsProgress, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+        VariantAlleleChoice, VariantPromoterContextReport, Workflow,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -1205,7 +1205,8 @@ mod tests {
             SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
             SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
             SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
+            TfbsScoreTrackValueKind, VariantPromoterContextReport,
+            parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -7361,6 +7362,10 @@ mod tests {
             "rs9923231_promoter_alternate"
         );
         assert_eq!(area.variant_followup_ui.score_track_motifs, "SP1");
+        assert_eq!(
+            area.variant_followup_ui.score_track_value_kind,
+            TfbsScoreTrackValueKind::LlrBits
+        );
         assert!(area.variant_followup_ui.score_track_clip_negative);
     }
 
@@ -7423,6 +7428,10 @@ mod tests {
         assert_eq!(
             area.variant_followup_ui.score_track_end_0based_exclusive,
             "40"
+        );
+        assert_eq!(
+            area.variant_followup_ui.score_track_value_kind,
+            TfbsScoreTrackValueKind::LlrBits
         );
         assert!(area.variant_followup_ui.score_track_clip_negative);
     }
@@ -10946,6 +10955,7 @@ struct VariantFollowupUiState {
     score_track_motifs: String,
     score_track_start_0based: String,
     score_track_end_0based_exclusive: String,
+    score_track_value_kind: TfbsScoreTrackValueKind,
     score_track_clip_negative: bool,
     promoter_upstream_bp: String,
     promoter_downstream_bp: String,
@@ -10975,6 +10985,7 @@ impl Default for VariantFollowupUiState {
             score_track_motifs: "SP1".to_string(),
             score_track_start_0based: String::new(),
             score_track_end_0based_exclusive: String::new(),
+            score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             score_track_clip_negative: true,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),

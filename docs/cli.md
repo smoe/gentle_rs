@@ -1628,6 +1628,7 @@ Shared shell command:
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
+    - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]`
     - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
     - `variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]`
     - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
@@ -1919,11 +1920,20 @@ Shared shell command:
       - anchor-related examples:
         - `set-param require_verified_genome_anchor_for_extension true`
         - `set-param genome_anchor_prepared_fallback_policy "single_compatible|always_explicit|off"`
-    - promoter-design TF score-track example via the raw operation bridge:
-      - `gentle_cli op '{"type":"SummarizeTfbsScoreTracks","seq_id":"tp73_context","motifs":["TP73","SP1","BACH2","PATZ1"],"start_0based":0,"end_0based_exclusive":4000,"clip_negative":true}'`
-      - clip-negative mode is the intended default for presentation-oriented
-        promoter plots because it suppresses negative-only windows and leaves
-        only positive motif support
+    - promoter-design TF score-track examples:
+      - structured summary through the raw operation bridge:
+        - `gentle_cli op '{"type":"SummarizeTfbsScoreTracks","seq_id":"tp73_context","motifs":["TP73","SP1","BACH2","PATZ1"],"start_0based":0,"end_0based_exclusive":4000,"score_kind":"llr_quantile","clip_negative":true}'`
+      - shared SVG export through the shell/CLI route:
+        - `gentle_cli shell 'features tfbs-score-tracks-svg tp73_context docs/figures/tp73_upstream_tfbs_score_tracks.svg --motif TP53 --motif TP63 --motif TP73 --motif PATZ1 --motif SP1 --motif BACH2 --motif REST --range 15564..16764 --score-kind llr_quantile --allow-negative'`
+      - `--score-kind` lets you inspect either raw bit scores or empirical
+        quantiles; the quantile modes are often the better first pass when you
+        want to compare motif prominence within one local window
+      - clip-negative mode remains the intended default for presentation-oriented
+        promoter plots on the bit-based score kinds because it suppresses
+        negative-only windows and leaves only positive motif support;
+        `--allow-negative` is available when a figure should show the full
+        continuous score landscape even when only a subset of factors crosses
+        into positive support
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (currently disabled by security policy)

@@ -25478,10 +25478,24 @@ fn summarize_tfbs_score_tracks_clips_negative_scores_to_zero() {
     let engine = GentleEngine::from_state(state);
 
     let unclipped = engine
-        .summarize_tfbs_score_tracks("promoter", &[String::from("SP1")], 0, 40, false)
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            40,
+            TfbsScoreTrackValueKind::LlrBits,
+            false,
+        )
         .expect("unclipped score tracks");
     let clipped = engine
-        .summarize_tfbs_score_tracks("promoter", &[String::from("SP1")], 0, 40, true)
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            40,
+            TfbsScoreTrackValueKind::LlrBits,
+            true,
+        )
         .expect("clipped score tracks");
 
     let unclipped_track = unclipped.tracks.first().expect("SP1 track");
@@ -25521,8 +25535,57 @@ fn summarize_tfbs_score_tracks_clips_negative_scores_to_zero() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_supports_quantile_scoring_modes() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(30)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            60,
+            TfbsScoreTrackValueKind::LlrQuantile,
+            true,
+        )
+        .expect("quantile score tracks");
+
+    assert_eq!(report.score_kind, TfbsScoreTrackValueKind::LlrQuantile);
+    let track = report.tracks.first().expect("SP1 track");
+    assert!(
+        track
+            .forward_scores
+            .iter()
+            .all(|score| (0.0..=1.0).contains(score))
+    );
+    assert!(
+        track
+            .reverse_scores
+            .iter()
+            .all(|score| (0.0..=1.0).contains(score))
+    );
+    assert!(
+        track
+            .forward_scores
+            .iter()
+            .chain(track.reverse_scores.iter())
+            .any(|score| *score > 0.0)
+    );
+}
+
+#[test]
 fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
-    let dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("sequence");
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(20, 60),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("NM_TP73_demo".to_string())),
+        ],
+    });
     let mut state = ProjectState::default();
     state.sequences.insert("promoter".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
@@ -25533,6 +25596,7 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
             motifs: vec!["SP1".to_string(), "TP73".to_string()],
             start_0based: 5,
             end_0based_exclusive: 85,
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
             clip_negative: true,
             path: None,
         })
@@ -25546,11 +25610,15 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
     assert_eq!(report.seq_id, "promoter");
     assert_eq!(report.view_start_0based, 5);
     assert_eq!(report.view_end_0based_exclusive, 85);
+    assert_eq!(report.score_kind, TfbsScoreTrackValueKind::LlrBits);
     assert!(report.clip_negative);
     assert_eq!(
         report.motifs_requested,
         vec!["SP1".to_string(), "TP73".to_string()]
     );
+    assert_eq!(report.tss_markers.len(), 1);
+    assert_eq!(report.tss_markers[0].position_0based, 20);
+    assert_eq!(report.tss_markers[0].label, "NM_TP73_demo".to_string());
     assert_eq!(report.tracks.len(), 2);
     assert!(
         report
@@ -25558,6 +25626,47 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
             .iter()
             .all(|track| track.forward_scores.iter().all(|score| *score >= 0.0))
     );
+}
+
+#[test]
+fn render_tfbs_score_tracks_svg_operation_writes_shared_plot() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(60)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("tp73_context".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("tfbs_tracks.svg");
+    let path_text = path.display().to_string();
+    let result = engine
+        .apply(Operation::RenderTfbsScoreTracksSvg {
+            seq_id: "tp73_context".to_string(),
+            motifs: vec!["TP73".to_string(), "SP1".to_string(), "BACH2".to_string()],
+            start_0based: 0,
+            end_0based_exclusive: 120,
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
+            clip_negative: true,
+            path: path_text.clone(),
+        })
+        .expect("render tfbs score tracks svg");
+
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| m.contains("TFBS score-track SVG"))
+    );
+    let report = result
+        .tfbs_score_tracks
+        .expect("render op should attach underlying report");
+    assert_eq!(report.seq_id, "tp73_context");
+    assert_eq!(report.tracks.len(), 3);
+    let svg = std::fs::read_to_string(path_text).expect("read svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Continuous TF motif score tracks"));
+    assert!(svg.contains("tp73_context"));
+    assert!(svg.contains("SP1"));
+    assert!(svg.contains("base-pair position in selected span"));
 }
 
 #[test]

@@ -1,0 +1,576 @@
+//! Shared SVG renderer for continuous TF motif score-track plots.
+//!
+//! This keeps the Promoter design score-track figure available outside egui so
+//! GUI, CLI, shell, and future adapters can all export the same visual rather
+//! than only the raw per-position arrays.
+
+use crate::engine::TfbsScoreTrackReport;
+
+const SVG_WIDTH: f64 = 1180.0;
+const SVG_MARGIN_LEFT: f64 = 32.0;
+const SVG_MARGIN_RIGHT: f64 = 28.0;
+const SVG_HEADER_HEIGHT: f64 = 82.0;
+const SVG_FOOTER_HEIGHT: f64 = 42.0;
+const SVG_ROW_HEIGHT: f64 = 88.0;
+const SVG_ROW_GAP: f64 = 14.0;
+const SVG_LABEL_WIDTH: f64 = 196.0;
+const SVG_TRACK_PADDING_X: f64 = 10.0;
+const SVG_TRACK_PADDING_Y: f64 = 8.0;
+const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
+const SVG_TSS_MARKER_ROW_HEIGHT: f64 = 18.0;
+const SVG_TSS_MARKER_MAX_LANES: usize = 3;
+
+fn escape_svg_text(raw: &str) -> String {
+    raw.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn sampled_point_indices(point_count: usize, max_points: usize) -> Vec<usize> {
+    if point_count <= 1 || point_count <= max_points {
+        return (0..point_count).collect();
+    }
+    let stride = point_count.div_ceil(max_points).max(1);
+    let mut indices = (0..point_count).step_by(stride).collect::<Vec<_>>();
+    let last_idx = point_count - 1;
+    if indices.last().copied() != Some(last_idx) {
+        indices.push(last_idx);
+    }
+    indices
+}
+
+fn format_bp_ticks(start_0based: usize, end_0based_exclusive: usize) -> (String, String, String) {
+    let mid = start_0based + (end_0based_exclusive.saturating_sub(start_0based) / 2);
+    (
+        start_0based.to_string(),
+        mid.to_string(),
+        end_0based_exclusive.to_string(),
+    )
+}
+
+fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
+    let mut min_score = 0.0_f64;
+    let mut max_score = report.global_max_score.max(0.0);
+    for track in &report.tracks {
+        for score in track
+            .forward_scores
+            .iter()
+            .chain(track.reverse_scores.iter())
+        {
+            if !score.is_finite() {
+                continue;
+            }
+            min_score = min_score.min(*score);
+            max_score = max_score.max(*score);
+        }
+    }
+    if (max_score - min_score).abs() < f64::EPSILON {
+        if max_score <= 0.0 {
+            max_score = 1.0;
+        } else {
+            min_score = 0.0;
+        }
+    }
+    (min_score, max_score)
+}
+
+fn score_to_y(score: f64, min_score: f64, max_score: f64, top: f64, bottom: f64) -> f64 {
+    if (max_score - min_score).abs() < f64::EPSILON {
+        return bottom;
+    }
+    let fraction = ((score - min_score) / (max_score - min_score)).clamp(0.0, 1.0);
+    bottom - fraction * (bottom - top)
+}
+
+fn polyline_points(
+    scores: &[f64],
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
+    min_score: f64,
+    max_score: f64,
+) -> String {
+    if scores.is_empty() {
+        return String::new();
+    }
+    let indices = sampled_point_indices(scores.len(), SVG_MAX_POINTS_PER_POLYLINE);
+    let denom = scores.len().saturating_sub(1).max(1) as f64;
+    indices
+        .into_iter()
+        .map(|idx| {
+            let x = left + (idx as f64 / denom) * (right - left);
+            let y = score_to_y(scores[idx], min_score, max_score, top, bottom);
+            format!("{x:.2},{y:.2}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn summarize_tss_label(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "TSS".to_string();
+    }
+    let char_count = trimmed.chars().count();
+    if char_count <= 16 {
+        return trimmed.to_string();
+    }
+    let shortened = trimmed.chars().take(13).collect::<String>();
+    format!("{shortened}...")
+}
+
+fn layout_tss_marker_lanes(
+    report: &TfbsScoreTrackReport,
+    plot_left: f64,
+    plot_right: f64,
+) -> usize {
+    if report.tss_markers.is_empty() {
+        return 0;
+    }
+    let span = report
+        .view_end_0based_exclusive
+        .saturating_sub(report.view_start_0based)
+        .max(1) as f64;
+    let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
+    for marker in &report.tss_markers {
+        let clamped_pos = marker
+            .position_0based
+            .clamp(report.view_start_0based, report.view_end_0based_exclusive);
+        let x = plot_left
+            + ((clamped_pos.saturating_sub(report.view_start_0based) as f64) / span)
+                * (plot_right - plot_left);
+        let label = summarize_tss_label(&marker.label);
+        let width = (label.chars().count() as f64) * 6.0 + 18.0;
+        let left = x.min(plot_right - 4.0);
+        let right = (left + width).min(plot_right);
+        let mut assigned = false;
+        for lane_idx in 0..SVG_TSS_MARKER_MAX_LANES {
+            if left > lane_right_edges[lane_idx] + 10.0 {
+                lane_right_edges[lane_idx] = right;
+                assigned = true;
+                break;
+            }
+        }
+        if !assigned {
+            lane_right_edges[SVG_TSS_MARKER_MAX_LANES - 1] =
+                lane_right_edges[SVG_TSS_MARKER_MAX_LANES - 1].max(right);
+        }
+    }
+    lane_right_edges
+        .iter()
+        .rposition(|edge| edge.is_finite())
+        .map(|idx| idx + 1)
+        .unwrap_or(0)
+}
+
+fn render_tss_marker_annotations(
+    report: &TfbsScoreTrackReport,
+    plot_left: f64,
+    plot_right: f64,
+    marker_top: f64,
+    first_row_top: f64,
+) -> String {
+    if report.tss_markers.is_empty() {
+        return String::new();
+    }
+    let span = report
+        .view_end_0based_exclusive
+        .saturating_sub(report.view_start_0based)
+        .max(1) as f64;
+    let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
+    let mut svg = String::new();
+    for marker in &report.tss_markers {
+        let clamped_pos = marker
+            .position_0based
+            .clamp(report.view_start_0based, report.view_end_0based_exclusive);
+        let x = plot_left
+            + ((clamped_pos.saturating_sub(report.view_start_0based) as f64) / span)
+                * (plot_right - plot_left);
+        let label = summarize_tss_label(&marker.label);
+        let label_width = (label.chars().count() as f64) * 6.0 + 18.0;
+        let mut lane_idx = SVG_TSS_MARKER_MAX_LANES - 1;
+        let left = x.min(plot_right - 4.0);
+        let right = (left + label_width).min(plot_right);
+        for candidate in 0..SVG_TSS_MARKER_MAX_LANES {
+            if left > lane_right_edges[candidate] + 10.0 {
+                lane_idx = candidate;
+                lane_right_edges[candidate] = right;
+                break;
+            }
+        }
+        let label_y = marker_top + lane_idx as f64 * SVG_TSS_MARKER_ROW_HEIGHT + 10.0;
+        let anchor_y = first_row_top - 6.0;
+        let stem_y = anchor_y - 8.0;
+        let hook_y = label_y + 2.0;
+        let elbow_x = if marker.is_reverse { x - 4.0 } else { x + 4.0 };
+        let tip_x = if marker.is_reverse {
+            x - 14.0
+        } else {
+            x + 14.0
+        };
+        let color = if marker.is_reverse {
+            "#b45309"
+        } else {
+            "#0e7490"
+        };
+        svg.push_str(&format!(
+            "<path d=\"M{x:.2},{anchor_y:.2} L{x:.2},{stem_y:.2} Q{x:.2},{hook_y:.2} {elbow_x:.2},{hook_y:.2} L{tip_x:.2},{hook_y:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-gentle-role=\"tfbs-score-track-tss-tick\"/>\n"
+        ));
+        let (head_tip_x, base_x) = if marker.is_reverse {
+            (tip_x - 2.2, tip_x + 3.4)
+        } else {
+            (tip_x + 2.2, tip_x - 3.4)
+        };
+        svg.push_str(&format!(
+            "<path d=\"M{head_tip_x:.2},{hook_y:.2} L{base_x:.2},{:.2} L{base_x:.2},{:.2} z\" fill=\"{color}\" stroke=\"none\" data-gentle-role=\"tfbs-score-track-tss-arrow\"/>\n",
+            hook_y - 3.4,
+            hook_y + 3.4
+        ));
+        let label_x = if marker.is_reverse {
+            tip_x - label_width - 6.0
+        } else {
+            tip_x + 6.0
+        }
+        .clamp(plot_left, (plot_right - label_width).max(plot_left));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"{}\">{}</text>\n",
+            label_x,
+            label_y,
+            color,
+            escape_svg_text(&format!("TSS {}", label))
+        ));
+    }
+    svg
+}
+
+/// Render one stacked TFBS score-track figure as SVG text.
+pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
+    let tss_marker_lanes = layout_tss_marker_lanes(
+        report,
+        SVG_MARGIN_LEFT + SVG_LABEL_WIDTH,
+        SVG_WIDTH - SVG_MARGIN_RIGHT,
+    );
+    let header_height = SVG_HEADER_HEIGHT + (tss_marker_lanes as f64) * SVG_TSS_MARKER_ROW_HEIGHT;
+    let track_count = report.tracks.len().max(1);
+    let svg_height = header_height
+        + SVG_FOOTER_HEIGHT
+        + track_count as f64 * SVG_ROW_HEIGHT
+        + track_count.saturating_sub(1) as f64 * SVG_ROW_GAP;
+    let content_left = SVG_MARGIN_LEFT;
+    let content_right = SVG_WIDTH - SVG_MARGIN_RIGHT;
+    let plot_left = content_left + SVG_LABEL_WIDTH;
+    let plot_right = content_right;
+    let (min_score, max_score) = global_score_bounds(report);
+    let zero_visible = min_score < 0.0 && max_score > 0.0;
+    let (bp_start_text, bp_mid_text, bp_end_text) =
+        format_bp_ticks(report.view_start_0based, report.view_end_0based_exclusive);
+    let title = "Continuous TF motif score tracks";
+    let subtitle = format!(
+        "seq={} | span={}..{} | motifs={} | score={}{}",
+        report.seq_id,
+        report.view_start_0based,
+        report.view_end_0based_exclusive,
+        report.tracks.len(),
+        report.score_kind.as_str(),
+        if report.clip_negative && report.score_kind.supports_negative_values() {
+            " | positive-only"
+        } else {
+            ""
+        }
+    );
+    let legend = "forward strand = teal | reverse strand = amber";
+    let score_range_label = format!("{min_score:.2} .. {max_score:.2}");
+
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{SVG_WIDTH:.0}\" height=\"{svg_height:.0}\" viewBox=\"0 0 {SVG_WIDTH:.0} {svg_height:.0}\">\n"
+    ));
+    svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n");
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"28\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">{}</text>\n",
+        content_left,
+        escape_svg_text(title)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"45\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">{}</text>\n",
+        content_left,
+        escape_svg_text(&subtitle)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"60\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
+        content_left,
+        escape_svg_text(legend)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"60\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">score range {}</text>\n",
+        content_right,
+        escape_svg_text(&score_range_label)
+    ));
+
+    for (row_idx, track) in report.tracks.iter().enumerate() {
+        let row_top = header_height + row_idx as f64 * (SVG_ROW_HEIGHT + SVG_ROW_GAP);
+        let row_bottom = row_top + SVG_ROW_HEIGHT;
+        let plot_top = row_top + SVG_TRACK_PADDING_Y;
+        let plot_bottom = row_bottom - 20.0;
+        let label = track.tf_name.as_deref().unwrap_or(track.tf_id.as_str());
+        let max_position = track
+            .max_position_0based
+            .map(|value| format!(" @ {value}"))
+            .unwrap_or_default();
+        let meta = format!(
+            "{} windows | max {:.2}{}",
+            track.scored_window_count, track.max_score, max_position
+        );
+        let row_fill = if row_idx % 2 == 0 {
+            "#fffaf0"
+        } else {
+            "#fffefb"
+        };
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\" fill=\"{}\" stroke=\"#e2e8f0\" stroke-width=\"1\"/>\n",
+            content_left,
+            row_top,
+            content_right - content_left,
+            SVG_ROW_HEIGHT,
+            row_fill
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>\n",
+            content_left + 12.0,
+            row_top + 24.0,
+            escape_svg_text(label)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
+            content_left + 12.0,
+            row_top + 40.0,
+            escape_svg_text(&meta)
+        ));
+
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
+            plot_left,
+            plot_top,
+            plot_right - plot_left,
+            plot_bottom - plot_top
+        ));
+
+        for fraction in [0.25_f64, 0.5, 0.75] {
+            let y = plot_bottom - fraction * (plot_bottom - plot_top);
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#f1f5f9\" stroke-width=\"1\"/>\n",
+                plot_left, y, plot_right, y
+            ));
+        }
+
+        let baseline_y = if zero_visible {
+            score_to_y(0.0, min_score, max_score, plot_top, plot_bottom)
+        } else {
+            plot_bottom
+        };
+        if zero_visible {
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"1\" stroke-dasharray=\"4 3\"/>\n",
+                plot_left, baseline_y, plot_right, baseline_y
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"9\" fill=\"#64748b\">0.0</text>\n",
+                plot_right - 6.0,
+                baseline_y - 4.0,
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"1\"/>\n",
+                plot_left, baseline_y, plot_right, baseline_y
+            ));
+        }
+
+        if track.scored_window_count == 0 {
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"11\" fill=\"#64748b\">motif longer than selected range</text>\n",
+                (plot_left + plot_right) * 0.5,
+                (plot_top + plot_bottom) * 0.5
+            ));
+            continue;
+        }
+
+        let forward_points = polyline_points(
+            &track.forward_scores,
+            plot_left + SVG_TRACK_PADDING_X,
+            plot_right - SVG_TRACK_PADDING_X,
+            plot_top + 4.0,
+            plot_bottom - 4.0,
+            min_score,
+            max_score,
+        );
+        let reverse_points = polyline_points(
+            &track.reverse_scores,
+            plot_left + SVG_TRACK_PADDING_X,
+            plot_right - SVG_TRACK_PADDING_X,
+            plot_top + 4.0,
+            plot_bottom - 4.0,
+            min_score,
+            max_score,
+        );
+        if !forward_points.is_empty() {
+            svg.push_str(&format!(
+                "<polyline fill=\"none\" stroke=\"#0e7490\" stroke-width=\"1.8\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"{}\"/>\n",
+                forward_points
+            ));
+        }
+        if !reverse_points.is_empty() {
+            svg.push_str(&format!(
+                "<polyline fill=\"none\" stroke=\"#b45309\" stroke-width=\"1.6\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"{}\"/>\n",
+                reverse_points
+            ));
+        }
+    }
+
+    if tss_marker_lanes > 0 {
+        svg.push_str(&render_tss_marker_annotations(
+            report,
+            plot_left + SVG_TRACK_PADDING_X,
+            plot_right - SVG_TRACK_PADDING_X,
+            SVG_HEADER_HEIGHT - 2.0,
+            header_height,
+        ));
+    }
+
+    let axis_y = svg_height - SVG_FOOTER_HEIGHT + 8.0;
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#475569\" stroke-width=\"1\"/>\n",
+        plot_left, axis_y, plot_right, axis_y
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>\n",
+        plot_left,
+        axis_y + 16.0,
+        escape_svg_text(&bp_start_text)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>\n",
+        (plot_left + plot_right) * 0.5,
+        axis_y + 16.0,
+        escape_svg_text(&bp_mid_text)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">{}</text>\n",
+        plot_right,
+        axis_y + 16.0,
+        escape_svg_text(&bp_end_text)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">base-pair position in selected span</text>\n",
+        content_left,
+        svg_height - 8.0
+    ));
+    svg.push_str("</svg>\n");
+    svg
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::{TfbsScoreTrackReport, TfbsScoreTrackRow, TfbsScoreTrackValueKind};
+
+    #[test]
+    fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
+        let report = TfbsScoreTrackReport {
+            schema: "gentle.tfbs_score_tracks.v1".to_string(),
+            seq_id: "tp73_upstream".to_string(),
+            sequence_length_bp: 4000,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
+            view_start_0based: 0,
+            view_end_0based_exclusive: 40,
+            clip_negative: true,
+            motifs_requested: vec!["TP73".to_string(), "SP1".to_string()],
+            global_max_score: 8.5,
+            tss_markers: vec![crate::engine::TfbsScoreTrackTssMarker {
+                feature_id: 7,
+                feature_kind: "mRNA".to_string(),
+                label: "NM_TP73".to_string(),
+                position_0based: 12,
+                is_reverse: false,
+            }],
+            tracks: vec![
+                TfbsScoreTrackRow {
+                    tf_id: "TP73".to_string(),
+                    tf_name: Some("p73".to_string()),
+                    motif_length_bp: 10,
+                    track_start_0based: 0,
+                    scored_window_count: 4,
+                    max_score: 8.5,
+                    max_position_0based: Some(12),
+                    forward_scores: vec![0.0, 3.0, 8.5, 2.0],
+                    reverse_scores: vec![0.0, 1.0, 2.0, 0.5],
+                },
+                TfbsScoreTrackRow {
+                    tf_id: "SP1".to_string(),
+                    tf_name: Some("SP1".to_string()),
+                    motif_length_bp: 9,
+                    track_start_0based: 0,
+                    scored_window_count: 4,
+                    max_score: 4.0,
+                    max_position_0based: Some(8),
+                    forward_scores: vec![0.5, 4.0, 1.0, 0.0],
+                    reverse_scores: vec![0.0, 0.8, 2.0, 0.3],
+                },
+            ],
+        };
+
+        let svg = render_tfbs_score_tracks_svg(&report);
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Continuous TF motif score tracks"));
+        assert!(svg.contains("tp73_upstream"));
+        assert!(svg.contains("p73"));
+        assert!(svg.contains("SP1"));
+        assert!(svg.contains("base-pair position in selected span"));
+        assert!(svg.contains("#0e7490"));
+        assert!(svg.contains("#b45309"));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-tick\""));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-arrow\""));
+        assert!(svg.contains("TSS NM_TP73"));
+    }
+
+    #[test]
+    fn render_tfbs_score_tracks_svg_supports_negative_ranges() {
+        let report = TfbsScoreTrackReport {
+            schema: "gentle.tfbs_score_tracks.v1".to_string(),
+            seq_id: "tp73_context".to_string(),
+            sequence_length_bp: 80,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            score_kind: TfbsScoreTrackValueKind::LlrBits,
+            view_start_0based: 10,
+            view_end_0based_exclusive: 30,
+            clip_negative: false,
+            motifs_requested: vec!["REST".to_string()],
+            global_max_score: 4.0,
+            tss_markers: vec![],
+            tracks: vec![TfbsScoreTrackRow {
+                tf_id: "REST".to_string(),
+                tf_name: Some("REST".to_string()),
+                motif_length_bp: 8,
+                track_start_0based: 10,
+                scored_window_count: 4,
+                max_score: 4.0,
+                max_position_0based: Some(14),
+                forward_scores: vec![-2.0, -1.0, 2.0, 4.0],
+                reverse_scores: vec![-1.5, 0.0, 1.5, 2.5],
+            }],
+        };
+
+        let svg = render_tfbs_score_tracks_svg(&report);
+        assert!(svg.contains("score range -2.00 .. 4.00"));
+        assert!(svg.contains("positive-only") == false);
+        assert!(svg.contains("stroke-dasharray=\"4 3\""));
+        assert!(svg.contains(">0.0</text>"));
+    }
+}

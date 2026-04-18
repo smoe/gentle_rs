@@ -397,6 +397,44 @@ pub struct TfbsScoreTrackRow {
     pub reverse_scores: Vec<f64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which per-window TF motif score is carried by a continuous score-track
+/// report.
+pub enum TfbsScoreTrackValueKind {
+    #[default]
+    LlrBits,
+    LlrQuantile,
+    TrueLogOddsBits,
+    TrueLogOddsQuantile,
+}
+
+impl TfbsScoreTrackValueKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LlrBits => "llr_bits",
+            Self::LlrQuantile => "llr_quantile",
+            Self::TrueLogOddsBits => "true_log_odds_bits",
+            Self::TrueLogOddsQuantile => "true_log_odds_quantile",
+        }
+    }
+
+    pub fn supports_negative_values(self) -> bool {
+        matches!(self, Self::LlrBits | Self::TrueLogOddsBits)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcription-start marker relevant to one TFBS score-track span.
+pub struct TfbsScoreTrackTssMarker {
+    pub feature_id: usize,
+    pub feature_kind: String,
+    pub label: String,
+    pub position_0based: usize,
+    pub is_reverse: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Portable per-position TF motif score tracks for promoter-design review.
@@ -409,13 +447,16 @@ pub struct TfbsScoreTrackReport {
     pub op_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
-    pub score_kind: String,
+    #[serde(default)]
+    pub score_kind: TfbsScoreTrackValueKind,
     pub view_start_0based: usize,
     pub view_end_0based_exclusive: usize,
     pub clip_negative: bool,
     #[serde(default)]
     pub motifs_requested: Vec<String>,
     pub global_max_score: f64,
+    #[serde(default)]
+    pub tss_markers: Vec<TfbsScoreTrackTssMarker>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
 }

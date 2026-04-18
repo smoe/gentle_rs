@@ -58,9 +58,10 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
-        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
-        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        TfbsScoreTrackValueKind, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -1395,6 +1396,15 @@ pub enum ShellCommand {
     },
     FeaturesTfbsSummary {
         request: TfbsRegionSummaryRequest,
+    },
+    FeaturesTfbsScoreTracksSvg {
+        seq_id: String,
+        motifs: Vec<String>,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        output: String,
     },
     VariantAnnotatePromoterWindows {
         seq_id: String,
@@ -6760,6 +6770,24 @@ impl ShellCommand {
                     .limit
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "default".to_string()),
+            ),
+            Self::FeaturesTfbsScoreTracksSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                output,
+            } => format!(
+                "render TFBS score-track SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, clip_negative={})",
+                seq_id,
+                output,
+                motifs.join(","),
+                start_0based,
+                end_0based_exclusive,
+                score_kind.as_str(),
+                clip_negative
             ),
             Self::VariantAnnotatePromoterWindows {
                 seq_id,
@@ -19556,6 +19584,31 @@ fn execute_sequence_analysis_command(
                     .map_err(|e| format!("Could not serialize TFBS region summary: {e}"))?,
             })
         }
+        ShellCommand::FeaturesTfbsScoreTracksSvg {
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderTfbsScoreTracksSvg {
+                    seq_id: seq_id.clone(),
+                    motifs: motifs.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::VariantAnnotatePromoterWindows {
             seq_id,
             gene_label,
@@ -22074,6 +22127,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
+            | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
             | ShellCommand::VariantReporterFragments { .. }
@@ -22349,6 +22403,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
+        | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }
         | ShellCommand::VariantReporterFragments { .. }

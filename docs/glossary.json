@@ -1,5 +1,5 @@
 {
-   "command_count": 332,
+   "command_count": 333,
    "commands": [
       {
          "aliases": [
@@ -2205,6 +2205,19 @@
          "path": "features tfbs-summary",
          "summary": "Group TFBS hits by factor name within one focus window and compare them against a wider context window.",
          "usage": "features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderTfbsScoreTracksSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "features tfbs-score-tracks-svg",
+         "summary": "Render one stacked SVG plot of continuous TFBS/PSSM score tracks over a selected sequence span.",
+         "usage": "features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
       },
       {
          "aliases": [],

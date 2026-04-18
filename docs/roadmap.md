@@ -979,6 +979,16 @@ order. Durable architecture constraints and decisions remain in
         - it now also exposes positive-only TF/PSSM score tracks across one
           promoter span so TERT/TP73-style promoter case studies can inspect
           continuous motif support instead of only thresholded TFBS blobs
+        - shared visual/export parity for those score tracks now exists too:
+          `RenderTfbsScoreTracksSvg` is available through the engine, shell/CLI,
+          and the Promoter design window’s `Export TF score tracks SVG...`
+          action, so the same stacked figure can be reopened or regenerated
+          outside the GUI instead of staying a GUI-only painter
+        - the same shared score-track route now also exposes explicit scoring
+          control instead of one hard-wired view:
+          `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
+          `true_log_odds_quantile` are all available in GUI, shell, CLI, JSON,
+          and SVG export paths
         - it now also exports a portable handoff bundle directly from the GUI:
           promoter-context JSON/SVG, promoter-candidate JSON, paired reporter
           SVG previews, `report.md`, `result.json`, and replay `commands.sh`

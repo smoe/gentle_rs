@@ -1043,6 +1043,7 @@ impl GentleEngine {
             | Operation::RenderSequenceSvg { seq_id, .. }
             | Operation::ExportSequenceContextBundle { seq_id, .. }
             | Operation::RenderDotplotSvg { seq_id, .. }
+            | Operation::RenderTfbsScoreTracksSvg { seq_id, .. }
             | Operation::RenderFeatureExpertSvg { seq_id, .. }
             | Operation::RenderIsoformArchitectureSvg { seq_id, .. }
             | Operation::RenderRnaStructureSvg { seq_id, .. }
@@ -1244,6 +1245,7 @@ impl GentleEngine {
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. }
+        | Operation::RenderTfbsScoreTracksSvg { path, .. }
         | Operation::RenderProtocolCartoonSvg { path, .. }
         | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
         | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { path, .. }
@@ -1273,6 +1275,7 @@ impl GentleEngine {
             Operation::SaveFile { path, .. }
             | Operation::RenderSequenceSvg { path, .. }
             | Operation::RenderDotplotSvg { path, .. }
+            | Operation::RenderTfbsScoreTracksSvg { path, .. }
             | Operation::RenderFeatureExpertSvg { path, .. }
             | Operation::RenderIsoformArchitectureSvg { path, .. }
             | Operation::RenderRnaStructureSvg { path, .. }
