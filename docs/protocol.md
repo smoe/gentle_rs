@@ -364,6 +364,42 @@ Behavior notes:
   - min/max/mean/stddev plus `p01/p05/p25/p50/p75/p95/p99` summaries for both
     bit-based score families
 
+## JASPAR registry benchmark contract
+
+GENtle also exposes one routine registry-wide JASPAR benchmark artifact for
+drift/regression work.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources benchmark-jaspar --random-length 10000 --seed 123 --output data/resources/jaspar.registry_benchmark.json'
+```
+
+First-class operation route:
+
+```json
+{"BenchmarkJasparRegistry":{"random_sequence_length_bp":10000,"random_seed":123,"path":"data/resources/jaspar.registry_benchmark.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_registry_benchmark.v1`
+
+Behavior notes:
+
+- this route always benchmarks the full active local JASPAR registry
+- it reuses the same deterministic internal math as
+  `SummarizeJasparEntries`, rather than introducing a separate
+  benchmark-only scoring path
+- the report includes:
+  - all per-entry presentation rows
+  - aggregate score-family summaries for `llr_bits` and
+    `true_log_odds_bits`
+  - top motifs by maximum score
+  - top motifs by positive random-background hit rate
+- the intended artifact is a cached/exportable JSON snapshot suitable for
+  future scoring-drift comparisons
+
 ## JASPAR catalog contract
 
 GENtle also exposes a lighter-weight portable JASPAR catalog report for

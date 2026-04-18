@@ -922,6 +922,11 @@ pub enum ShellCommand {
         random_seed: u64,
         output: Option<String>,
     },
+    ResourcesBenchmarkJaspar {
+        random_sequence_length_bp: usize,
+        random_seed: u64,
+        output: Option<String>,
+    },
     ResourcesListJaspar {
         filter: Option<String>,
         limit: Option<usize>,
@@ -5509,6 +5514,16 @@ impl ShellCommand {
                 } else {
                     motifs.join(",")
                 },
+                random_sequence_length_bp,
+                random_seed,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesBenchmarkJaspar {
+                random_sequence_length_bp,
+                random_seed,
+                output,
+            } => format!(
+                "benchmark the local JASPAR registry over one deterministic {} bp random background (seed={}, output='{}')",
                 random_sequence_length_bp,
                 random_seed,
                 output.as_deref().unwrap_or("-"),
@@ -14458,7 +14473,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -14708,6 +14723,58 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                     })
                 }
+                "benchmark-jaspar" => {
+                    let mut random_sequence_length_bp =
+                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
+                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--random-length" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --random-length".to_string());
+                                }
+                                random_sequence_length_bp = tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --random-length '{}' for resources benchmark-jaspar: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--seed" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --seed".to_string());
+                                }
+                                random_seed = tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --seed '{}' for resources benchmark-jaspar: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources benchmark-jaspar"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesBenchmarkJaspar {
+                        random_sequence_length_bp,
+                        random_seed,
+                        output,
+                    })
+                }
                 "list-jaspar" => {
                     let mut filter: Option<String> = None;
                     let mut limit: Option<usize> = None;
@@ -14856,7 +14923,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -17514,6 +17581,26 @@ fn execute_export_import_and_resource_command(
                     random_sequence_length_bp: *random_sequence_length_bp,
                     random_seed: *random_seed,
                     path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ResourcesBenchmarkJaspar {
+            random_sequence_length_bp,
+            random_seed,
+            output,
+        } => {
+            let resolved_output = output
+                .clone()
+                .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_BENCHMARK_PATH.to_string());
+            let op_result = engine
+                .apply(Operation::BenchmarkJasparRegistry {
+                    random_sequence_length_bp: *random_sequence_length_bp,
+                    random_seed: *random_seed,
+                    path: Some(resolved_output),
                 })
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
@@ -23199,6 +23286,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
+            | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
@@ -24175,6 +24263,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
+        | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }

@@ -637,11 +637,22 @@ order. Durable architecture constraints and decisions remain in
   now reuse that snapshot before reaching for live REST metadata again.
   `resources status` also reports whether that persisted snapshot exists, is
   valid, and how many cached rows it currently holds.
-- Next operational step for that path:
-  add a routine registry-wide snapshot/benchmark over all local JASPAR entries
-  (default `10000 bp` random background, deterministic seed, cached/exportable
-  JSON artifact) so regression work can detect scoring drift across JASPAR
-  updates or matrix/scanning changes.
+- Shared registry-wide JASPAR benchmarking now exists too:
+  `BenchmarkJasparRegistry` plus `resources benchmark-jaspar` produce one
+  cached/exportable all-entry benchmark artifact over a deterministic random
+  background (`data/resources/jaspar.registry_benchmark.json` by default), with
+  aggregate score-family summaries so regression work can detect scoring drift
+  across JASPAR updates or matrix/scanning changes.
+- The single-entry `JASPAR Expert...` surface is now clearer in the
+  non-comparative case too:
+  - a motif overview card summarizes consensus, background, and registry scope
+  - per-score-family interpretation blocks explain best/worst sequences and
+    how often random windows still score above zero
+  - histogram panels now also surface a fuller percentile/statistics table
+- Next natural step for that path:
+  add side-by-side comparative inspection for two motifs inside the same expert
+  window, building on the now richer single-entry presentation and cached
+  registry benchmark.
 - ATtRACT integration baseline now exists too:
   - `resources sync-attract INPUT.zip_or_URL [OUTPUT]` now normalizes the
     published ATtRACT ZIP into `gentle.attract_motifs.v1`

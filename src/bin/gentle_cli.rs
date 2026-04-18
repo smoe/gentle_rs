@@ -41,6 +41,7 @@ const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
 const DEFAULT_JASPAR_REMOTE_METADATA_PATH: &str = "data/resources/jaspar.remote_metadata.json";
+const DEFAULT_JASPAR_BENCHMARK_PATH: &str = "data/resources/jaspar.registry_benchmark.json";
 const DEFAULT_PROMOTER_EXTRACT_UPSTREAM_BP: usize = 1000;
 const DEFAULT_PROMOTER_EXTRACT_DOWNSTREAM_BP: usize = 200;
 
@@ -716,6 +717,7 @@ fn usage() {
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   gentle_cli resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]\n\n  \
   gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
+  gentle_cli resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
   gentle_cli resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli services status\n\n  \
@@ -2569,7 +2571,7 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 1 {
                 usage();
                 return Err(
-                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar or inspect-jaspar"
+                    "resources requires a subcommand: status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar or inspect-jaspar"
                         .to_string(),
                 );
             }
@@ -2852,6 +2854,64 @@ fn run() -> Result<(), String> {
                         .map_err(|e| e.to_string())?;
                     print_json(&json!({ "result": op_result }))
                 }
+                "benchmark-jaspar" => {
+                    let mut random_sequence_length_bp =
+                        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP;
+                    let mut random_seed = DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED;
+                    let mut output: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--random-length" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --random-length".to_string());
+                                }
+                                random_sequence_length_bp = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --random-length '{}' for resources benchmark-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--seed" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing N after --seed".to_string());
+                                }
+                                random_seed = args[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --seed '{}' for resources benchmark-jaspar: {e}",
+                                        args[idx + 1]
+                                    )
+                                })?;
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= args.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for resources benchmark-jaspar",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    let mut engine = GentleEngine::new();
+                    let op_result = engine
+                        .apply(Operation::BenchmarkJasparRegistry {
+                            random_sequence_length_bp,
+                            random_seed,
+                            path: output
+                                .or_else(|| Some(DEFAULT_JASPAR_BENCHMARK_PATH.to_string())),
+                        })
+                        .map_err(|e| e.to_string())?;
+                    print_json(&json!({ "result": op_result }))
+                }
                 "list-jaspar" => {
                     let mut filter: Option<String> = None;
                     let mut limit: Option<usize> = None;
@@ -2982,7 +3042,7 @@ fn run() -> Result<(), String> {
                     print_json(&json!({ "result": op_result }))
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, list-jaspar or inspect-jaspar)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar or inspect-jaspar)"
                 )),
             }
         }
@@ -4221,6 +4281,22 @@ mod tests {
             ShellCommand::ResourcesSummarizeJaspar { .. }
         ));
 
+        let benchmark = parse_shell_tokens(&[
+            "resources".to_string(),
+            "benchmark-jaspar".to_string(),
+            "--random-length".to_string(),
+            "4096".to_string(),
+            "--seed".to_string(),
+            "11".to_string(),
+            "--output".to_string(),
+            "jaspar.benchmark.json".to_string(),
+        ])
+        .expect("parse resources benchmark-jaspar");
+        assert!(matches!(
+            benchmark,
+            ShellCommand::ResourcesBenchmarkJaspar { .. }
+        ));
+
         let list = parse_shell_tokens(&[
             "resources".to_string(),
             "list-jaspar".to_string(),
@@ -4883,6 +4959,59 @@ mod tests {
 
         assert_eq!(forwarded_changed, shared_changed);
         assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_resources_benchmark_jaspar_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("jaspar.benchmark.json");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "benchmark-jaspar".to_string(),
+            "--random-length".to_string(),
+            "512".to_string(),
+            "--seed".to_string(),
+            "7".to_string(),
+            "--output".to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        let forwarded_report = &forwarded_output["result"]["jaspar_registry_benchmark"];
+        let shared_report = &shared_output["result"]["jaspar_registry_benchmark"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(
+            forwarded_report["benchmarked_entry_count"],
+            shared_report["benchmarked_entry_count"]
+        );
+        assert_eq!(
+            forwarded_report["random_sequence_length_bp"],
+            shared_report["random_sequence_length_bp"]
+        );
+        assert_eq!(
+            forwarded_report["score_family_summaries"],
+            shared_report["score_family_summaries"]
+        );
         assert_eq!(
             forwarded_state
                 .sequences

@@ -643,6 +643,57 @@ pub struct JasparEntryPresentationReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One top-ranking motif row inside a registry-wide JASPAR benchmark summary.
+pub struct JasparRegistryBenchmarkTopRow {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One score-family aggregate summary across a registry-wide JASPAR benchmark.
+pub struct JasparRegistryScoreFamilySummary {
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub label: String,
+    pub motif_count: usize,
+    pub global_min_score: f64,
+    pub global_max_score: f64,
+    pub mean_of_mean_scores: f64,
+    pub mean_of_stddev_scores: f64,
+    pub median_of_p50_scores: f64,
+    pub mean_positive_fraction: f64,
+    #[serde(default)]
+    pub top_max_score_rows: Vec<JasparRegistryBenchmarkTopRow>,
+    #[serde(default)]
+    pub top_positive_fraction_rows: Vec<JasparRegistryBenchmarkTopRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Registry-wide deterministic JASPAR benchmark snapshot over one shared
+/// pseudorandom DNA background.
+pub struct JasparRegistryBenchmarkReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub registry_entry_count: usize,
+    pub benchmarked_entry_count: usize,
+    pub random_sequence_length_bp: usize,
+    pub random_seed: u64,
+    pub background_model: String,
+    #[serde(default)]
+    pub score_family_summaries: Vec<JasparRegistryScoreFamilySummary>,
+    #[serde(default)]
+    pub rows: Vec<JasparEntryPresentationRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Compact remote JASPAR metadata summary suitable for catalog/list views.
 pub struct JasparCatalogRemoteSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1953,6 +2004,8 @@ pub struct OpResult {
     pub jaspar_catalog_report: Option<JasparCatalogReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jaspar_entry_expert_view: Option<JasparEntryExpertView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jaspar_registry_benchmark: Option<JasparRegistryBenchmarkReport>,
     pub jaspar_entry_presentation: Option<JasparEntryPresentationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,

@@ -1014,12 +1014,159 @@ impl GentleEngine {
         })
     }
 
+    fn jaspar_registry_score_family_summary<FDistribution, FMaxScore>(
+        score_kind: TfbsScoreTrackValueKind,
+        label: &str,
+        rows: &[JasparEntryPresentationRow],
+        distribution_of: FDistribution,
+        max_score_of: FMaxScore,
+    ) -> JasparRegistryScoreFamilySummary
+    where
+        FDistribution: Fn(&JasparEntryPresentationRow) -> &JasparScoreDistributionSummary,
+        FMaxScore: Fn(&JasparEntryPresentationRow) -> f64,
+    {
+        if rows.is_empty() {
+            return JasparRegistryScoreFamilySummary {
+                score_kind,
+                label: label.to_string(),
+                ..JasparRegistryScoreFamilySummary::default()
+            };
+        }
+
+        let motif_count = rows.len();
+        let mut p50_scores = rows
+            .iter()
+            .map(|row| distribution_of(row).p50_score)
+            .collect::<Vec<_>>();
+        p50_scores.sort_by(|left, right| left.total_cmp(right));
+        let median_of_p50_scores = p50_scores[motif_count / 2];
+
+        let global_min_score = rows
+            .iter()
+            .map(|row| distribution_of(row).min_score)
+            .fold(f64::INFINITY, f64::min);
+        let global_max_score = rows
+            .iter()
+            .map(|row| distribution_of(row).max_score)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let mean_of_mean_scores = rows
+            .iter()
+            .map(|row| distribution_of(row).mean_score)
+            .sum::<f64>()
+            / motif_count as f64;
+        let mean_of_stddev_scores = rows
+            .iter()
+            .map(|row| distribution_of(row).stddev_score)
+            .sum::<f64>()
+            / motif_count as f64;
+        let mean_positive_fraction = rows
+            .iter()
+            .map(|row| distribution_of(row).positive_fraction)
+            .sum::<f64>()
+            / motif_count as f64;
+
+        let mut top_max_score_rows = rows
+            .iter()
+            .map(|row| JasparRegistryBenchmarkTopRow {
+                motif_id: row.motif_id.clone(),
+                motif_name: row.motif_name.clone(),
+                value: max_score_of(row),
+            })
+            .collect::<Vec<_>>();
+        top_max_score_rows.sort_by(|left, right| {
+            right
+                .value
+                .total_cmp(&left.value)
+                .then_with(|| left.motif_id.cmp(&right.motif_id))
+        });
+        top_max_score_rows.truncate(5);
+
+        let mut top_positive_fraction_rows = rows
+            .iter()
+            .map(|row| JasparRegistryBenchmarkTopRow {
+                motif_id: row.motif_id.clone(),
+                motif_name: row.motif_name.clone(),
+                value: distribution_of(row).positive_fraction,
+            })
+            .collect::<Vec<_>>();
+        top_positive_fraction_rows.sort_by(|left, right| {
+            right
+                .value
+                .total_cmp(&left.value)
+                .then_with(|| left.motif_id.cmp(&right.motif_id))
+        });
+        top_positive_fraction_rows.truncate(5);
+
+        JasparRegistryScoreFamilySummary {
+            score_kind,
+            label: label.to_string(),
+            motif_count,
+            global_min_score,
+            global_max_score,
+            mean_of_mean_scores,
+            mean_of_stddev_scores,
+            median_of_p50_scores,
+            mean_positive_fraction,
+            top_max_score_rows,
+            top_positive_fraction_rows,
+        }
+    }
+
+    pub(crate) fn benchmark_jaspar_registry(
+        &self,
+        random_sequence_length_bp: usize,
+        random_seed: u64,
+    ) -> Result<JasparRegistryBenchmarkReport, EngineError> {
+        let presentation =
+            self.summarize_jaspar_entries(&[], random_sequence_length_bp, random_seed)?;
+        let rows = presentation.rows;
+        let benchmarked_entry_count = rows.len();
+        let score_family_summaries = vec![
+            Self::jaspar_registry_score_family_summary(
+                TfbsScoreTrackValueKind::LlrBits,
+                "LLR bits",
+                &rows,
+                |row| &row.llr_bits_distribution,
+                |row| row.maximizing_llr_bits,
+            ),
+            Self::jaspar_registry_score_family_summary(
+                TfbsScoreTrackValueKind::TrueLogOddsBits,
+                "True log-odds bits",
+                &rows,
+                |row| &row.true_log_odds_bits_distribution,
+                |row| row.maximizing_true_log_odds_bits,
+            ),
+        ];
+
+        Ok(JasparRegistryBenchmarkReport {
+            schema: JASPAR_REGISTRY_BENCHMARK_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            registry_entry_count: presentation.registry_entry_count,
+            benchmarked_entry_count,
+            random_sequence_length_bp: presentation.random_sequence_length_bp,
+            random_seed: presentation.random_seed,
+            background_model: presentation.background_model,
+            score_family_summaries,
+            rows,
+        })
+    }
+
     pub(crate) fn write_jaspar_entry_presentation_report_json(
         &self,
         report: &JasparEntryPresentationReport,
         path: &str,
     ) -> Result<(), EngineError> {
         self.write_pretty_json_file(report, path, "JASPAR entry presentation report")
+    }
+
+    pub(crate) fn write_jaspar_registry_benchmark_report_json(
+        &self,
+        report: &JasparRegistryBenchmarkReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        self.write_pretty_json_file(report, path, "JASPAR registry benchmark report")
     }
 
     pub(crate) fn write_jaspar_catalog_report_json(

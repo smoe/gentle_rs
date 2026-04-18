@@ -392,7 +392,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1405,6 +1405,7 @@ cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resourc
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
 cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json
+cargo run --bin gentle_cli -- resources benchmark-jaspar --random-length 10000 --seed 123 --output data/resources/jaspar.registry_benchmark.json
 cargo run --bin gentle_cli -- resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json
 cargo run --bin gentle_cli -- resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json
 cargo run --bin gentle_cli -- agents list
@@ -1561,6 +1562,7 @@ Shared shell command:
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
+    - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
     - `agents list [--catalog PATH]`
@@ -2421,6 +2423,17 @@ Resource sync commands:
   - Omitting `--motif` and `--motifs` summarizes the full active local JASPAR registry.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
+- `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
+  - Benchmarks the full active local JASPAR registry through one deterministic
+    shared background and writes an export-ready drift snapshot.
+  - Default output: `data/resources/jaspar.registry_benchmark.json`.
+  - Includes:
+    - the full per-entry presentation rows used by `summarize-jaspar`
+    - one score-family aggregate summary for `llr_bits`
+    - one score-family aggregate summary for `true_log_odds_bits`
+    - top motifs by maximum score and by positive random-background hit rate
+  - This is the intended routine artifact for regression/drift checks across
+    JASPAR updates or scoring changes.
 - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
   - Lists local JASPAR entries as a portable catalog view.
   - Includes per-row:

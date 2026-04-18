@@ -4057,11 +4057,15 @@ Resource import behavior:
     only the currently visible filtered subset, so GUI species summaries come
     from the same snapshot path that shell/CLI/agents can inspect or export.
   - The detail pane shows:
-    - the count matrix,
+    - a motif overview card (consensus, requested token, motif length, shared
+      deterministic background settings),
     - a sequence logo derived from local per-column frequencies/information
       content,
+    - the count matrix,
+    - non-comparative score-family interpretation blocks that explain the
+      best/worst sequences and how often random windows still score above zero,
     - score distributions for multiple score families (`llr_bits`,
-      `true_log_odds_bits`),
+      `true_log_odds_bits`) with histograms plus percentile/statistics tables,
     - and optional remote JASPAR metadata/species assignments when REST
       enrichment is requested.
   - The expert stays useful offline because the local matrix/logo/distribution

@@ -1,5 +1,5 @@
 {
-   "command_count": 337,
+   "command_count": 338,
    "commands": [
       {
          "aliases": [
@@ -1226,6 +1226,20 @@
          "path": "resources summarize-jaspar",
          "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
          "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "BenchmarkJasparRegistry"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources benchmark-jaspar",
+         "summary": "Benchmark the full active local JASPAR registry over one deterministic random background and emit an export-ready drift snapshot.",
+         "usage": "resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]"
       },
       {
          "aliases": [],

@@ -138,10 +138,7 @@ fn count_jaspar_remote_metadata_snapshot_items(text: &str) -> Result<usize, Stri
             "Unexpected JASPAR remote-metadata schema '{schema}'"
         ));
     }
-    if let Some(count) = parsed
-        .get("persisted_entry_count")
-        .and_then(|v| v.as_u64())
-    {
+    if let Some(count) = parsed.get("persisted_entry_count").and_then(|v| v.as_u64()) {
         return Ok(count as usize);
     }
     Ok(parsed
@@ -228,9 +225,7 @@ fn jaspar_status() -> ResourceSnapshotStatus {
     let (remote_metadata_valid, remote_metadata_item_count, remote_metadata_error) =
         if remote_metadata_exists {
             match fs::read_to_string(DEFAULT_JASPAR_REMOTE_METADATA_PATH)
-                .map_err(|e| {
-                    format!("Could not read JASPAR remote-metadata snapshot: {e}")
-                })
+                .map_err(|e| format!("Could not read JASPAR remote-metadata snapshot: {e}"))
                 .and_then(|text| count_jaspar_remote_metadata_snapshot_items(&text))
             {
                 Ok(count) if count > 0 => (true, Some(count), None),

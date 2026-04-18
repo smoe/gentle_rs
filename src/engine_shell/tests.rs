@@ -11321,6 +11321,26 @@ fn parse_resources_summarize_jaspar_with_options() {
 }
 
 #[test]
+fn parse_resources_benchmark_jaspar_with_options() {
+    let cmd = parse_shell_line(
+        "resources benchmark-jaspar --random-length 4096 --seed 11 --output jaspar.benchmark.json",
+    )
+    .expect("parse resources benchmark-jaspar");
+    match cmd {
+        ShellCommand::ResourcesBenchmarkJaspar {
+            random_sequence_length_bp,
+            random_seed,
+            output,
+        } => {
+            assert_eq!(random_sequence_length_bp, 4096);
+            assert_eq!(random_seed, 11);
+            assert_eq!(output.as_deref(), Some("jaspar.benchmark.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_sync_attract_with_output() {
     let cmd = parse_shell_line("resources sync-attract ATtRACT.zip out.attract.json")
         .expect("parse resources sync-attract");
@@ -11550,6 +11570,42 @@ fn execute_resources_summarize_jaspar_writes_report_and_returns_payload() {
         Some("GGGGCGGGG")
     );
     let written = fs::read_to_string(&output_path).expect("read JASPAR summary JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("random_sequence_length_bp")
+            .and_then(|value| value.as_u64()),
+        Some(512)
+    );
+}
+
+#[test]
+fn execute_resources_benchmark_jaspar_writes_report_and_returns_payload() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.benchmark.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesBenchmarkJaspar {
+            random_sequence_length_bp: 512,
+            random_seed: 42,
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources benchmark-jaspar");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["result"]["jaspar_registry_benchmark"]["schema"].as_str(),
+        Some("gentle.jaspar_registry_benchmark.v1")
+    );
+    assert_eq!(
+        out.output["result"]["jaspar_registry_benchmark"]["score_family_summaries"]
+            .as_array()
+            .map(|rows| rows.len()),
+        Some(2)
+    );
+    let written = fs::read_to_string(&output_path).expect("read JASPAR benchmark JSON");
     let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
     assert_eq!(
         json.get("random_sequence_length_bp")

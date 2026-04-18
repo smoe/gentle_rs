@@ -457,6 +457,7 @@ const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
 const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
+const JASPAR_REGISTRY_BENCHMARK_REPORT_SCHEMA: &str = "gentle.jaspar_registry_benchmark.v1";
 const JASPAR_CATALOG_REPORT_SCHEMA: &str = "gentle.jaspar_catalog.v1";
 const JASPAR_REMOTE_METADATA_SNAPSHOT_SCHEMA: &str = "gentle.jaspar_remote_metadata_snapshot.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
@@ -3428,6 +3429,14 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    BenchmarkJasparRegistry {
+        #[serde(default = "default_jaspar_presentation_random_sequence_length_bp")]
+        random_sequence_length_bp: usize,
+        #[serde(default = "default_jaspar_presentation_random_seed")]
+        random_seed: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ListJasparCatalog {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
@@ -4763,6 +4772,7 @@ impl GentleEngine {
                 "SummarizeTfbsScoreTracks".to_string(),
                 "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
+                "BenchmarkJasparRegistry".to_string(),
                 "ListJasparCatalog".to_string(),
                 "SyncJasparRemoteMetadata".to_string(),
                 "AnnotatePromoterWindows".to_string(),
@@ -6666,6 +6676,7 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
+                | Operation::BenchmarkJasparRegistry { .. }
                 | Operation::ListJasparCatalog { .. }
                 | Operation::SyncJasparRemoteMetadata { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }

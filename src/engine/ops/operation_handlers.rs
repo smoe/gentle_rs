@@ -5777,6 +5777,7 @@ impl GentleEngine {
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
             jaspar_entry_expert_view: None,
+            jaspar_registry_benchmark: None,
             jaspar_entry_presentation: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
@@ -12557,6 +12558,40 @@ impl GentleEngine {
                     report.random_sequence_length_bp
                 ));
                 result.jaspar_entry_presentation = Some(report);
+            }
+            Operation::BenchmarkJasparRegistry {
+                random_sequence_length_bp,
+                random_seed,
+                path,
+            } => {
+                let mut report =
+                    self.benchmark_jaspar_registry(random_sequence_length_bp, random_seed)?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_jaspar_registry_benchmark_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote JASPAR registry benchmark for {} entr{} to '{}'",
+                        report.benchmarked_entry_count,
+                        if report.benchmarked_entry_count == 1 {
+                            "y"
+                        } else {
+                            "ies"
+                        },
+                        path
+                    ));
+                }
+                result.messages.push(format!(
+                    "JASPAR registry benchmark summarized {} entr{} over one deterministic {} bp random background",
+                    report.benchmarked_entry_count,
+                    if report.benchmarked_entry_count == 1 {
+                        "y"
+                    } else {
+                        "ies"
+                    },
+                    report.random_sequence_length_bp
+                ));
+                result.jaspar_registry_benchmark = Some(report);
             }
             Operation::ListJasparCatalog {
                 filter,

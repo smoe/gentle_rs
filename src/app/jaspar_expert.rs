@@ -485,6 +485,50 @@ impl GENtleApp {
         );
     }
 
+    fn jaspar_positive_fraction_text(fraction: f64) -> String {
+        format!("{:.2}%", fraction.max(0.0) * 100.0)
+    }
+
+    fn jaspar_panel_interpretation(panel: &JasparScoreDistributionPanel) -> String {
+        format!(
+            "Under {}, '{}' is the best-scoring sequence ({:.2}, quantile {:.1}%), '{}' is the least-favored ({:.2}, quantile {:.1}%), and {} of deterministic random windows still score above zero.",
+            panel.label,
+            panel.maximizing_sequence,
+            panel.maximizing_score,
+            panel.maximizing_quantile * 100.0,
+            panel.minimizing_sequence,
+            panel.minimizing_score,
+            panel.minimizing_quantile * 100.0,
+            Self::jaspar_positive_fraction_text(panel.distribution.positive_fraction)
+        )
+    }
+
+    fn jaspar_expert_overview_rows(view: &JasparEntryExpertView) -> Vec<(String, String)> {
+        vec![
+            ("Requested token".to_string(), view.requested_token.clone()),
+            ("Consensus".to_string(), view.consensus_iupac.clone()),
+            (
+                "Motif length".to_string(),
+                format!("{} bp", view.motif_length_bp),
+            ),
+            (
+                "Background".to_string(),
+                format!(
+                    "{} bp deterministic {} (seed {})",
+                    view.random_sequence_length_bp, view.background_model, view.random_seed
+                ),
+            ),
+            (
+                "Score families".to_string(),
+                format!("{}", view.score_panels.len()),
+            ),
+            (
+                "Registry size".to_string(),
+                format!("{}", view.registry_entry_count),
+            ),
+        ]
+    }
+
     pub(super) fn render_jaspar_expert_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_jaspar_expert_dialog {
             return;
@@ -653,12 +697,18 @@ impl GENtleApp {
                                 .map(|name| format!(" — {name}"))
                                 .unwrap_or_default()
                         ));
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(format!("consensus: {}", view.consensus_iupac));
-                            ui.separator();
-                            ui.label(format!("length: {} bp", view.motif_length_bp));
-                            ui.separator();
-                            ui.label(format!("registry entries: {}", view.registry_entry_count));
+                        ui.group(|ui| {
+                            ui.heading("Motif overview");
+                            egui::Grid::new("jaspar_overview_grid")
+                                .num_columns(2)
+                                .spacing([18.0, 6.0])
+                                .show(ui, |ui| {
+                                    for (label, value) in Self::jaspar_expert_overview_rows(view) {
+                                        ui.strong(label);
+                                        ui.label(value);
+                                        ui.end_row();
+                                    }
+                                });
                         });
                         if let Some(remote) = view.remote_metadata.as_ref() {
                             ui.separator();
@@ -703,6 +753,25 @@ impl GENtleApp {
                                 egui::Color32::from_rgb(200, 140, 60),
                                 format!("Warnings: {}", view.warnings.join(" | ")),
                             );
+                        }
+                        ui.separator();
+                        ui.heading("Score-family interpretation");
+                        for panel in &view.score_panels {
+                            ui.group(|ui| {
+                                ui.strong(panel.label.clone());
+                                ui.label(Self::jaspar_panel_interpretation(panel));
+                                ui.small(format!(
+                                    "Background summary: n={} min={:.2} p05={:.2} p50={:.2} p95={:.2} max={:.2} mean={:.2} stddev={:.2}",
+                                    panel.distribution.sample_count,
+                                    panel.distribution.min_score,
+                                    panel.distribution.p05_score,
+                                    panel.distribution.p50_score,
+                                    panel.distribution.p95_score,
+                                    panel.distribution.max_score,
+                                    panel.distribution.mean_score,
+                                    panel.distribution.stddev_score
+                                ));
+                            });
                         }
                         ui.separator();
                         ui.heading("Sequence logo");
@@ -769,6 +838,36 @@ impl GENtleApp {
                                         panel.distribution.positive_fraction
                                     ));
                                     Self::render_jaspar_distribution_histogram(ui, panel);
+                                    egui::Grid::new(format!(
+                                        "jaspar_distribution_grid_{}_{}",
+                                        view.motif_id, panel.label
+                                    ))
+                                    .num_columns(4)
+                                    .spacing([16.0, 4.0])
+                                    .show(ui, |ui| {
+                                        ui.strong("Min");
+                                        ui.label(format!("{:.2}", panel.distribution.min_score));
+                                        ui.strong("Max");
+                                        ui.label(format!("{:.2}", panel.distribution.max_score));
+                                        ui.end_row();
+                                        ui.strong("p01");
+                                        ui.label(format!("{:.2}", panel.distribution.p01_score));
+                                        ui.strong("p99");
+                                        ui.label(format!("{:.2}", panel.distribution.p99_score));
+                                        ui.end_row();
+                                        ui.strong("Positive windows");
+                                        ui.label(Self::jaspar_positive_fraction_text(
+                                            panel.distribution.positive_fraction,
+                                        ));
+                                        ui.strong("Best sequence");
+                                        ui.monospace(panel.maximizing_sequence.clone());
+                                        ui.end_row();
+                                        ui.strong("Worst sequence");
+                                        ui.monospace(panel.minimizing_sequence.clone());
+                                        ui.strong("Median");
+                                        ui.label(format!("{:.2}", panel.distribution.p50_score));
+                                        ui.end_row();
+                                    });
                                 });
                         }
                     });
@@ -781,6 +880,7 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::GENtleApp;
+    use crate::engine::GentleEngine;
 
     #[test]
     fn open_jaspar_expert_dialog_seeds_default_selection() {
@@ -821,6 +921,37 @@ mod tests {
                 .rows
                 .iter()
                 .any(|row| row.motif_name.as_deref() == Some("SP1"))
+        );
+    }
+
+    #[test]
+    fn jaspar_panel_interpretation_reports_extremes_and_hit_rate() {
+        let engine = GentleEngine::new();
+        let view = engine
+            .inspect_jaspar_entry("SP1", 512, 7, false, false)
+            .expect("inspect SP1");
+        let panel = view.score_panels.first().expect("first panel");
+        let text = GENtleApp::jaspar_panel_interpretation(panel);
+        assert!(text.contains("best-scoring sequence"));
+        assert!(text.contains("least-favored"));
+        assert!(text.contains("score above zero"));
+    }
+
+    #[test]
+    fn jaspar_expert_overview_rows_report_consensus_and_background() {
+        let engine = GentleEngine::new();
+        let view = engine
+            .inspect_jaspar_entry("SP1", 512, 7, false, false)
+            .expect("inspect SP1");
+        let rows = GENtleApp::jaspar_expert_overview_rows(&view);
+        assert!(
+            rows.iter()
+                .any(|(label, value)| label == "Consensus" && value == "GGGGCGGGG")
+        );
+        assert!(
+            rows.iter()
+                .any(|(label, value)| label == "Background"
+                    && value.contains("512 bp deterministic"))
         );
     }
 }

@@ -26443,6 +26443,67 @@ fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
 }
 
 #[test]
+fn benchmark_jaspar_registry_summarizes_all_local_entries_and_score_families() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .benchmark_jaspar_registry(1024, 12345)
+        .expect("benchmark jaspar registry");
+
+    assert_eq!(report.schema, "gentle.jaspar_registry_benchmark.v1");
+    assert_eq!(report.random_sequence_length_bp, 1024);
+    assert_eq!(report.random_seed, 12345);
+    assert_eq!(report.benchmarked_entry_count, report.rows.len());
+    assert_eq!(report.score_family_summaries.len(), 2);
+    assert!(report.benchmarked_entry_count > 0);
+    let llr_summary = report
+        .score_family_summaries
+        .iter()
+        .find(|row| row.score_kind == TfbsScoreTrackValueKind::LlrBits)
+        .expect("llr summary");
+    assert_eq!(llr_summary.motif_count, report.benchmarked_entry_count);
+    assert!(!llr_summary.top_max_score_rows.is_empty());
+    assert!(!llr_summary.top_positive_fraction_rows.is_empty());
+}
+
+#[test]
+fn apply_benchmark_jaspar_registry_operation_returns_report_and_writes_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("jaspar.benchmark.json");
+    let mut engine = GentleEngine::new();
+
+    let result = engine
+        .apply(Operation::BenchmarkJasparRegistry {
+            random_sequence_length_bp: 512,
+            random_seed: 77,
+            path: Some(output_path.to_string_lossy().to_string()),
+        })
+        .expect("apply jaspar benchmark");
+
+    let report = result
+        .jaspar_registry_benchmark
+        .expect("jaspar registry benchmark report");
+    assert_eq!(report.random_sequence_length_bp, 512);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("JASPAR registry benchmark"))
+    );
+    let written = fs::read_to_string(&output_path).expect("read written JASPAR benchmark JSON");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.jaspar_registry_benchmark.v1")
+    );
+    assert_eq!(
+        json.get("score_family_summaries")
+            .and_then(|value| value.as_array())
+            .map(|rows| rows.len()),
+        Some(2)
+    );
+}
+
+#[test]
 fn list_jaspar_catalog_returns_local_rows_and_remote_summary_preview() {
     let engine = GentleEngine::new();
     let metadata = GentleEngine::parse_jaspar_remote_metadata_value(
