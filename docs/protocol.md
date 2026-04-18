@@ -4286,11 +4286,14 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - `gene_name`
       - `organism`
       - `motif_iupac`
+      - optional `pfm` rows (`a`, `c`, `g`, `t`) when a `pwm.txt` block could
+        be mapped to the row’s `matrix_id`
       - optional provenance fields such as `experiment`, `family`, `domain`,
         `pubmed_id`, and `quality_score`
-      - `model_kind` (currently `consensus_iupac`)
+      - `model_kind` (`consensus_iupac` or `pwm_counts`)
       - `pwm_present` so downstream consumers can distinguish “PWM existed in
-        the archive” from “PWM scoring was actually used”
+        the archive” from “this particular row still fell back to
+        consensus/IUPAC”
   - inspection payload schema:
     - `gentle.attract_splicing_evidence.v1`
     - `AttractSplicingEvidenceSettings`
@@ -4300,6 +4303,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - optional `requested_organism`
       - `allow_species_fallback`
       - `minimum_quality_score`
+      - `minimum_match_quantile`
     - `AttractSpeciesMatchMode`:
       - `exact_organism`
       - `fallback_all_compatible`
@@ -4310,8 +4314,8 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - `intron_body`
     - summary rows:
       - grouped by factor / organism / matrix id
-      - include strongest score, hit count, region-class counts, and
-        supporting transcript ids
+      - include strongest match score, its score kind/quantile, motif-quality
+        maximum, hit count, region-class counts, and supporting transcript ids
     - hit rows:
       - transcript identity/strand
       - factor / organism / matrix id / motif
@@ -4319,7 +4323,10 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       - genomic coordinates
       - local coordinates within the scanned exon/intron window
       - matched sequence
-      - quality score
+      - `match_score`
+      - `match_score_kind`
+      - optional `match_score_quantile`
+      - motif `quality_score`
       - exact-species flag
     - provenance:
       - active ATtRACT source label
@@ -4335,8 +4342,12 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
       `boundary_flank_bp` of the corresponding splice boundary
     - exact-organism match is preferred; broader fallback is explicit and
       recorded in the payload
-    - PWM matrices are not yet scored directly; normalized consensus/IUPAC
-      motifs are the deterministic scan path in this first milestone
+    - normalized consensus/IUPAC matching remains the conservative candidate
+      gate
+    - when a row has a mapped PWM block, its retained hits are additionally
+      ranked by PWM `llr_bits` and filtered by `minimum_match_quantile`
+    - rows without a mapped PWM block continue to use deterministic
+      consensus/IUPAC exact matching only
   - contract boundary:
     - this is an RBP/splicing interpretation payload, not the generic
       TFBS/PSSM score-track payload
@@ -4352,7 +4363,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
 - Shared-shell command family:
   - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
-  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--all-transcripts] [--no-fallback]`
+  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--all-transcripts] [--no-fallback]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 

@@ -591,7 +591,7 @@ Feature tree grouping:
     exact species match or when no transcript survived the active strand filter
   - `RBP summary` table groups by factor / organism / motif model and reports:
     - hit count
-    - strongest score
+    - strongest match score
     - region-class distribution
     - supporting transcript ids
   - `Hit rows` table lists:
@@ -600,10 +600,13 @@ Feature tree grouping:
     - region class
     - genomic and local coordinates
     - motif and matched sequence
-    - score
+    - match score plus motif quality
   - current v1 scan is deliberately conservative:
-    - normalized consensus/IUPAC motifs from `ATtRACT_db.txt`
-    - PWM file presence is recorded as provenance only
+    - normalized consensus/IUPAC motifs from `ATtRACT_db.txt` remain the
+      candidate gate
+    - when `pwm.txt` blocks could be mapped by `Matrix_id`, those rows now show
+      PWM-backed `llr_bits` ranking filtered by `Min match q`
+    - rows without mapped PWM data keep exact consensus/IUPAC matching only
     - no dense lane overlay or exon-exon junction scan yet
 - RNA-read run controls now live in a dedicated top-level `RNA-read Mapping`
   workspace:

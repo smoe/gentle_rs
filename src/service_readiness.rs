@@ -246,7 +246,7 @@ fn build_summary_lines(
     ));
     if resources.attract.runtime_valid {
         lines.push(format!(
-            "ATtRACT is active from the {} snapshot ({} motifs); splice-aware RBP evidence can now draw from the normalized consensus motif set.",
+            "ATtRACT is active from the {} snapshot ({} motifs); splice-aware RBP evidence can now draw from the normalized motif set, including PWM-backed rows when Matrix_id-mapped PWM blocks are present.",
             resources.attract.active_source, resources.attract.active_item_count
         ));
     } else {

@@ -249,7 +249,7 @@ fn attract_status() -> AttractResourceStatus {
             "runtime".to_string(),
             vec![
                 "ATtRACT motifs are available from a normalized runtime snapshot.".to_string(),
-                "Current v1 integration scans the normalized consensus/IUPAC motifs from ATtRACT_db.txt deterministically and records PWM files as provenance only.".to_string(),
+                "Current v1 integration retains normalized consensus/IUPAC motifs from ATtRACT_db.txt and, when PWM blocks can be mapped by Matrix_id, upgrades those rows to PWM-backed splice-aware scoring.".to_string(),
                 format!("Published ZIP download: {ATTRACT_DOWNLOAD_URL}"),
             ],
         )

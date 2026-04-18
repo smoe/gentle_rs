@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::attract_motifs::{
-    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot,
+    ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -23378,8 +23378,14 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             pubmed_id: Some("12345".to_string()),
             quality_score: Some(4.2),
             source_database: None,
-            model_kind: "consensus_iupac".to_string(),
-            pwm_present: false,
+            model_kind: "pwm_counts".to_string(),
+            pwm_present: true,
+            pfm: Some(AttractPfmRows {
+                a: vec![5.0, 0.0, 0.0, 0.0, 5.0, 5.0],
+                c: vec![0.0, 5.0, 0.0, 0.0, 0.0, 0.0],
+                g: vec![0.0, 0.0, 5.0, 0.0, 0.0, 0.0],
+                t: vec![0.0, 0.0, 0.0, 5.0, 0.0, 0.0],
+            }),
         },
         AttractMotifRecord {
             entry_id: "ptbp1_hs".to_string(),
@@ -23397,6 +23403,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             source_database: None,
             model_kind: "consensus_iupac".to_string(),
             pwm_present: false,
+            pfm: None,
         },
         AttractMotifRecord {
             entry_id: "ptbp1_mm".to_string(),
@@ -23414,6 +23421,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
             source_database: None,
             model_kind: "consensus_iupac".to_string(),
             pwm_present: false,
+            pfm: None,
         },
     ]);
 
@@ -23449,6 +23457,7 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
                 requested_organism: None,
                 allow_species_fallback: true,
                 minimum_quality_score: 0.0,
+                minimum_match_quantile: 0.99,
             },
         )
         .expect("inspect attract evidence");
@@ -23472,6 +23481,11 @@ fn test_inspect_splicing_attract_evidence_filters_exact_species_and_classifies_r
     );
     assert!(view.hit_rows.iter().any(|row| {
         row.gene_name == "SRSF1" && row.region_class == AttractRegionClass::DonorFlank
+    }));
+    assert!(view.hit_rows.iter().any(|row| {
+        row.gene_name == "SRSF1"
+            && row.match_score_kind == "llr_bits"
+            && row.match_score_quantile.unwrap_or(0.0) >= 0.99
     }));
     assert!(view.hit_rows.iter().any(|row| {
         row.gene_name == "PTBP1" && row.region_class == AttractRegionClass::IntronBody
@@ -23504,6 +23518,7 @@ fn test_inspect_splicing_attract_evidence_falls_back_when_requested_species_miss
         source_database: None,
         model_kind: "consensus_iupac".to_string(),
         pwm_present: false,
+        pfm: None,
     }]);
     let mut dna = DNAsequence::from_sequence("TTTTGAAGAACCCTCTTGGGAAAAAAAAAA").expect("valid dna");
     dna.features_mut().push(gb_io::seq::Feature {
