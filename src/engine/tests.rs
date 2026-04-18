@@ -26381,9 +26381,7 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
     assert!(row.maximizing_llr_quantile >= 0.99);
     assert!(row.maximizing_llr_quantile >= row.minimizing_llr_quantile);
     assert!(row.maximizing_true_log_odds_bits >= row.minimizing_true_log_odds_bits);
-    assert!(
-        row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile
-    );
+    assert!(row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile);
 }
 
 #[test]

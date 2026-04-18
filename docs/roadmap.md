@@ -63,6 +63,7 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
   - `src/engine/analysis/candidate_metrics.rs` (candidate metrics, feature-distance helpers, and expression scoring)
   - `src/engine/analysis/feature_expert_ops.rs` (feature-expert, splicing, and isoform helper routines)
+  - `src/engine/analysis/motif_statistics.rs` (shared motif/PSSM probability smoothing, scoring-matrix preparation, quantile scoring, and scan helpers reused by JASPAR summaries and TFBS score tracks)
   - `src/engine/io/genome_tracks.rs` (genome track parsing/import helpers for BED/BigWig/VCF/BLAST overlays)
   - `src/engine/io/import_anchors.rs` (GenBank-derived anchor parsing and import-origin helpers)
   - `src/engine/state/lineage_containers.rs` (lineage-node and container/arrangement helper routines)
