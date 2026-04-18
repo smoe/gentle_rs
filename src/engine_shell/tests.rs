@@ -11713,6 +11713,10 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         Some("ATtRACT")
     );
     assert_eq!(
+        out.output["attract"]["active_pwm_row_count"].as_u64(),
+        Some(0)
+    );
+    assert_eq!(
         out.output["attract"]["download_url"].as_str(),
         Some("https://attract.cnic.es/attract/static/ATtRACT.zip")
     );

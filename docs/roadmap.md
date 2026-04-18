@@ -669,6 +669,9 @@ order. Durable architecture constraints and decisions remain in
         `exon_body`, `donor_flank`, `acceptor_flank`, `intron_body`
       - mapped PWM rows now expose matrix-backed match scores plus quantiles
         while rows without a mapped PWM block keep exact consensus matching
+      - runtime/resource summaries now expose PWM-backed vs consensus-only row
+        counts, plus PWM-scored vs consensus-only retained-hit counts, so a
+        real ATtRACT ZIP can be sanity-checked quickly before reading biology
     - immediate follow-up gaps on this track:
       - consider widening PWM scanning beyond consensus-compatible windows only
         once noise behavior is characterized on real loci

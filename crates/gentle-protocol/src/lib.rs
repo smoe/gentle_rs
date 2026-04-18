@@ -1287,8 +1287,12 @@ pub struct AttractSplicingEvidenceView {
     pub scanned_window_count: usize,
     pub unique_rbp_count: usize,
     pub hit_count: usize,
+    pub pwm_scored_hit_count: usize,
+    pub consensus_hit_count: usize,
     pub active_resource_source: String,
     pub active_resource_item_count: usize,
+    pub active_resource_pwm_row_count: usize,
+    pub active_resource_consensus_only_row_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_resource_fingerprint: Option<String>,
     #[serde(default)]

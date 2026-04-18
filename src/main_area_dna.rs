@@ -23471,9 +23471,11 @@ impl MainAreaDna {
                     }
                 };
                 ui.small(format!(
-                    "Snapshot={} motifs={}{} | scanned transcripts={} windows={} | hits={} unique RBPs={} | species={} | mode={} | min-match-q={:.2}",
+                    "Snapshot={} motifs={} (pwm={} consensus={}){} | scanned transcripts={} windows={} | hits={} (pwm={} consensus={}) unique RBPs={} | species={} | mode={} | min-match-q={:.2}",
                     evidence.active_resource_source,
                     evidence.active_resource_item_count,
+                    evidence.active_resource_pwm_row_count,
+                    evidence.active_resource_consensus_only_row_count,
                     evidence
                         .active_resource_fingerprint
                         .as_deref()
@@ -23485,6 +23487,8 @@ impl MainAreaDna {
                     evidence.scanned_transcript_count,
                     evidence.scanned_window_count,
                     evidence.hit_count,
+                    evidence.pwm_scored_hit_count,
+                    evidence.consensus_hit_count,
                     evidence.unique_rbp_count,
                     evidence
                         .resolved_organism

@@ -601,6 +601,9 @@ Feature tree grouping:
     - genomic and local coordinates
     - motif and matched sequence
     - match score plus motif quality
+  - the header summary now also spells out:
+    - how many active ATtRACT rows are PWM-backed vs consensus-only
+    - how many retained hits were PWM-scored vs consensus-only
   - current v1 scan is deliberately conservative:
     - normalized consensus/IUPAC motifs from `ATtRACT_db.txt` remain the
       candidate gate
