@@ -5731,6 +5731,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
+            restriction_site_scan: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
             variant_promoter_context: None,
@@ -12117,6 +12118,46 @@ impl GentleEngine {
                     audit.cohort_filter.as_str()
                 ));
                 result.rna_read_gene_support_audit = Some(audit);
+            }
+            Operation::FindRestrictionSites {
+                target,
+                enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                path,
+            } => {
+                let mut report = self.find_restriction_sites(
+                    target.clone(),
+                    &enzymes,
+                    max_sites_per_enzyme,
+                    include_cut_geometry,
+                    Some(&result.op_id),
+                    Some(run_id),
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "restriction-site scan report")?;
+                    report.path = Some(path.to_string());
+                    result.messages.push(format!(
+                        "Wrote restriction-site scan report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "Restriction-site scan on '{}' matched {} site(s) across {} enzyme(s) over {}..{}",
+                    report.target_label,
+                    report.matched_site_count,
+                    report.enzymes_scanned.len(),
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                ));
+                if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                    result.warnings.push(format!(
+                        "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
+                        report.max_sites_per_enzyme.unwrap_or_default(),
+                        report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                    ));
+                }
+                result.restriction_site_scan = Some(report);
             }
             Operation::SummarizeTfbsRegion {
                 seq_id,

@@ -461,6 +461,117 @@ pub struct TfbsScoreTrackReport {
     pub tracks: Vec<TfbsScoreTrackRow>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Topology hint for inline sequence operands used by state-optional scans.
+pub enum InlineSequenceTopology {
+    #[default]
+    Linear,
+    Circular,
+}
+
+impl InlineSequenceTopology {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Circular => "circular",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+/// Shared operand for sequence inspections that may run against a stored
+/// sequence or an inline ASCII DNA payload.
+pub enum SequenceScanTarget {
+    SeqId {
+        seq_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span_end_0based_exclusive: Option<usize>,
+    },
+    InlineSequence {
+        sequence_text: String,
+        #[serde(default)]
+        topology: InlineSequenceTopology,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id_hint: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span_end_0based_exclusive: Option<usize>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One restriction-site hit returned by a state-optional restriction scan.
+pub struct RestrictionSiteScanHit {
+    pub enzyme_name: String,
+    pub recognition_sequence: String,
+    pub recognition_start_0based: usize,
+    pub recognition_end_0based_exclusive: usize,
+    pub source_recognition_start_0based: usize,
+    pub source_recognition_end_0based_exclusive: usize,
+    pub recognition_length_bp: usize,
+    pub forward_strand: bool,
+    pub end_geometry: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_cut_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverse_cut_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_forward_cut_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_reverse_cut_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_opening_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_opening_end_0based_exclusive: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable result payload for direct restriction-site inspection on either a
+/// stored `seq_id` or inline ASCII DNA input.
+pub struct RestrictionSiteScanReport {
+    pub schema: String,
+    pub target_kind: String,
+    pub target_label: String,
+    pub source_sequence_length_bp: usize,
+    pub scan_start_0based: usize,
+    pub scan_end_0based_exclusive: usize,
+    pub scan_length_bp: usize,
+    #[serde(default)]
+    pub scan_topology: InlineSequenceTopology,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub enzyme_filters: Vec<String>,
+    #[serde(default)]
+    pub enzymes_scanned: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_sites_per_enzyme: Option<usize>,
+    pub include_cut_geometry: bool,
+    pub matched_site_count: usize,
+    #[serde(default)]
+    pub skipped_enzyme_names_due_to_max_sites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<RestrictionSiteScanHit>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// One visible feature-class lane summarized in a sequence-context view.
@@ -1536,6 +1647,8 @@ pub struct OpResult {
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restriction_site_scan: Option<RestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_context_view: Option<SequenceContextViewReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

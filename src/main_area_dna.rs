@@ -88,7 +88,7 @@ use crate::{
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
         RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-        SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
+        SequenceScanTarget, SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
         SequencingConfirmationReport, SequencingConfirmationReportSummary,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
@@ -1694,6 +1694,7 @@ mod tests {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
+            restriction_site_scan: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
             variant_promoter_context: None,
@@ -4284,6 +4285,7 @@ mod tests {
                 rna_read_gene_support_audit: None,
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
+                restriction_site_scan: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
                 variant_promoter_context: None,
@@ -14079,6 +14081,64 @@ impl MainAreaDna {
                 if queue_selection_response.clicked() {
                     self.queue_current_selection_for_pcr();
                 }
+                ui.menu_button("RE scan", |ui| {
+                    let selection_response = ui.add_enabled(
+                        selection_roi.is_some(),
+                        egui::Button::new("Restriction sites in selection"),
+                    );
+                    let selection_response = if selection_roi.is_some() {
+                        selection_response.on_hover_text(
+                            "Scan the current map/text selection directly for restriction sites using the shared engine report path",
+                        )
+                    } else {
+                        selection_response.on_hover_text(
+                            "Requires a non-empty map/text selection; drag-select a region or click `Select visible` first",
+                        )
+                    };
+                    if selection_response.clicked() {
+                        self.scan_current_selection_for_restriction_sites();
+                        ui.close();
+                    }
+
+                    let visible_response = ui.add_enabled(
+                        visible_span_roi.is_some(),
+                        egui::Button::new("Restriction sites in visible span"),
+                    );
+                    let visible_response = if visible_span_roi.is_some() {
+                        visible_response.on_hover_text(
+                            "Scan the current visible linear map span for restriction sites",
+                        )
+                    } else {
+                        visible_response.on_hover_text(
+                            "Requires a non-empty linear map view; unavailable in circular view",
+                        )
+                    };
+                    if visible_response.clicked() {
+                        self.scan_visible_span_for_restriction_sites();
+                        ui.close();
+                    }
+
+                    let whole_sequence_response = ui.add_enabled(
+                        self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty()),
+                        egui::Button::new("Restriction sites in whole sequence"),
+                    );
+                    let whole_sequence_response = if self
+                        .seq_id
+                        .as_deref()
+                        .is_some_and(|seq_id| !seq_id.trim().is_empty())
+                    {
+                        whole_sequence_response.on_hover_text(
+                            "Scan the full active sequence for restriction sites",
+                        )
+                    } else {
+                        whole_sequence_response
+                            .on_hover_text("Requires an active sequence in the current DNA window")
+                    };
+                    if whole_sequence_response.clicked() {
+                        self.scan_whole_sequence_for_restriction_sites();
+                        ui.close();
+                    }
+                });
                 let active_pcr_roi_source = self.active_pcr_roi_source_0based();
                 let set_roi_response =
                     ui.add_enabled(active_pcr_roi_source.is_some(), egui::Button::new("Set PCR ROI"));
@@ -17441,6 +17501,91 @@ impl MainAreaDna {
                 self.op_status = format!("Could not queue PCR region: {message}");
             }
         }
+    }
+
+    fn run_restriction_site_scan_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let target = SequenceScanTarget::SeqId {
+            seq_id: template.clone(),
+            span_start_0based: span.map(|(start, _)| start),
+            span_end_0based_exclusive: span.map(|(_, end_exclusive)| end_exclusive),
+        };
+        let Some(result) =
+            self.apply_operation_with_feedback_and_result(Operation::FindRestrictionSites {
+                target,
+                enzymes: vec![],
+                max_sites_per_enzyme: None,
+                include_cut_geometry: true,
+                path: None,
+            })
+        else {
+            return;
+        };
+        let Some(report) = result.restriction_site_scan else {
+            return;
+        };
+        let hit_preview = report
+            .rows
+            .iter()
+            .take(4)
+            .map(|row| {
+                format!(
+                    "{}@{}",
+                    row.enzyme_name, row.source_recognition_start_0based
+                )
+            })
+            .collect::<Vec<_>>();
+        self.op_status = if hit_preview.is_empty() {
+            format!(
+                "Restriction-site scan for {source_label} on '{}' found no sites across {} enzyme(s)",
+                template,
+                report.enzymes_scanned.len()
+            )
+        } else {
+            format!(
+                "Restriction-site scan for {source_label} on '{}' found {} site(s) across {} enzyme(s): {}",
+                template,
+                report.matched_site_count,
+                report.enzymes_scanned.len(),
+                hit_preview.join(", ")
+            )
+        };
+    }
+
+    fn scan_current_selection_for_restriction_sites(&mut self) {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No non-empty linear selection available for restriction-site scan".to_string();
+            return;
+        };
+        self.run_restriction_site_scan_for_active_sequence(
+            Some((start, end_exclusive)),
+            "current selection",
+        );
+    }
+
+    fn scan_visible_span_for_restriction_sites(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status =
+                "Visible linear span is unavailable for restriction-site scan".to_string();
+            return;
+        };
+        self.run_restriction_site_scan_for_active_sequence(
+            Some((start, end_exclusive)),
+            "visible span",
+        );
+    }
+
+    fn scan_whole_sequence_for_restriction_sites(&mut self) {
+        self.run_restriction_site_scan_for_active_sequence(None, "whole sequence");
     }
 
     fn render_selection_simple_pcr_context_action(&mut self, ui: &mut egui::Ui) -> bool {

@@ -28,7 +28,7 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
-    enzymes::active_restriction_enzymes,
+    enzymes::{active_restriction_enzymes, default_preferred_restriction_enzyme_names},
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
@@ -448,6 +448,7 @@ const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
+const RESTRICTION_SITE_SCAN_REPORT_SCHEMA: &str = "gentle.restriction_site_scan.v1";
 const SEQUENCE_CONTEXT_VIEW_SCHEMA: &str = "gentle.sequence_context_view.v1";
 const SEQUENCE_CONTEXT_BUNDLE_SCHEMA: &str = "gentle.sequence_context_bundle.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
@@ -2945,6 +2946,17 @@ pub enum Operation {
         enzymes: Vec<String>,
         output_prefix: Option<String>,
     },
+    FindRestrictionSites {
+        target: SequenceScanTarget,
+        #[serde(default)]
+        enzymes: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_sites_per_enzyme: Option<usize>,
+        #[serde(default = "default_true")]
+        include_cut_geometry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     Ligation {
         inputs: Vec<SeqId>,
         circularize_if_possible: bool,
@@ -4630,6 +4642,7 @@ impl GentleEngine {
                 "LigationContainer".to_string(),
                 "FilterContainerByMolecularWeight".to_string(),
                 "Digest".to_string(),
+                "FindRestrictionSites".to_string(),
                 "MergeContainers".to_string(),
                 "Ligation".to_string(),
                 "Pcr".to_string(),
@@ -6559,6 +6572,7 @@ impl GentleEngine {
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
                 | Operation::InspectRnaReadGeneSupport { .. }
+                | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
@@ -9968,10 +9982,9 @@ impl GentleEngine {
                 "Coordinate-bearing feature table for '{}' covering {}",
                 seq_id, span_label
             ),
-            "bundle_manifest" => format!(
-                "Bundle manifest for '{}' sequence-context export",
-                seq_id
-            ),
+            "bundle_manifest" => {
+                format!("Bundle manifest for '{}' sequence-context export", seq_id)
+            }
             _ => format!("Sequence-context artifact '{artifact_kind}' for '{seq_id}'"),
         }
     }
@@ -10239,8 +10252,7 @@ impl GentleEngine {
             .or_else(|| artifacts.first());
         let best_first_artifact_id =
             best_first_artifact.map(|artifact| artifact.artifact_id.clone());
-        let best_first_artifact_path =
-            best_first_artifact.map(|artifact| artifact.path.clone());
+        let best_first_artifact_path = best_first_artifact.map(|artifact| artifact.path.clone());
         let bundle = SequenceContextBundleExport {
             schema: SEQUENCE_CONTEXT_BUNDLE_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
@@ -10273,6 +10285,408 @@ impl GentleEngine {
             "sequence-context bundle manifest",
         )?;
         Ok(bundle)
+    }
+
+    fn restriction_end_geometry_label(enzyme: &RestrictionEnzyme) -> &'static str {
+        match enzyme.end_geometry() {
+            crate::restriction_enzyme::RestrictionEndGeometry::Blunt => "blunt",
+            crate::restriction_enzyme::RestrictionEndGeometry::FivePrimeOverhang(_) => {
+                "5prime_overhang"
+            }
+            crate::restriction_enzyme::RestrictionEndGeometry::ThreePrimeOverhang(_) => {
+                "3prime_overhang"
+            }
+        }
+    }
+
+    fn validate_sequence_scan_span(
+        sequence_length_bp: usize,
+        span_start_0based: Option<usize>,
+        span_end_0based_exclusive: Option<usize>,
+        context: &str,
+    ) -> Result<(usize, usize), EngineError> {
+        if sequence_length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{context} cannot be computed on an empty sequence"),
+            });
+        }
+        if span_start_0based.is_some() != span_end_0based_exclusive.is_some() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{context} span requires both span_start_0based and span_end_0based_exclusive"
+                ),
+            });
+        }
+        let (start, end_exclusive) = match (span_start_0based, span_end_0based_exclusive) {
+            (Some(start), Some(end_exclusive)) => (start, end_exclusive),
+            (None, None) => (0, sequence_length_bp),
+            _ => unreachable!("span presence already validated"),
+        };
+        if end_exclusive <= start {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid {context} span {start}..{end_exclusive}: end must be > start"
+                ),
+            });
+        }
+        if start >= sequence_length_bp || end_exclusive > sequence_length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{context} span {start}..{end_exclusive} is outside sequence length {sequence_length_bp}"
+                ),
+            });
+        }
+        Ok((start, end_exclusive))
+    }
+
+    fn resolve_sequence_scan_target(
+        &self,
+        target: &SequenceScanTarget,
+    ) -> Result<
+        (
+            String,
+            String,
+            usize,
+            usize,
+            usize,
+            InlineSequenceTopology,
+            DNAsequence,
+        ),
+        EngineError,
+    > {
+        match target {
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based,
+                span_end_0based_exclusive,
+            } => {
+                let seq_id = seq_id.trim();
+                if seq_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "FindRestrictionSites requires non-empty seq_id".to_string(),
+                    });
+                }
+                let dna = self
+                    .state
+                    .sequences
+                    .get(seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let source_sequence_length_bp = dna.len();
+                let (scan_start_0based, scan_end_0based_exclusive) =
+                    Self::validate_sequence_scan_span(
+                        source_sequence_length_bp,
+                        *span_start_0based,
+                        *span_end_0based_exclusive,
+                        "FindRestrictionSites",
+                    )?;
+                let full_span = scan_start_0based == 0
+                    && scan_end_0based_exclusive == source_sequence_length_bp;
+                let scan_topology = if full_span && dna.is_circular() {
+                    InlineSequenceTopology::Circular
+                } else {
+                    InlineSequenceTopology::Linear
+                };
+                let scan_dna = if full_span {
+                    dna.clone()
+                } else {
+                    dna.extract_region_preserving_features(
+                        scan_start_0based,
+                        scan_end_0based_exclusive,
+                    )
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not extract scan span {}..{} from '{}'",
+                            scan_start_0based, scan_end_0based_exclusive, seq_id
+                        ),
+                    })?
+                };
+                Ok((
+                    "seq_id".to_string(),
+                    seq_id.to_string(),
+                    source_sequence_length_bp,
+                    scan_start_0based,
+                    scan_end_0based_exclusive,
+                    scan_topology,
+                    scan_dna,
+                ))
+            }
+            SequenceScanTarget::InlineSequence {
+                sequence_text,
+                topology,
+                id_hint,
+                span_start_0based,
+                span_end_0based_exclusive,
+            } => {
+                let mut dna =
+                    DNAsequence::from_sequence(sequence_text).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not parse inline DNA sequence: {e}"),
+                    })?;
+                dna.set_circular(matches!(topology, InlineSequenceTopology::Circular));
+                let source_sequence_length_bp = dna.len();
+                let (scan_start_0based, scan_end_0based_exclusive) =
+                    Self::validate_sequence_scan_span(
+                        source_sequence_length_bp,
+                        *span_start_0based,
+                        *span_end_0based_exclusive,
+                        "FindRestrictionSites",
+                    )?;
+                let full_span = scan_start_0based == 0
+                    && scan_end_0based_exclusive == source_sequence_length_bp;
+                let scan_topology = if full_span {
+                    *topology
+                } else {
+                    InlineSequenceTopology::Linear
+                };
+                let scan_dna = if full_span {
+                    dna
+                } else {
+                    dna.extract_region_preserving_features(
+                        scan_start_0based,
+                        scan_end_0based_exclusive,
+                    )
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not extract inline scan span {}..{}",
+                            scan_start_0based, scan_end_0based_exclusive
+                        ),
+                    })?
+                };
+                let target_label = id_hint
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("inline_sequence")
+                    .to_string();
+                Ok((
+                    "inline_sequence".to_string(),
+                    target_label,
+                    source_sequence_length_bp,
+                    scan_start_0based,
+                    scan_end_0based_exclusive,
+                    scan_topology,
+                    scan_dna,
+                ))
+            }
+        }
+    }
+
+    fn resolve_restriction_scan_enzymes(
+        &self,
+        enzymes: &[String],
+    ) -> Result<(Vec<String>, Vec<RestrictionEnzyme>), EngineError> {
+        let effective_requested = if enzymes.is_empty() {
+            let preferred = self
+                .state
+                .display
+                .preferred_restriction_enzymes
+                .iter()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>();
+            if preferred.is_empty() {
+                default_preferred_restriction_enzyme_names()
+            } else {
+                preferred
+            }
+        } else {
+            enzymes
+                .iter()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        };
+
+        if effective_requested.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "FindRestrictionSites requires at least one enzyme or configured preferred restriction enzymes"
+                        .to_string(),
+            });
+        }
+
+        let catalog = active_restriction_enzymes();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut filters: Vec<String> = vec![];
+        let mut resolved: Vec<RestrictionEnzyme> = vec![];
+        let mut missing: Vec<String> = vec![];
+        for raw in effective_requested {
+            let normalized = raw.to_ascii_uppercase();
+            if !seen.insert(normalized) {
+                continue;
+            }
+            if let Some(enzyme) = catalog
+                .iter()
+                .find(|enzyme| enzyme.name.eq_ignore_ascii_case(&raw))
+            {
+                filters.push(enzyme.name.clone());
+                resolved.push(enzyme.clone());
+            } else {
+                missing.push(raw);
+            }
+        }
+        if !missing.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unknown restriction enzyme(s) for FindRestrictionSites: {}",
+                    missing.join(", ")
+                ),
+            });
+        }
+        Ok((filters, resolved))
+    }
+
+    pub fn find_restriction_sites(
+        &self,
+        target: SequenceScanTarget,
+        enzymes: &[String],
+        max_sites_per_enzyme: Option<usize>,
+        include_cut_geometry: bool,
+        op_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Result<RestrictionSiteScanReport, EngineError> {
+        if max_sites_per_enzyme.is_some_and(|value| value == 0) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "FindRestrictionSites max_sites_per_enzyme must be >= 1".to_string(),
+            });
+        }
+        let (
+            target_kind,
+            target_label,
+            source_sequence_length_bp,
+            scan_start_0based,
+            scan_end_0based_exclusive,
+            scan_topology,
+            scan_dna,
+        ) = self.resolve_sequence_scan_target(&target)?;
+        let (enzyme_filters, resolved_enzymes) = self.resolve_restriction_scan_enzymes(enzymes)?;
+
+        let mut report = RestrictionSiteScanReport {
+            schema: RESTRICTION_SITE_SCAN_REPORT_SCHEMA.to_string(),
+            target_kind,
+            target_label,
+            source_sequence_length_bp,
+            scan_start_0based,
+            scan_end_0based_exclusive,
+            scan_length_bp: scan_dna.len(),
+            scan_topology,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: op_id.map(str::to_string),
+            run_id: run_id.map(str::to_string),
+            enzyme_filters: enzyme_filters.clone(),
+            enzymes_scanned: enzyme_filters,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            matched_site_count: 0,
+            skipped_enzyme_names_due_to_max_sites: vec![],
+            path: None,
+            rows: vec![],
+        };
+
+        for enzyme in resolved_enzymes {
+            let sites = enzyme.get_sites(&scan_dna, None);
+            if let Some(max) = max_sites_per_enzyme
+                && sites.len() > max
+            {
+                report
+                    .skipped_enzyme_names_due_to_max_sites
+                    .push(enzyme.name.clone());
+                continue;
+            }
+            for site in sites {
+                let Some((recognition_start_0based, recognition_end_0based_exclusive)) =
+                    site.recognition_bounds_0based(scan_dna.len())
+                else {
+                    continue;
+                };
+                let (
+                    forward_cut_0based,
+                    reverse_cut_0based,
+                    opening_start_0based,
+                    opening_end_0based_exclusive,
+                ) = if include_cut_geometry {
+                    let (forward_cut_0based, reverse_cut_0based) = site
+                        .strand_cut_positions_0based(scan_dna.len())
+                        .unwrap_or((recognition_start_0based, recognition_start_0based));
+                    let (opening_start_0based, opening_end_0based_exclusive) = site
+                        .recessed_opening_window_0based(scan_dna.len())
+                        .unwrap_or((forward_cut_0based, reverse_cut_0based));
+                    (
+                        Some(forward_cut_0based),
+                        Some(reverse_cut_0based),
+                        Some(opening_start_0based),
+                        Some(opening_end_0based_exclusive),
+                    )
+                } else {
+                    (None, None, None, None)
+                };
+                report.rows.push(RestrictionSiteScanHit {
+                    enzyme_name: site.enzyme.name.clone(),
+                    recognition_sequence: site.enzyme.sequence.clone(),
+                    recognition_start_0based,
+                    recognition_end_0based_exclusive,
+                    source_recognition_start_0based: scan_start_0based
+                        .saturating_add(recognition_start_0based),
+                    source_recognition_end_0based_exclusive: scan_start_0based
+                        .saturating_add(recognition_end_0based_exclusive),
+                    recognition_length_bp: recognition_end_0based_exclusive
+                        .saturating_sub(recognition_start_0based),
+                    forward_strand: site.forward_strand,
+                    end_geometry: Self::restriction_end_geometry_label(&site.enzyme).to_string(),
+                    note: site
+                        .enzyme
+                        .note
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    forward_cut_0based,
+                    reverse_cut_0based,
+                    opening_start_0based,
+                    opening_end_0based_exclusive,
+                    source_forward_cut_0based: forward_cut_0based
+                        .map(|value| scan_start_0based.saturating_add(value)),
+                    source_reverse_cut_0based: reverse_cut_0based
+                        .map(|value| scan_start_0based.saturating_add(value)),
+                    source_opening_start_0based: opening_start_0based
+                        .map(|value| scan_start_0based.saturating_add(value)),
+                    source_opening_end_0based_exclusive: opening_end_0based_exclusive
+                        .map(|value| scan_start_0based.saturating_add(value)),
+                });
+            }
+        }
+
+        report.skipped_enzyme_names_due_to_max_sites.sort();
+        report.rows.sort_by(|a, b| {
+            a.recognition_start_0based
+                .cmp(&b.recognition_start_0based)
+                .then(a.enzyme_name.cmp(&b.enzyme_name))
+                .then(
+                    a.recognition_end_0based_exclusive
+                        .cmp(&b.recognition_end_0based_exclusive),
+                )
+                .then(
+                    a.source_recognition_start_0based
+                        .cmp(&b.source_recognition_start_0based),
+                )
+        });
+        report.matched_site_count = report.rows.len();
+        Ok(report)
     }
 
     fn tfbs_summary_group_name(feature: &gb_io::seq::Feature, feature_id: usize) -> String {

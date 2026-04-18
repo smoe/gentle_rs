@@ -1635,6 +1635,8 @@ Shared shell command:
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]`
+    - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
+    - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
     - `variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]`
     - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
@@ -1918,6 +1920,19 @@ Shared shell command:
       - `--include-restriction-sites` appends deterministic REBASE-derived
         `restriction_site` rows, and `--restriction-enzyme NAME` can be
         repeated to keep only selected enzymes
+    - Restriction-site scan helper notes (`features restriction-scan`):
+      - non-mutating structured result schema:
+        `gentle.restriction_site_scan.v1`
+      - accepts either stored `SEQ_ID` or inline ASCII DNA via
+        `--sequence-text`
+      - `--range` / `--start` / `--end` restrict the scan to one local span on
+        the chosen operand
+      - when no `--enzyme` is supplied, the shared preferred restriction-enzyme
+        list is used; if that list is empty, GENtle falls back to the default
+        preferred enzyme set
+      - the report includes both local scan coordinates and source-sequence
+        coordinates, plus optional cleavage geometry unless
+        `--no-cut-geometry` is set
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`

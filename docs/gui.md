@@ -1704,7 +1704,18 @@ Controls:
      selection as one PCR region for later batch primer-pair design.
    - When a selection is present, the map area also shows an inline hint with
      the active span and the same PCR queue action.
-19. Selection formula
+19. RE scan
+   - Toolbar menu for direct non-mutating restriction-site inspection on the
+     current active DNA window.
+   - Available entry points:
+     - current selection
+     - current visible linear span
+     - whole active sequence
+   - Uses the shared `FindRestrictionSites` engine operation rather than a
+     GUI-only quick scan, so CLI/shell/agent calls see the same report schema.
+   - Status feedback summarizes the top hits inline, while the full machine-
+     readable report remains available through the shared operation result.
+20. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Drag-selecting on the linear map now also updates this field to the
      current `=start .. end_exclusive` range, and existing map selections can

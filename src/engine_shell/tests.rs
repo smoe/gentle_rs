@@ -14,10 +14,10 @@ use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, ConstructObjective, ConstructRole, Container, ContainerKind, EditableStatus,
-    PrimerDesignProgress, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
+    InlineSequenceTopology, PrimerDesignProgress, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
+    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
+    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, SequenceScanTarget,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -4305,6 +4305,65 @@ fn parse_features_tfbs_score_tracks_svg_with_range_and_negative_scores() {
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs.svg");
         }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_features_restriction_scan_for_stored_and_inline_targets() {
+    let cmd = parse_shell_line(
+        "features restriction-scan seq_a --range 10..120 --enzyme EcoRI --enzyme SmaI --max-sites-per-enzyme 3 --no-cut-geometry --path /tmp/seq_a.restriction_scan.json",
+    )
+    .expect("parse features restriction-scan");
+    match cmd {
+        ShellCommand::FeaturesRestrictionScan {
+            target,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            path,
+        } => {
+            match target {
+                SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                } => {
+                    assert_eq!(seq_id, "seq_a");
+                    assert_eq!(span_start_0based, Some(10));
+                    assert_eq!(span_end_0based_exclusive, Some(120));
+                }
+                other => panic!("unexpected target: {other:?}"),
+            }
+            assert_eq!(enzymes, vec!["EcoRI".to_string(), "SmaI".to_string()]);
+            assert_eq!(max_sites_per_enzyme, Some(3));
+            assert!(!include_cut_geometry);
+            assert_eq!(path.as_deref(), Some("/tmp/seq_a.restriction_scan.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let cmd = parse_shell_line(
+        "features restriction-scan --sequence-text AAGAATTCCCGGGTTA --topology circular --id-hint toy_seq --range 1..12 --enzyme EcoRI",
+    )
+    .expect("parse inline features restriction-scan");
+    match cmd {
+        ShellCommand::FeaturesRestrictionScan { target, .. } => match target {
+            SequenceScanTarget::InlineSequence {
+                sequence_text,
+                topology,
+                id_hint,
+                span_start_0based,
+                span_end_0based_exclusive,
+            } => {
+                assert_eq!(sequence_text, "AAGAATTCCCGGGTTA");
+                assert_eq!(topology, InlineSequenceTopology::Circular);
+                assert_eq!(id_hint.as_deref(), Some("toy_seq"));
+                assert_eq!(span_start_0based, Some(1));
+                assert_eq!(span_end_0based_exclusive, Some(12));
+            }
+            other => panic!("unexpected target: {other:?}"),
+        },
         other => panic!("unexpected command: {other:?}"),
     }
 }
@@ -9340,6 +9399,68 @@ fn execute_features_tfbs_score_tracks_svg_shell_command_writes_svg_and_report() 
     assert!(svg.contains("Continuous TF motif score tracks"));
     assert!(svg.contains("tp73_context"));
     assert!(svg.contains("SP1"));
+}
+
+#[test]
+fn execute_features_restriction_scan_matches_inline_and_stored_sequence_targets() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGGGTTGAATTC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let stored = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesRestrictionScan {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string(), "SmaI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        },
+    )
+    .expect("stored restriction scan");
+    let inline = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesRestrictionScan {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: "AAGAATTCCCGGGTTGAATTC".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("seq".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string(), "SmaI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        },
+    )
+    .expect("inline restriction scan");
+
+    assert!(!stored.state_changed);
+    assert!(!inline.state_changed);
+    assert_eq!(
+        stored.output["result"]["restriction_site_scan"]["schema"].as_str(),
+        Some("gentle.restriction_site_scan.v1")
+    );
+    assert_eq!(
+        stored.output["report"]["matched_site_count"].as_u64(),
+        Some(3)
+    );
+    assert_eq!(
+        stored.output["report"]["rows"],
+        inline.output["report"]["rows"]
+    );
+    assert_eq!(
+        stored.output["report"]["skipped_enzyme_names_due_to_max_sites"],
+        inline.output["report"]["skipped_enzyme_names_due_to_max_sites"]
+    );
 }
 
 #[test]

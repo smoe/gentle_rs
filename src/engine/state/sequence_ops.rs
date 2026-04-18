@@ -1071,6 +1071,12 @@ impl GentleEngine {
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
+            Operation::FindRestrictionSites { target, .. } => match target {
+                SequenceScanTarget::SeqId { seq_id, .. } => {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                SequenceScanTarget::InlineSequence { .. } => {}
+            },
             Operation::ComputeDotplotOverlay {
                 owner_seq_id,
                 reference_seq_id,
@@ -1269,6 +1275,12 @@ impl GentleEngine {
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
+        if let Operation::FindRestrictionSites {
+            path: Some(path), ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         summary
     }
 
@@ -1310,6 +1322,9 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::InspectRnaReadGeneSupport {
+                path: Some(path), ..
+            } => push(path),
+            Operation::FindRestrictionSites {
                 path: Some(path), ..
             } => push(path),
             _ => {}

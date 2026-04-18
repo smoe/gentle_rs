@@ -25299,21 +25299,40 @@ fn apply_export_sequence_context_bundle_writes_svg_summary_and_bed() {
     );
     assert!(Path::new(bundle.feature_bed_path.as_deref().expect("bed path")).exists());
     assert!(Path::new(&bundle.bundle_json_path).exists());
-    assert_eq!(bundle.best_first_artifact_id.as_deref(), Some("context_svg"));
-    assert_eq!(bundle.best_first_artifact_path.as_deref(), Some(bundle.svg_path.as_str()));
-    assert_eq!(bundle.artifacts.first().map(|artifact| artifact.artifact_id.as_str()), Some("context_svg"));
     assert_eq!(
-        bundle.artifacts.first().map(|artifact| artifact.recommended_use.as_str()),
+        bundle.best_first_artifact_id.as_deref(),
+        Some("context_svg")
+    );
+    assert_eq!(
+        bundle.best_first_artifact_path.as_deref(),
+        Some(bundle.svg_path.as_str())
+    );
+    assert_eq!(
+        bundle
+            .artifacts
+            .first()
+            .map(|artifact| artifact.artifact_id.as_str()),
+        Some("context_svg")
+    );
+    assert_eq!(
+        bundle
+            .artifacts
+            .first()
+            .map(|artifact| artifact.recommended_use.as_str()),
         Some("best_first_figure")
     );
-    assert!(bundle
-        .artifacts
-        .iter()
-        .any(|artifact| artifact.artifact_id == "context_summary_text"));
-    assert!(bundle
-        .artifacts
-        .iter()
-        .any(|artifact| artifact.artifact_id == "context_feature_bed"));
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.artifact_id == "context_summary_text")
+    );
+    assert!(
+        bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.artifact_id == "context_feature_bed")
+    );
     assert!(result.messages.iter().any(|message| {
         message.contains("Sequence-context bundle for 'tp73_ctx'")
             && message.contains("context.svg")
@@ -28309,4 +28328,42 @@ fn export_construct_reasoning_graph_json_writes_pretty_payload() {
     assert_eq!(exported.graph_id, graph.graph_id);
     assert!(text.contains("\"schema\": \"gentle.construct_reasoning_graph.v1\""));
     assert!(text.contains("\"graph_id\": \"graph_export_demo\""));
+}
+
+#[test]
+fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: "AAGAATTCCCGGGTTGAATTC".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("toy_inline".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string(), "SmaI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("find restriction sites");
+
+    let report = result
+        .restriction_site_scan
+        .expect("restriction-site scan report");
+    assert_eq!(report.schema, "gentle.restriction_site_scan.v1");
+    assert_eq!(report.target_kind, "inline_sequence");
+    assert_eq!(report.target_label, "toy_inline");
+    assert_eq!(report.matched_site_count, 3);
+    assert_eq!(
+        report
+            .rows
+            .iter()
+            .map(|row| row.enzyme_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["EcoRI", "SmaI", "EcoRI"]
+    );
+    assert_eq!(report.rows[0].forward_cut_0based, Some(3));
+    assert_eq!(report.rows[1].opening_start_0based, Some(10));
 }

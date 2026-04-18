@@ -37,8 +37,8 @@ use crate::{
         GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        InlineSequenceTopology, LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
+        Operation, OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
@@ -56,10 +56,10 @@ use crate::{
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
-        SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SplicingScopePreset, TfbsRegionSummaryRequest,
-        TfbsScoreTrackValueKind, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
+        TfbsRegionSummaryRequest, TfbsScoreTrackValueKind, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1405,6 +1405,13 @@ pub enum ShellCommand {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         output: String,
+    },
+    FeaturesRestrictionScan {
+        target: SequenceScanTarget,
+        enzymes: Vec<String>,
+        max_sites_per_enzyme: Option<usize>,
+        include_cut_geometry: bool,
+        path: Option<String>,
     },
     VariantAnnotatePromoterWindows {
         seq_id: String,
@@ -6789,6 +6796,62 @@ impl ShellCommand {
                 score_kind.as_str(),
                 clip_negative
             ),
+            Self::FeaturesRestrictionScan {
+                target,
+                enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                path,
+            } => {
+                let target_label = match target {
+                    SequenceScanTarget::SeqId {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "seq_id='{}' span={}..{}",
+                        seq_id,
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "full".to_string())
+                    ),
+                    SequenceScanTarget::InlineSequence {
+                        id_hint,
+                        sequence_text,
+                        topology,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "inline='{}' len={} topology={} span={}..{}",
+                        id_hint.as_deref().unwrap_or("inline_sequence"),
+                        sequence_text.len(),
+                        topology.as_str(),
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "full".to_string())
+                    ),
+                };
+                format!(
+                    "scan restriction sites on {} (enzymes={}, max_sites_per_enzyme={}, cut_geometry={}, path={})",
+                    target_label,
+                    if enzymes.is_empty() {
+                        "preferred/default".to_string()
+                    } else {
+                        enzymes.join(",")
+                    },
+                    max_sites_per_enzyme
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                    include_cut_geometry,
+                    path.as_deref().unwrap_or("-"),
+                )
+            }
             Self::VariantAnnotatePromoterWindows {
                 seq_id,
                 gene_label,
@@ -19609,6 +19672,31 @@ fn execute_sequence_analysis_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::FeaturesRestrictionScan {
+            target,
+            enzymes,
+            max_sites_per_enzyme,
+            include_cut_geometry,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::FindRestrictionSites {
+                    target: target.clone(),
+                    enzymes: enzymes.clone(),
+                    max_sites_per_enzyme: *max_sites_per_enzyme,
+                    include_cut_geometry: *include_cut_geometry,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.restriction_site_scan.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::VariantAnnotatePromoterWindows {
             seq_id,
             gene_label,
@@ -22300,6 +22388,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+            | ShellCommand::FeaturesRestrictionScan { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
             | ShellCommand::VariantReporterFragments { .. }
@@ -22576,6 +22665,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+        | ShellCommand::FeaturesRestrictionScan { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }
         | ShellCommand::VariantReporterFragments { .. }

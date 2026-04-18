@@ -283,28 +283,11 @@ Implemented first-class operation on top of that operand:
 Still planned:
 
 - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
-  - purpose:
-    - non-mutating thresholded JASPAR/IUPAC hit scan using the same scoring
-      path as `AnnotateTfbs`, but without creating sequence features by default
-  - result schema (tentative):
-    - `gentle.tfbs_hit_scan.v1`
-  - expected row fields:
-    - `motif_id`
-    - `motif_name`
-    - `start_0based`
-    - `end_0based_exclusive`
-    - `reverse`
-    - `llr_bits`
-    - `llr_quantile`
-    - `true_log_odds_bits`
-    - `true_log_odds_quantile`
-  - GUI or shell follow-up may later choose to promote selected hits into
-    persistent `TFBS` features, but that promotion is intentionally separate
-
-- `SummarizeTfbsScoreTracks`
-  - additive follow-up:
-    - accept the same `target` operand in addition to the current `seq_id`
-      route
+  - thresholded non-mutating JASPAR/IUPAC hit scan without creating `TFBS`
+    features by default
+- additive follow-up for `SummarizeTfbsScoreTracks`
+  - accept the same `target` operand in addition to the current `seq_id`
+    route
 
 UX parity expectations:
 
@@ -4033,6 +4016,23 @@ Feature BED export contract (implemented):
     options; `restriction_enzymes[]` narrows those rows to selected enzymes
   - TFBS/JASPAR annotations remain ordinary feature rows, so `kind_in=["TFBS"]`
     exports the current binding-site table after `AnnotateTfbs`
+
+Restriction-site scan contract (implemented):
+
+- Shared-shell commands:
+  - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
+  - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
+- Raw/shared operation:
+  - `{"FindRestrictionSites":{"target":{"kind":"seq_id","seq_id":"tp53_region","span_start_0based":700,"span_end_0based_exclusive":1200},"enzymes":["EcoRI","SmaI"],"include_cut_geometry":true}}`
+- Execution semantics:
+  - non-mutating scan backed by the same shared REBASE enzyme catalog used by
+    other restriction-aware flows
+  - accepts either stored `seq_id` targets or inline ASCII DNA text through one
+    contract
+  - when `enzymes[]` is omitted, the shared preferred restriction-enzyme list
+    is used, with fallback to the default preferred set
+  - the report includes both local scan coordinates and source-sequence
+    coordinates so selection/visible-span calls stay easy to interpret
 - File format:
   - BED6 core columns:
     `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`

@@ -1472,6 +1472,16 @@ fn parse_feature_bed_coordinate_mode(raw: &str) -> Result<FeatureBedCoordinateMo
     }
 }
 
+fn parse_inline_sequence_topology(raw: &str) -> Result<InlineSequenceTopology, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "linear" | "lin" => Ok(InlineSequenceTopology::Linear),
+        "circular" | "circ" => Ok(InlineSequenceTopology::Circular),
+        other => Err(format!(
+            "Unsupported --topology value '{other}' (expected linear|circular)"
+        )),
+    }
+}
+
 fn try_parse_feature_query_option(
     tokens: &[String],
     idx: &mut usize,
@@ -1677,7 +1687,7 @@ fn finalize_feature_query_options(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg"
+            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, restriction-scan"
                 .to_string(),
         );
     }
@@ -2016,8 +2026,194 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 output,
             })
         }
+        "restriction-scan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features restriction-scan requires either SEQ_ID or --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let mut seq_id: Option<String> = None;
+            let mut sequence_text: Option<String> = None;
+            let mut topology = InlineSequenceTopology::Linear;
+            let mut id_hint: Option<String> = None;
+            let mut enzymes: Vec<String> = vec![];
+            let mut max_sites_per_enzyme: Option<usize> = None;
+            let mut include_cut_geometry = true;
+            let mut path: Option<String> = None;
+            let mut state = FeatureQueryOptionState::default();
+            let mut idx = 2usize;
+            if tokens[2].starts_with("--") {
+                // options-only inline form
+            } else {
+                let raw = tokens[2].trim().to_string();
+                if !raw.is_empty() {
+                    seq_id = Some(raw);
+                }
+                idx = 3usize;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-text" => {
+                        sequence_text = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-text",
+                            "features restriction-scan",
+                        )?);
+                    }
+                    "--topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--topology",
+                            "features restriction-scan",
+                        )?;
+                        topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--id-hint" => {
+                        id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--id-hint",
+                            "features restriction-scan",
+                        )?);
+                    }
+                    "--enzyme" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--enzyme",
+                            "features restriction-scan",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            enzymes.push(trimmed.to_string());
+                        }
+                    }
+                    "--max-sites-per-enzyme" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-sites-per-enzyme",
+                            "features restriction-scan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-sites-per-enzyme value '{raw}' for features restriction-scan: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err("--max-sites-per-enzyme must be >= 1".to_string());
+                        }
+                        max_sites_per_enzyme = Some(parsed);
+                    }
+                    "--no-cut-geometry" => {
+                        include_cut_geometry = false;
+                        idx += 1;
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "features restriction-scan",
+                        )?);
+                    }
+                    "--range" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--range",
+                            "features restriction-scan",
+                        )?;
+                        if state.range_arg.is_some() {
+                            return Err("--range was specified multiple times".to_string());
+                        }
+                        state.range_arg =
+                            Some(parse_feature_range(&raw, "features restriction-scan")?);
+                    }
+                    "--start" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--start",
+                            "features restriction-scan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --start value '{raw}' for features restriction-scan: {e}"
+                            )
+                        })?;
+                        state.start_arg = Some(parsed);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--end",
+                            "features restriction-scan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --end value '{raw}' for features restriction-scan: {e}"
+                            )
+                        })?;
+                        state.end_arg = Some(parsed);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features restriction-scan"
+                        ));
+                    }
+                }
+            }
+            let (span_start_0based, span_end_0based_exclusive) = if state.range_arg.is_some()
+                || state.start_arg.is_some()
+                || state.end_arg.is_some()
+            {
+                let mut query = SequenceFeatureQuery::default();
+                finalize_feature_query_options(state, "features restriction-scan", &mut query)?;
+                (query.start_0based, query.end_0based_exclusive)
+            } else {
+                (None, None)
+            };
+            let target = match (seq_id, sequence_text) {
+                (Some(seq_id), None) => SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                },
+                (None, Some(sequence_text)) => SequenceScanTarget::InlineSequence {
+                    sequence_text,
+                    topology,
+                    id_hint,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                },
+                (Some(_), Some(_)) => {
+                    return Err(
+                        "features restriction-scan accepts either SEQ_ID or --sequence-text DNA, not both"
+                            .to_string(),
+                    );
+                }
+                (None, None) => {
+                    return Err(
+                        "features restriction-scan requires either SEQ_ID or --sequence-text DNA"
+                            .to_string(),
+                    );
+                }
+            };
+            Ok(ShellCommand::FeaturesRestrictionScan {
+                target,
+                enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                path,
+            })
+        }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, or tfbs-score-tracks-svg)"
+            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, or restriction-scan)"
         )),
     }
 }

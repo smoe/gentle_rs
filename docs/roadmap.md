@@ -1836,24 +1836,25 @@ order. Durable architecture constraints and decisions remain in
           teach the bundle route to mirror GUI restriction-site visibility modes
           more exactly when callers request restriction rows without an explicit
           enzyme list
-      - next low-latency sequence-inspection follow-up:
-        add a shared state-optional `sequence operand` contract so the same
-        biology logic can run against either stored `seq_id` records or inline
-        ASCII DNA text without first materializing project state
-        - first proposed ops on that operand:
+      - low-latency sequence-inspection follow-up:
+        shared state-optional `SequenceScanTarget` is now implemented for the
+        first restriction-analysis slice, so the same biology logic can run
+        against either stored `seq_id` records or inline ASCII DNA text
+        without first materializing project state
+        - implemented op:
           - `FindRestrictionSites { target, enzymes?, max_sites_per_enzyme?, include_cut_geometry?, path? }`
+        - implemented parity surface:
+          - GUI DNA-window `RE scan` menu for current selection, visible span,
+            and whole active sequence
+          - shared shell / direct CLI:
+            `features restriction-scan ...`
+        - implemented parity tests:
+          deterministic equivalence tests now compare inline-target results
+          against stored-`seq_id` results for the same sequence
+        - next follow-up on the same operand:
           - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
           - additive follow-up: let `SummarizeTfbsScoreTracks` accept the same
             operand in addition to `seq_id`
-        - GUI parity target:
-          DNA-window menu + right-click selection actions for current
-          selection, visible span, and full active sequence should call those
-          same non-mutating ops instead of a GUI-only quick-scan path
-        - test parity target:
-          deterministic equivalence tests must compare inline-operand results
-          against stored-`seq_id` results for the same sequence/span, so
-          ClawBio/OpenClaw-style stateless embedding and normal GENtle usage
-          stay on one shared contract
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`
