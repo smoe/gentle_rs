@@ -2381,6 +2381,13 @@ Resource sync commands:
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
     counts and whether GENtle is currently using a runtime override or the
     built-in snapshot.
+  - JASPAR status now also reports the persisted remote-metadata snapshot used
+    by the JASPAR catalog/expert cache:
+    - `path`
+    - `exists`
+    - `valid`
+    - `item_count`
+    - `error`
   - Also reports normalized ATtRACT runtime status:
     - `known_external_only` = homepage/ZIP URL known, but no active normalized
       snapshot
