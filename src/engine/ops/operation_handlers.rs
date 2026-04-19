@@ -5993,19 +5993,15 @@ impl GentleEngine {
                 ));
             }
             Operation::RenderTfbsScoreTracksSvg {
-                seq_id,
+                target,
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 path,
             } => {
                 let mut report = self.summarize_tfbs_score_tracks(
-                    &seq_id,
+                    target.clone(),
                     &motifs,
-                    start_0based,
-                    end_0based_exclusive,
                     score_kind,
                     clip_negative,
                 )?;
@@ -6018,7 +6014,7 @@ impl GentleEngine {
                 })?;
                 result.messages.push(format!(
                     "Wrote TFBS score-track SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
-                    seq_id,
+                    report.target_label,
                     report.tracks.len(),
                     report.view_start_0based,
                     report.view_end_0based_exclusive,
@@ -12510,19 +12506,15 @@ impl GentleEngine {
                 result.tfbs_region_summary = Some(summary);
             }
             Operation::SummarizeTfbsScoreTracks {
-                seq_id,
+                target,
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 path,
             } => {
                 let mut report = self.summarize_tfbs_score_tracks(
-                    &seq_id,
+                    target.clone(),
                     &motifs,
-                    start_0based,
-                    end_0based_exclusive,
                     score_kind,
                     clip_negative,
                 )?;

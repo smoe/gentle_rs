@@ -599,10 +599,8 @@ impl GentleEngine {
 
     pub(crate) fn summarize_tfbs_score_tracks(
         &self,
-        seq_id: &str,
+        target: SequenceScanTarget,
         motifs: &[String],
-        start_0based: usize,
-        end_0based_exclusive: usize,
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
     ) -> Result<TfbsScoreTrackReport, EngineError> {
@@ -612,38 +610,22 @@ impl GentleEngine {
                 message: "SummarizeTfbsScoreTracks requires at least one motif".to_string(),
             });
         }
-        let dna = self
-            .state
-            .sequences
-            .get(seq_id)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!("Sequence '{seq_id}' not found"),
-            })?;
-        if start_0based >= end_0based_exclusive {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "SummarizeTfbsScoreTracks requires start < end (got {}..{})",
-                    start_0based, end_0based_exclusive
-                ),
-            });
-        }
-        if end_0based_exclusive > dna.len() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "SummarizeTfbsScoreTracks range {}..{} exceeds sequence length {}",
-                    start_0based,
-                    end_0based_exclusive,
-                    dna.len()
-                ),
-            });
-        }
+        let tss_source_seq_id = match &target {
+            SequenceScanTarget::SeqId { seq_id, .. } => Some(seq_id.clone()),
+            SequenceScanTarget::InlineSequence { .. } => None,
+        };
+        let (
+            target_kind,
+            target_label,
+            source_sequence_length_bp,
+            scan_start_0based,
+            scan_end_0based_exclusive,
+            scan_topology,
+            scan_dna,
+        ) = self.resolve_sequence_scan_target(&target, "SummarizeTfbsScoreTracks")?;
 
-        let sequence = dna.get_forward_string();
-        let bytes = sequence.as_bytes();
-        let view = &bytes[start_0based..end_0based_exclusive];
+        let sequence = scan_dna.get_forward_string();
+        let view = sequence.as_bytes();
         let random_background = Self::deterministic_random_dna_bytes(
             DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
             DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
@@ -661,6 +643,8 @@ impl GentleEngine {
             let motif_length_bp = llr_matrix.len();
             let scored_window_count = if motif_length_bp == 0 || view.len() < motif_length_bp {
                 0
+            } else if matches!(scan_topology, InlineSequenceTopology::Circular) {
+                view.len()
             } else {
                 view.len() - motif_length_bp + 1
             };
@@ -685,8 +669,13 @@ impl GentleEngine {
             );
 
             if scored_window_count > 0 {
-                let hits =
-                    Self::scan_tf_scores(view, &llr_matrix, &true_log_odds_matrix, |_, _| {});
+                let hits = Self::scan_tf_scores_with_topology(
+                    view,
+                    &llr_matrix,
+                    &true_log_odds_matrix,
+                    scan_topology,
+                    |_, _| {},
+                );
                 forward_scores.resize(scored_window_count, 0.0);
                 reverse_scores.resize(scored_window_count, 0.0);
                 for (
@@ -717,12 +706,15 @@ impl GentleEngine {
                     }
                     if score > max_score {
                         max_score = score;
-                        max_position_0based = Some(start_0based + offset);
-                        max_underlying_score = if score_kind.uses_llr_background_bits() {
-                            llr_bits
-                        } else {
-                            true_log_odds_bits
-                        };
+                        max_position_0based = Some(scan_start_0based + offset);
+                    }
+                    let underlying_score = if score_kind.uses_llr_background_bits() {
+                        llr_bits
+                    } else {
+                        true_log_odds_bits
+                    };
+                    if underlying_score > max_underlying_score {
+                        max_underlying_score = underlying_score;
                     }
                 }
             }
@@ -739,7 +731,7 @@ impl GentleEngine {
                 },
             );
             let top_peaks = Self::summarize_tfbs_score_track_top_peaks(
-                start_0based,
+                scan_start_0based,
                 motif_length_bp,
                 &forward_scores,
                 &reverse_scores,
@@ -750,7 +742,7 @@ impl GentleEngine {
                 tf_id,
                 tf_name: tf_name.or_else(|| Some(motif.clone())),
                 motif_length_bp,
-                track_start_0based: start_0based,
+                track_start_0based: scan_start_0based,
                 scored_window_count,
                 max_score,
                 max_position_0based,
@@ -761,25 +753,40 @@ impl GentleEngine {
             });
         }
 
+        let tss_markers = if let Some(seq_id) = tss_source_seq_id {
+            self.state
+                .sequences
+                .get(&seq_id)
+                .map(|dna| {
+                    Self::summarize_tfbs_score_track_tss_markers(
+                        dna,
+                        scan_start_0based,
+                        scan_end_0based_exclusive,
+                    )
+                })
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
         Ok(TfbsScoreTrackReport {
             schema: TFBS_SCORE_TRACK_REPORT_SCHEMA.to_string(),
-            seq_id: seq_id.to_string(),
-            sequence_length_bp: dna.len(),
+            target_kind,
+            seq_id: target_label.clone(),
+            target_label,
+            source_sequence_length_bp,
+            sequence_length_bp: source_sequence_length_bp,
+            scan_topology,
             generated_at_unix_ms: Self::now_unix_ms(),
             op_id: None,
             run_id: None,
             score_kind,
-            view_start_0based: start_0based,
-            view_end_0based_exclusive: end_0based_exclusive,
+            view_start_0based: scan_start_0based,
+            view_end_0based_exclusive: scan_end_0based_exclusive,
             clip_negative,
             motifs_requested: motifs.to_vec(),
             global_max_score,
-            tss_markers: self.summarize_tfbs_score_track_tss_markers(
-                seq_id,
-                dna,
-                start_0based,
-                end_0based_exclusive,
-            ),
+            tss_markers,
             correlation_summary: Self::summarize_tfbs_score_track_correlation_summary(&tracks),
             tracks,
         })

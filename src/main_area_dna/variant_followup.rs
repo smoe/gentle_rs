@@ -456,10 +456,12 @@ impl MainAreaDna {
             };
         let result =
             self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
-                seq_id,
+                target: SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based: Some(start_0based),
+                    span_end_0based_exclusive: Some(end_0based_exclusive),
+                },
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 path,
@@ -549,10 +551,12 @@ impl MainAreaDna {
         };
         let result =
             self.apply_operation_with_feedback_and_result(Operation::RenderTfbsScoreTracksSvg {
-                seq_id,
+                target: SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based: Some(start_0based),
+                    span_end_0based_exclusive: Some(end_0based_exclusive),
+                },
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 path: path.display().to_string(),

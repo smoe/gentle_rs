@@ -1047,7 +1047,6 @@ impl GentleEngine {
             | Operation::RenderSequenceSvg { seq_id, .. }
             | Operation::ExportSequenceContextBundle { seq_id, .. }
             | Operation::RenderDotplotSvg { seq_id, .. }
-            | Operation::RenderTfbsScoreTracksSvg { seq_id, .. }
             | Operation::RenderFeatureExpertSvg { seq_id, .. }
             | Operation::RenderIsoformArchitectureSvg { seq_id, .. }
             | Operation::RenderRnaStructureSvg { seq_id, .. }
@@ -1072,7 +1071,9 @@ impl GentleEngine {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
             Operation::FindRestrictionSites { target, .. }
-            | Operation::ScanTfbsHits { target, .. } => match target {
+            | Operation::ScanTfbsHits { target, .. }
+            | Operation::SummarizeTfbsScoreTracks { target, .. }
+            | Operation::RenderTfbsScoreTracksSvg { target, .. } => match target {
                 SequenceScanTarget::SeqId { seq_id, .. } => {
                     Self::push_unique_token(&mut summary.sequence_ids, seq_id);
                 }

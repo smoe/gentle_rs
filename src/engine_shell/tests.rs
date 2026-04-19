@@ -4331,18 +4331,21 @@ fn parse_features_tfbs_score_tracks_svg_with_range_and_negative_scores() {
     .expect("parse features tfbs-score-tracks-svg");
     match cmd {
         ShellCommand::FeaturesTfbsScoreTracksSvg {
-            seq_id,
+            target,
             motifs,
-            start_0based,
-            end_0based_exclusive,
             score_kind,
             clip_negative,
             output,
         } => {
-            assert_eq!(seq_id, "seq_a");
+            assert_eq!(
+                target,
+                SequenceScanTarget::SeqId {
+                    seq_id: "seq_a".to_string(),
+                    span_start_0based: Some(2900),
+                    span_end_0based_exclusive: Some(3100),
+                }
+            );
             assert_eq!(motifs, vec!["SP1".to_string(), "TP73".to_string()]);
-            assert_eq!(start_0based, 2900);
-            assert_eq!(end_0based_exclusive, 3100);
             assert_eq!(score_kind, TfbsScoreTrackValueKind::TrueLogOddsQuantile);
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs.svg");
@@ -4365,6 +4368,39 @@ fn parse_features_tfbs_score_tracks_svg_with_background_tail_score_kind() {
         } => {
             assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
             assert!(clip_negative);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_features_tfbs_score_tracks_svg_for_inline_target() {
+    let cmd = parse_shell_line(
+        "features tfbs-score-tracks-svg --sequence-text ACGTACGTACGT --topology circular --id-hint inline_tp73 --output /tmp/inline.tfbs.svg --motif SP1 --range 2..10",
+    )
+    .expect("parse inline features tfbs-score-tracks-svg");
+    match cmd {
+        ShellCommand::FeaturesTfbsScoreTracksSvg {
+            target,
+            motifs,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            assert_eq!(
+                target,
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: "ACGTACGTACGT".to_string(),
+                    topology: InlineSequenceTopology::Circular,
+                    id_hint: Some("inline_tp73".to_string()),
+                    span_start_0based: Some(2),
+                    span_end_0based_exclusive: Some(10),
+                }
+            );
+            assert_eq!(motifs, vec!["SP1".to_string()]);
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBits);
+            assert!(clip_negative);
+            assert_eq!(output, "/tmp/inline.tfbs.svg");
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -9519,10 +9555,12 @@ fn execute_features_tfbs_score_tracks_svg_shell_command_writes_svg_and_report() 
     let run = execute_shell_command(
         &mut engine,
         &ShellCommand::FeaturesTfbsScoreTracksSvg {
-            seq_id: "tp73_context".to_string(),
+            target: SequenceScanTarget::SeqId {
+                seq_id: "tp73_context".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
             motifs: vec!["TP73".to_string(), "SP1".to_string(), "BACH2".to_string()],
-            start_0based: 0,
-            end_0based_exclusive: 120,
             score_kind: TfbsScoreTrackValueKind::LlrBits,
             clip_negative: true,
             output: output.display().to_string(),
@@ -9546,6 +9584,76 @@ fn execute_features_tfbs_score_tracks_svg_shell_command_writes_svg_and_report() 
     assert!(svg.contains("Continuous TF motif score tracks"));
     assert!(svg.contains("tp73_context"));
     assert!(svg.contains("SP1"));
+}
+
+#[test]
+fn execute_features_tfbs_score_tracks_svg_matches_inline_and_stored_targets() {
+    let sequence_text = "ACGT".repeat(60);
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tp73_context".to_string(),
+        DNAsequence::from_sequence(&sequence_text).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempdir().expect("tempdir");
+    let stored_output = td.path().join("stored_tracks.svg");
+    let inline_output = td.path().join("inline_tracks.svg");
+
+    let stored = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScoreTracksSvg {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "tp73_context".to_string(),
+                span_start_0based: Some(10),
+                span_end_0based_exclusive: Some(140),
+            },
+            motifs: vec!["SP1".to_string(), "TP73".to_string()],
+            score_kind: TfbsScoreTrackValueKind::LlrQuantile,
+            clip_negative: true,
+            output: stored_output.display().to_string(),
+        },
+    )
+    .expect("stored tfbs-score-tracks-svg");
+    let inline = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScoreTracksSvg {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text,
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("tp73_context".to_string()),
+                span_start_0based: Some(10),
+                span_end_0based_exclusive: Some(140),
+            },
+            motifs: vec!["SP1".to_string(), "TP73".to_string()],
+            score_kind: TfbsScoreTrackValueKind::LlrQuantile,
+            clip_negative: true,
+            output: inline_output.display().to_string(),
+        },
+    )
+    .expect("inline tfbs-score-tracks-svg");
+
+    assert_eq!(
+        stored.output["result"]["tfbs_score_tracks"]["tracks"],
+        inline.output["result"]["tfbs_score_tracks"]["tracks"]
+    );
+    assert_eq!(
+        stored.output["result"]["tfbs_score_tracks"]["target_kind"].as_str(),
+        Some("seq_id")
+    );
+    assert_eq!(
+        inline.output["result"]["tfbs_score_tracks"]["target_kind"].as_str(),
+        Some("inline_sequence")
+    );
+    assert!(
+        fs::read_to_string(&stored_output)
+            .expect("stored svg")
+            .contains("tp73_context")
+    );
+    assert!(
+        fs::read_to_string(&inline_output)
+            .expect("inline svg")
+            .contains("tp73_context")
+    );
 }
 
 #[test]

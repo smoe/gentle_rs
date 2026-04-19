@@ -559,8 +559,15 @@ pub struct TfbsScoreTrackTssMarker {
 /// Portable per-position TF motif score tracks for promoter-design review.
 pub struct TfbsScoreTrackReport {
     pub schema: String,
+    #[serde(default)]
+    pub target_kind: String,
+    #[serde(default)]
+    pub target_label: String,
     pub seq_id: String,
+    pub source_sequence_length_bp: usize,
     pub sequence_length_bp: usize,
+    #[serde(default)]
+    pub scan_topology: InlineSequenceTopology,
     pub generated_at_unix_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_id: Option<String>,

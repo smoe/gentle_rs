@@ -2586,10 +2586,8 @@ pub enum Operation {
         overlay_anchor_exon: Option<DotplotOverlayAnchorExonRef>,
     },
     RenderTfbsScoreTracksSvg {
-        seq_id: SeqId,
+        target: SequenceScanTarget,
         motifs: Vec<String>,
-        start_0based: usize,
-        end_0based_exclusive: usize,
         #[serde(default = "default_tfbs_score_track_value_kind")]
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
@@ -3413,10 +3411,8 @@ pub enum Operation {
         path: Option<String>,
     },
     SummarizeTfbsScoreTracks {
-        seq_id: String,
+        target: SequenceScanTarget,
         motifs: Vec<String>,
-        start_0based: usize,
-        end_0based_exclusive: usize,
         #[serde(default = "default_tfbs_score_track_value_kind")]
         score_kind: TfbsScoreTrackValueKind,
         #[serde(default = "default_tfbs_score_track_clip_negative")]
