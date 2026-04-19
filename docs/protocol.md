@@ -295,12 +295,57 @@ Implemented first-class operation on top of that operand:
   - `enzymes=[]` means:
     - use the current shared preferred restriction-enzyme list
     - if that list is empty, fall back to the default preferred enzyme set
+- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
+  - purpose:
+    - non-mutating thresholded JASPAR/IUPAC hit scan directly on one operand
+      without creating `TFBS` features by default
+  - result schema:
+    - `gentle.tfbs_hit_scan.v1`
+  - report fields:
+    - `target_kind`
+    - `target_label`
+    - `source_sequence_length_bp`
+    - `scan_start_0based`
+    - `scan_end_0based_exclusive`
+    - `scan_length_bp`
+    - `scan_topology`
+    - `motifs_requested`
+    - `motifs_scanned`
+    - `default_min_llr_bits`
+    - `default_min_llr_quantile`
+    - `per_tf_thresholds`
+    - `max_hits`
+    - `truncated_at_max_hits`
+    - `matched_hit_count`
+    - `rows[]`
+  - row fields:
+    - `tf_id`
+    - `tf_name`
+    - `motif_consensus_iupac`
+    - `motif_length_bp`
+    - local scan coordinates:
+      - `match_start_0based`
+      - `match_end_0based_exclusive`
+    - source-sequence coordinates:
+      - `source_match_start_0based`
+      - `source_match_end_0based_exclusive`
+    - `wraps_origin`
+    - `forward_strand`
+    - `matched_sequence`
+    - `llr_bits`
+    - `llr_quantile`
+    - `true_log_odds_bits`
+    - `true_log_odds_quantile`
+  - threshold semantics:
+    - `min_llr_bits` and `min_llr_quantile` provide default gates across all
+      motifs
+    - `per_tf_thresholds[]` can override those defaults by token, resolved TF
+      id, or resolved TF name
+    - `motifs=["ALL"]` or `motifs=["*"]` expands to the full local motif
+      registry before scanning
 
 Still planned:
 
-- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
-  - thresholded non-mutating JASPAR/IUPAC hit scan without creating `TFBS`
-    features by default
 - additive follow-up for `SummarizeTfbsScoreTracks`
   - accept the same `target` operand in addition to the current `seq_id`
     route
@@ -1235,6 +1280,15 @@ Current draft operations:
   - writes a deterministic figure suitable for GUI/CLI/agent/README parity
   - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
     also returns that report in `OpResult.tfbs_score_tracks`
+- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
+  - non-mutating thresholded TFBS/JASPAR hit scan over either stored `seq_id`
+    input or inline ASCII DNA through `SequenceScanTarget`
+  - returns schema `gentle.tfbs_hit_scan.v1`
+  - intended as the shared low-latency inspection path for CLI/shell/agents and
+    future GUI selection-first actions before a caller explicitly chooses to
+    materialize `TFBS` features
+  - `path` writes the same structured JSON report to disk for reuse outside the
+    current adapter session
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
@@ -4261,6 +4315,27 @@ Restriction-site scan contract (implemented):
     is used, with fallback to the default preferred set
   - the report includes both local scan coordinates and source-sequence
     coordinates so selection/visible-span calls stay easy to interpret
+- TFBS/JASPAR scan contract (implemented):
+  - Shared-shell commands:
+    - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+    - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+  - Raw/shared operation:
+    - `{"ScanTfbsHits":{"target":{"kind":"seq_id","seq_id":"tp53_region","span_start_0based":700,"span_end_0based_exclusive":1200},"motifs":["SP1","TP73"],"min_llr_quantile":0.95,"max_hits":50}}`
+  - Execution semantics:
+    - non-mutating PWM scan backed by the same shared local motif registry and
+      IUPAC scoring helpers used by `AnnotateTfbs`,
+      `SummarizeTfbsScoreTracks`, and JASPAR presentation/expert routes
+    - accepts either stored `seq_id` targets or inline ASCII DNA text through
+      one contract
+    - returns both local scan coordinates and source-sequence coordinates so
+      selection/visible-span calls remain interpretable without materializing a
+      new sequence record
+    - full-span circular targets also mark origin-crossing rows with
+      `wraps_origin=true`; those rows report modulo-local end coordinates while
+      keeping the full wrapped `matched_sequence`
+    - `max_hits` caps the total retained row count across the whole scan in
+      deterministic motif order and sets `truncated_at_max_hits=true` when
+      later hits are skipped
 - File format:
   - BED6 core columns:
     `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`

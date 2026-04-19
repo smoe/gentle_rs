@@ -1647,6 +1647,8 @@ Shared shell command:
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]`
+    - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+    - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
     - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
@@ -1945,6 +1947,21 @@ Shared shell command:
       - the report includes both local scan coordinates and source-sequence
         coordinates, plus optional cleavage geometry unless
         `--no-cut-geometry` is set
+    - TFBS/JASPAR direct scan helper notes (`features tfbs-scan`):
+      - non-mutating structured result schema:
+        `gentle.tfbs_hit_scan.v1`
+      - accepts either stored `SEQ_ID` or inline ASCII DNA via
+        `--sequence-text`
+      - uses the same shared local motif registry/IUPAC scoring helpers as the
+        current `AnnotateTfbs` and TFBS score-track routes, so CLI, shell, and
+        future GUI selection actions can stay in parity
+      - `--min-llr-bits` and `--min-llr-quantile` set the default scan gate;
+        `--per-tf-min-llr-bits TF=VALUE` and
+        `--per-tf-min-llr-quantile TF=VALUE` override those defaults for one
+        motif token / TF id / TF name
+      - `--max-hits` caps the total retained row count across the scan and the
+        report marks that truncation explicitly
+      - `--motif ALL` or `--motif *` expands to the whole local motif registry
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`

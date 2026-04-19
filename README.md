@@ -116,7 +116,11 @@ repository: amplify one blunt 250 bp PCR product, start from one intact
 circular pGEX vector with its MCS highlighted, open that vector with the blunt
 cutter `SmaI`, and let GENtle show the two blunt-ligation orientations that
 follow from a non-directional insert while the yellow MCS-derived vector ends
-embrace the insert in the ligation panel.
+embrace the insert in the ligation panel. The two circular products are also
+given opposite strand patterns there, so one orientation reads as
+solid-over-dotted and the other as dotted-over-solid at a glance. The PCR
+insert keeps the same strand cue already in the input and opening panels, so
+the ligation outcome reads as a continuation of the same duplex.
 
 The concrete replayable workflow lives in
 [`docs/figures/pgex_blunt_pcr_ligation.workflow.json`](docs/figures/pgex_blunt_pcr_ligation.workflow.json).

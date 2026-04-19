@@ -1482,6 +1482,27 @@ fn parse_inline_sequence_topology(raw: &str) -> Result<InlineSequenceTopology, S
     }
 }
 
+fn parse_tf_threshold_override_value(
+    raw: &str,
+    flag: &str,
+    context: &str,
+) -> Result<(String, f64), String> {
+    let Some((tf, value)) = raw.split_once('=') else {
+        return Err(format!(
+            "{flag} for {context} requires TF=VALUE (received '{raw}')"
+        ));
+    };
+    let tf = tf.trim().to_string();
+    if tf.is_empty() {
+        return Err(format!("{flag} for {context} requires non-empty TF"));
+    }
+    let value = value
+        .trim()
+        .parse::<f64>()
+        .map_err(|e| format!("Invalid {flag} value '{raw}' for {context}: {e}"))?;
+    Ok((tf, value))
+}
+
 fn try_parse_feature_query_option(
     tokens: &[String],
     idx: &mut usize,
@@ -1687,7 +1708,7 @@ fn finalize_feature_query_options(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, restriction-scan"
+            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2026,6 +2047,251 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 output,
             })
         }
+        "tfbs-scan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features tfbs-scan requires either SEQ_ID or --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let mut seq_id: Option<String> = None;
+            let mut sequence_text: Option<String> = None;
+            let mut topology = InlineSequenceTopology::Linear;
+            let mut id_hint: Option<String> = None;
+            let mut motifs: Vec<String> = vec![];
+            let mut min_llr_bits: Option<f64> = None;
+            let mut min_llr_quantile: Option<f64> = None;
+            let mut per_tf_thresholds: std::collections::BTreeMap<String, TfThresholdOverride> =
+                std::collections::BTreeMap::new();
+            let mut max_hits: Option<usize> = None;
+            let mut path: Option<String> = None;
+            let mut state = FeatureQueryOptionState::default();
+            let mut idx = 2usize;
+            if tokens[2].starts_with("--") {
+                // options-only inline form
+            } else {
+                let raw = tokens[2].trim().to_string();
+                if !raw.is_empty() {
+                    seq_id = Some(raw);
+                }
+                idx = 3usize;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-text" => {
+                        sequence_text = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-text",
+                            "features tfbs-scan",
+                        )?);
+                    }
+                    "--topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--topology",
+                            "features tfbs-scan",
+                        )?;
+                        topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--id-hint" => {
+                        id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--id-hint",
+                            "features tfbs-scan",
+                        )?);
+                    }
+                    "--motif" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--motif", "features tfbs-scan")?;
+                        let normalized = raw.trim();
+                        if normalized.is_empty() {
+                            return Err("--motif must not be empty".to_string());
+                        }
+                        motifs.push(normalized.to_string());
+                    }
+                    "--motifs" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--motifs", "features tfbs-scan")?;
+                        for token in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            motifs.push(token.to_string());
+                        }
+                    }
+                    "--min-llr-bits" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-llr-bits",
+                            "features tfbs-scan",
+                        )?;
+                        min_llr_bits = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-llr-bits value '{raw}' for features tfbs-scan: {e}"
+                            )
+                        })?);
+                    }
+                    "--min-llr-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-llr-quantile",
+                            "features tfbs-scan",
+                        )?;
+                        min_llr_quantile = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-llr-quantile value '{raw}' for features tfbs-scan: {e}"
+                            )
+                        })?);
+                    }
+                    "--per-tf-min-llr-bits" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--per-tf-min-llr-bits",
+                            "features tfbs-scan",
+                        )?;
+                        let (tf, value) = parse_tf_threshold_override_value(
+                            &raw,
+                            "--per-tf-min-llr-bits",
+                            "features tfbs-scan",
+                        )?;
+                        per_tf_thresholds
+                            .entry(tf.clone())
+                            .or_insert_with(|| TfThresholdOverride {
+                                tf: tf.clone(),
+                                min_llr_bits: None,
+                                min_llr_quantile: None,
+                            })
+                            .min_llr_bits = Some(value);
+                    }
+                    "--per-tf-min-llr-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--per-tf-min-llr-quantile",
+                            "features tfbs-scan",
+                        )?;
+                        let (tf, value) = parse_tf_threshold_override_value(
+                            &raw,
+                            "--per-tf-min-llr-quantile",
+                            "features tfbs-scan",
+                        )?;
+                        per_tf_thresholds
+                            .entry(tf.clone())
+                            .or_insert_with(|| TfThresholdOverride {
+                                tf: tf.clone(),
+                                min_llr_bits: None,
+                                min_llr_quantile: None,
+                            })
+                            .min_llr_quantile = Some(value);
+                    }
+                    "--max-hits" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-hits",
+                            "features tfbs-scan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-hits value '{raw}' for features tfbs-scan: {e}")
+                        })?;
+                        if parsed == 0 {
+                            return Err("--max-hits must be >= 1".to_string());
+                        }
+                        max_hits = Some(parsed);
+                    }
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "features tfbs-scan",
+                        )?);
+                    }
+                    "--range" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--range", "features tfbs-scan")?;
+                        if state.range_arg.is_some() {
+                            return Err("--range was specified multiple times".to_string());
+                        }
+                        state.range_arg = Some(parse_feature_range(&raw, "features tfbs-scan")?);
+                    }
+                    "--start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--start", "features tfbs-scan")?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --start value '{raw}' for features tfbs-scan: {e}")
+                        })?;
+                        state.start_arg = Some(parsed);
+                    }
+                    "--end" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--end", "features tfbs-scan")?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --end value '{raw}' for features tfbs-scan: {e}")
+                        })?;
+                        state.end_arg = Some(parsed);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for features tfbs-scan"));
+                    }
+                }
+            }
+            if motifs.is_empty() {
+                return Err("features tfbs-scan requires at least one --motif TOKEN".to_string());
+            }
+            let (span_start_0based, span_end_0based_exclusive) = if state.range_arg.is_some()
+                || state.start_arg.is_some()
+                || state.end_arg.is_some()
+            {
+                let mut query = SequenceFeatureQuery::default();
+                finalize_feature_query_options(state, "features tfbs-scan", &mut query)?;
+                (query.start_0based, query.end_0based_exclusive)
+            } else {
+                (None, None)
+            };
+            let target = match (seq_id, sequence_text) {
+                (Some(seq_id), None) => SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                },
+                (None, Some(sequence_text)) => SequenceScanTarget::InlineSequence {
+                    sequence_text,
+                    topology,
+                    id_hint,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                },
+                (Some(_), Some(_)) => {
+                    return Err(
+                        "features tfbs-scan accepts either SEQ_ID or --sequence-text DNA, not both"
+                            .to_string(),
+                    );
+                }
+                (None, None) => {
+                    return Err(
+                        "features tfbs-scan requires either SEQ_ID or --sequence-text DNA"
+                            .to_string(),
+                    );
+                }
+            };
+            Ok(ShellCommand::FeaturesTfbsScan {
+                target,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds: per_tf_thresholds.into_values().collect(),
+                max_hits,
+                path,
+            })
+        }
         "restriction-scan" => {
             if tokens.len() < 3 {
                 return Err(
@@ -2213,7 +2479,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, or restriction-scan)"
+            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-scan, or restriction-scan)"
         )),
     }
 }

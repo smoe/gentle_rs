@@ -240,9 +240,32 @@ pub struct ProtocolCartoonTemplateFeature {
     #[serde(default)]
     pub bottom_color_hex: Option<String>,
     #[serde(default)]
+    pub top_fill_pattern: ProtocolCartoonStrandFillPattern,
+    #[serde(default)]
+    pub bottom_fill_pattern: ProtocolCartoonStrandFillPattern,
+    #[serde(default)]
     pub top_nick_after: Option<bool>,
     #[serde(default)]
     pub bottom_nick_after: Option<bool>,
+}
+
+/// Strand-level fill style for protocol-cartoon feature segments.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtocolCartoonStrandFillPattern {
+    #[default]
+    Solid,
+    #[serde(rename = "dots_50")]
+    Dots50,
+}
+
+impl ProtocolCartoonStrandFillPattern {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Solid => "solid",
+            Self::Dots50 => "dots_50",
+        }
+    }
 }
 
 /// JSON-facing protocol-cartoon template binding schema (v1).
@@ -343,6 +366,8 @@ pub struct DnaFeatureCartoon {
     pub bottom_length_bp: usize,
     pub color_hex: String,
     pub bottom_color_hex: String,
+    pub top_fill_pattern: ProtocolCartoonStrandFillPattern,
+    pub bottom_fill_pattern: ProtocolCartoonStrandFillPattern,
     pub top_nick_after: bool,
     pub bottom_nick_after: bool,
 }
@@ -879,6 +904,8 @@ pub fn resolve_protocol_cartoon_template(
                     .bottom_color_hex
                     .clone()
                     .unwrap_or_else(|| color_hex.clone());
+                let top_fill_pattern = feature.top_fill_pattern;
+                let bottom_fill_pattern = feature.bottom_fill_pattern;
                 let top_nick_after = feature.top_nick_after.unwrap_or(false);
                 let bottom_nick_after = feature.bottom_nick_after.unwrap_or(false);
                 features.push(DnaFeatureCartoon {
@@ -889,6 +916,8 @@ pub fn resolve_protocol_cartoon_template(
                     bottom_length_bp,
                     color_hex,
                     bottom_color_hex,
+                    top_fill_pattern,
+                    bottom_fill_pattern,
                     top_nick_after,
                     bottom_nick_after,
                 });
@@ -1029,6 +1058,8 @@ pub fn protocol_cartoon_spec_for_kind(kind: &ProtocolCartoonKind) -> ProtocolCar
                     bottom_length_bp: 1,
                     color_hex: "#8ea7b1".to_string(),
                     bottom_color_hex: "#8ea7b1".to_string(),
+                    top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                    bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                     top_nick_after: false,
                     bottom_nick_after: false,
                 }],
@@ -1093,6 +1124,9 @@ pub fn render_protocol_cartoon_spec_svg(spec: &ProtocolCartoonSpec) -> String {
     );
     svg.push_str(
         "<linearGradient id=\"pc_panel\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0%\" stop-color=\"#ffffff\"/><stop offset=\"100%\" stop-color=\"#f6fafb\"/></linearGradient>",
+    );
+    svg.push_str(
+        "<pattern id=\"pc_dots_50\" patternUnits=\"userSpaceOnUse\" width=\"6\" height=\"6\"><circle cx=\"1.5\" cy=\"1.5\" r=\"0.8\" fill=\"#ffffff\" fill-opacity=\"0.88\"/><circle cx=\"4.5\" cy=\"4.5\" r=\"0.8\" fill=\"#ffffff\" fill-opacity=\"0.88\"/></pattern>",
     );
     svg.push_str(
         "<marker id=\"pc_arrow\" markerWidth=\"12\" markerHeight=\"12\" refX=\"9\" refY=\"6\" orient=\"auto\"><path d=\"M1,1 L11,6 L1,11 Z\" fill=\"#4e6d78\"/></marker>",
@@ -1312,8 +1346,8 @@ fn render_linear_molecule(
     let shared_right = right_top.max(right_bottom);
     let shared_w = (shared_right - shared_left).max(2.0);
     let mut slot_cursor = shared_left;
-    let mut top_spans: Vec<(f32, f32, String)> = vec![];
-    let mut bottom_spans: Vec<(f32, f32, String)> = vec![];
+    let mut top_spans: Vec<(f32, f32, String, ProtocolCartoonStrandFillPattern)> = vec![];
+    let mut bottom_spans: Vec<(f32, f32, String, ProtocolCartoonStrandFillPattern)> = vec![];
     let mut top_nicks: Vec<f32> = vec![];
     let mut bottom_nicks: Vec<f32> = vec![];
     let mut primer_glyphs: Vec<(f32, f32, PrimerGlyphKind, String, bool, String, String)> = vec![];
@@ -1336,10 +1370,22 @@ fn render_linear_molecule(
         let top_color = normalize_hex_color(&feature.color_hex);
         let bottom_color = normalize_hex_color(&feature.bottom_color_hex);
         if top_seg_w > 0.0 {
-            push_linear_span(&mut top_spans, slot_cursor, top_seg_w, top_color);
+            push_linear_span(
+                &mut top_spans,
+                slot_cursor,
+                top_seg_w,
+                top_color,
+                feature.top_fill_pattern,
+            );
         }
         if bottom_seg_w > 0.0 {
-            push_linear_span(&mut bottom_spans, slot_cursor, bottom_seg_w, bottom_color);
+            push_linear_span(
+                &mut bottom_spans,
+                slot_cursor,
+                bottom_seg_w,
+                bottom_color,
+                feature.bottom_fill_pattern,
+            );
         }
         if let Some(primer_kind) = primer_glyph_kind(feature) {
             primer_glyphs.push((
@@ -1370,20 +1416,11 @@ fn render_linear_molecule(
         slot_cursor += slot_w;
     }
 
-    for (span_x, span_w, color) in top_spans {
-        svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
-            span_x, y, span_w, color
-        ));
+    for (span_x, span_w, color, pattern) in top_spans {
+        render_linear_feature_span(svg, span_x, y, span_w, &color, pattern);
     }
-    for (span_x, span_w, color) in bottom_spans {
-        svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\"/>",
-            span_x,
-            y + 11.0,
-            span_w,
-            color
-        ));
+    for (span_x, span_w, color, pattern) in bottom_spans {
+        render_linear_feature_span(svg, span_x, y + 11.0, span_w, &color, pattern);
     }
     for nick_x in top_nicks {
         render_strand_nick(svg, nick_x, y);
@@ -1451,15 +1488,47 @@ fn render_linear_molecule(
     }
 }
 
-fn push_linear_span(spans: &mut Vec<(f32, f32, String)>, x: f32, width: f32, color: String) {
-    if let Some((last_x, last_w, last_color)) = spans.last_mut() {
+fn push_linear_span(
+    spans: &mut Vec<(f32, f32, String, ProtocolCartoonStrandFillPattern)>,
+    x: f32,
+    width: f32,
+    color: String,
+    pattern: ProtocolCartoonStrandFillPattern,
+) {
+    if let Some((last_x, last_w, last_color, last_pattern)) = spans.last_mut() {
         let last_end = *last_x + *last_w;
-        if *last_color == color && (last_end - x).abs() <= 0.2 {
+        if *last_color == color && *last_pattern == pattern && (last_end - x).abs() <= 0.2 {
             *last_w = (x + width) - *last_x;
             return;
         }
     }
-    spans.push((x, width, color));
+    spans.push((x, width, color, pattern));
+}
+
+fn render_linear_feature_span(
+    svg: &mut String,
+    x: f32,
+    y: f32,
+    width: f32,
+    color: &str,
+    pattern: ProtocolCartoonStrandFillPattern,
+) {
+    svg.push_str(&format!(
+        "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"{}\" data-fill-pattern=\"{}\"/>",
+        x,
+        y,
+        width,
+        color,
+        pattern.as_str()
+    ));
+    if pattern == ProtocolCartoonStrandFillPattern::Dots50 {
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"8\" fill=\"url(#pc_dots_50)\" opacity=\"0.78\" data-fill-pattern-overlay=\"dots_50\"/>",
+            x,
+            y,
+            width
+        ));
+    }
 }
 
 fn render_strand_nick(svg: &mut String, x: f32, y: f32) {
@@ -1681,10 +1750,12 @@ fn render_circular_molecule(
                 std::f32::consts::TAU * (feature.top_length_bp as f32 / total_top_bp as f32);
             let end_top = start_top + top_span;
             let top_path = arc_path(cx, cy, top_r, start_top, end_top);
-            svg.push_str(&format!(
-                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"4\" stroke-linecap=\"butt\"/>",
-                top_path, top_color
-            ));
+            render_circular_feature_arc(
+                svg,
+                &top_path,
+                &top_color,
+                feature.top_fill_pattern,
+            );
             start_top = end_top;
         }
         if feature.bottom_length_bp > 0 {
@@ -1692,12 +1763,34 @@ fn render_circular_molecule(
                 std::f32::consts::TAU * (feature.bottom_length_bp as f32 / total_bottom_bp as f32);
             let end_bottom = start_bottom + bottom_span;
             let bottom_path = arc_path(cx, cy, bottom_r, start_bottom, end_bottom);
-            svg.push_str(&format!(
-                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"4\" stroke-linecap=\"butt\"/>",
-                bottom_path, bottom_color
-            ));
+            render_circular_feature_arc(
+                svg,
+                &bottom_path,
+                &bottom_color,
+                feature.bottom_fill_pattern,
+            );
             start_bottom = end_bottom;
         }
+    }
+}
+
+fn render_circular_feature_arc(
+    svg: &mut String,
+    path: &str,
+    color: &str,
+    pattern: ProtocolCartoonStrandFillPattern,
+) {
+    svg.push_str(&format!(
+        "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"4\" stroke-linecap=\"butt\" data-fill-pattern=\"{}\"/>",
+        path,
+        color,
+        pattern.as_str()
+    ));
+    if pattern == ProtocolCartoonStrandFillPattern::Dots50 {
+        svg.push_str(&format!(
+            "<path d=\"{}\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.94\" stroke-width=\"2.2\" stroke-dasharray=\"0.8 4.0\" stroke-linecap=\"round\" data-fill-pattern-overlay=\"dots_50\"/>",
+            path
+        ));
     }
 }
 
@@ -1970,6 +2063,8 @@ fn cartoon_feature_block(
         bottom_length_bp,
         color_hex: top_color_hex.to_string(),
         bottom_color_hex: bottom_color_hex.to_string(),
+        top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+        bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
         top_nick_after,
         bottom_nick_after,
     }
@@ -2143,6 +2238,8 @@ fn protocol_cartoon_template_from_spec(spec: ProtocolCartoonSpec) -> ProtocolCar
                                 bottom_length_bp: Some(feature.bottom_length_bp),
                                 color_hex: Some(feature.color_hex),
                                 bottom_color_hex: Some(feature.bottom_color_hex),
+                                top_fill_pattern: feature.top_fill_pattern,
+                                bottom_fill_pattern: feature.bottom_fill_pattern,
                                 top_nick_after: Some(feature.top_nick_after),
                                 bottom_nick_after: Some(feature.bottom_nick_after),
                             })
@@ -4623,6 +4720,8 @@ mod tests {
                                 bottom_length_bp: 120,
                                 color_hex: "#004488".to_string(),
                                 bottom_color_hex: "#004488".to_string(),
+                                top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                                bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                                 top_nick_after: false,
                                 bottom_nick_after: false,
                             },
@@ -4634,6 +4733,8 @@ mod tests {
                                 bottom_length_bp: 80,
                                 color_hex: "#ee9933".to_string(),
                                 bottom_color_hex: "#ee9933".to_string(),
+                                top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                                bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                                 top_nick_after: false,
                                 bottom_nick_after: false,
                             },
@@ -4656,6 +4757,8 @@ mod tests {
                             bottom_length_bp: 300,
                             color_hex: "#118833".to_string(),
                             bottom_color_hex: "#118833".to_string(),
+                            top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                            bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                             top_nick_after: false,
                             bottom_nick_after: false,
                         }],
@@ -5792,6 +5895,8 @@ mod tests {
                         bottom_length_bp: 60,
                         color_hex: "#55a84f".to_string(),
                         bottom_color_hex: "#55a84f".to_string(),
+                        top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                        bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                         top_nick_after: false,
                         bottom_nick_after: false,
                     }],
@@ -5836,6 +5941,20 @@ mod tests {
     }
 
     #[test]
+    fn render_protocol_cartoon_supports_strand_fill_patterns() {
+        let mut spec = custom_test_spec();
+        spec.events[0].molecules[0].features[1].top_fill_pattern =
+            ProtocolCartoonStrandFillPattern::Dots50;
+        spec.events[0].molecules[1].features[0].bottom_fill_pattern =
+            ProtocolCartoonStrandFillPattern::Dots50;
+        let svg = render_protocol_cartoon_spec_svg(&spec);
+        assert!(svg.contains("data-fill-pattern=\"dots_50\""));
+        assert!(svg.contains("data-fill-pattern-overlay=\"dots_50\""));
+        assert!(svg.contains("url(#pc_dots_50)"));
+        assert!(svg.contains("stroke-dasharray=\"0.8 4.0\""));
+    }
+
+    #[test]
     fn validate_allows_true_single_strand_molecule() {
         let spec = ProtocolCartoonSpec {
             id: "single.strand".to_string(),
@@ -5860,6 +5979,8 @@ mod tests {
                         bottom_length_bp: 0,
                         color_hex: "#3d6fb6".to_string(),
                         bottom_color_hex: "#3d6fb6".to_string(),
+                        top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                        bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                         top_nick_after: false,
                         bottom_nick_after: false,
                     }],
@@ -5898,6 +6019,8 @@ mod tests {
                             bottom_length_bp: 10,
                             color_hex: "#111111".to_string(),
                             bottom_color_hex: "#111111".to_string(),
+                            top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                            bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                             top_nick_after: false,
                             bottom_nick_after: false,
                         },
@@ -5909,6 +6032,8 @@ mod tests {
                             bottom_length_bp: 0,
                             color_hex: "#111111".to_string(),
                             bottom_color_hex: "#111111".to_string(),
+                            top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                            bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                             top_nick_after: false,
                             bottom_nick_after: false,
                         },
@@ -5920,6 +6045,8 @@ mod tests {
                             bottom_length_bp: 10,
                             color_hex: "#222222".to_string(),
                             bottom_color_hex: "#222222".to_string(),
+                            top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+                            bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
                             top_nick_after: false,
                             bottom_nick_after: false,
                         },

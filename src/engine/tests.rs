@@ -29564,3 +29564,92 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
     assert_eq!(report.rows[0].forward_cut_0based, Some(3));
     assert_eq!(report.rows[1].opening_start_0based, Some(10));
 }
+
+#[test]
+fn test_scan_tfbs_hits_matches_inline_and_stored_sequence_targets() {
+    let sequence_text = "TTTTATAAAGGGTATAAATTT";
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tfbs_seq".to_string(),
+        DNAsequence::from_sequence(sequence_text).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let stored = engine
+        .apply(Operation::ScanTfbsHits {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "tfbs_seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motifs: vec!["TATAAA".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: Some(0.95),
+            per_tf_thresholds: vec![],
+            max_hits: Some(8),
+            path: None,
+        })
+        .expect("stored tfbs scan");
+    let inline = engine
+        .apply(Operation::ScanTfbsHits {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: sequence_text.to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("tfbs_seq".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motifs: vec!["TATAAA".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: Some(0.95),
+            per_tf_thresholds: vec![],
+            max_hits: Some(8),
+            path: None,
+        })
+        .expect("inline tfbs scan");
+
+    let stored_report = stored.tfbs_hit_scan.expect("stored tfbs hit-scan report");
+    let inline_report = inline.tfbs_hit_scan.expect("inline tfbs hit-scan report");
+    assert_eq!(stored_report.schema, "gentle.tfbs_hit_scan.v1");
+    assert_eq!(stored_report.target_kind, "seq_id");
+    assert_eq!(inline_report.target_kind, "inline_sequence");
+    assert!(stored_report.matched_hit_count > 0);
+    assert_eq!(stored_report.rows, inline_report.rows);
+    assert_eq!(stored_report.motifs_scanned, inline_report.motifs_scanned);
+    assert_eq!(stored_report.default_min_llr_quantile, Some(0.95));
+    assert_eq!(stored_report.scan_length_bp, sequence_text.len());
+}
+
+#[test]
+fn test_scan_tfbs_hits_supports_circular_wraparound_matches() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::ScanTfbsHits {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: "CAAA".to_string(),
+                topology: InlineSequenceTopology::Circular,
+                id_hint: Some("circular_demo".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motifs: vec!["AAC".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: Some(0.95),
+            per_tf_thresholds: vec![],
+            max_hits: Some(8),
+            path: None,
+        })
+        .expect("circular tfbs scan");
+
+    let report = result.tfbs_hit_scan.expect("circular tfbs hit-scan report");
+    assert_eq!(report.scan_topology, InlineSequenceTopology::Circular);
+    assert!(report.rows.iter().any(|row| row.wraps_origin));
+    let wrapped = report
+        .rows
+        .iter()
+        .find(|row| row.wraps_origin)
+        .expect("wrapped hit");
+    assert_eq!(wrapped.match_start_0based, 2);
+    assert_eq!(wrapped.match_end_0based_exclusive, 1);
+    assert_eq!(wrapped.matched_sequence, "AAC");
+}

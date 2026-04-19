@@ -14,7 +14,8 @@ use crate::{
     protocol_cartoon::{
         DnaEndStyle, DnaFeatureCartoon, DnaMoleculeCartoon, DnaTopologyCartoon, OverhangPolarity,
         ProtocolCartoonAction, ProtocolCartoonEvent, ProtocolCartoonKind, ProtocolCartoonSpec,
-        ProtocolCartoonTemplateBindings, ProtocolCartoonTemplateEventBinding,
+        ProtocolCartoonStrandFillPattern, ProtocolCartoonTemplateBindings,
+        ProtocolCartoonTemplateEventBinding,
         ProtocolCartoonTemplateFeatureBinding, ProtocolCartoonTemplateMoleculeBinding,
     },
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
@@ -4223,6 +4224,8 @@ fn cartoon_feature_with_occupancy(
         bottom_length_bp: bottom_length_bp.min(length_bp),
         color_hex: color_hex.clone(),
         bottom_color_hex: bottom_color_hex.into().unwrap_or(color_hex),
+        top_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
+        bottom_fill_pattern: ProtocolCartoonStrandFillPattern::Solid,
         top_nick_after,
         bottom_nick_after,
     }

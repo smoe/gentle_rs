@@ -71,7 +71,7 @@ use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId,
+    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -573,6 +573,69 @@ pub struct RestrictionSiteScanReport {
     pub path: Option<String>,
     #[serde(default)]
     pub rows: Vec<RestrictionSiteScanHit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// One TFBS/JASPAR motif hit returned by a non-mutating direct scan on either a
+/// stored `seq_id` or inline ASCII DNA input.
+pub struct TfbsHitScanRow {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub motif_consensus_iupac: String,
+    pub motif_length_bp: usize,
+    pub match_start_0based: usize,
+    pub match_end_0based_exclusive: usize,
+    pub source_match_start_0based: usize,
+    pub source_match_end_0based_exclusive: usize,
+    #[serde(default)]
+    pub wraps_origin: bool,
+    pub forward_strand: bool,
+    pub matched_sequence: String,
+    pub llr_bits: f64,
+    pub llr_quantile: f64,
+    pub true_log_odds_bits: f64,
+    pub true_log_odds_quantile: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Portable result payload for state-optional TFBS/JASPAR hit scans on either a
+/// stored `seq_id` or inline ASCII DNA input.
+pub struct TfbsHitScanReport {
+    pub schema: String,
+    pub target_kind: String,
+    pub target_label: String,
+    pub source_sequence_length_bp: usize,
+    pub scan_start_0based: usize,
+    pub scan_end_0based_exclusive: usize,
+    pub scan_length_bp: usize,
+    #[serde(default)]
+    pub scan_topology: InlineSequenceTopology,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    #[serde(default)]
+    pub motifs_scanned: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_bits: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_min_llr_quantile: Option<f64>,
+    #[serde(default)]
+    pub per_tf_thresholds: Vec<TfThresholdOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_hits: Option<usize>,
+    pub truncated_at_max_hits: bool,
+    pub matched_hit_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<TfbsHitScanRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1997,6 +2060,8 @@ pub struct OpResult {
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfbs_hit_scan: Option<TfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restriction_site_scan: Option<RestrictionSiteScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

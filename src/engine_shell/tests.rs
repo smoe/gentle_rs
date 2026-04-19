@@ -18,7 +18,7 @@ use crate::engine::{
     ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    RestrictionCloningPcrHandoffMode, SequenceScanTarget,
+    RestrictionCloningPcrHandoffMode, SequenceScanTarget, TfThresholdOverride,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -4404,6 +4404,92 @@ fn parse_features_restriction_scan_for_stored_and_inline_targets() {
             }
             other => panic!("unexpected target: {other:?}"),
         },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_features_tfbs_scan_for_stored_and_inline_targets() {
+    let cmd = parse_shell_line(
+        "features tfbs-scan seq_a --range 10..120 --motif SP1 --motif TP73 --min-llr-bits -1.5 --min-llr-quantile 0.9 --per-tf-min-llr-bits SP1=0.5 --per-tf-min-llr-quantile TP73=0.95 --max-hits 25 --path /tmp/seq_a.tfbs_scan.json",
+    )
+    .expect("parse features tfbs-scan");
+    match cmd {
+        ShellCommand::FeaturesTfbsScan {
+            target,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits,
+            path,
+        } => {
+            match target {
+                SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                } => {
+                    assert_eq!(seq_id, "seq_a");
+                    assert_eq!(span_start_0based, Some(10));
+                    assert_eq!(span_end_0based_exclusive, Some(120));
+                }
+                other => panic!("unexpected target: {other:?}"),
+            }
+            assert_eq!(motifs, vec!["SP1".to_string(), "TP73".to_string()]);
+            assert_eq!(min_llr_bits, Some(-1.5));
+            assert_eq!(min_llr_quantile, Some(0.9));
+            assert_eq!(
+                per_tf_thresholds,
+                vec![
+                    TfThresholdOverride {
+                        tf: "SP1".to_string(),
+                        min_llr_bits: Some(0.5),
+                        min_llr_quantile: None,
+                    },
+                    TfThresholdOverride {
+                        tf: "TP73".to_string(),
+                        min_llr_bits: None,
+                        min_llr_quantile: Some(0.95),
+                    },
+                ]
+            );
+            assert_eq!(max_hits, Some(25));
+            assert_eq!(path.as_deref(), Some("/tmp/seq_a.tfbs_scan.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let cmd = parse_shell_line(
+        "features tfbs-scan --sequence-text TTTTATAAAGGGTATAAATTT --topology circular --id-hint toy_seq --range 1..12 --motif TATAAA --max-hits 5",
+    )
+    .expect("parse inline features tfbs-scan");
+    match cmd {
+        ShellCommand::FeaturesTfbsScan {
+            target,
+            motifs,
+            max_hits,
+            ..
+        } => {
+            match target {
+                SequenceScanTarget::InlineSequence {
+                    sequence_text,
+                    topology,
+                    id_hint,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                } => {
+                    assert_eq!(sequence_text, "TTTTATAAAGGGTATAAATTT");
+                    assert_eq!(topology, InlineSequenceTopology::Circular);
+                    assert_eq!(id_hint.as_deref(), Some("toy_seq"));
+                    assert_eq!(span_start_0based, Some(1));
+                    assert_eq!(span_end_0based_exclusive, Some(12));
+                }
+                other => panic!("unexpected target: {other:?}"),
+            }
+            assert_eq!(motifs, vec!["TATAAA".to_string()]);
+            assert_eq!(max_hits, Some(5));
+        }
         other => panic!("unexpected command: {other:?}"),
     }
 }
@@ -9500,6 +9586,73 @@ fn execute_features_restriction_scan_matches_inline_and_stored_sequence_targets(
     assert_eq!(
         stored.output["report"]["skipped_enzyme_names_due_to_max_sites"],
         inline.output["report"]["skipped_enzyme_names_due_to_max_sites"]
+    );
+}
+
+#[test]
+fn execute_features_tfbs_scan_matches_inline_and_stored_sequence_targets() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq".to_string(),
+        DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let stored = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScan {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motifs: vec!["TATAAA".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: Some(0.95),
+            per_tf_thresholds: vec![],
+            max_hits: Some(8),
+            path: None,
+        },
+    )
+    .expect("stored tfbs scan");
+    let inline = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScan {
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: "TTTTATAAAGGGTATAAATTT".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("seq".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motifs: vec!["TATAAA".to_string()],
+            min_llr_bits: None,
+            min_llr_quantile: Some(0.95),
+            per_tf_thresholds: vec![],
+            max_hits: Some(8),
+            path: None,
+        },
+    )
+    .expect("inline tfbs scan");
+
+    assert!(!stored.state_changed);
+    assert!(!inline.state_changed);
+    assert_eq!(
+        stored.output["result"]["tfbs_hit_scan"]["schema"].as_str(),
+        Some("gentle.tfbs_hit_scan.v1")
+    );
+    assert!(
+        stored.output["report"]["matched_hit_count"]
+            .as_u64()
+            .is_some_and(|value| value > 0)
+    );
+    assert_eq!(
+        stored.output["report"]["rows"],
+        inline.output["report"]["rows"]
+    );
+    assert_eq!(
+        stored.output["report"]["motifs_scanned"],
+        inline.output["report"]["motifs_scanned"]
     );
 }
 

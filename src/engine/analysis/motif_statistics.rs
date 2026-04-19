@@ -123,6 +123,22 @@ impl GentleEngine {
         true_log_odds_matrix: &[[f64; 4]],
         mut on_progress: impl FnMut(usize, usize),
     ) -> Vec<(usize, bool, f64, f64, f64, f64)> {
+        Self::scan_tf_scores_with_topology(
+            sequence,
+            llr_matrix,
+            true_log_odds_matrix,
+            InlineSequenceTopology::Linear,
+            |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
+        )
+    }
+
+    pub(super) fn scan_tf_scores_with_topology(
+        sequence: &[u8],
+        llr_matrix: &[[f64; 4]],
+        true_log_odds_matrix: &[[f64; 4]],
+        topology: InlineSequenceTopology,
+        mut on_progress: impl FnMut(usize, usize),
+    ) -> Vec<(usize, bool, f64, f64, f64, f64)> {
         if llr_matrix.is_empty()
             || sequence.len() < llr_matrix.len()
             || llr_matrix.len() != true_log_odds_matrix.len()
@@ -133,13 +149,27 @@ impl GentleEngine {
         let mut all_llr_scores = Vec::new();
         let mut all_true_log_odds_scores = Vec::new();
         let len = llr_matrix.len();
-        let windows = sequence.len().saturating_sub(len).saturating_add(1);
+        let circular_windows = matches!(topology, InlineSequenceTopology::Circular);
+        let windows = if circular_windows {
+            sequence.len()
+        } else {
+            sequence.len().saturating_sub(len).saturating_add(1)
+        };
         let total_steps = windows.saturating_mul(2);
         let progress_stride = (total_steps / 200).max(1);
         let mut scanned_steps = 0usize;
         on_progress(scanned_steps, total_steps);
-        for start in 0..=(sequence.len() - len) {
-            let window = &sequence[start..start + len];
+        let circular_sequence = if circular_windows && len > 1 {
+            let mut bytes = Vec::with_capacity(sequence.len() + len - 1);
+            bytes.extend_from_slice(sequence);
+            bytes.extend_from_slice(&sequence[..len - 1]);
+            Some(bytes)
+        } else {
+            None
+        };
+        let source_bytes = circular_sequence.as_deref().unwrap_or(sequence);
+        for start in 0..windows {
+            let window = &source_bytes[start..start + len];
             if let (Some(llr), Some(true_log_odds)) = (
                 Self::score_matrix_window(window, llr_matrix),
                 Self::score_matrix_window(window, true_log_odds_matrix),

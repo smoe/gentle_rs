@@ -17,7 +17,7 @@
     {
       "id": "context",
       "title": "Inputs",
-      "caption": "One blunt PCR product and one intact circular pGEX vector; the orange arc marks the MCS before opening.",
+      "caption": "Blunt PCR insert and intact circular pGEX vector; the orange arc marks the MCS.",
       "molecules": [
         {
           "id": "pcr_product",
@@ -30,21 +30,27 @@
               "label": "Insert end",
               "length_bp": 14,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "pcr_insert_core",
               "label": "PCR insert",
               "length_bp": 32,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "pcr_insert_right",
               "label": "Insert end",
               "length_bp": 24,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             }
           ]
         },
@@ -82,7 +88,7 @@
       "id": "opening",
       "title": "Blunt Opening",
       "action": "Cut",
-      "caption": "SmaI cuts inside the MCS so the linearized vector keeps tiny blunt yellow ends from that site; the PCR product is already blunt.",
+      "caption": "SmaI opens the MCS; the vector keeps tiny blunt yellow ends and the PCR product is already blunt.",
       "molecules": [
         {
           "id": "vector_open",
@@ -124,21 +130,27 @@
               "label": "Insert end",
               "length_bp": 14,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "pcr_insert_core_opening",
               "label": "PCR insert",
               "length_bp": 32,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "pcr_insert_right_opening",
               "label": "Insert end",
               "length_bp": 24,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             }
           ]
         }
@@ -148,11 +160,11 @@
       "id": "ligation",
       "title": "Ligate",
       "action": "Ligate",
-      "caption": "The yellow MCS ends of the opened vector embrace the blunt insert. Because there is no directional overhang, two circular ligation orientations are possible.",
+      "caption": "Yellow MCS ends flank the blunt insert. With no directional overhang, two circular products can form.",
       "molecules": [
         {
           "id": "product_forward",
-          "label": "Circular product, insert orientation 1",
+          "label": "Orientation 1",
           "topology": "Circular",
           "features": [
             {
@@ -174,21 +186,27 @@
               "label": "Insert end",
               "length_bp": 14,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "product_insert_core",
               "label": "PCR insert",
               "length_bp": 32,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "product_insert_right",
               "label": "Insert end",
               "length_bp": 24,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
             },
             {
               "id": "junction_right",
@@ -208,7 +226,7 @@
         },
         {
           "id": "product_reverse",
-          "label": "Circular product, insert orientation 2",
+          "label": "Orientation 2",
           "topology": "Circular",
           "features": [
             {
@@ -230,21 +248,27 @@
               "label": "Insert end",
               "length_bp": 24,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
             },
             {
               "id": "product_reverse_insert_core",
               "label": "PCR insert",
               "length_bp": 32,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
             },
             {
               "id": "product_reverse_insert_right",
               "label": "Insert end",
               "length_bp": 14,
               "color_hex": "#cfd8dc",
-              "bottom_color_hex": "#cfd8dc"
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
             },
             {
               "id": "product_reverse_junction_right",

@@ -1970,23 +1970,30 @@ order. Durable architecture constraints and decisions remain in
           enzyme list
       - low-latency sequence-inspection follow-up:
         shared state-optional `SequenceScanTarget` is now implemented for the
-        first restriction-analysis slice, so the same biology logic can run
+        first restriction-analysis slice and now also for direct TFBS hit
+        inspection, so the same biology logic can run
         against either stored `seq_id` records or inline ASCII DNA text
         without first materializing project state
-        - implemented op:
+        - implemented ops:
           - `FindRestrictionSites { target, enzymes?, max_sites_per_enzyme?, include_cut_geometry?, path? }`
+          - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
         - implemented parity surface:
           - GUI DNA-window `RE scan` menu for current selection, visible span,
             and whole active sequence
           - shared shell / direct CLI:
             `features restriction-scan ...`
+          - shared shell / direct CLI:
+            `features tfbs-scan ...`
         - implemented parity tests:
           deterministic equivalence tests now compare inline-target results
-          against stored-`seq_id` results for the same sequence
-        - next follow-up on the same operand:
-          - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
-          - additive follow-up: let `SummarizeTfbsScoreTracks` accept the same
-            operand in addition to `seq_id`
+          against stored-`seq_id` results for the same sequence for both
+          restriction-site and TFBS hit scans
+        - next follow-up on the same operand family:
+          - let `SummarizeTfbsScoreTracks` accept the same operand in addition
+            to `seq_id`
+          - add a GUI selection-first non-mutating TFBS/JASPAR inspection
+            surface on top of the shared `ScanTfbsHits` report instead of
+            inventing a GUI-only analysis path
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

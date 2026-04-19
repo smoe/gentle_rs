@@ -124,7 +124,11 @@ cargo run --quiet --bin gentle_cli -- \
 template for the blunt-end cloning README hero. It is intentionally more
 minimal than the Gibson strips: one blunt PCR product, one intact circular
 pGEX vector with a separately colored MCS, one `SmaI` opening event that leaves
-tiny yellow blunt vector ends, and two possible blunt ligation products.
+tiny yellow blunt vector ends, and two possible blunt ligation products. In the
+insert cartoon, the strands are intentionally distinguishable already in the
+input/opening panels, and in the final panel they swap between
+solid-over-dotted and dotted-over-solid so the two non-directional ligation
+orientations are easy to distinguish.
 
 Regenerate the hero SVG from the repository root with:
 

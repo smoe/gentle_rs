@@ -5773,6 +5773,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
+            tfbs_hit_scan: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
@@ -12534,6 +12535,49 @@ impl GentleEngine {
                     report.clip_negative
                 ));
                 result.tfbs_score_tracks = Some(report);
+            }
+            Operation::ScanTfbsHits {
+                target,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                max_hits,
+                path,
+            } => {
+                let mut report = self.scan_tfbs_hits(
+                    target.clone(),
+                    &motifs,
+                    min_llr_bits,
+                    min_llr_quantile,
+                    &per_tf_thresholds,
+                    max_hits,
+                    Some(&result.op_id),
+                    Some(run_id),
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "TFBS hit-scan report")?;
+                    report.path = Some(path.to_string());
+                    result.messages.push(format!(
+                        "Wrote TFBS hit-scan report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS hit scan on '{}' matched {} hit(s) across {} motif(s) over {}..{}",
+                    report.target_label,
+                    report.matched_hit_count,
+                    report.motifs_scanned.len(),
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                ));
+                if report.truncated_at_max_hits {
+                    result.warnings.push(format!(
+                        "TFBS hit scan reached max_hits={} and truncated remaining hits",
+                        report.max_hits.unwrap_or_default()
+                    ));
+                }
+                result.tfbs_hit_scan = Some(report);
             }
             Operation::SummarizeJasparEntries {
                 motifs,

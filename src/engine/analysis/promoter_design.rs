@@ -219,6 +219,186 @@ impl GentleEngine {
         })
     }
 
+    pub(crate) fn scan_tfbs_hits(
+        &self,
+        target: SequenceScanTarget,
+        motifs: &[String],
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        per_tf_thresholds: &[TfThresholdOverride],
+        max_hits: Option<usize>,
+        op_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Result<TfbsHitScanReport, EngineError> {
+        let effective_motifs = if motifs.len() == 1
+            && matches!(motifs[0].trim().to_ascii_uppercase().as_str(), "ALL" | "*")
+        {
+            crate::tf_motifs::all_motif_ids()
+        } else {
+            motifs.to_vec()
+        };
+        if effective_motifs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ScanTfbsHits requires at least one motif".to_string(),
+            });
+        }
+
+        let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.0);
+        Self::validate_tf_thresholds(default_min_llr_quantile)?;
+
+        let mut override_map: std::collections::HashMap<String, (Option<f64>, Option<f64>)> =
+            std::collections::HashMap::new();
+        for override_row in per_tf_thresholds {
+            let key = override_row.tf.trim().to_ascii_uppercase();
+            if key.is_empty() {
+                continue;
+            }
+            if let Some(q) = override_row.min_llr_quantile {
+                Self::validate_tf_thresholds(q)?;
+            }
+            override_map.insert(
+                key,
+                (override_row.min_llr_bits, override_row.min_llr_quantile),
+            );
+        }
+
+        let (
+            target_kind,
+            target_label,
+            source_sequence_length_bp,
+            scan_start_0based,
+            scan_end_0based_exclusive,
+            scan_topology,
+            scan_dna,
+        ) = self.resolve_sequence_scan_target(&target, "ScanTfbsHits")?;
+        let scan_sequence = scan_dna.get_forward_string();
+        let scan_bytes = scan_sequence.as_bytes();
+
+        let effective_max_hits = match max_hits {
+            Some(0) => None,
+            Some(value) => Some(value),
+            None => None,
+        };
+        let default_min_llr_bits = min_llr_bits.unwrap_or(f64::NEG_INFINITY);
+        let mut report = TfbsHitScanReport {
+            schema: TFBS_HIT_SCAN_REPORT_SCHEMA.to_string(),
+            target_kind,
+            target_label,
+            source_sequence_length_bp,
+            scan_start_0based,
+            scan_end_0based_exclusive,
+            scan_length_bp: scan_dna.len(),
+            scan_topology,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: op_id.map(str::to_string),
+            run_id: run_id.map(str::to_string),
+            motifs_requested: motifs.to_vec(),
+            motifs_scanned: vec![],
+            default_min_llr_bits: min_llr_bits,
+            default_min_llr_quantile: min_llr_quantile,
+            per_tf_thresholds: per_tf_thresholds.to_vec(),
+            max_hits: effective_max_hits,
+            truncated_at_max_hits: false,
+            matched_hit_count: 0,
+            path: None,
+            rows: vec![],
+        };
+
+        'motif_loop: for token in effective_motifs {
+            let token_key = token.trim().to_ascii_uppercase();
+            if token_key.is_empty() {
+                continue;
+            }
+            let (tf_id, tf_name, consensus, matrix_counts) =
+                Self::resolve_tf_motif_for_scoring(&token)?;
+            let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
+            if llr_matrix.is_empty() || llr_matrix.len() > scan_bytes.len() {
+                continue;
+            }
+
+            let mut effective_bits = default_min_llr_bits;
+            let mut effective_quantile = default_min_llr_quantile;
+            let id_key = tf_id.to_ascii_uppercase();
+            let name_key = tf_name
+                .as_ref()
+                .map(|name| name.trim().to_ascii_uppercase())
+                .unwrap_or_default();
+            for key in [token_key.as_str(), id_key.as_str(), name_key.as_str()] {
+                if key.is_empty() {
+                    continue;
+                }
+                if let Some((bits, quantile)) = override_map.get(key) {
+                    if let Some(value) = bits {
+                        effective_bits = *value;
+                    }
+                    if let Some(value) = quantile {
+                        effective_quantile = *value;
+                    }
+                    break;
+                }
+            }
+
+            report.motifs_scanned.push(tf_id.clone());
+            for (
+                start,
+                reverse,
+                llr_bits,
+                llr_quantile,
+                true_log_odds_bits,
+                true_log_odds_quantile,
+            ) in Self::scan_tf_scores_with_topology(
+                scan_bytes,
+                &llr_matrix,
+                &true_log_odds_matrix,
+                report.scan_topology,
+                |_, _| {},
+            ) {
+                if llr_bits < effective_bits || llr_quantile < effective_quantile {
+                    continue;
+                }
+                let raw_end = start + llr_matrix.len();
+                let wraps_origin = raw_end > report.scan_length_bp;
+                let end = if wraps_origin {
+                    raw_end - report.scan_length_bp
+                } else {
+                    raw_end
+                };
+                let matched_sequence = if wraps_origin {
+                    format!("{}{}", &scan_sequence[start..], &scan_sequence[..end])
+                } else {
+                    scan_sequence[start..end].to_string()
+                };
+                report.rows.push(TfbsHitScanRow {
+                    tf_id: tf_id.clone(),
+                    tf_name: tf_name.clone(),
+                    motif_consensus_iupac: consensus.clone(),
+                    motif_length_bp: llr_matrix.len(),
+                    match_start_0based: start,
+                    match_end_0based_exclusive: end,
+                    source_match_start_0based: report.scan_start_0based + start,
+                    source_match_end_0based_exclusive: report.scan_start_0based + end,
+                    wraps_origin,
+                    forward_strand: !reverse,
+                    matched_sequence,
+                    llr_bits,
+                    llr_quantile,
+                    true_log_odds_bits,
+                    true_log_odds_quantile,
+                });
+                if let Some(limit) = effective_max_hits
+                    && report.rows.len() >= limit
+                {
+                    report.truncated_at_max_hits = true;
+                    break 'motif_loop;
+                }
+            }
+        }
+
+        report.matched_hit_count = report.rows.len();
+        Ok(report)
+    }
+
     pub(crate) fn write_tfbs_score_track_report_json(
         &self,
         report: &TfbsScoreTrackReport,

@@ -63,10 +63,10 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
-        TfbsRegionSummaryRequest, TfbsScoreTrackValueKind, TranslationSpeedMark,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
-        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackValueKind,
+        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
+        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -1464,6 +1464,15 @@ pub enum ShellCommand {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         output: String,
+    },
+    FeaturesTfbsScan {
+        target: SequenceScanTarget,
+        motifs: Vec<String>,
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        max_hits: Option<usize>,
+        path: Option<String>,
     },
     FeaturesRestrictionScan {
         target: SequenceScanTarget,
@@ -7014,6 +7023,66 @@ impl ShellCommand {
                 score_kind.as_str(),
                 clip_negative
             ),
+            Self::FeaturesTfbsScan {
+                target,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                max_hits,
+                path,
+            } => {
+                let target_label = match target {
+                    SequenceScanTarget::SeqId {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "seq_id='{}' span={}..{}",
+                        seq_id,
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "full".to_string())
+                    ),
+                    SequenceScanTarget::InlineSequence {
+                        id_hint,
+                        sequence_text,
+                        topology,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "inline='{}' len={} topology={} span={}..{}",
+                        id_hint.as_deref().unwrap_or("inline_sequence"),
+                        sequence_text.len(),
+                        topology.as_str(),
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "full".to_string())
+                    ),
+                };
+                format!(
+                    "scan TFBS hits on {} (motifs={}, min_llr_bits={}, min_llr_quantile={}, per_tf_thresholds={}, max_hits={}, path={})",
+                    target_label,
+                    motifs.join(","),
+                    min_llr_bits
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "-inf".to_string()),
+                    min_llr_quantile
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "0".to_string()),
+                    per_tf_thresholds.len(),
+                    max_hits
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                    path.as_deref().unwrap_or("-"),
+                )
+            }
             Self::FeaturesRestrictionScan {
                 target,
                 enzymes,
@@ -20702,6 +20771,35 @@ fn execute_sequence_analysis_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::FeaturesTfbsScan {
+            target,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::ScanTfbsHits {
+                    target: target.clone(),
+                    motifs: motifs.clone(),
+                    min_llr_bits: *min_llr_bits,
+                    min_llr_quantile: *min_llr_quantile,
+                    per_tf_thresholds: per_tf_thresholds.clone(),
+                    max_hits: *max_hits,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.tfbs_hit_scan.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesRestrictionScan {
             target,
             enzymes,
@@ -23439,6 +23537,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+            | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesRestrictionScan { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
@@ -23718,6 +23817,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+        | ShellCommand::FeaturesTfbsScan { .. }
         | ShellCommand::FeaturesRestrictionScan { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }

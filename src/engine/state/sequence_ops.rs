@@ -1071,7 +1071,8 @@ impl GentleEngine {
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
             }
-            Operation::FindRestrictionSites { target, .. } => match target {
+            Operation::FindRestrictionSites { target, .. }
+            | Operation::ScanTfbsHits { target, .. } => match target {
                 SequenceScanTarget::SeqId { seq_id, .. } => {
                     Self::push_unique_token(&mut summary.sequence_ids, seq_id);
                 }
@@ -1277,6 +1278,9 @@ impl GentleEngine {
         }
         if let Operation::FindRestrictionSites {
             path: Some(path), ..
+        }
+        | Operation::ScanTfbsHits {
+            path: Some(path), ..
         } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
@@ -1331,6 +1335,9 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::FindRestrictionSites {
+                path: Some(path), ..
+            } => push(path),
+            Operation::ScanTfbsHits {
                 path: Some(path), ..
             } => push(path),
             Operation::SummarizeJasparEntries {

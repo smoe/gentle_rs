@@ -449,6 +449,7 @@ const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
 const RESTRICTION_SITE_SCAN_REPORT_SCHEMA: &str = "gentle.restriction_site_scan.v1";
+const TFBS_HIT_SCAN_REPORT_SCHEMA: &str = "gentle.tfbs_hit_scan.v1";
 const SEQUENCE_CONTEXT_VIEW_SCHEMA: &str = "gentle.sequence_context_view.v1";
 const SEQUENCE_CONTEXT_BUNDLE_SCHEMA: &str = "gentle.sequence_context_bundle.v1";
 const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
@@ -1849,7 +1850,7 @@ impl Default for OverlapExtensionMutagenesisConstraints {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TfThresholdOverride {
     pub tf: String,
     pub min_llr_bits: Option<f64>,
@@ -3419,6 +3420,20 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    ScanTfbsHits {
+        target: SequenceScanTarget,
+        motifs: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_bits: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_llr_quantile: Option<f64>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_hits: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     SummarizeJasparEntries {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         motifs: Vec<String>,
@@ -4770,6 +4785,7 @@ impl GentleEngine {
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
+                "ScanTfbsHits".to_string(),
                 "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
                 "BenchmarkJasparRegistry".to_string(),
@@ -6674,6 +6690,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
+                | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
                 | Operation::BenchmarkJasparRegistry { .. }
@@ -10596,6 +10613,7 @@ impl GentleEngine {
     fn resolve_sequence_scan_target(
         &self,
         target: &SequenceScanTarget,
+        context: &str,
     ) -> Result<
         (
             String,
@@ -10618,7 +10636,7 @@ impl GentleEngine {
                 if seq_id.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
-                        message: "FindRestrictionSites requires non-empty seq_id".to_string(),
+                        message: format!("{context} requires non-empty seq_id"),
                     });
                 }
                 let dna = self
@@ -10635,7 +10653,7 @@ impl GentleEngine {
                         source_sequence_length_bp,
                         *span_start_0based,
                         *span_end_0based_exclusive,
-                        "FindRestrictionSites",
+                        context,
                     )?;
                 let full_span = scan_start_0based == 0
                     && scan_end_0based_exclusive == source_sequence_length_bp;
@@ -10688,7 +10706,7 @@ impl GentleEngine {
                         source_sequence_length_bp,
                         *span_start_0based,
                         *span_end_0based_exclusive,
-                        "FindRestrictionSites",
+                        context,
                     )?;
                 let full_span = scan_start_0based == 0
                     && scan_end_0based_exclusive == source_sequence_length_bp;
@@ -10823,7 +10841,7 @@ impl GentleEngine {
             scan_end_0based_exclusive,
             scan_topology,
             scan_dna,
-        ) = self.resolve_sequence_scan_target(&target)?;
+        ) = self.resolve_sequence_scan_target(&target, "FindRestrictionSites")?;
         let (enzyme_filters, resolved_enzymes) = self.resolve_restriction_scan_enzymes(enzymes)?;
 
         let mut report = RestrictionSiteScanReport {
