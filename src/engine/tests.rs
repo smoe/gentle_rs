@@ -24598,6 +24598,203 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
 }
 
 #[test]
+fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_external_catalog() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_multi_gene_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let gene1_feature_id = dna
+        .features()
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE1")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE1 feature id");
+    let splicing_gene1 = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            gene1_feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("GENE1 splicing view");
+    let lane_gene1 = splicing_gene1
+        .transcripts
+        .iter()
+        .find(|lane| lane.transcript_id == "NM_GENE1_1")
+        .expect("GENE1 lane");
+    let template_gene1 = GentleEngine::make_transcript_template(dna, lane_gene1, 3);
+    let gene1_sequence = String::from_utf8_lossy(&template_gene1.sequence).to_string();
+    let gene3_sequence = "ATGCGTACGTTAGGCCATGCGTAC".to_string();
+    let gene4_sequence = "CGTTAACCGGTTACCGGTTAACCG".to_string();
+    let adapter = "TTTCTGTTGGTGCTGATATTGC";
+
+    let adapter_file = tempfile::NamedTempFile::new().expect("temp adapter file");
+    std::fs::write(adapter_file.path(), ">barcoding\nTTTCTGTTGGTGCTGATATTGC\n")
+        .expect("write adapter fasta");
+    let transcript_file = tempfile::NamedTempFile::new().expect("temp transcript file");
+    std::fs::write(
+        transcript_file.path(),
+        format!(
+            ">NM_GENE3_1 gene=GENE3 transcript=NM_GENE3_1\n{gene3_sequence}\n>NM_GENE4_1 gene=GENE4 transcript=NM_GENE4_1\n{gene4_sequence}\n"
+        ),
+    )
+    .expect("write transcript fasta");
+
+    let read_gene3_a = format!("{gene1_sequence}{adapter}{gene3_sequence}");
+    let read_gene3_b = format!("{gene1_sequence}{adapter}{gene3_sequence}");
+    let read_gene4 = format!("{gene1_sequence}{adapter}{gene4_sequence}");
+
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_concatemers_partner_summary".to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: gene1_feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            align_config: RnaReadAlignConfig {
+                max_secondary_mappings: 0,
+                ..RnaReadAlignConfig::default()
+            },
+            hits: vec![
+                RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "gene3_partner_a".to_string(),
+                    sequence: read_gene3_a.clone(),
+                    read_length_bp: read_gene3_a.len(),
+                    seed_chain_transcript_id: lane_gene1.transcript_id.clone(),
+                    exon_path_transcript_id: lane_gene1.transcript_id.clone(),
+                    origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: lane_gene1.transcript_feature_id,
+                        transcript_id: lane_gene1.transcript_id.clone(),
+                        transcript_label: lane_gene1.label.clone(),
+                        strand: lane_gene1.strand.clone(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: template_gene1.sequence.len(),
+                        query_coverage_fraction: template_gene1.sequence.len() as f64
+                            / read_gene3_a.len() as f64,
+                        identity_fraction: 0.97,
+                        score: 160,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 1,
+                    header_id: "gene3_partner_b".to_string(),
+                    sequence: read_gene3_b.clone(),
+                    read_length_bp: read_gene3_b.len(),
+                    seed_chain_transcript_id: lane_gene1.transcript_id.clone(),
+                    exon_path_transcript_id: lane_gene1.transcript_id.clone(),
+                    origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: lane_gene1.transcript_feature_id,
+                        transcript_id: lane_gene1.transcript_id.clone(),
+                        transcript_label: lane_gene1.label.clone(),
+                        strand: lane_gene1.strand.clone(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: template_gene1.sequence.len(),
+                        query_coverage_fraction: template_gene1.sequence.len() as f64
+                            / read_gene3_b.len() as f64,
+                        identity_fraction: 0.97,
+                        score: 159,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+                RnaReadInterpretationHit {
+                    record_index: 2,
+                    header_id: "gene4_partner".to_string(),
+                    sequence: read_gene4.clone(),
+                    read_length_bp: read_gene4.len(),
+                    seed_chain_transcript_id: lane_gene1.transcript_id.clone(),
+                    exon_path_transcript_id: lane_gene1.transcript_id.clone(),
+                    origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+                    best_mapping: Some(RnaReadMappingHit {
+                        transcript_feature_id: lane_gene1.transcript_feature_id,
+                        transcript_id: lane_gene1.transcript_id.clone(),
+                        transcript_label: lane_gene1.label.clone(),
+                        strand: lane_gene1.strand.clone(),
+                        query_start_0based: 0,
+                        query_end_0based_exclusive: template_gene1.sequence.len(),
+                        query_coverage_fraction: template_gene1.sequence.len() as f64
+                            / read_gene4.len() as f64,
+                        identity_fraction: 0.96,
+                        score: 158,
+                        ..RnaReadMappingHit::default()
+                    }),
+                    ..RnaReadInterpretationHit::default()
+                },
+            ],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert concatemer partner-summary report");
+
+    let inspection = engine
+        .inspect_rna_read_concatemers(
+            "rna_reads_concatemers_partner_summary",
+            RnaReadHitSelection::All,
+            10,
+            RnaReadConcatemerInspectionSettings {
+                adapter_fasta_path: Some(adapter_file.path().display().to_string()),
+                adapter_min_match_bp: 18,
+                fragment_min_bp: 10,
+                fragment_max_parts: 4,
+                fragment_min_identity_fraction: 0.60,
+                fragment_min_query_coverage_fraction: 0.20,
+                transcript_fasta_path: Some(transcript_file.path().display().to_string()),
+                ..RnaReadConcatemerInspectionSettings::default()
+            },
+        )
+        .expect("inspect concatemer partner-summary rows");
+    assert_eq!(inspection.suspicious_count, 3);
+    assert_eq!(inspection.partner_gene_summaries.len(), 2);
+    assert_eq!(inspection.partner_gene_summaries[0].gene_id, "GENE3");
+    assert_eq!(
+        inspection.partner_gene_summaries[0].suspicious_read_count,
+        2
+    );
+    assert_eq!(inspection.partner_gene_summaries[1].gene_id, "GENE4");
+    assert_eq!(
+        inspection.partner_gene_summaries[1].suspicious_read_count,
+        1
+    );
+    assert_eq!(
+        inspection.partner_transcript_summaries[0].transcript_id,
+        "NM_GENE3_1"
+    );
+    assert_eq!(
+        inspection.partner_transcript_summaries[0].suspicious_read_count,
+        2
+    );
+    assert_eq!(
+        inspection.partner_transcript_summaries[1].transcript_id,
+        "NM_GENE4_1"
+    );
+    assert_eq!(inspection.rows[0].best_gene_id.as_deref(), Some("GENE1"));
+    assert!(
+        inspection
+            .rows
+            .iter()
+            .filter(|row| row
+                .partner_gene_ids
+                .iter()
+                .any(|gene_id| gene_id == "GENE3"))
+            .count()
+            >= 2
+    );
+}
+
+#[test]
 fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_midline() {
     let mut state = ProjectState::default();
     state

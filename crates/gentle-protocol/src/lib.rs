@@ -3467,6 +3467,8 @@ pub struct RnaReadConcatemerInspectionSettings {
     pub fragment_min_identity_fraction: f64,
     #[serde(default = "default_rna_read_concatemer_fragment_min_query_coverage_fraction")]
     pub fragment_min_query_coverage_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_fasta_path: Option<String>,
 }
 
 impl Default for RnaReadConcatemerInspectionSettings {
@@ -3488,6 +3490,7 @@ impl Default for RnaReadConcatemerInspectionSettings {
                 default_rna_read_concatemer_fragment_min_identity_fraction(),
             fragment_min_query_coverage_fraction:
                 default_rna_read_concatemer_fragment_min_query_coverage_fraction(),
+            transcript_fasta_path: None,
         }
     }
 }
@@ -3523,6 +3526,28 @@ pub struct RnaReadConcatemerFragmentOrigin {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Aggregated non-primary gene/group partners recurring across suspicious reads.
+pub struct RnaReadConcatemerPartnerGeneSummary {
+    pub rank: usize,
+    pub gene_id: String,
+    pub suspicious_read_count: usize,
+    pub fragment_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Aggregated non-primary transcript partners recurring across suspicious reads.
+pub struct RnaReadConcatemerPartnerTranscriptSummary {
+    pub rank: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub gene_id: String,
+    pub suspicious_read_count: usize,
+    pub fragment_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One retained RNA-read row ranked by fragment/concatemer suspicion.
 pub struct RnaReadConcatemerSuspicionRow {
     pub rank: usize,
@@ -3535,6 +3560,8 @@ pub struct RnaReadConcatemerSuspicionRow {
     pub best_transcript_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_gene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_identity_fraction: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3574,6 +3601,14 @@ pub struct RnaReadConcatemerSuspicionRow {
     #[serde(default)]
     pub fragment_origin_gene_ids: Vec<String>,
     #[serde(default)]
+    pub partner_gene_count: usize,
+    #[serde(default)]
+    pub partner_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub partner_transcript_count: usize,
+    #[serde(default)]
+    pub partner_transcript_ids: Vec<String>,
+    #[serde(default)]
     pub adapter_hits: Vec<RnaReadConcatemerAdapterHit>,
     #[serde(default)]
     pub fragment_origins: Vec<RnaReadConcatemerFragmentOrigin>,
@@ -3602,6 +3637,10 @@ pub struct RnaReadConcatemerInspection {
     pub settings: RnaReadConcatemerInspectionSettings,
     #[serde(default)]
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub partner_gene_summaries: Vec<RnaReadConcatemerPartnerGeneSummary>,
+    #[serde(default)]
+    pub partner_transcript_summaries: Vec<RnaReadConcatemerPartnerTranscriptSummary>,
     #[serde(default)]
     pub rows: Vec<RnaReadConcatemerSuspicionRow>,
 }

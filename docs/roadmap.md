@@ -3173,9 +3173,18 @@ Status:
       `data/resources/nanopore_direct_cdna_kit14_adapters.fasta` plus
       `--adapter-fasta`, so kit-specific oligos can be swapped without engine
       changes
+    - a bundled multiplex-barcode signature set now also ships at
+      `data/resources/nanopore_native_barcodes_nbd114_24_v14.fasta` so
+      ligation/barcoding artifact review does not have to reuse only the
+      direct-cDNA primer file
     - the audit can now also perform iterative fragment decomposition against
-      the admitted transcript-template set to count how many distinct
-      genes/groups contribute to one suspicious read
+      the admitted transcript-template set, or an appended external
+      transcript FASTA catalog via `--transcript-fasta`, to count how many
+      distinct genes/groups contribute to one suspicious read
+    - repeated non-primary partner-gene/transcript summaries are now computed
+      across the full suspicious cohort before row truncation so recurring
+      TP73-linked partners remain visible even when the ranked row view is
+      limited
     - the payload warns explicitly when the source report was aligned with
       `max_secondary_mappings=0`, because that removes the strongest current
       fragment-fusion evidence branch

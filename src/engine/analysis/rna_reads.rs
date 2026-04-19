@@ -13,6 +13,20 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Default)]
+struct RnaReadConcatemerTranscriptCatalogSummary {
+    suspicious_read_count: usize,
+    fragment_count: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RnaReadConcatemerPartnerTranscriptAccumulator {
+    transcript_label: String,
+    gene_id: String,
+    suspicious_read_count: usize,
+    fragment_count: usize,
+}
+
 #[derive(Debug, Clone)]
 struct RnaReadAlignmentScatterPoint {
     rank: RnaReadRetentionRank,
@@ -101,6 +115,7 @@ struct RnaReadAdapterSignature {
 struct RnaReadConcatemerFragmentContext {
     templates: Vec<SplicingTranscriptTemplate>,
     transcript_gene_lookup: HashMap<usize, String>,
+    transcript_gene_lookup_by_id: HashMap<String, String>,
     align_config: RnaReadAlignConfig,
     seed_kmer_len: usize,
 }
@@ -1767,6 +1782,219 @@ impl GentleEngine {
         (label, internal_scan)
     }
 
+    fn strip_rna_read_concatemer_header_metadata_value(raw: &str) -> String {
+        raw.trim_matches(|c: char| {
+            c.is_ascii_whitespace() || matches!(c, '"' | '\'' | ',' | ';' | '[' | ']')
+        })
+        .to_string()
+    }
+
+    fn parse_rna_read_concatemer_header_metadata(header: &str) -> HashMap<String, String> {
+        let mut out = HashMap::<String, String>::new();
+        for raw in header.split_whitespace() {
+            let token = raw.trim_matches(|c: char| matches!(c, ',' | ';' | '[' | ']'));
+            let (key, value) = token
+                .split_once('=')
+                .or_else(|| token.split_once(':'))
+                .unwrap_or(("", ""));
+            if key.is_empty() {
+                continue;
+            }
+            let value = Self::strip_rna_read_concatemer_header_metadata_value(value);
+            if value.is_empty() {
+                continue;
+            }
+            out.insert(key.to_ascii_lowercase(), value);
+        }
+        out
+    }
+
+    fn rna_read_concatemer_header_metadata_value<'a>(
+        metadata: &'a HashMap<String, String>,
+        keys: &[&str],
+    ) -> Option<&'a str> {
+        keys.iter()
+            .find_map(|key| metadata.get(&key.to_ascii_lowercase()))
+            .map(String::as_str)
+    }
+
+    fn infer_rna_read_concatemer_header_parenthesized_gene_symbol(header: &str) -> Option<String> {
+        let start = header.find('(')?;
+        let rest = &header[start + 1..];
+        let end = rest.find(')')?;
+        let candidate = rest[..end].trim();
+        if candidate.is_empty()
+            || candidate.len() > 32
+            || candidate.contains(char::is_whitespace)
+            || !candidate
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        {
+            return None;
+        }
+        Some(candidate.to_string())
+    }
+
+    fn infer_rna_read_concatemer_external_catalog_identity(
+        record: &ParsedFastaReadRecord,
+    ) -> (String, String, String) {
+        let metadata = Self::parse_rna_read_concatemer_header_metadata(&record.header_text);
+        let transcript_id = Self::rna_read_concatemer_header_metadata_value(
+            &metadata,
+            &[
+                "transcript",
+                "transcript_id",
+                "mrna",
+                "rna",
+                "refseq",
+                "accession",
+                "id",
+            ],
+        )
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| record.header_id.clone());
+        let transcript_label = Self::rna_read_concatemer_header_metadata_value(
+            &metadata,
+            &[
+                "transcript_name",
+                "transcript_symbol",
+                "label",
+                "name",
+                "gene_symbol",
+                "gene",
+            ],
+        )
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| transcript_id.clone());
+        let gene_id = Self::rna_read_concatemer_header_metadata_value(
+            &metadata,
+            &[
+                "gene_symbol",
+                "gene",
+                "gene_id",
+                "gene_name",
+                "symbol",
+                "locus",
+            ],
+        )
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            Self::infer_rna_read_concatemer_header_parenthesized_gene_symbol(&record.header_text)
+        })
+        .unwrap_or_else(|| transcript_label.clone());
+        (transcript_id, transcript_label, gene_id)
+    }
+
+    fn make_rna_read_concatemer_catalog_template(
+        transcript_feature_id: usize,
+        transcript_id: String,
+        transcript_label: String,
+        gene_id: String,
+        sequence: Vec<u8>,
+        strand: String,
+        kmer_len: usize,
+    ) -> (SplicingTranscriptTemplate, String) {
+        let mut kmer_positions = HashMap::<u32, Vec<usize>>::new();
+        if kmer_len > 0 && sequence.len() >= kmer_len {
+            for start in 0..=sequence.len() - kmer_len {
+                let window = &sequence[start..start + kmer_len];
+                let Some(bits) = Self::encode_kmer_bits(window) else {
+                    continue;
+                };
+                kmer_positions.entry(bits).or_default().push(start);
+            }
+        }
+        (
+            SplicingTranscriptTemplate {
+                transcript_feature_id,
+                transcript_id,
+                transcript_label,
+                strand,
+                sequence,
+                genomic_positions_1based: Vec::new(),
+                kmer_positions,
+            },
+            gene_id,
+        )
+    }
+
+    fn load_external_rna_read_concatemer_templates(
+        path: &str,
+        kmer_len: usize,
+        next_feature_id_start: usize,
+        warnings: &mut Vec<String>,
+    ) -> Result<
+        (
+            Vec<SplicingTranscriptTemplate>,
+            HashMap<usize, String>,
+            HashMap<String, String>,
+        ),
+        EngineError,
+    > {
+        let mut templates = Vec::<SplicingTranscriptTemplate>::new();
+        let mut transcript_gene_lookup = HashMap::<usize, String>::new();
+        let mut transcript_gene_lookup_by_id = HashMap::<String, String>::new();
+        let mut seen_transcript_ids = HashSet::<String>::new();
+        let mut next_feature_id = next_feature_id_start;
+        Self::visit_fasta_records_with_offsets(path, &mut |record, _progress| {
+            let (mut transcript_id, transcript_label, gene_id) =
+                Self::infer_rna_read_concatemer_external_catalog_identity(&record);
+            if !seen_transcript_ids.insert(transcript_id.clone()) {
+                let original = transcript_id.clone();
+                transcript_id = format!("{original}#record{}", record.record_index + 1);
+                warnings.push(format!(
+                    "external transcript FASTA '{}' repeated transcript id '{}'; using '{}' for record {}",
+                    path,
+                    original,
+                    transcript_id,
+                    record.record_index + 1
+                ));
+                seen_transcript_ids.insert(transcript_id.clone());
+            }
+            let (template, mapped_gene_id) = Self::make_rna_read_concatemer_catalog_template(
+                next_feature_id,
+                transcript_id.clone(),
+                transcript_label,
+                gene_id,
+                record.sequence,
+                "+".to_string(),
+                kmer_len,
+            );
+            next_feature_id = next_feature_id.saturating_add(1);
+            transcript_gene_lookup.insert(template.transcript_feature_id, mapped_gene_id.clone());
+            transcript_gene_lookup_by_id.insert(transcript_id, mapped_gene_id);
+            templates.push(template);
+            Ok(())
+        })?;
+        Ok((
+            templates,
+            transcript_gene_lookup,
+            transcript_gene_lookup_by_id,
+        ))
+    }
+
+    fn lookup_rna_read_concatemer_transcript_gene(
+        context: &RnaReadConcatemerFragmentContext,
+        transcript_feature_id: usize,
+        transcript_id: &str,
+        transcript_label: &str,
+    ) -> String {
+        context
+            .transcript_gene_lookup
+            .get(&transcript_feature_id)
+            .cloned()
+            .or_else(|| {
+                context
+                    .transcript_gene_lookup_by_id
+                    .get(transcript_id)
+                    .cloned()
+            })
+            .unwrap_or_else(|| transcript_label.to_string())
+    }
+
     fn iupac_matches_adapter_base(adapter_base: u8, read_base: u8) -> bool {
         let read_base = Self::normalize_nucleotide_base(read_base);
         match Self::normalize_nucleotide_base(adapter_base) {
@@ -1995,29 +2223,27 @@ impl GentleEngine {
     fn build_rna_read_concatemer_fragment_context(
         &self,
         report: &RnaReadInterpretationReport,
-        _warnings: &mut Vec<String>,
+        warnings: &mut Vec<String>,
         settings: &RnaReadConcatemerInspectionSettings,
-    ) -> Option<RnaReadConcatemerFragmentContext> {
+    ) -> Result<Option<RnaReadConcatemerFragmentContext>, EngineError> {
         if report.seq_id.trim().is_empty() {
-            return None;
+            return Ok(None);
         }
         let Some(dna) = self.state.sequences.get(&report.seq_id) else {
-            return None;
+            return Ok(None);
         };
         let Ok((_splicing, transcript_lanes)) =
             self.collect_rna_read_report_transcript_lanes(dna, report)
         else {
-            return None;
+            return Ok(None);
         };
         let templates = transcript_lanes
             .iter()
             .map(|lane| Self::make_transcript_template(dna, lane, report.seed_filter.kmer_len))
             .filter(|template| !template.sequence.is_empty())
             .collect::<Vec<_>>();
-        if templates.is_empty() {
-            return None;
-        }
         let mut transcript_gene_lookup = HashMap::<usize, String>::new();
+        let mut transcript_gene_lookup_by_id = HashMap::<String, String>::new();
         for lane in &transcript_lanes {
             let gene_id = dna
                 .features()
@@ -2025,18 +2251,57 @@ impl GentleEngine {
                 .map(|feature| Self::splicing_group_label(feature, lane.transcript_feature_id))
                 .filter(|label| !label.trim().is_empty())
                 .unwrap_or_else(|| lane.label.clone());
-            transcript_gene_lookup.insert(lane.transcript_feature_id, gene_id);
+            transcript_gene_lookup.insert(lane.transcript_feature_id, gene_id.clone());
+            transcript_gene_lookup_by_id.insert(lane.transcript_id.clone(), gene_id);
+        }
+        let mut templates = templates;
+        if let Some(path) = settings.transcript_fasta_path.as_deref() {
+            let next_feature_id_start = transcript_gene_lookup
+                .keys()
+                .max()
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(1);
+            let (external_templates, external_gene_lookup, external_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    report.seed_filter.kmer_len,
+                    next_feature_id_start,
+                    warnings,
+                )?;
+            let mut existing_transcript_ids = templates
+                .iter()
+                .map(|template| template.transcript_id.clone())
+                .collect::<HashSet<_>>();
+            for template in external_templates {
+                if existing_transcript_ids.insert(template.transcript_id.clone()) {
+                    if let Some(gene_id) = external_gene_lookup.get(&template.transcript_feature_id)
+                    {
+                        transcript_gene_lookup
+                            .insert(template.transcript_feature_id, gene_id.clone());
+                    }
+                    if let Some(gene_id) = external_gene_lookup_by_id.get(&template.transcript_id) {
+                        transcript_gene_lookup_by_id
+                            .insert(template.transcript_id.clone(), gene_id.clone());
+                    }
+                    templates.push(template);
+                }
+            }
+        }
+        if templates.is_empty() {
+            return Ok(None);
         }
         let mut align_config = report.align_config.clone();
         align_config.min_identity_fraction =
             settings.fragment_min_identity_fraction.clamp(0.0, 1.0);
         align_config.max_secondary_mappings = 0;
-        Some(RnaReadConcatemerFragmentContext {
+        Ok(Some(RnaReadConcatemerFragmentContext {
             templates,
             transcript_gene_lookup,
+            transcript_gene_lookup_by_id,
             align_config,
             seed_kmer_len: report.seed_filter.kmer_len,
-        })
+        }))
     }
 
     fn decompose_rna_read_fragment_origins(
@@ -2081,11 +2346,12 @@ impl GentleEngine {
                 }
                 let global_start = segment_start.saturating_add(mapping.query_start_0based);
                 let global_end = segment_start.saturating_add(mapping.query_end_0based_exclusive);
-                let gene_id = context
-                    .transcript_gene_lookup
-                    .get(&mapping.transcript_feature_id)
-                    .cloned()
-                    .unwrap_or_else(|| mapping.transcript_label.clone());
+                let gene_id = Self::lookup_rna_read_concatemer_transcript_gene(
+                    context,
+                    mapping.transcript_feature_id,
+                    &mapping.transcript_id,
+                    &mapping.transcript_label,
+                );
                 let candidate = RnaReadConcatemerFragmentOrigin {
                     fragment_rank: fragments.len().saturating_add(1),
                     query_start_0based: global_start,
@@ -2123,6 +2389,107 @@ impl GentleEngine {
             fragment.fragment_rank = idx.saturating_add(1);
         }
         fragments
+    }
+
+    fn summarize_rna_read_concatemer_partner_genes(
+        rows: &[RnaReadConcatemerSuspicionRow],
+    ) -> Vec<RnaReadConcatemerPartnerGeneSummary> {
+        let mut counts = BTreeMap::<String, RnaReadConcatemerTranscriptCatalogSummary>::new();
+        for row in rows {
+            let mut row_fragment_counts = BTreeMap::<String, usize>::new();
+            for fragment in &row.fragment_origins {
+                if row
+                    .partner_gene_ids
+                    .iter()
+                    .any(|gene_id| gene_id == &fragment.gene_id)
+                {
+                    *row_fragment_counts
+                        .entry(fragment.gene_id.clone())
+                        .or_insert(0) += 1;
+                }
+            }
+            for gene_id in &row.partner_gene_ids {
+                let entry = counts.entry(gene_id.clone()).or_default();
+                entry.suspicious_read_count = entry.suspicious_read_count.saturating_add(1);
+                entry.fragment_count = entry
+                    .fragment_count
+                    .saturating_add(row_fragment_counts.get(gene_id).copied().unwrap_or(0));
+            }
+        }
+        let mut summaries = counts
+            .into_iter()
+            .map(|(gene_id, summary)| RnaReadConcatemerPartnerGeneSummary {
+                rank: 0,
+                gene_id,
+                suspicious_read_count: summary.suspicious_read_count,
+                fragment_count: summary.fragment_count,
+            })
+            .collect::<Vec<_>>();
+        summaries.sort_by(|left, right| {
+            right
+                .suspicious_read_count
+                .cmp(&left.suspicious_read_count)
+                .then_with(|| right.fragment_count.cmp(&left.fragment_count))
+                .then_with(|| left.gene_id.cmp(&right.gene_id))
+        });
+        for (idx, summary) in summaries.iter_mut().enumerate() {
+            summary.rank = idx.saturating_add(1);
+        }
+        summaries
+    }
+
+    fn summarize_rna_read_concatemer_partner_transcripts(
+        rows: &[RnaReadConcatemerSuspicionRow],
+    ) -> Vec<RnaReadConcatemerPartnerTranscriptSummary> {
+        let mut counts = BTreeMap::<String, RnaReadConcatemerPartnerTranscriptAccumulator>::new();
+        for row in rows {
+            let mut row_seen = HashSet::<String>::new();
+            for fragment in &row.fragment_origins {
+                if !row
+                    .partner_transcript_ids
+                    .iter()
+                    .any(|transcript_id| transcript_id == &fragment.transcript_id)
+                {
+                    continue;
+                }
+                let entry = counts
+                    .entry(fragment.transcript_id.clone())
+                    .or_insert_with(|| RnaReadConcatemerPartnerTranscriptAccumulator {
+                        transcript_label: fragment.transcript_label.clone(),
+                        gene_id: fragment.gene_id.clone(),
+                        suspicious_read_count: 0,
+                        fragment_count: 0,
+                    });
+                if row_seen.insert(fragment.transcript_id.clone()) {
+                    entry.suspicious_read_count = entry.suspicious_read_count.saturating_add(1);
+                }
+                entry.fragment_count = entry.fragment_count.saturating_add(1);
+            }
+        }
+        let mut summaries = counts
+            .into_iter()
+            .map(
+                |(transcript_id, summary)| RnaReadConcatemerPartnerTranscriptSummary {
+                    rank: 0,
+                    transcript_id,
+                    transcript_label: summary.transcript_label,
+                    gene_id: summary.gene_id,
+                    suspicious_read_count: summary.suspicious_read_count,
+                    fragment_count: summary.fragment_count,
+                },
+            )
+            .collect::<Vec<_>>();
+        summaries.sort_by(|left, right| {
+            right
+                .suspicious_read_count
+                .cmp(&left.suspicious_read_count)
+                .then_with(|| right.fragment_count.cmp(&left.fragment_count))
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        for (idx, summary) in summaries.iter_mut().enumerate() {
+            summary.rank = idx.saturating_add(1);
+        }
+        summaries
     }
 
     fn rna_read_concatemer_origin_partial(origin_class: RnaReadOriginClass) -> bool {
@@ -2192,7 +2559,7 @@ impl GentleEngine {
             .map(Self::load_rna_read_adapter_signatures)
             .transpose()?;
         let fragment_context =
-            self.build_rna_read_concatemer_fragment_context(&report, &mut warnings, &settings);
+            self.build_rna_read_concatemer_fragment_context(&report, &mut warnings, &settings)?;
 
         let mut inspected_count = 0usize;
         let mut suspicious_count = 0usize;
@@ -2264,6 +2631,56 @@ impl GentleEngine {
                 .map(|fragment| fragment.gene_id.clone())
                 .collect::<BTreeSet<_>>()
                 .into_iter()
+                .collect::<Vec<_>>();
+            let best_gene_id = best_mapping.and_then(|mapping| {
+                fragment_context.as_ref().map(|context| {
+                    Self::lookup_rna_read_concatemer_transcript_gene(
+                        context,
+                        mapping.transcript_feature_id,
+                        &mapping.transcript_id,
+                        &mapping.transcript_label,
+                    )
+                })
+            });
+            let phase1_primary_transcript_id =
+                Self::primary_phase1_transcript_id(hit).trim().to_string();
+            let phase1_gene_id = if phase1_primary_transcript_id.is_empty() {
+                None
+            } else {
+                fragment_context.as_ref().and_then(|context| {
+                    context
+                        .transcript_gene_lookup_by_id
+                        .get(phase1_primary_transcript_id.as_str())
+                        .cloned()
+                })
+            };
+            let primary_gene_id = best_gene_id.clone().or(phase1_gene_id);
+            let partner_gene_ids = fragment_origin_gene_ids
+                .iter()
+                .filter(|gene_id| {
+                    primary_gene_id
+                        .as_deref()
+                        .is_none_or(|primary| !gene_id.eq_ignore_ascii_case(primary))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let primary_transcript_id = best_mapping
+                .map(|mapping| mapping.transcript_id.clone())
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    (!phase1_primary_transcript_id.is_empty())
+                        .then_some(phase1_primary_transcript_id.clone())
+                });
+            let partner_transcript_ids = fragment_origins
+                .iter()
+                .map(|fragment| fragment.transcript_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .filter(|transcript_id| {
+                    primary_transcript_id
+                        .as_deref()
+                        .is_none_or(|primary| !transcript_id.eq_ignore_ascii_case(primary))
+                })
                 .collect::<Vec<_>>();
             let multi_gene_fragment = fragment_origin_gene_ids.len() > 1;
             if multi_gene_fragment {
@@ -2363,8 +2780,6 @@ impl GentleEngine {
                 strong_count = strong_count.saturating_add(1);
             }
             let top_disjoint_secondary = disjoint_secondary_mappings.first();
-            let phase1_primary_transcript_id =
-                Self::primary_phase1_transcript_id(hit).trim().to_string();
             let suspicion_summary = if multi_gene_fragment {
                 format!(
                     "{} signal(s): fragment decomposition suggests {} distinct gene/group origins within one retained read",
@@ -2406,6 +2821,7 @@ impl GentleEngine {
                     .then_some(phase1_primary_transcript_id),
                 best_transcript_id: best_mapping.map(|mapping| mapping.transcript_id.clone()),
                 best_transcript_label: best_mapping.map(|mapping| mapping.transcript_label.clone()),
+                best_gene_id,
                 best_identity_fraction: best_mapping.map(|mapping| mapping.identity_fraction),
                 best_query_coverage_fraction: best_mapping
                     .map(|mapping| mapping.query_coverage_fraction),
@@ -2429,10 +2845,18 @@ impl GentleEngine {
                 suspicion_summary,
                 fragment_origin_gene_count: fragment_origin_gene_ids.len(),
                 fragment_origin_gene_ids,
+                partner_gene_count: partner_gene_ids.len(),
+                partner_gene_ids,
+                partner_transcript_count: partner_transcript_ids.len(),
+                partner_transcript_ids,
                 adapter_hits,
                 fragment_origins,
             });
         }
+
+        let partner_gene_summaries = Self::summarize_rna_read_concatemer_partner_genes(&rows);
+        let partner_transcript_summaries =
+            Self::summarize_rna_read_concatemer_partner_transcripts(&rows);
 
         rows.sort_by(|left, right| {
             Self::rna_read_concatemer_suspicion_level_sort_key(right.suspicion_level)
@@ -2473,6 +2897,8 @@ impl GentleEngine {
             max_secondary_mappings: report.align_config.max_secondary_mappings,
             settings,
             warnings,
+            partner_gene_summaries,
+            partner_transcript_summaries,
             rows,
         })
     }
@@ -4666,6 +5092,7 @@ impl GentleEngine {
                     record_index,
                     source_byte_offset: header_offset,
                     header_id,
+                    header_text: header_text,
                     sequence: normalized.as_bytes().to_vec(),
                 },
                 FastaVisitProgress {

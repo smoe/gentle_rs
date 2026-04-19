@@ -658,6 +658,7 @@ struct ParsedFastaReadRecord {
     record_index: usize,
     source_byte_offset: usize,
     header_id: String,
+    header_text: String,
     sequence: Vec<u8>,
 }
 
