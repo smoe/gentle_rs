@@ -3788,6 +3788,10 @@ Tutorial projects:
     value kind between `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
     `true_log_odds_quantile`, so promoter inspection is not locked to one
     scoring view.
+  - the same score-track panel now also shows deterministic random-background
+    normalization context (`p99`, `Δp99`, `bg+`) per motif so permissive score
+    families can be read against their baseline instead of as free-floating
+    texture.
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

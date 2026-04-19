@@ -382,6 +382,29 @@ pub struct TfbsRegionSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Deterministic background-normalization reference for one TF score track.
+///
+/// The reference distribution is computed with the same score family and the
+/// same clipping semantics as the exported/displayed track itself so
+/// `observed_peak_delta_from_p99` stays interpretable even when negative raw
+/// scores are hidden from the presentation.
+pub struct TfbsScoreTrackNormalizationReference {
+    pub background_model: String,
+    pub random_sequence_length_bp: usize,
+    pub random_seed: u64,
+    pub sample_count: usize,
+    pub mean_score: f64,
+    pub stddev_score: f64,
+    pub p95_score: f64,
+    pub p99_score: f64,
+    pub positive_fraction: f64,
+    pub observed_peak_empirical_quantile: f64,
+    pub observed_peak_delta_from_p95: f64,
+    pub observed_peak_delta_from_p99: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One continuous TF motif score track over a requested DNA span.
 ///
 /// `forward_scores[i]` and `reverse_scores[i]` correspond to the motif window
@@ -397,6 +420,8 @@ pub struct TfbsScoreTrackRow {
     pub max_score: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalization_reference: Option<TfbsScoreTrackNormalizationReference>,
     #[serde(default)]
     pub forward_scores: Vec<f64>,
     #[serde(default)]

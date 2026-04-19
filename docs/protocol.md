@@ -190,8 +190,22 @@ Behavior notes:
   - `llr_quantile`
   - `true_log_odds_bits`
   - `true_log_odds_quantile`
+- each returned track now also carries a deterministic normalization reference
+  computed on `10000 bp` of uniform random DNA with the same score family and
+  the same clipping semantics as the exported track itself:
+  - `mean_score`
+  - `stddev_score`
+  - `p95_score`
+  - `p99_score`
+  - `positive_fraction`
+  - `observed_peak_empirical_quantile`
+  - `observed_peak_delta_from_p95`
+  - `observed_peak_delta_from_p99`
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
+- the SVG figure now also prints compact `p99 / Δp99 / bg+` labels per motif so
+  permissive score families such as `true_log_odds_bits` can be read against
+  their random-background baseline instead of looking like unanchored texture
 - The shared report also carries transcription-start markers for covered or
   directly adjacent starts, and the SVG renderer shows them as short hooked
   arrows so strand direction survives figure-oriented exports.
@@ -1273,6 +1287,10 @@ Current draft operations:
   - `clip_negative=true` clamps negative scores to `0.0` for the bit-based
     kinds, which is the intended display mode for promoter-design plots when
     only positive support should be shown
+  - each returned track also carries a deterministic background-normalization
+    block computed on the same presented score family so `p99` and `Δp99`
+    remain interpretable even when negative raw values are clipped out of the
+    display
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
 - `RenderTfbsScoreTracksSvg { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path }`
@@ -1280,6 +1298,8 @@ Current draft operations:
   - writes a deterministic figure suitable for GUI/CLI/agent/README parity
   - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
     also returns that report in `OpResult.tfbs_score_tracks`
+  - the figure includes the same random-background normalization context used by
+    the JSON payload, surfaced as compact `p99 / Δp99 / bg+` labels
 - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
   - non-mutating thresholded TFBS/JASPAR hit scan over either stored `seq_id`
     input or inline ASCII DNA through `SequenceScanTarget`

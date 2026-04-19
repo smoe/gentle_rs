@@ -60,7 +60,7 @@ impl GentleEngine {
         out
     }
 
-    fn deterministic_random_dna_bytes(length_bp: usize, seed: u64) -> Vec<u8> {
+    pub(crate) fn deterministic_random_dna_bytes(length_bp: usize, seed: u64) -> Vec<u8> {
         const BASES: [u8; 4] = [b'A', b'C', b'G', b'T'];
         let mut state = if seed == 0 {
             DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED
@@ -77,7 +77,10 @@ impl GentleEngine {
         out
     }
 
-    fn scan_single_jaspar_scores(sequence: &[u8], score_matrix: &[[f64; 4]]) -> Vec<f64> {
+    pub(crate) fn scan_single_jaspar_scores(
+        sequence: &[u8],
+        score_matrix: &[[f64; 4]],
+    ) -> Vec<f64> {
         if score_matrix.is_empty() || sequence.len() < score_matrix.len() {
             return vec![];
         }
@@ -102,7 +105,9 @@ impl GentleEngine {
         scores
     }
 
-    fn summarize_jaspar_score_distribution(scores: &[f64]) -> JasparScoreDistributionSummary {
+    pub(crate) fn summarize_jaspar_score_distribution(
+        scores: &[f64],
+    ) -> JasparScoreDistributionSummary {
         fn percentile(sorted_scores: &[f64], fraction: f64) -> f64 {
             if sorted_scores.is_empty() {
                 return 0.0;

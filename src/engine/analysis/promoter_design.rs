@@ -7,6 +7,18 @@ use super::*;
 use crate::feature_location::{feature_is_reverse, feature_ranges_sorted_i64};
 
 impl GentleEngine {
+    fn tfbs_score_track_presented_value(
+        raw_score: f64,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+    ) -> f64 {
+        if score_kind.supports_negative_values() {
+            Self::promoter_design_clip_score(raw_score, clip_negative)
+        } else {
+            raw_score
+        }
+    }
+
     fn promoter_design_clip_score(score: f64, clip_negative: bool) -> f64 {
         if clip_negative && score.is_sign_negative() {
             0.0
@@ -77,6 +89,58 @@ impl GentleEngine {
         markers
     }
 
+    fn summarize_tfbs_score_track_normalization_reference(
+        random_background: &[u8],
+        llr_matrix: &[[f64; 4]],
+        true_log_odds_matrix: &[[f64; 4]],
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        observed_peak_score: f64,
+    ) -> Option<TfbsScoreTrackNormalizationReference> {
+        let scores = Self::scan_tf_scores(
+            random_background,
+            llr_matrix,
+            true_log_odds_matrix,
+            |_, _| {},
+        )
+        .into_iter()
+        .map(
+            |(_, _, llr_bits, llr_quantile, true_log_odds_bits, true_log_odds_quantile)| {
+                let raw_score = match score_kind {
+                    TfbsScoreTrackValueKind::LlrBits => llr_bits,
+                    TfbsScoreTrackValueKind::LlrQuantile => llr_quantile,
+                    TfbsScoreTrackValueKind::TrueLogOddsBits => true_log_odds_bits,
+                    TfbsScoreTrackValueKind::TrueLogOddsQuantile => true_log_odds_quantile,
+                };
+                Self::tfbs_score_track_presented_value(raw_score, score_kind, clip_negative)
+            },
+        )
+        .collect::<Vec<_>>();
+        if scores.is_empty() {
+            return None;
+        }
+        let distribution = Self::summarize_jaspar_score_distribution(&scores);
+        let mut sorted_scores = scores;
+        sorted_scores.sort_by(|left, right| left.total_cmp(right));
+        Some(TfbsScoreTrackNormalizationReference {
+            background_model: "uniform_random_dna".to_string(),
+            random_sequence_length_bp: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
+            random_seed: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+            sample_count: distribution.sample_count,
+            mean_score: distribution.mean_score,
+            stddev_score: distribution.stddev_score,
+            p95_score: distribution.p95_score,
+            p99_score: distribution.p99_score,
+            positive_fraction: distribution.positive_fraction,
+            observed_peak_empirical_quantile: Self::empirical_quantile(
+                &sorted_scores,
+                observed_peak_score,
+            ),
+            observed_peak_delta_from_p95: observed_peak_score - distribution.p95_score,
+            observed_peak_delta_from_p99: observed_peak_score - distribution.p99_score,
+        })
+    }
+
     pub(crate) fn summarize_tfbs_score_tracks(
         &self,
         seq_id: &str,
@@ -124,6 +188,10 @@ impl GentleEngine {
         let sequence = dna.get_forward_string();
         let bytes = sequence.as_bytes();
         let view = &bytes[start_0based..end_0based_exclusive];
+        let random_background = Self::deterministic_random_dna_bytes(
+            DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
+            DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        );
 
         let mut tracks = vec![];
         let mut global_max_score = 0.0_f64;
@@ -162,11 +230,11 @@ impl GentleEngine {
                         TfbsScoreTrackValueKind::TrueLogOddsBits => true_log_odds_bits,
                         TfbsScoreTrackValueKind::TrueLogOddsQuantile => true_log_odds_quantile,
                     };
-                    let score = if score_kind.supports_negative_values() {
-                        Self::promoter_design_clip_score(raw_score, clip_negative)
-                    } else {
-                        raw_score
-                    };
+                    let score = Self::tfbs_score_track_presented_value(
+                        raw_score,
+                        score_kind,
+                        clip_negative,
+                    );
                     if reverse {
                         reverse_scores[offset] = score;
                     } else {
@@ -183,6 +251,14 @@ impl GentleEngine {
                     }
                 }
             }
+            let normalization_reference = Self::summarize_tfbs_score_track_normalization_reference(
+                &random_background,
+                &llr_matrix,
+                &true_log_odds_matrix,
+                score_kind,
+                clip_negative,
+                max_score,
+            );
             global_max_score = global_max_score.max(max_score);
             tracks.push(TfbsScoreTrackRow {
                 tf_id,
@@ -192,6 +268,7 @@ impl GentleEngine {
                 scored_window_count,
                 max_score,
                 max_position_0based,
+                normalization_reference,
                 forward_scores,
                 reverse_scores,
             });

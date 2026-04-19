@@ -1110,6 +1110,11 @@ order. Durable architecture constraints and decisions remain in
           `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
           `true_log_odds_quantile` are all available in GUI, shell, CLI, JSON,
           and SVG export paths
+        - the same shared score-track route now also carries deterministic
+          random-background normalization reference data per motif and surfaces
+          compact `p99 / Δp99 / bg+` labels in GUI/SVG exports, which makes
+          real promoter exercises such as TERT much easier to read without
+          mistaking permissive score families for meaningful signal
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is

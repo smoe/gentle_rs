@@ -1751,6 +1751,17 @@ impl MainAreaDna {
         markers
     }
 
+    fn promoter_design_track_normalization_summary(
+        normalization: &crate::engine::TfbsScoreTrackNormalizationReference,
+    ) -> String {
+        format!(
+            "p99 {:.2} | Δp99 {:+.2} | bg+ {:.1}%",
+            normalization.p99_score,
+            normalization.observed_peak_delta_from_p99,
+            normalization.positive_fraction.max(0.0) * 100.0
+        )
+    }
+
     fn paint_promoter_design_track_plot(
         ui: &mut egui::Ui,
         report: &TfbsScoreTrackReport,
@@ -1882,6 +1893,19 @@ impl MainAreaDna {
                 ))
                 .color(egui::Color32::from_rgb(71, 85, 105)),
             );
+            if let Some(normalization) = report
+                .tracks
+                .iter()
+                .find_map(|track| track.normalization_reference.as_ref())
+            {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "background normalization: {} {} bp deterministic random DNA",
+                        normalization.background_model, normalization.random_sequence_length_bp
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
             for track in &report.tracks {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -1898,6 +1922,16 @@ impl MainAreaDna {
                                 .map(|pos| format!(" @ {}", pos))
                                 .unwrap_or_default()
                         ));
+                        if let Some(normalization) = track.normalization_reference.as_ref() {
+                            ui.small(
+                                egui::RichText::new(
+                                    Self::promoter_design_track_normalization_summary(
+                                        normalization,
+                                    ),
+                                )
+                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                            );
+                        }
                         ui.small(
                             egui::RichText::new("forward / reverse")
                                 .color(egui::Color32::from_rgb(71, 85, 105)),

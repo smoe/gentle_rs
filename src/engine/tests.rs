@@ -26909,6 +26909,22 @@ fn summarize_tfbs_score_tracks_supports_quantile_scoring_modes() {
             .chain(track.reverse_scores.iter())
             .any(|score| *score > 0.0)
     );
+    let normalization = track
+        .normalization_reference
+        .as_ref()
+        .expect("quantile score tracks should carry normalization reference");
+    assert_eq!(
+        normalization.random_sequence_length_bp,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP
+    );
+    assert_eq!(
+        normalization.random_seed,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED
+    );
+    assert!(normalization.sample_count > 0);
+    assert!(normalization.p99_score >= normalization.p95_score);
+    assert!((0.0..=1.0).contains(&normalization.positive_fraction));
+    assert!((0.0..=1.0).contains(&normalization.observed_peak_empirical_quantile));
 }
 
 #[test]
@@ -26962,6 +26978,21 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
             .iter()
             .all(|track| track.forward_scores.iter().all(|score| *score >= 0.0))
     );
+    for track in &report.tracks {
+        let normalization = track
+            .normalization_reference
+            .as_ref()
+            .expect("bit score tracks should carry normalization reference");
+        assert_eq!(normalization.background_model, "uniform_random_dna");
+        assert!(normalization.p99_score >= normalization.p95_score);
+        assert!(
+            (track.max_score
+                - normalization.p99_score
+                - normalization.observed_peak_delta_from_p99)
+                .abs()
+                < 1e-9
+        );
+    }
 }
 
 #[test]

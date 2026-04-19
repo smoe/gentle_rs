@@ -13,7 +13,7 @@ const SVG_HEADER_HEIGHT: f64 = 82.0;
 const SVG_FOOTER_HEIGHT: f64 = 42.0;
 const SVG_ROW_HEIGHT: f64 = 88.0;
 const SVG_ROW_GAP: f64 = 14.0;
-const SVG_LABEL_WIDTH: f64 = 196.0;
+const SVG_LABEL_WIDTH: f64 = 260.0;
 const SVG_TRACK_PADDING_X: f64 = 10.0;
 const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
@@ -48,6 +48,32 @@ fn format_bp_ticks(start_0based: usize, end_0based_exclusive: usize) -> (String,
         mid.to_string(),
         end_0based_exclusive.to_string(),
     )
+}
+
+fn format_positive_fraction_as_percent(fraction: f64) -> String {
+    format!("{:.1}%", fraction.max(0.0) * 100.0)
+}
+
+fn format_track_normalization_summary(
+    normalization: &crate::engine::TfbsScoreTrackNormalizationReference,
+) -> String {
+    format!(
+        "p99 {:.2} | Δp99 {:+.2} | bg+ {}",
+        normalization.p99_score,
+        normalization.observed_peak_delta_from_p99,
+        format_positive_fraction_as_percent(normalization.positive_fraction)
+    )
+}
+
+fn format_report_normalization_note(report: &TfbsScoreTrackReport) -> Option<String> {
+    let normalization = report
+        .tracks
+        .iter()
+        .find_map(|track| track.normalization_reference.as_ref())?;
+    Some(format!(
+        "normalization={} {}bp deterministic background",
+        normalization.background_model, normalization.random_sequence_length_bp
+    ))
 }
 
 fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
@@ -283,6 +309,7 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
     );
     let legend = "forward strand = teal | reverse strand = amber";
     let score_range_label = format!("{min_score:.2} .. {max_score:.2}");
+    let normalization_note = format_report_normalization_note(report);
 
     let mut svg = String::new();
     svg.push_str(&format!(
@@ -304,6 +331,13 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         content_left,
         escape_svg_text(legend)
     ));
+    if let Some(note) = normalization_note {
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"73\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
+            content_left,
+            escape_svg_text(&note)
+        ));
+    }
     svg.push_str(&format!(
         "<text x=\"{:.1}\" y=\"60\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">score range {}</text>\n",
         content_right,
@@ -324,6 +358,10 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             "{} windows | max {:.2}{}",
             track.scored_window_count, track.max_score, max_position
         );
+        let normalization_meta = track
+            .normalization_reference
+            .as_ref()
+            .map(format_track_normalization_summary);
         let row_fill = if row_idx % 2 == 0 {
             "#fffaf0"
         } else {
@@ -349,6 +387,14 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             row_top + 40.0,
             escape_svg_text(&meta)
         ));
+        if let Some(normalization_meta) = normalization_meta {
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
+                content_left + 12.0,
+                row_top + 56.0,
+                escape_svg_text(&normalization_meta)
+            ));
+        }
 
         svg.push_str(&format!(
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
@@ -474,7 +520,10 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{TfbsScoreTrackReport, TfbsScoreTrackRow, TfbsScoreTrackValueKind};
+    use crate::engine::{
+        TfbsScoreTrackNormalizationReference, TfbsScoreTrackReport, TfbsScoreTrackRow,
+        TfbsScoreTrackValueKind,
+    };
 
     #[test]
     fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
@@ -507,6 +556,20 @@ mod tests {
                     scored_window_count: 4,
                     max_score: 8.5,
                     max_position_0based: Some(12),
+                    normalization_reference: Some(TfbsScoreTrackNormalizationReference {
+                        background_model: "uniform_random_dna".to_string(),
+                        random_sequence_length_bp: 10_000,
+                        random_seed: 7,
+                        sample_count: 100,
+                        mean_score: 1.2,
+                        stddev_score: 0.8,
+                        p95_score: 2.4,
+                        p99_score: 3.1,
+                        positive_fraction: 0.045,
+                        observed_peak_empirical_quantile: 1.0,
+                        observed_peak_delta_from_p95: 6.1,
+                        observed_peak_delta_from_p99: 5.4,
+                    }),
                     forward_scores: vec![0.0, 3.0, 8.5, 2.0],
                     reverse_scores: vec![0.0, 1.0, 2.0, 0.5],
                 },
@@ -518,6 +581,20 @@ mod tests {
                     scored_window_count: 4,
                     max_score: 4.0,
                     max_position_0based: Some(8),
+                    normalization_reference: Some(TfbsScoreTrackNormalizationReference {
+                        background_model: "uniform_random_dna".to_string(),
+                        random_sequence_length_bp: 10_000,
+                        random_seed: 7,
+                        sample_count: 100,
+                        mean_score: 0.9,
+                        stddev_score: 0.6,
+                        p95_score: 1.8,
+                        p99_score: 2.2,
+                        positive_fraction: 0.022,
+                        observed_peak_empirical_quantile: 0.997,
+                        observed_peak_delta_from_p95: 2.2,
+                        observed_peak_delta_from_p99: 1.8,
+                    }),
                     forward_scores: vec![0.5, 4.0, 1.0, 0.0],
                     reverse_scores: vec![0.0, 0.8, 2.0, 0.3],
                 },
@@ -536,6 +613,9 @@ mod tests {
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-tick\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-arrow\""));
         assert!(svg.contains("TSS NM_TP73"));
+        assert!(svg.contains("normalization=uniform_random_dna 10000bp deterministic background"));
+        assert!(svg.contains("Δp99 +5.40"));
+        assert!(svg.contains("bg+ 4.5%"));
     }
 
     #[test]
@@ -562,6 +642,20 @@ mod tests {
                 scored_window_count: 4,
                 max_score: 4.0,
                 max_position_0based: Some(14),
+                normalization_reference: Some(TfbsScoreTrackNormalizationReference {
+                    background_model: "uniform_random_dna".to_string(),
+                    random_sequence_length_bp: 10_000,
+                    random_seed: 7,
+                    sample_count: 100,
+                    mean_score: -0.5,
+                    stddev_score: 1.1,
+                    p95_score: 2.0,
+                    p99_score: 3.0,
+                    positive_fraction: 0.019,
+                    observed_peak_empirical_quantile: 0.991,
+                    observed_peak_delta_from_p95: 2.0,
+                    observed_peak_delta_from_p99: 1.0,
+                }),
                 forward_scores: vec![-2.0, -1.0, 2.0, 4.0],
                 reverse_scores: vec![-1.5, 0.0, 1.5, 2.5],
             }],
