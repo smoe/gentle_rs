@@ -1925,6 +1925,17 @@ order. Durable architecture constraints and decisions remain in
       - the wrapper now supports declared `expected_artifacts[]`, and the
         shipped graphics examples copy generated SVGs into the ClawBio
         output bundle instead of leaving it only in the execution cwd
+      - when one run now yields multiple collected SVGs, the wrapper can also
+        synthesize one best-first `generated/clawbio_storyboard.svg`
+        presentation artifact for chat/share-friendly replies
+      - the shipped VKORC1 / rs9923231 luciferase-planning example now uses
+        that path so ClawBio has one stronger graphical answer ready for
+        "How can you help me with functional analyses of genetic variations?"
+      - that same answer path now also frames the synbio bridge explicitly:
+        near-term messaging can stay simple and broad, namely that GENtle
+        accepts arbitrary instructions for rearranging and combining DNA
+        fragments, with engineered reporter-system design being one concrete
+        downstream example
   - the ClawBio-facing `SKILL.md` and scaffold README now split the single
     runtime alias into six logical capability lanes so users/agents do not
     have to infer them from examples:
@@ -2402,6 +2413,11 @@ Notes:
      - likely ontology dimensions include vector/helper kind, host system,
        purification tags, protease sites, cloning windows, selectable markers,
        origins, promoters, reporters, and ordering/procurement metadata
+   - the helper/catalog direction still lacks one explicit review pass over
+     community-provided synthetic-biology resource sets, so current semantics
+     risk being shaped too much by in-repo examples rather than the real
+     public ecosystem of reusable vectors, reporter systems, modular-cloning
+     parts, and chassis-facing resources
    - ClawBio/BioClaw bootstrap is now materially smoother:
      the scaffold includes a local-checkout launcher plus first-run
      `genomes/helpers status|prepare` request examples, but upstream ClawBio
@@ -2717,6 +2733,28 @@ Planned work:
    - likely dimensions include vector/helper kind, host system, purification
      tags, protease sites, selectable markers, origins, promoters, reporters,
      cloning windows, and procurement/order channels
+7. Review synthetic-biology community resource offerings before freezing the
+   next helper-construct/catalog layer:
+   - until that review lands, keep the user-facing claim simpler:
+     GENtle already accepts arbitrary instructions to rearrange and combine
+     DNA fragments, even where the community-resource ontology/catalog layer is
+     still evolving
+   - inspect representative community-maintained resource types such as public
+     plasmid/vector registries, modular-cloning part collections, reporter
+     assay backbones, and chassis/host-facing resource catalogs
+   - record which metadata surfaces recur across those resources and should be
+     first-class in GENtle helper constructs:
+     - provenance/source and redistribution expectations
+     - host/chassis compatibility
+     - assembly standard / cloning system
+     - selectable markers, reporters, origins, tags, and regulatory parts
+     - procurement/distribution channel and practical availability notes
+   - compare those community-facing metadata patterns against the current
+     `helper_kind` / `host_system` / `procurement` / `semantics` baseline and
+     identify the minimum additive fields needed for GENtle + ClawBio use
+   - use that review to decide which community resource families should become
+     first-class demo/catalog targets beyond the current pUC19- and
+     luciferase-centered examples
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
