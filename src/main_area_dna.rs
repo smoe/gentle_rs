@@ -4318,6 +4318,43 @@ mod tests {
     }
 
     #[test]
+    fn inspect_sequence_span_selects_and_centers_linear_view() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_linear_viewport(0, 100);
+
+        area.inspect_sequence_span_0based(220, 240, "demo site")
+            .expect("inspect span");
+
+        assert_eq!(area.current_selection_range_0based(), Some((220, 240)));
+        let (start, span, seq_len) = area.current_linear_viewport();
+        assert_eq!(seq_len, 400);
+        assert_eq!(span, 100);
+        assert_eq!(start, 180);
+        assert!(area.op_status.contains("Focused demo site: 220..240"));
+    }
+
+    #[test]
+    fn inspect_sequence_span_supports_wrapped_circular_selection() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(25)).expect("sequence");
+        dna.set_circular(true);
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        area.inspect_sequence_span_0based(90, 10, "wrapped site")
+            .expect("inspect wrapped span");
+
+        let selection = area
+            .dna_display
+            .read()
+            .expect("display lock")
+            .selection()
+            .expect("selection");
+        assert_eq!(selection.from(), 90);
+        assert_eq!(selection.to(), 10);
+        assert!(area.op_status.contains("wrapped span 90..10"));
+    }
+
+    #[test]
     fn linear_drag_selection_updates_selection_formula_text() {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -16288,15 +16325,9 @@ impl MainAreaDna {
                                 self.export_cached_tfbs_hit_scan_json();
                             }
                         });
-                        Self::render_restriction_site_scan_summary_panel(
-                            ui,
-                            self.cached_restriction_site_scan.as_ref(),
-                        );
+                        self.render_restriction_site_scan_summary_panel(ui);
                         ui.add_space(6.0);
-                        Self::render_tfbs_hit_scan_summary_panel(
-                            ui,
-                            self.cached_tfbs_hit_scan.as_ref(),
-                        );
+                        self.render_tfbs_hit_scan_summary_panel(ui);
                     });
 
                 egui::CollapsingHeader::new("Isoform architecture panels")
@@ -17232,6 +17263,60 @@ impl MainAreaDna {
             .map_err(|_| "DNA display lock poisoned while setting selection".to_string())?
             .select(Selection::new(start, end_exclusive, sequence_length));
         self.map_sequence.request_scroll_to_selection();
+        Ok(())
+    }
+
+    fn inspect_sequence_span_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+        context_label: &str,
+    ) -> Result<(), String> {
+        let sequence_length = self
+            .dna
+            .read()
+            .map_err(|_| "DNA lock poisoned while inspecting span".to_string())?
+            .len();
+        if sequence_length == 0 {
+            return Err("Cannot inspect a span on an empty sequence".to_string());
+        }
+        let wraps_origin = self.is_circular() && end_exclusive <= start;
+        if wraps_origin {
+            if start >= sequence_length || end_exclusive >= sequence_length {
+                return Err(format!(
+                    "Invalid wrapped inspection span {}..{} for circular sequence length {}",
+                    start, end_exclusive, sequence_length
+                ));
+            }
+            self.dna_display
+                .write()
+                .map_err(|_| "DNA display lock poisoned while inspecting span".to_string())?
+                .select(Selection::new(start, end_exclusive, sequence_length));
+            self.map_sequence.request_scroll_to_selection();
+            self.sync_selection_formula_text_to_range(start, end_exclusive);
+            self.op_status = format!(
+                "Focused {context_label}: wrapped span {}..{} (0-based, end-exclusive on circular sequence)",
+                start, end_exclusive
+            );
+            return Ok(());
+        }
+
+        self.set_selection_range_0based(start, end_exclusive)?;
+        if !self.is_circular() {
+            let (_, span_bp, sequence_length) = self.current_linear_viewport();
+            if sequence_length > 0 {
+                let span_bp = span_bp.clamp(1, sequence_length);
+                let center_bp = start.saturating_add(end_exclusive.saturating_sub(start) / 2);
+                let max_start = sequence_length.saturating_sub(span_bp);
+                let new_start = center_bp.saturating_sub(span_bp / 2).min(max_start);
+                self.set_linear_viewport(new_start, span_bp);
+                self.sync_linear_view_input_fields_to_viewport();
+            }
+        }
+        self.op_status = format!(
+            "Focused {context_label}: {}..{} (0-based, end-exclusive)",
+            start, end_exclusive
+        );
         Ok(())
     }
 
@@ -18390,225 +18475,266 @@ impl MainAreaDna {
         )
     }
 
-    fn render_restriction_site_scan_summary_panel(
-        ui: &mut egui::Ui,
-        report: Option<&RestrictionSiteScanReport>,
-    ) {
-        let Some(report) = report else {
-            ui.small(
-                egui::RichText::new(
-                    "No restriction-site scan cached yet. Use the toolbar menu `RE scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
-                )
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-            return;
-        };
-        ui.group(|ui| {
-            ui.label(egui::RichText::new("Restriction-site scan").strong());
-            ui.small(
-                egui::RichText::new(format!(
-                    "{} matched site(s) across {}..{} | {} enzyme(s) scanned{}",
-                    report.matched_site_count,
-                    report.scan_start_0based,
-                    report.scan_end_0based_exclusive,
-                    report.enzymes_scanned.len(),
-                    report
-                        .max_sites_per_enzyme
-                        .map(|cap| format!(" | per-enzyme cap {}", cap))
-                        .unwrap_or_default()
-                ))
-                .color(egui::Color32::from_rgb(71, 85, 105)),
-            );
-            ui.small(
-                egui::RichText::new(Self::scan_target_summary_line(
-                    &report.target_kind,
-                    &report.target_label,
-                    report.source_sequence_length_bp,
-                    report.scan_topology,
-                ))
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-            if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
-                ui.small(
-                    egui::RichText::new(format!(
-                        "skipped due to per-enzyme cap: {}",
-                        report.skipped_enzyme_names_due_to_max_sites.join(", ")
-                    ))
-                    .color(egui::Color32::from_rgb(180, 83, 9)),
-                );
-            }
-            let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
-            let preview_count = preview_rows.len();
-            if preview_rows.is_empty() {
+    fn render_restriction_site_scan_summary_panel(&mut self, ui: &mut egui::Ui) {
+        let navigate_to = {
+            let Some(report) = self.cached_restriction_site_scan.as_ref() else {
                 ui.small(
                     egui::RichText::new(
-                        "The cached scan finished successfully but found no matching restriction sites in the selected span.",
+                        "No restriction-site scan cached yet. Use the toolbar menu `RE scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
                 return;
-            }
-            egui::Grid::new(("restriction_site_scan_summary_grid", report.target_label.as_str()))
-                .num_columns(4)
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.small(egui::RichText::new("enzyme").strong());
-                    ui.small(egui::RichText::new("site").strong());
-                    ui.small(egui::RichText::new("cuts").strong());
-                    ui.small(egui::RichText::new("geometry").strong());
-                    ui.end_row();
-                    for row in &preview_rows {
-                        ui.small(row.enzyme_name.as_str());
-                        ui.small(format!(
-                            "{}..{}{}",
-                            row.source_recognition_start_0based,
-                            row.source_recognition_end_0based_exclusive,
-                            if row.forward_strand { " +" } else { " -" }
-                        ));
-                        ui.small(match (
-                            row.source_forward_cut_0based,
-                            row.source_reverse_cut_0based,
-                        ) {
-                            (Some(forward), Some(reverse)) => format!("{forward} / {reverse}"),
-                            (Some(forward), None) => format!("{forward} / -"),
-                            (None, Some(reverse)) => format!("- / {reverse}"),
-                            (None, None) => "-".to_string(),
-                        });
-                        ui.small(match (
-                            row.source_opening_start_0based,
-                            row.source_opening_end_0based_exclusive,
-                        ) {
-                            (Some(start), Some(end)) => {
-                                format!("{} [{}..{}]", row.end_geometry, start, end)
-                            }
-                            _ => row.end_geometry.clone(),
-                        });
-                        ui.end_row();
-                    }
-                });
-            if report.rows.len() > preview_count {
+            };
+            let mut navigate_to: Option<(usize, usize, String)> = None;
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("Restriction-site scan").strong());
                 ui.small(
                     egui::RichText::new(format!(
-                        "showing first {} of {} matching sites",
-                        preview_count,
-                        report.rows.len()
+                        "{} matched site(s) across {}..{} | {} enzyme(s) scanned{}",
+                        report.matched_site_count,
+                        report.scan_start_0based,
+                        report.scan_end_0based_exclusive,
+                        report.enzymes_scanned.len(),
+                        report
+                            .max_sites_per_enzyme
+                            .map(|cap| format!(" | per-enzyme cap {}", cap))
+                            .unwrap_or_default()
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                ui.small(
+                    egui::RichText::new(Self::scan_target_summary_line(
+                        &report.target_kind,
+                        &report.target_label,
+                        report.source_sequence_length_bp,
+                        report.scan_topology,
                     ))
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
-            }
-        });
+                ui.small(
+                    egui::RichText::new(
+                        "Click an enzyme row to select that recognition span in the active sequence window.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "skipped due to per-enzyme cap: {}",
+                            report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                        ))
+                        .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+                let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
+                let preview_count = preview_rows.len();
+                if preview_rows.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "The cached scan finished successfully but found no matching restriction sites in the selected span.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    return;
+                }
+                egui::Grid::new(("restriction_site_scan_summary_grid", report.target_label.as_str()))
+                    .num_columns(4)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("enzyme").strong());
+                        ui.small(egui::RichText::new("site").strong());
+                        ui.small(egui::RichText::new("cuts").strong());
+                        ui.small(egui::RichText::new("geometry").strong());
+                        ui.end_row();
+                        for row in &preview_rows {
+                            let response = ui
+                                .link(row.enzyme_name.as_str())
+                                .on_hover_text("Select and center this recognition span");
+                            if response.clicked() {
+                                navigate_to = Some((
+                                    row.source_recognition_start_0based,
+                                    row.source_recognition_end_0based_exclusive,
+                                    format!("restriction site {}", row.enzyme_name),
+                                ));
+                            }
+                            ui.small(format!(
+                                "{}..{}{}",
+                                row.source_recognition_start_0based,
+                                row.source_recognition_end_0based_exclusive,
+                                if row.forward_strand { " +" } else { " -" }
+                            ));
+                            ui.small(match (
+                                row.source_forward_cut_0based,
+                                row.source_reverse_cut_0based,
+                            ) {
+                                (Some(forward), Some(reverse)) => format!("{forward} / {reverse}"),
+                                (Some(forward), None) => format!("{forward} / -"),
+                                (None, Some(reverse)) => format!("- / {reverse}"),
+                                (None, None) => "-".to_string(),
+                            });
+                            ui.small(match (
+                                row.source_opening_start_0based,
+                                row.source_opening_end_0based_exclusive,
+                            ) {
+                                (Some(start), Some(end)) => {
+                                    format!("{} [{}..{}]", row.end_geometry, start, end)
+                                }
+                                _ => row.end_geometry.clone(),
+                            });
+                            ui.end_row();
+                        }
+                    });
+                if report.rows.len() > preview_count {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "showing first {} of {} matching sites",
+                            preview_count,
+                            report.rows.len()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+            navigate_to
+        };
+        if let Some((start, end_exclusive, context_label)) = navigate_to {
+            let _ = self.inspect_sequence_span_0based(start, end_exclusive, &context_label);
+        }
     }
 
-    fn render_tfbs_hit_scan_summary_panel(ui: &mut egui::Ui, report: Option<&TfbsHitScanReport>) {
-        let Some(report) = report else {
-            ui.small(
-                egui::RichText::new(
-                    "No TFBS hit scan cached yet. Use the toolbar menu `TFBS scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
-                )
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-            return;
-        };
-        ui.group(|ui| {
-            ui.label(egui::RichText::new("TFBS hit scan").strong());
-            ui.small(
-                egui::RichText::new(format!(
-                    "{} matched hit(s) across {}..{} | {} motif(s) scanned{}",
-                    report.matched_hit_count,
-                    report.scan_start_0based,
-                    report.scan_end_0based_exclusive,
-                    report.motifs_scanned.len(),
-                    if report.truncated_at_max_hits {
-                        format!(
-                            " | truncated at {} hit(s)",
-                            report.max_hits.unwrap_or_default()
-                        )
-                    } else {
-                        String::new()
-                    }
-                ))
-                .color(egui::Color32::from_rgb(71, 85, 105)),
-            );
-            ui.small(
-                egui::RichText::new(Self::scan_target_summary_line(
-                    &report.target_kind,
-                    &report.target_label,
-                    report.source_sequence_length_bp,
-                    report.scan_topology,
-                ))
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-            let mut threshold_bits = Vec::new();
-            if let Some(value) = report.default_min_llr_bits {
-                threshold_bits.push(format!("default llr_bits >= {:.2}", value));
-            }
-            if let Some(value) = report.default_min_llr_quantile {
-                threshold_bits.push(format!("default llr_quantile >= {:.3}", value));
-            }
-            if !report.per_tf_thresholds.is_empty() {
-                threshold_bits.push(format!(
-                    "{} per-TF override(s)",
-                    report.per_tf_thresholds.len()
-                ));
-            }
-            if !threshold_bits.is_empty() {
-                ui.small(
-                    egui::RichText::new(format!("thresholds: {}", threshold_bits.join(" | ")))
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
-                );
-            }
-            let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
-            let preview_count = preview_rows.len();
-            if preview_rows.is_empty() {
+    fn render_tfbs_hit_scan_summary_panel(&mut self, ui: &mut egui::Ui) {
+        let navigate_to = {
+            let Some(report) = self.cached_tfbs_hit_scan.as_ref() else {
                 ui.small(
                     egui::RichText::new(
-                        "The cached hit scan finished successfully but found no TFBS matches in the selected span with the current motif/threshold settings.",
+                        "No TFBS hit scan cached yet. Use the toolbar menu `TFBS scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
                 return;
-            }
-            egui::Grid::new(("tfbs_hit_scan_summary_grid", report.target_label.as_str()))
-                .num_columns(5)
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.small(egui::RichText::new("motif").strong());
-                    ui.small(egui::RichText::new("span").strong());
-                    ui.small(egui::RichText::new("strand").strong());
-                    ui.small(egui::RichText::new("llr bits").strong());
-                    ui.small(egui::RichText::new("match").strong());
-                    ui.end_row();
-                    for row in &preview_rows {
-                        let label = row.tf_name.as_deref().unwrap_or(&row.tf_id);
-                        ui.small(label);
-                        ui.small(format!(
-                            "{}..{}{}",
-                            row.source_match_start_0based,
-                            row.source_match_end_0based_exclusive,
-                            if row.wraps_origin { " wrap" } else { "" }
-                        ));
-                        ui.small(if row.forward_strand { "+" } else { "-" });
-                        ui.small(format!("{:.2}", row.llr_bits));
-                        let matched = if row.matched_sequence.len() > 18 {
-                            format!("{}...", &row.matched_sequence[..18])
-                        } else {
-                            row.matched_sequence.clone()
-                        };
-                        ui.small(matched);
-                        ui.end_row();
-                    }
-                });
-            if report.rows.len() > preview_count {
+            };
+            let mut navigate_to: Option<(usize, usize, String)> = None;
+            ui.group(|ui| {
+                ui.label(egui::RichText::new("TFBS hit scan").strong());
                 ui.small(
                     egui::RichText::new(format!(
-                        "showing first {} of {} matching hits",
-                        preview_count,
-                        report.rows.len()
+                        "{} matched hit(s) across {}..{} | {} motif(s) scanned{}",
+                        report.matched_hit_count,
+                        report.scan_start_0based,
+                        report.scan_end_0based_exclusive,
+                        report.motifs_scanned.len(),
+                        if report.truncated_at_max_hits {
+                            format!(
+                                " | truncated at {} hit(s)",
+                                report.max_hits.unwrap_or_default()
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                ui.small(
+                    egui::RichText::new(Self::scan_target_summary_line(
+                        &report.target_kind,
+                        &report.target_label,
+                        report.source_sequence_length_bp,
+                        report.scan_topology,
                     ))
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
-            }
-        });
+                ui.small(
+                    egui::RichText::new(
+                        "Click a motif row to select that match span in the active sequence window.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                let mut threshold_bits = Vec::new();
+                if let Some(value) = report.default_min_llr_bits {
+                    threshold_bits.push(format!("default llr_bits >= {:.2}", value));
+                }
+                if let Some(value) = report.default_min_llr_quantile {
+                    threshold_bits.push(format!("default llr_quantile >= {:.3}", value));
+                }
+                if !report.per_tf_thresholds.is_empty() {
+                    threshold_bits.push(format!(
+                        "{} per-TF override(s)",
+                        report.per_tf_thresholds.len()
+                    ));
+                }
+                if !threshold_bits.is_empty() {
+                    ui.small(
+                        egui::RichText::new(format!("thresholds: {}", threshold_bits.join(" | ")))
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
+                let preview_count = preview_rows.len();
+                if preview_rows.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "The cached hit scan finished successfully but found no TFBS matches in the selected span with the current motif/threshold settings.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    return;
+                }
+                egui::Grid::new(("tfbs_hit_scan_summary_grid", report.target_label.as_str()))
+                    .num_columns(5)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("motif").strong());
+                        ui.small(egui::RichText::new("span").strong());
+                        ui.small(egui::RichText::new("strand").strong());
+                        ui.small(egui::RichText::new("llr bits").strong());
+                        ui.small(egui::RichText::new("match").strong());
+                        ui.end_row();
+                        for row in &preview_rows {
+                            let label = row.tf_name.as_deref().unwrap_or(&row.tf_id);
+                            let response = ui
+                                .link(label)
+                                .on_hover_text("Select and center this TFBS match");
+                            if response.clicked() {
+                                navigate_to = Some((
+                                    row.source_match_start_0based,
+                                    row.source_match_end_0based_exclusive,
+                                    format!("TFBS match {}", label),
+                                ));
+                            }
+                            ui.small(format!(
+                                "{}..{}{}",
+                                row.source_match_start_0based,
+                                row.source_match_end_0based_exclusive,
+                                if row.wraps_origin { " wrap" } else { "" }
+                            ));
+                            ui.small(if row.forward_strand { "+" } else { "-" });
+                            ui.small(format!("{:.2}", row.llr_bits));
+                            let matched = if row.matched_sequence.len() > 18 {
+                                format!("{}...", &row.matched_sequence[..18])
+                            } else {
+                                row.matched_sequence.clone()
+                            };
+                            ui.small(matched);
+                            ui.end_row();
+                        }
+                    });
+                if report.rows.len() > preview_count {
+                    ui.small(
+                        egui::RichText::new(format!(
+                            "showing first {} of {} matching hits",
+                            preview_count,
+                            report.rows.len()
+                        ))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+            });
+            navigate_to
+        };
+        if let Some((start, end_exclusive, context_label)) = navigate_to {
+            let _ = self.inspect_sequence_span_0based(start, end_exclusive, &context_label);
+        }
     }
 
     fn default_cached_tfbs_score_tracks_svg_file_name(report: &TfbsScoreTrackReport) -> String {

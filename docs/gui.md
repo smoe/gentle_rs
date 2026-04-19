@@ -3222,6 +3222,8 @@ Safety behavior:
     export button
   - `TFBS scan` now populates a cached TFBS-hit table plus shared JSON export
     button
+  - clicking a cached restriction-site or TFBS-hit row now selects that span in
+    the active DNA window and recenters the linear view there when applicable
   - `TFBS score tracks` remains the cached score-track/SVG sibling in the same
     window
 - The same `TFBS annotation` panel now also includes one cached score-track

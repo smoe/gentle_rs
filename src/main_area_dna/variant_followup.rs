@@ -586,8 +586,7 @@ impl MainAreaDna {
             .set_file_name(&default_name)
             .save_file()
         else {
-            self.op_status =
-                "Promoter design TF correlation SVG export canceled".to_string();
+            self.op_status = "Promoter design TF correlation SVG export canceled".to_string();
             return;
         };
         let result = self.apply_operation_with_feedback_and_result(

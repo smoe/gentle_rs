@@ -58,12 +58,18 @@ Why this sequence was chosen:
 5. Open `Direct scan inspectors`.
    - Expected result: the `Restriction-site scan` card is no longer empty.
    - You should see at least `EcoRI`, `SmaI`, and `BamHI`.
+   - Click one enzyme row.
+     - Expected result: GENtle selects that recognition span in the main DNA
+       window and recenters the linear viewport onto it.
 6. Press `Export cached restriction-site scan JSON...` if you want one portable
    report file to inspect outside the GUI.
 7. Use the toolbar menu `TFBS scan -> whole sequence`.
 8. Return to `Direct scan inspectors`.
    - Expected result: the `TFBS hit scan` card is no longer empty.
    - You should see at least one `SP1` or `TP73` row in the cached hit table.
+   - Click one motif row.
+     - Expected result: GENtle selects that TFBS match in the main DNA window
+       and recenters the linear viewport onto it.
 9. Press `Export cached TFBS hit scan JSON...` if you want the raw shared hit
    report.
 10. Use the toolbar menu `TFBS score tracks -> whole sequence`.
@@ -130,6 +136,8 @@ Mark this tutorial successful if all of these are true:
 - the GUI `Direct scan inspectors` section shows a populated restriction-site
   table after `RE scan`
 - the same section shows a populated TFBS hit table after `TFBS scan`
+- clicking rows in those two tables jumps back to the corresponding sequence
+  span in the active DNA window
 - the score-track inspector and SVG export work after `TFBS score tracks`
 - the workflow example writes all four expected artifacts
 - the ClawBio request can replay that same workflow without requiring a

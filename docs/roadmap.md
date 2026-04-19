@@ -2088,6 +2088,8 @@ order. Durable architecture constraints and decisions remain in
             toolbar scans populate in-window portable tables and can be
             re-exported as shared JSON through `FindRestrictionSites` and
             `ScanTfbsHits`
+          - those cached restriction-site / TFBS-hit tables now also support
+            row-level navigation back into the active DNA window sequence span
         - implemented small tutorial/demo follow-up:
           - offline workflow example:
             `docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`
