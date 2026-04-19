@@ -15,8 +15,8 @@ use crate::{
         DnaEndStyle, DnaFeatureCartoon, DnaMoleculeCartoon, DnaTopologyCartoon, OverhangPolarity,
         ProtocolCartoonAction, ProtocolCartoonEvent, ProtocolCartoonKind, ProtocolCartoonSpec,
         ProtocolCartoonStrandFillPattern, ProtocolCartoonTemplateBindings,
-        ProtocolCartoonTemplateEventBinding,
-        ProtocolCartoonTemplateFeatureBinding, ProtocolCartoonTemplateMoleculeBinding,
+        ProtocolCartoonTemplateEventBinding, ProtocolCartoonTemplateFeatureBinding,
+        ProtocolCartoonTemplateMoleculeBinding,
     },
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
 };

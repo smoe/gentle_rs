@@ -929,6 +929,14 @@ order. Durable architecture constraints and decisions remain in
       same template/binding abstraction
 - Top-level README showcase expansion is now underway:
   - shipped showcase figures now cover distinct GENtle usage modes:
+    - blunt-end PCR-product -> `SmaI`-opened pGEX cloning strip with
+      non-directional ligation outcomes and strand-distinguishable insert
+      rendering
+    - matching known-insert PCR-check strip that reuses the same blunt-clone
+      story for dual junction PCR plus tandem-insert exclusion
+    - matching unknown-insert strip that starts with degenerate primers on
+      conserved motifs and then hands off to standard vector-flank Sanger
+      sequencing
     - built-in Gibson protocol cartoon
     - single-insert dual-junction Gibson mechanism strip
     - Gibson lineage graph export showing one operation plus concrete outputs
@@ -1991,6 +1999,10 @@ order. Durable architecture constraints and decisions remain in
         - implemented parity surface:
           - GUI DNA-window `RE scan` menu for current selection, visible span,
             and whole active sequence
+          - GUI DNA-window `TFBS scan` menu for current selection, visible
+            span, and whole active sequence, reusing the current TFBS
+            annotation motif/threshold settings through the shared
+            `ScanTfbsHits` report path
           - shared shell / direct CLI:
             `features restriction-scan ...`
           - shared shell / direct CLI:
@@ -2002,9 +2014,6 @@ order. Durable architecture constraints and decisions remain in
         - next follow-up on the same operand family:
           - let `SummarizeTfbsScoreTracks` accept the same operand in addition
             to `seq_id`
-          - add a GUI selection-first non-mutating TFBS/JASPAR inspection
-            surface on top of the shared `ScanTfbsHits` report instead of
-            inventing a GUI-only analysis path
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`
@@ -5156,3 +5165,20 @@ Current parking-lot ideas:
     - derive anchors from deterministic local/global alignment landmarks
     - expose one helper route for authoring those anchors instead of requiring
       manual query-spec JSON or curated workflows
+- Primer-walking support and associated data management:
+  - current position:
+    - do not start a first-class primer-walking feature/data model yet
+    - the current README cloning story intentionally stops at
+      degenerate-primer recovery plus ordinary vector-flank Sanger sequencing,
+      because full primer-walking support is not needed for the current
+      baseline and would add substantial state-management complexity
+  - if revisited later, likely scope includes:
+    - explicit walking-step representation and primer provenance
+    - partial insert/contig discovery state across successive reads
+    - reopen/export/report surfaces for iterative read placement
+  - likely best reconsidered together with:
+    - long-range PCR workflow support
+    - copy-number-variation / larger unknown-span interpretation workflows
+  - note:
+    - keep this in the parking lot until a concrete workflow needs the added
+      biology and data-management surface

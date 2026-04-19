@@ -1750,12 +1750,7 @@ fn render_circular_molecule(
                 std::f32::consts::TAU * (feature.top_length_bp as f32 / total_top_bp as f32);
             let end_top = start_top + top_span;
             let top_path = arc_path(cx, cy, top_r, start_top, end_top);
-            render_circular_feature_arc(
-                svg,
-                &top_path,
-                &top_color,
-                feature.top_fill_pattern,
-            );
+            render_circular_feature_arc(svg, &top_path, &top_color, feature.top_fill_pattern);
             start_top = end_top;
         }
         if feature.bottom_length_bp > 0 {

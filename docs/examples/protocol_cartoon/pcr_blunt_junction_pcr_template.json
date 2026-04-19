@@ -1,0 +1,355 @@
+{
+  "schema": "gentle.protocol_cartoon_template.v1",
+  "id": "readme.pcr_blunt_junction_pcr",
+  "title": "GENtle Protocol Cartoon: PCR Checks for a Known Insert",
+  "summary": "Use two junction PCRs to confirm orientation of a known insert, then use an outward-facing insert-end PCR as a negative concatemer check.",
+  "defaults": {
+    "event_caption": "Known-insert PCR snapshot",
+    "feature_length_bp": 120,
+    "palette": [
+      "#29465b",
+      "#2a9d8f",
+      "#d68f2a",
+      "#c45b4d"
+    ]
+  },
+  "events": [
+    {
+      "id": "candidate_products",
+      "title": "Candidate Products",
+      "caption": "Blunt ligation still leaves two orientation candidates for the known insert.",
+      "molecules": [
+        {
+          "id": "orientation_1_candidate",
+          "label": "Orientation 1",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "orientation_1_backbone_left",
+              "label": "Backbone",
+              "length_bp": 68,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "orientation_1_junction_left",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "orientation_1_insert_left",
+              "label": "Known insert",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "orientation_1_insert_core",
+              "label": "Known insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "orientation_1_insert_right",
+              "label": "Known insert",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "orientation_1_junction_right",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "orientation_1_backbone_right",
+              "label": "Backbone",
+              "length_bp": 54,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        },
+        {
+          "id": "orientation_2_candidate",
+          "label": "Orientation 2",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "orientation_2_backbone_left",
+              "label": "Backbone",
+              "length_bp": 68,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "orientation_2_junction_left",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "orientation_2_insert_left",
+              "label": "Known insert",
+              "length_bp": 24,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
+            },
+            {
+              "id": "orientation_2_insert_core",
+              "label": "Known insert",
+              "length_bp": 32,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
+            },
+            {
+              "id": "orientation_2_insert_right",
+              "label": "Known insert",
+              "length_bp": 14,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "dots_50",
+              "bottom_fill_pattern": "solid"
+            },
+            {
+              "id": "orientation_2_junction_right",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "orientation_2_backbone_right",
+              "label": "Backbone",
+              "length_bp": 54,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "two_junction_pcrs",
+      "title": "Two Junction PCRs",
+      "action": {
+        "Custom": {
+          "label": "Orientation check"
+        }
+      },
+      "caption": "One PCR at each end confirms the chosen orientation of the known insert.",
+      "molecules": [
+        {
+          "id": "left_junction_pcr",
+          "label": "Left junction PCR",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "forward_primer_vl_site",
+              "label": "Vector primer vL",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_pcr_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_pcr_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "left_pcr_insert_segment",
+              "label": "Known insert",
+              "length_bp": 22,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "reverse_primer_il_site",
+              "label": "Insert primer iL",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            }
+          ]
+        },
+        {
+          "id": "right_junction_pcr",
+          "label": "Right junction PCR",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "forward_primer_ir_site",
+              "label": "Insert primer iR",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "right_pcr_insert_segment",
+              "label": "Known insert",
+              "length_bp": 22,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "right_pcr_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "right_pcr_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "reverse_primer_vr_site",
+              "label": "Vector primer vR",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concatemer_check",
+      "title": "Concatemer Check",
+      "action": {
+        "Custom": {
+          "label": "Negative assay"
+        }
+      },
+      "caption": "Outward-facing insert-end primers should stay negative unless tandem inserts were ligated.",
+      "molecules": [
+        {
+          "id": "single_insert_negative",
+          "label": "Single insert: no band",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "reverse_primer_il_site",
+              "label": "Insert primer iL",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "single_insert_body",
+              "label": "Known insert",
+              "length_bp": 46,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "forward_primer_ir_site",
+              "label": "Insert primer iR",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            }
+          ]
+        },
+        {
+          "id": "tandem_insert_positive",
+          "label": "Tandem insert: diagnostic band",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "forward_primer_ir_site",
+              "label": "Insert primer iR",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "tandem_junction_a",
+              "label": "Insert tail",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "tandem_insert_insert_junction",
+              "label": "Insert-insert junction",
+              "length_bp": 10,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "tandem_junction_b",
+              "label": "Insert head",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "reverse_primer_il_site",
+              "label": "Insert primer iL",
+              "length_bp": 18,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

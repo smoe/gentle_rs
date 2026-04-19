@@ -146,6 +146,56 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/pgex_blunt_pcr_ligation_hero.svg
 ```
 
+### Known-Insert PCR Checks
+
+![GENtle blunt-clone junction PCR hero](docs/figures/pgex_blunt_junction_pcr_hero.svg)
+
+For a known insert, the next practical checks after a non-directional blunt
+ligation are still PCR-based. Here GENtle keeps the same pGEX blunt-clone
+story, but switches from build logic to verification logic: two junction PCRs,
+one at each end, confirm the chosen insert orientation, and an outward-facing
+insert-end PCR stays negative unless multiple inserts were taken up in tandem.
+
+This conceptual strip is rendered from
+[`docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json`](docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json).
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon template-validate \
+  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json \
+  docs/figures/pgex_blunt_junction_pcr_hero.svg
+```
+
+### Unknown Insert with Degenerate Primers
+
+![GENtle blunt-clone degenerate-primer hero](docs/figures/pgex_blunt_sequence_confirmation_hero.svg)
+
+If the insert sequence is not known in advance, GENtle can instead illustrate
+the recovery step with degenerate primers placed on conserved motifs. Once
+that PCR product has been cloned, sequencing becomes ordinary again: the known
+vector primers on both sides read into the insert from the familiar flanks,
+and Sanger confirmation proceeds as usual.
+
+This conceptual strip is rendered from
+[`docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json`](docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json).
+Regenerate it from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon template-validate \
+  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json \
+  docs/figures/pgex_blunt_sequence_confirmation_hero.svg
+```
+
 ### Gibson Workflow, Mechanism, and Provenance
 
 ![GENtle Gibson protocol cartoon](docs/figures/gibson_two_fragment_protocol_cartoon.svg)

@@ -1784,7 +1784,20 @@ Controls:
      GUI-only quick scan, so CLI/shell/agent calls see the same report schema.
    - Status feedback summarizes the top hits inline, while the full machine-
      readable report remains available through the shared operation result.
-20. Selection formula
+20. TFBS scan
+   - Toolbar menu for direct non-mutating TFBS/JASPAR hit inspection on the
+     current active DNA window.
+   - Available entry points:
+     - current selection
+     - current visible linear span
+     - whole active sequence
+   - Reuses the current motif and threshold settings from the `TFBS annotation`
+     panel instead of maintaining a second GUI-only parameter set.
+   - Uses the shared `ScanTfbsHits` engine operation rather than a GUI-only
+     quick scan, so CLI/shell/agent calls see the same report schema.
+   - Status feedback summarizes the top hits inline; the quick GUI path caps
+     the report at 200 hits to keep inspection responsive.
+21. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Drag-selecting on the linear map now also updates this field to the
      current `=start .. end_exclusive` range, and existing map selections can
@@ -3180,6 +3193,10 @@ Safety behavior:
   the UI responsive on dense scans.
 - CLI/JSON workflows can override this via `AnnotateTfbs.max_hits` (`0` means
   unlimited).
+- The DNA-window toolbar `TFBS scan` menu reuses the same motif/threshold
+  settings for non-mutating quick inspection of the current selection, visible
+  span, or whole sequence, with a smaller GUI-only preview cap (`200`) to keep
+  those ad-hoc scans responsive.
 
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:

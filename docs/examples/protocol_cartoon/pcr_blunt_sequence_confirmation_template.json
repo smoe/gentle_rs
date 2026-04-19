@@ -1,0 +1,243 @@
+{
+  "schema": "gentle.protocol_cartoon_template.v1",
+  "id": "readme.pcr_blunt_unknown_insert_degenerate",
+  "title": "GENtle: Unknown Insert + Degenerate Primers",
+  "summary": "Degenerate primers recover the insert; cloned products are then sequenced from the vector flanks as usual.",
+  "defaults": {
+    "event_caption": "Unknown-insert recovery snapshot",
+    "feature_length_bp": 120,
+    "palette": [
+      "#29465b",
+      "#2a9d8f",
+      "#d68f2a",
+      "#c45b4d"
+    ]
+  },
+  "events": [
+    {
+      "id": "degenerate_capture",
+      "title": "Degenerate Primers",
+      "caption": "Degenerate primers dL and dR bind conserved motifs that flank the still-unknown insert sequence.",
+      "molecules": [
+        {
+          "id": "degenerate_pcr_source",
+          "label": "Conserved motifs around unknown insert",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "degenerate_left_primer",
+              "label": "Degenerate primer dL",
+              "length_bp": 18,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "conserved_left_motif",
+              "label": "Conserved motif",
+              "length_bp": 16,
+              "color_hex": "#c45b4d",
+              "bottom_color_hex": "#c45b4d"
+            },
+            {
+              "id": "unknown_insert_candidate",
+              "label": "Unknown insert",
+              "length_bp": 52,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "conserved_right_motif",
+              "label": "Conserved motif",
+              "length_bp": 16,
+              "color_hex": "#c45b4d",
+              "bottom_color_hex": "#c45b4d"
+            },
+            {
+              "id": "degenerate_right_primer",
+              "label": "Degenerate primer dR",
+              "length_bp": 18,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clone_recovered_product",
+      "title": "Clone Recovered Product",
+      "action": {
+        "Custom": {
+          "label": "Clone amplicon"
+        }
+      },
+      "caption": "After the degenerate-PCR product is cloned, the insert sits between known vector flanks just like any other plasmid insert.",
+      "molecules": [
+        {
+          "id": "cloned_unknown_insert",
+          "label": "Recovered insert in vector",
+          "left_end": "NotShown",
+          "right_end": "NotShown",
+          "features": [
+            {
+              "id": "vector_primer_v_site",
+              "label": "Vector primer v",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "recovered_unknown_insert",
+              "label": "Recovered insert",
+              "length_bp": 54,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "right_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "right_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "vector_primer_r_site",
+              "label": "Vector primer r",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "standard_sanger_reads",
+      "title": "Sanger As Usual",
+      "action": {
+        "Custom": {
+          "label": "Read in"
+        }
+      },
+      "caption": "Once the amplicon is in the vector, standard Sanger reads from v and r define both insert ends in the usual way.",
+      "molecules": [
+        {
+          "id": "left_vector_read",
+          "label": "Left read from primer v",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "left_read_vector_primer",
+              "label": "Vector primer v",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_read_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "left_read_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "left_read_insert_window",
+              "label": "Sanger read",
+              "length_bp": 32,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "left_read_remaining_insert",
+              "label": "Remaining insert",
+              "length_bp": 22,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            }
+          ]
+        },
+        {
+          "id": "right_vector_read",
+          "label": "Right read from primer r",
+          "left_end": "Blunt",
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "right_read_remaining_insert",
+              "label": "Remaining insert",
+              "length_bp": 22,
+              "color_hex": "#cfd8dc",
+              "bottom_color_hex": "#cfd8dc",
+              "top_fill_pattern": "solid",
+              "bottom_fill_pattern": "dots_50"
+            },
+            {
+              "id": "right_read_insert_window",
+              "label": "Sanger read",
+              "length_bp": 32,
+              "color_hex": "#2a9d8f",
+              "bottom_color_hex": "#2a9d8f"
+            },
+            {
+              "id": "right_read_junction",
+              "label": "MCS end",
+              "length_bp": 6,
+              "color_hex": "#d68f2a",
+              "bottom_color_hex": "#d68f2a"
+            },
+            {
+              "id": "right_read_vector_flank",
+              "label": "Vector flank",
+              "length_bp": 24,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            },
+            {
+              "id": "right_read_vector_primer",
+              "label": "Vector primer r",
+              "length_bp": 18,
+              "color_hex": "#6d7f8b",
+              "bottom_color_hex": "#6d7f8b"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
