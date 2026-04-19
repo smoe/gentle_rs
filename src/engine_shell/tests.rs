@@ -4407,6 +4407,34 @@ fn parse_features_tfbs_score_tracks_svg_for_inline_target() {
 }
 
 #[test]
+fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_scores() {
+    let cmd = parse_shell_line(
+        "features tfbs-score-track-correlation-svg seq_a /tmp/seq_a.tfbs_corr.svg --motif SP1 --motif MYC --range 2900..3100 --score-kind llr_background_tail_log10 --allow-negative",
+    )
+    .expect("parse features tfbs-score-track-correlation-svg");
+    match cmd {
+        ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg {
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(motifs, vec!["SP1".to_string(), "MYC".to_string()]);
+            assert_eq!(start_0based, 2900);
+            assert_eq!(end_0based_exclusive, 3100);
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert!(!clip_negative);
+            assert_eq!(output, "/tmp/seq_a.tfbs_corr.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_restriction_scan_for_stored_and_inline_targets() {
     let cmd = parse_shell_line(
         "features restriction-scan seq_a --range 10..120 --enzyme EcoRI --enzyme SmaI --max-sites-per-enzyme 3 --no-cut-geometry --path /tmp/seq_a.restriction_scan.json",
@@ -9654,6 +9682,49 @@ fn execute_features_tfbs_score_tracks_svg_matches_inline_and_stored_targets() {
             .expect("inline svg")
             .contains("tp73_context")
     );
+}
+
+#[test]
+fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_and_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tert_context".to_string(),
+        DNAsequence::from_sequence(&"ACGT".repeat(90)).expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("tert_track_correlation.svg");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg {
+            seq_id: "tert_context".to_string(),
+            motifs: vec!["SP1".to_string(), "MYC".to_string(), "PATZ1".to_string()],
+            start_0based: 0,
+            end_0based_exclusive: 160,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            output: output.display().to_string(),
+        },
+    )
+    .expect("features tfbs-score-track-correlation-svg");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["result"]["tfbs_score_tracks"]["schema"].as_str(),
+        Some("gentle.tfbs_score_tracks.v1")
+    );
+    assert_eq!(
+        run.output["result"]["tfbs_score_tracks"]["correlation_summary"]["pair_count"].as_u64(),
+        Some(3)
+    );
+    let svg = fs::read_to_string(&output).expect("read svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("TFBS track correlation"));
+    assert!(svg.contains("Smoothed Pearson r"));
+    assert!(svg.contains("Raw Pearson r"));
+    assert!(svg.contains("SP1"));
+    assert!(svg.contains("MYC"));
 }
 
 #[test]

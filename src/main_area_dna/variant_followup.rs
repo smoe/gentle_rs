@@ -566,6 +566,44 @@ impl MainAreaDna {
         }
     }
 
+    fn export_variant_followup_score_track_correlation_svg(&mut self) {
+        let (seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative) =
+            match self.variant_followup_score_track_request() {
+                Ok(value) => value,
+                Err(err) => {
+                    self.op_status = err.clone();
+                    self.op_error_popup = Some(err);
+                    return;
+                }
+            };
+        let default_name = format!(
+            "{}_tfbs_score_track_correlation.svg",
+            Self::sanitize_export_name_component(&seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status =
+                "Promoter design TF correlation SVG export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::RenderTfbsScoreTrackCorrelationSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                path: path.display().to_string(),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.tfbs_score_tracks) {
+            self.variant_followup_ui.cached_score_tracks = Some(report);
+        }
+    }
+
     fn annotate_variant_followup_promoter_windows(&mut self) {
         let input = match self.variant_followup_input_seq_id() {
             Ok(value) => value,
@@ -2406,6 +2444,18 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.export_variant_followup_score_tracks_svg();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Export TF correlation SVG..."),
+                )
+                .on_hover_text(
+                    "Write the current TF synchrony view as a shared SVG heatmap with smoothed/raw Pearson panels and ranked peak-offset pairs.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_score_track_correlation_svg();
             }
             if ui
                 .add_enabled(

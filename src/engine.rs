@@ -2593,6 +2593,16 @@ pub enum Operation {
         clip_negative: bool,
         path: String,
     },
+    RenderTfbsScoreTrackCorrelationSvg {
+        seq_id: SeqId,
+        motifs: Vec<String>,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        path: String,
+    },
     RenderFeatureExpertSvg {
         seq_id: SeqId,
         target: FeatureExpertTarget,
@@ -4691,6 +4701,7 @@ impl GentleEngine {
                 "RenderSequenceSvg".to_string(),
                 "RenderDotplotSvg".to_string(),
                 "RenderTfbsScoreTracksSvg".to_string(),
+                "RenderTfbsScoreTrackCorrelationSvg".to_string(),
                 "RenderFeatureExpertSvg".to_string(),
                 "RenderIsoformArchitectureSvg".to_string(),
                 "RenderRnaStructureSvg".to_string(),
@@ -6660,6 +6671,7 @@ impl GentleEngine {
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderTfbsScoreTracksSvg { .. }
+                | Operation::RenderTfbsScoreTrackCorrelationSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }
