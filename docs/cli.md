@@ -1648,11 +1648,13 @@ Shared shell command:
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
-    - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]`
-      - the shared JSON/SVG payload now also includes deterministic
-        random-background normalization context per motif (`p99`, `Δp99`,
-        `bg+`) so machine and human consumers can judge whether a visually busy
-        track is unusual or merely common under the selected score family
+    - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
+      - the background-normalized score kinds suppress everything below the
+        `0.95` empirical quantile on deterministic random DNA and can show
+        either the surviving percentile itself or `-log10(background tail)`
+      - the shared JSON payload now also includes `top_peaks` per motif so
+        agents can reason over a short ranked list of unusual windows instead
+        of only over the full continuous arrays
     - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
     - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
     - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
@@ -2018,12 +2020,13 @@ Shared shell command:
         - `set-param genome_anchor_prepared_fallback_policy "single_compatible|always_explicit|off"`
     - promoter-design TF score-track examples:
       - structured summary through the raw operation bridge:
-        - `gentle_cli op '{"type":"SummarizeTfbsScoreTracks","seq_id":"tp73_context","motifs":["TP73","SP1","BACH2","PATZ1"],"start_0based":0,"end_0based_exclusive":4000,"score_kind":"llr_quantile","clip_negative":true}'`
+        - `gentle_cli op '{"type":"SummarizeTfbsScoreTracks","seq_id":"tp73_context","motifs":["TP73","SP1","BACH2","PATZ1"],"start_0based":0,"end_0based_exclusive":4000,"score_kind":"llr_background_tail_log10","clip_negative":true}'`
       - shared SVG export through the shell/CLI route:
-        - `gentle_cli shell 'features tfbs-score-tracks-svg tp73_context docs/figures/tp73_upstream_tfbs_score_tracks.svg --motif TP53 --motif TP63 --motif TP73 --motif PATZ1 --motif SP1 --motif BACH2 --motif REST --range 15564..16764 --score-kind llr_quantile --allow-negative'`
-      - `--score-kind` lets you inspect either raw bit scores or empirical
-        quantiles; the quantile modes are often the better first pass when you
-        want to compare motif prominence within one local window
+        - `gentle_cli shell 'features tfbs-score-tracks-svg tp73_context docs/figures/tp73_upstream_tfbs_score_tracks.svg --motif TP53 --motif TP63 --motif TP73 --motif PATZ1 --motif SP1 --motif BACH2 --motif REST --range 15564..16764 --score-kind llr_background_tail_log10 --allow-negative'`
+      - `--score-kind` now lets you inspect raw bit scores, in-window
+        quantiles, random-background percentiles, or `-log10(background tail)`
+        views; the background-tail modes are the best first pass when random
+        sequence already produces visually noisy low-level activity
       - clip-negative mode remains the intended default for presentation-oriented
         promoter plots on the bit-based score kinds because it suppresses
         negative-only windows and leaves only positive motif support;

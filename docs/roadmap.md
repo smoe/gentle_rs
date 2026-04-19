@@ -1107,14 +1107,22 @@ order. Durable architecture constraints and decisions remain in
           outside the GUI instead of staying a GUI-only painter
         - the same shared score-track route now also exposes explicit scoring
           control instead of one hard-wired view:
-          `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
-          `true_log_odds_quantile` are all available in GUI, shell, CLI, JSON,
-          and SVG export paths
+          raw bits, in-window quantiles, random-background percentiles, and
+          random-background `-log10(tail)` views are all available in GUI,
+          shell, CLI, JSON, and SVG export paths
         - the same shared score-track route now also carries deterministic
           random-background normalization reference data per motif and surfaces
           compact `p99 / Δp99 / bg+` labels in GUI/SVG exports, which makes
           real promoter exercises such as TERT much easier to read without
           mistaking permissive score families for meaningful signal
+        - the background-normalized percentile and tail views now intentionally
+          hide everything below the `0.95` deterministic random-background
+          quantile, which turns promoter plots into “show me the unusual tail”
+          views instead of raw motif texture maps
+        - the same shared score-track route now also returns a short engine-owned
+          `top_peaks` list per motif, so agents and GUI users can move from the
+          continuous trace to the strongest unusual windows without inventing
+          adapter-only peak pickers
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is

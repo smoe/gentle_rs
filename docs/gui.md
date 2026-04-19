@@ -3785,13 +3785,24 @@ Tutorial projects:
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
     reporter construction.
   - the same score-track panel now also lets users switch the exported/painted
-    value kind between `llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
-    `true_log_odds_quantile`, so promoter inspection is not locked to one
-    scoring view.
+    value kind between raw bits (`llr_bits`, `true_log_odds_bits`), in-window
+    quantiles (`llr_quantile`, `true_log_odds_quantile`), random-background
+    percentiles (`llr_background_quantile`,
+    `true_log_odds_background_quantile`), and random-background tail emphasis
+    as `-log10(tail)` (`llr_background_tail_log10`,
+    `true_log_odds_background_tail_log10`), so promoter inspection is not
+    locked to one scoring view.
   - the same score-track panel now also shows deterministic random-background
     normalization context (`p99`, `Δp99`, `bg+`) per motif so permissive score
     families can be read against their baseline instead of as free-floating
     texture.
+  - the background-normalized percentile and tail views intentionally suppress
+    everything below the `0.95` deterministic random-background quantile, which
+    keeps the plot focused on unusual windows rather than random low-level
+    motif texture.
+  - the same panel now also lists a small `top peaks` summary per motif so
+    users can jump from “busy trace” to the concrete strongest local windows
+    without manually scanning the entire line plot first.
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

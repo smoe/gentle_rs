@@ -26928,6 +26928,86 @@ fn summarize_tfbs_score_tracks_supports_quantile_scoring_modes() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_supports_background_tail_score_kinds() {
+    let dna = DNAsequence::from_sequence("GGGGCGGGGAAAAGGGGCGGGGAAAAGGGGCGGGG").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            35,
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+        )
+        .expect("background-tail score tracks");
+
+    assert_eq!(
+        report.score_kind,
+        TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+    );
+    let track = report.tracks.first().expect("SP1 track");
+    assert!(
+        track
+            .forward_scores
+            .iter()
+            .chain(track.reverse_scores.iter())
+            .all(|score| *score >= 0.0)
+    );
+    assert!(
+        track
+            .forward_scores
+            .iter()
+            .chain(track.reverse_scores.iter())
+            .any(|score| *score == 0.0)
+    );
+    assert!(
+        track
+            .forward_scores
+            .iter()
+            .chain(track.reverse_scores.iter())
+            .any(|score| *score > 0.0)
+    );
+    let normalization = track
+        .normalization_reference
+        .as_ref()
+        .expect("background-tail tracks should carry normalization reference");
+    assert!(normalization.p99_score >= normalization.p95_score);
+}
+
+#[test]
+fn summarize_tfbs_score_tracks_reports_top_peaks_against_background() {
+    let dna = DNAsequence::from_sequence("GGGGCGGGGAAAAGGGGCGGGGAAAAGGGGCGGGG").expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            35,
+            TfbsScoreTrackValueKind::LlrBits,
+            true,
+        )
+        .expect("score tracks with peaks");
+
+    let track = report.tracks.first().expect("SP1 track");
+    assert!(!track.top_peaks.is_empty());
+    assert!(track.top_peaks.len() <= 3);
+    let peak = &track.top_peaks[0];
+    assert_eq!(peak.rank, 1);
+    assert!(peak.end_0based_exclusive > peak.start_0based);
+    assert!(peak.score > 0.0);
+    assert!(peak.delta_from_p99.is_finite());
+    assert!((0.0..=1.0).contains(&peak.empirical_quantile));
+}
+
+#[test]
 fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

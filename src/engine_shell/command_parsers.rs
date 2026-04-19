@@ -1908,7 +1908,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "tfbs-score-tracks-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "features tfbs-score-tracks-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
+                    "features tfbs-score-tracks-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
                         .to_string(),
                 );
             }
@@ -1999,13 +1999,25 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         score_kind = match raw.trim() {
                             "llr_bits" => TfbsScoreTrackValueKind::LlrBits,
                             "llr_quantile" => TfbsScoreTrackValueKind::LlrQuantile,
+                            "llr_background_quantile" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundQuantile
+                            }
+                            "llr_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+                            }
                             "true_log_odds_bits" => TfbsScoreTrackValueKind::TrueLogOddsBits,
                             "true_log_odds_quantile" => {
                                 TfbsScoreTrackValueKind::TrueLogOddsQuantile
                             }
+                            "true_log_odds_background_quantile" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile
+                            }
+                            "true_log_odds_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10
+                            }
                             other => {
                                 return Err(format!(
-                                    "Unsupported --score-kind value '{other}' (expected llr_bits, llr_quantile, true_log_odds_bits, or true_log_odds_quantile)"
+                                    "Unsupported --score-kind value '{other}' (expected llr_bits, llr_quantile, llr_background_quantile, llr_background_tail_log10, true_log_odds_bits, true_log_odds_quantile, true_log_odds_background_quantile, or true_log_odds_background_tail_log10)"
                                 ));
                             }
                         };

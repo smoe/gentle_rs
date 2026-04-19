@@ -4352,6 +4352,25 @@ fn parse_features_tfbs_score_tracks_svg_with_range_and_negative_scores() {
 }
 
 #[test]
+fn parse_features_tfbs_score_tracks_svg_with_background_tail_score_kind() {
+    let cmd = parse_shell_line(
+        "features tfbs-score-tracks-svg seq_a /tmp/seq_a.tfbs.svg --motif SP1 --range 2900..3100 --score-kind llr_background_tail_log10",
+    )
+    .expect("parse features tfbs-score-tracks-svg background-tail");
+    match cmd {
+        ShellCommand::FeaturesTfbsScoreTracksSvg {
+            score_kind,
+            clip_negative,
+            ..
+        } => {
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert!(clip_negative);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_restriction_scan_for_stored_and_inline_targets() {
     let cmd = parse_shell_line(
         "features restriction-scan seq_a --range 10..120 --enzyme EcoRI --enzyme SmaI --max-sites-per-enzyme 3 --no-cut-geometry --path /tmp/seq_a.restriction_scan.json",

@@ -164,17 +164,17 @@ Boundary note:
 Current shared-shell route:
 
 ```bash
-gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]'
+gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
 ```
 
 First-class operation routes:
 
 ```json
-{"SummarizeTfbsScoreTracks":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_quantile","clip_negative":false}}
+{"SummarizeTfbsScoreTracks":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false}}
 ```
 
 ```json
-{"RenderTfbsScoreTracksSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_quantile","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
+{"RenderTfbsScoreTracksSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
 ```
 
 Portable schema:
@@ -188,8 +188,15 @@ Behavior notes:
 - `score_kind` selects which per-window value is exported:
   - `llr_bits`
   - `llr_quantile`
+  - `llr_background_quantile`
+  - `llr_background_tail_log10`
   - `true_log_odds_bits`
   - `true_log_odds_quantile`
+  - `true_log_odds_background_quantile`
+  - `true_log_odds_background_tail_log10`
+- the background-normalized score kinds suppress everything below the `0.95`
+  empirical quantile on deterministic random DNA, so the plot can focus on the
+  unusual tail instead of the visually noisy body of the background
 - each returned track now also carries a deterministic normalization reference
   computed on `10000 bp` of uniform random DNA with the same score family and
   the same clipping semantics as the exported track itself:
@@ -201,6 +208,14 @@ Behavior notes:
   - `observed_peak_empirical_quantile`
   - `observed_peak_delta_from_p95`
   - `observed_peak_delta_from_p99`
+- each returned track now also carries up to three highlighted motif windows
+  (`top_peaks`) chosen from local maxima on the rendered strands:
+  - windows at or above the deterministic random-background `p99` threshold are
+    preferred
+  - if none cross that threshold, the single best local peak is still kept as a
+    fallback anchor
+  - each peak records start/end, strand, score, empirical quantile, and
+    `delta_from_p99`
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
 - the SVG figure now also prints compact `p99 / Δp99 / bg+` labels per motif so
@@ -1282,11 +1297,17 @@ Current draft operations:
   - returns schema `gentle.tfbs_score_tracks.v1`
   - reports per-position forward and reverse score tracks for each requested
     TF/PSSM token across one shared span
-  - `score_kind` accepts `llr_bits`, `llr_quantile`, `true_log_odds_bits`, or
-    `true_log_odds_quantile`
+  - `score_kind` accepts `llr_bits`, `llr_quantile`,
+    `llr_background_quantile`, `llr_background_tail_log10`,
+    `true_log_odds_bits`, `true_log_odds_quantile`,
+    `true_log_odds_background_quantile`, or
+    `true_log_odds_background_tail_log10`
   - `clip_negative=true` clamps negative scores to `0.0` for the bit-based
     kinds, which is the intended display mode for promoter-design plots when
     only positive support should be shown
+  - the background-normalized kinds convert raw motif scores into empirical
+    percentile or `-log10(tail)` views against deterministic random DNA and
+    zero out everything below the `0.95` random-background quantile
   - each returned track also carries a deterministic background-normalization
     block computed on the same presented score family so `p99` and `Δp99`
     remain interpretable even when negative raw values are clipped out of the

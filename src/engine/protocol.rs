@@ -405,6 +405,19 @@ pub struct TfbsScoreTrackNormalizationReference {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One highlighted motif window from a continuous TF score track.
+pub struct TfbsScoreTrackPeak {
+    pub rank: usize,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub is_reverse: bool,
+    pub score: f64,
+    pub empirical_quantile: f64,
+    pub delta_from_p99: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One continuous TF motif score track over a requested DNA span.
 ///
 /// `forward_scores[i]` and `reverse_scores[i]` correspond to the motif window
@@ -423,6 +436,8 @@ pub struct TfbsScoreTrackRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalization_reference: Option<TfbsScoreTrackNormalizationReference>,
     #[serde(default)]
+    pub top_peaks: Vec<TfbsScoreTrackPeak>,
+    #[serde(default)]
     pub forward_scores: Vec<f64>,
     #[serde(default)]
     pub reverse_scores: Vec<f64>,
@@ -436,8 +451,12 @@ pub enum TfbsScoreTrackValueKind {
     #[default]
     LlrBits,
     LlrQuantile,
+    LlrBackgroundQuantile,
+    LlrBackgroundTailLog10,
     TrueLogOddsBits,
     TrueLogOddsQuantile,
+    TrueLogOddsBackgroundQuantile,
+    TrueLogOddsBackgroundTailLog10,
 }
 
 impl TfbsScoreTrackValueKind {
@@ -445,13 +464,37 @@ impl TfbsScoreTrackValueKind {
         match self {
             Self::LlrBits => "llr_bits",
             Self::LlrQuantile => "llr_quantile",
+            Self::LlrBackgroundQuantile => "llr_background_quantile",
+            Self::LlrBackgroundTailLog10 => "llr_background_tail_log10",
             Self::TrueLogOddsBits => "true_log_odds_bits",
             Self::TrueLogOddsQuantile => "true_log_odds_quantile",
+            Self::TrueLogOddsBackgroundQuantile => "true_log_odds_background_quantile",
+            Self::TrueLogOddsBackgroundTailLog10 => "true_log_odds_background_tail_log10",
         }
     }
 
     pub fn supports_negative_values(self) -> bool {
         matches!(self, Self::LlrBits | Self::TrueLogOddsBits)
+    }
+
+    pub fn uses_llr_background_bits(self) -> bool {
+        matches!(
+            self,
+            Self::LlrBits
+                | Self::LlrQuantile
+                | Self::LlrBackgroundQuantile
+                | Self::LlrBackgroundTailLog10
+        )
+    }
+
+    pub fn uses_true_log_odds_background_bits(self) -> bool {
+        matches!(
+            self,
+            Self::TrueLogOddsBits
+                | Self::TrueLogOddsQuantile
+                | Self::TrueLogOddsBackgroundQuantile
+                | Self::TrueLogOddsBackgroundTailLog10
+        )
     }
 }
 

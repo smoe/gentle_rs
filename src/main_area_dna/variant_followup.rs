@@ -1762,6 +1762,29 @@ impl MainAreaDna {
         )
     }
 
+    fn promoter_design_track_peak_summary(
+        track: &crate::engine::TfbsScoreTrackRow,
+    ) -> Option<String> {
+        if track.top_peaks.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "top peaks: {}",
+            track
+                .top_peaks
+                .iter()
+                .map(|peak| format!(
+                    "{}{} {:.2} (Δp99 {:+.2})",
+                    peak.start_0based,
+                    if peak.is_reverse { "r" } else { "f" },
+                    peak.score,
+                    peak.delta_from_p99
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+
     fn paint_promoter_design_track_plot(
         ui: &mut egui::Ui,
         report: &TfbsScoreTrackReport,
@@ -1932,6 +1955,12 @@ impl MainAreaDna {
                                 .color(egui::Color32::from_rgb(100, 116, 139)),
                             );
                         }
+                        if let Some(peaks_text) = Self::promoter_design_track_peak_summary(track) {
+                            ui.small(
+                                egui::RichText::new(peaks_text)
+                                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                            );
+                        }
                         ui.small(
                             egui::RichText::new("forward / reverse")
                                 .color(egui::Color32::from_rgb(71, 85, 105)),
@@ -2085,8 +2114,12 @@ impl MainAreaDna {
                         for value_kind in [
                             TfbsScoreTrackValueKind::LlrBits,
                             TfbsScoreTrackValueKind::LlrQuantile,
+                            TfbsScoreTrackValueKind::LlrBackgroundQuantile,
+                            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
                             TfbsScoreTrackValueKind::TrueLogOddsBits,
                             TfbsScoreTrackValueKind::TrueLogOddsQuantile,
+                            TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile,
+                            TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10,
                         ] {
                             if ui
                                 .selectable_value(
@@ -2112,7 +2145,7 @@ impl MainAreaDna {
             });
             ui.small(
                 egui::RichText::new(
-                    "Choose raw bits or empirical quantiles. Negative clipping only affects the bit-based score kinds.",
+                    "Choose raw bits, in-window quantiles, or random-background tail views. Background percentile and -log10 tail plots suppress everything below the 0.95 random-background quantile. Negative clipping only affects the raw bit score kinds.",
                 )
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
