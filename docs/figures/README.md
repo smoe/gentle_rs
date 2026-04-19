@@ -167,6 +167,44 @@ cargo run --quiet --bin gentle_cli -- \
   workflow @docs/figures/pgex_blunt_pcr_ligation.workflow.json
 ```
 
+`pcr_blunt_junction_pcr_template.json` is the matching verification-side
+companion for the same pGEX blunt-clone story when the insert sequence is
+already known. It keeps the same two insert orientations, shows one junction
+PCR at each end to confirm orientation, and then adds the outward-facing
+insert-end PCR that should stay negative unless tandem inserts were ligated.
+
+Regenerate the junction-PCR hero SVG from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon template-validate \
+  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_junction_pcr_template.json \
+  docs/figures/pgex_blunt_junction_pcr_hero.svg
+```
+
+`pcr_blunt_sequence_confirmation_template.json` is the unknown-insert
+companion for the same pGEX blunt-clone story. It first shows degenerate
+primers on conserved motifs to recover the insert, then switches back to the
+ordinary plasmid-confirmation view where known vector primers read into the
+cloned insert from both sides and Sanger sequencing proceeds as usual.
+
+Regenerate the sequence-confirmation hero SVG from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon template-validate \
+  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json
+
+cargo run --quiet --bin gentle_cli -- \
+  protocol-cartoon render-template-svg \
+  docs/examples/protocol_cartoon/pcr_blunt_sequence_confirmation_template.json \
+  docs/figures/pgex_blunt_sequence_confirmation_hero.svg
+```
+
 `gibson_single_insert_readme.plan.json` is the deterministic pGEX + insert demo
 Gibson plan used to generate the README lineage figure. It is not hand-drawn;
 it reuses the same tutorial destination/insert pair and the same `SmaI`
