@@ -19,6 +19,14 @@ const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
 const SVG_TSS_MARKER_ROW_HEIGHT: f64 = 18.0;
 const SVG_TSS_MARKER_MAX_LANES: usize = 3;
+const CORR_SVG_WIDTH: f64 = 1360.0;
+const CORR_MARGIN_LEFT: f64 = 28.0;
+const CORR_MARGIN_RIGHT: f64 = 28.0;
+const CORR_HEADER_HEIGHT: f64 = 112.0;
+const CORR_FOOTER_HEIGHT: f64 = 54.0;
+const CORR_PANEL_GAP: f64 = 34.0;
+const CORR_CELL_SIZE: f64 = 42.0;
+const CORR_LABEL_GAP: f64 = 8.0;
 
 #[derive(Clone)]
 struct SvgTssMarkerLabel {
@@ -107,6 +115,36 @@ fn format_report_normalization_note(report: &TfbsScoreTrackReport) -> Option<Str
         normalization.random_sequence_length_bp,
         normalization.chance_model
     ))
+}
+
+fn correlation_fill_color(value: f64) -> &'static str {
+    if value >= 0.85 {
+        "#0f766e"
+    } else if value >= 0.65 {
+        "#14b8a6"
+    } else if value >= 0.35 {
+        "#5eead4"
+    } else if value >= 0.10 {
+        "#ccfbf1"
+    } else if value > -0.10 {
+        "#fff7ed"
+    } else if value > -0.35 {
+        "#e0e7ff"
+    } else if value > -0.65 {
+        "#a5b4fc"
+    } else if value > -0.85 {
+        "#818cf8"
+    } else {
+        "#5b21b6"
+    }
+}
+
+fn correlation_text_color(value: f64) -> &'static str {
+    if value.abs() >= 0.45 {
+        "#fffbeb"
+    } else {
+        "#111827"
+    }
 }
 
 fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
@@ -606,6 +644,236 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
     svg
 }
 
+/// Render one TFBS-track correlation summary as SVG text.
+pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) -> String {
+    let Some(correlation) = report.correlation_summary.as_ref() else {
+        return format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
+<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n\
+<text x=\"28\" y=\"34\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">TFBS track correlation</text>\n\
+<text x=\"28\" y=\"58\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">seq={} | score={} | span={}..{}</text>\n\
+<text x=\"28\" y=\"108\" font-family=\"monospace\" font-size=\"12\" fill=\"#64748b\">No pairwise correlation summary is available for this report.</text>\n\
+</svg>\n",
+            escape_svg_text(&report.seq_id),
+            escape_svg_text(report.score_kind.as_str()),
+            report.view_start_0based,
+            report.view_end_0based_exclusive
+        );
+    };
+    if report.tracks.is_empty() {
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
+<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n\
+<text x=\"28\" y=\"34\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">TFBS track correlation</text>\n\
+<text x=\"28\" y=\"108\" font-family=\"monospace\" font-size=\"12\" fill=\"#64748b\">No tracks were available to correlate.</text>\n\
+</svg>\n"
+            .to_string();
+    }
+
+    let labels = report
+        .tracks
+        .iter()
+        .map(|track| format_tf_track_label(&track.tf_id, track.tf_name.as_deref()))
+        .collect::<Vec<_>>();
+    let matrix_size = labels.len();
+    let label_width = labels
+        .iter()
+        .map(|label| label.chars().count() as f64 * 6.8)
+        .fold(160.0_f64, f64::max)
+        .min(280.0);
+    let panel_size = matrix_size as f64 * CORR_CELL_SIZE;
+    let panel_width = label_width + CORR_LABEL_GAP + panel_size;
+    let content_width = CORR_MARGIN_LEFT + panel_width * 2.0 + CORR_PANEL_GAP + CORR_MARGIN_RIGHT;
+    let svg_width = CORR_SVG_WIDTH.max(content_width);
+    let list_rows = correlation.rows.len().min(8);
+    let list_height = 34.0 + list_rows as f64 * 18.0;
+    let svg_height = CORR_HEADER_HEIGHT + panel_size + list_height + CORR_FOOTER_HEIGHT;
+
+    let left_panel_left = CORR_MARGIN_LEFT;
+    let right_panel_left = left_panel_left + panel_width + CORR_PANEL_GAP;
+    let matrix_top = CORR_HEADER_HEIGHT;
+    let matrix_left = |panel_left: f64| panel_left + label_width + CORR_LABEL_GAP;
+
+    let mut row_lookup = std::collections::HashMap::<
+        (usize, usize),
+        &crate::engine::TfbsScoreTrackCorrelationRow,
+    >::new();
+    for row in &correlation.rows {
+        let left_idx = report
+            .tracks
+            .iter()
+            .position(|track| track.tf_id == row.left_tf_id);
+        let right_idx = report
+            .tracks
+            .iter()
+            .position(|track| track.tf_id == row.right_tf_id);
+        if let (Some(left_idx), Some(right_idx)) = (left_idx, right_idx) {
+            row_lookup.insert((left_idx.min(right_idx), left_idx.max(right_idx)), row);
+        }
+    }
+
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width:.0}\" height=\"{svg_height:.0}\" viewBox=\"0 0 {svg_width:.0} {svg_height:.0}\">\n"
+    ));
+    svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n");
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"34\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">TFBS track correlation</text>\n",
+        CORR_MARGIN_LEFT
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"54\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">seq={} | span={}..{} | score={} | pair_count={}</text>\n",
+        CORR_MARGIN_LEFT,
+        escape_svg_text(&report.seq_id),
+        report.view_start_0based,
+        report.view_end_0based_exclusive,
+        escape_svg_text(report.score_kind.as_str()),
+        correlation.pair_count
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"71\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">Smoothed Pearson is the main neighborhood-synchrony view; raw Pearson stays alongside it as the strict per-position check.</text>\n",
+        CORR_MARGIN_LEFT
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"86\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">signal={} | smoothing={} {} bp | diagonal fixed at 1.000</text>\n",
+        CORR_MARGIN_LEFT,
+        escape_svg_text(&correlation.signal_source),
+        escape_svg_text(&correlation.smoothing_method),
+        correlation.smoothing_window_bp
+    ));
+
+    for (panel_left, panel_title, is_smoothed) in [
+        (left_panel_left, "Smoothed Pearson r", true),
+        (right_panel_left, "Raw Pearson r", false),
+    ] {
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"106\" font-family=\"monospace\" font-size=\"12\" fill=\"#0f172a\">{}</text>\n",
+            panel_left,
+            escape_svg_text(panel_title)
+        ));
+        let grid_left = matrix_left(panel_left);
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
+            grid_left,
+            matrix_top,
+            panel_size,
+            panel_size
+        ));
+        for (idx, label) in labels.iter().enumerate() {
+            let y = matrix_top + idx as f64 * CORR_CELL_SIZE + CORR_CELL_SIZE * 0.65;
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>\n",
+                grid_left - 6.0,
+                y,
+                escape_svg_text(label)
+            ));
+            let column_x = grid_left + idx as f64 * CORR_CELL_SIZE + CORR_CELL_SIZE * 0.35;
+            let label_y = matrix_top - 8.0;
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" transform=\"rotate(-45 {:.1} {:.1})\" font-family=\"monospace\" font-size=\"9\" fill=\"#334155\">{}</text>\n",
+                column_x,
+                label_y,
+                column_x,
+                label_y,
+                escape_svg_text(label)
+            ));
+        }
+
+        for row_idx in 0..matrix_size {
+            for col_idx in 0..matrix_size {
+                let value = if row_idx == col_idx {
+                    1.0
+                } else {
+                    let lookup = row_lookup
+                        .get(&(row_idx.min(col_idx), row_idx.max(col_idx)))
+                        .copied();
+                    match lookup {
+                        Some(row) if is_smoothed => row.smoothed_pearson,
+                        Some(row) => row.raw_pearson,
+                        None => 0.0,
+                    }
+                };
+                let x = grid_left + col_idx as f64 * CORR_CELL_SIZE;
+                let y = matrix_top + row_idx as f64 * CORR_CELL_SIZE;
+                svg.push_str(&format!(
+                    "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{CORR_CELL_SIZE:.1}\" height=\"{CORR_CELL_SIZE:.1}\" fill=\"{}\" stroke=\"#e2e8f0\" stroke-width=\"1\"/>\n",
+                    correlation_fill_color(value)
+                ));
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" fill=\"{}\">{:+.2}</text>\n",
+                    x + CORR_CELL_SIZE * 0.5,
+                    y + CORR_CELL_SIZE * 0.60,
+                    correlation_text_color(value),
+                    value
+                ));
+            }
+        }
+    }
+
+    let legend_y = matrix_top + panel_size + 20.0;
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">color scale: strong negative -> neutral -> strong positive</text>\n",
+        CORR_MARGIN_LEFT,
+        legend_y
+    ));
+    for (idx, (value, label)) in [
+        (-1.0, "-1.0"),
+        (-0.5, "-0.5"),
+        (0.0, "0"),
+        (0.5, "+0.5"),
+        (1.0, "+1.0"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let x = CORR_MARGIN_LEFT + 220.0 + idx as f64 * 66.0;
+        svg.push_str(&format!(
+            "<rect x=\"{x:.1}\" y=\"{:.1}\" width=\"18\" height=\"12\" fill=\"{}\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
+            legend_y - 10.0,
+            correlation_fill_color(*value)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"9\" fill=\"#475569\">{}</text>\n",
+            x + 24.0,
+            legend_y,
+            label
+        ));
+    }
+
+    let list_top = legend_y + 22.0;
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"12\" fill=\"#0f172a\">Top synchronized pairs</text>\n",
+        CORR_MARGIN_LEFT,
+        list_top
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">ranked by |smoothed r|, then |raw r|; offset uses primary peak start positions</text>\n",
+        CORR_MARGIN_LEFT,
+        list_top + 14.0
+    ));
+    let mut line_y = list_top + 32.0;
+    for row in correlation.rows.iter().take(list_rows) {
+        let left_label = format_tf_track_label(&row.left_tf_id, row.left_tf_name.as_deref());
+        let right_label = format_tf_track_label(&row.right_tf_id, row.right_tf_name.as_deref());
+        let offset = row
+            .signed_primary_peak_offset_bp
+            .map(|value| format!("{value:+} bp"))
+            .unwrap_or_else(|| "n/a".to_string());
+        let summary = format!(
+            "{} vs {} | smoothed {:+.3} | raw {:+.3} | offset {}",
+            left_label, right_label, row.smoothed_pearson, row.raw_pearson, offset
+        );
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>\n",
+            CORR_MARGIN_LEFT,
+            line_y,
+            escape_svg_text(&summary)
+        ));
+        line_y += 18.0;
+    }
+    svg.push_str("</svg>\n");
+    svg
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,5 +1056,118 @@ mod tests {
         assert!(svg.contains("positive-only") == false);
         assert!(svg.contains("stroke-dasharray=\"4 3\""));
         assert!(svg.contains(">0.0</text>"));
+    }
+
+    #[test]
+    fn render_tfbs_score_track_correlation_svg_contains_dual_heatmaps() {
+        let report = TfbsScoreTrackReport {
+            schema: "gentle.tfbs_score_tracks.v1".to_string(),
+            target_kind: "seq_id".to_string(),
+            target_label: "tert_promoter".to_string(),
+            seq_id: "tert_promoter".to_string(),
+            source_sequence_length_bp: 1201,
+            sequence_length_bp: 1201,
+            scan_topology: crate::engine::InlineSequenceTopology::Linear,
+            generated_at_unix_ms: 0,
+            op_id: None,
+            run_id: None,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            view_start_0based: 0,
+            view_end_0based_exclusive: 1201,
+            clip_negative: true,
+            motifs_requested: vec!["SP1".to_string(), "MYC".to_string(), "PATZ1".to_string()],
+            global_max_score: 4.2,
+            tss_markers: vec![],
+            correlation_summary: Some(crate::engine::TfbsScoreTrackCorrelationSummary {
+                signal_source: "max(forward_score, reverse_score)".to_string(),
+                smoothing_method: "centered_boxcar".to_string(),
+                smoothing_window_bp: 25,
+                pair_count: 3,
+                rows: vec![
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0079.5".to_string(),
+                        left_tf_name: Some("SP1".to_string()),
+                        right_tf_id: "MA0147.4".to_string(),
+                        right_tf_name: Some("MYC".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.42,
+                        smoothed_pearson: 0.81,
+                        signed_primary_peak_offset_bp: Some(80),
+                    },
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0079.5".to_string(),
+                        left_tf_name: Some("SP1".to_string()),
+                        right_tf_id: "MA1961.2".to_string(),
+                        right_tf_name: Some("PATZ1".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.38,
+                        smoothed_pearson: 0.96,
+                        signed_primary_peak_offset_bp: Some(-152),
+                    },
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0147.4".to_string(),
+                        left_tf_name: Some("MYC".to_string()),
+                        right_tf_id: "MA1961.2".to_string(),
+                        right_tf_name: Some("PATZ1".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.21,
+                        smoothed_pearson: 0.44,
+                        signed_primary_peak_offset_bp: Some(-72),
+                    },
+                ],
+            }),
+            tracks: vec![
+                TfbsScoreTrackRow {
+                    tf_id: "MA0079.5".to_string(),
+                    tf_name: Some("SP1".to_string()),
+                    motif_length_bp: 10,
+                    track_start_0based: 0,
+                    scored_window_count: 8,
+                    max_score: 4.0,
+                    max_position_0based: Some(220),
+                    normalization_reference: None,
+                    top_peaks: vec![],
+                    forward_scores: vec![0.0; 8],
+                    reverse_scores: vec![0.0; 8],
+                },
+                TfbsScoreTrackRow {
+                    tf_id: "MA0147.4".to_string(),
+                    tf_name: Some("MYC".to_string()),
+                    motif_length_bp: 10,
+                    track_start_0based: 0,
+                    scored_window_count: 8,
+                    max_score: 4.0,
+                    max_position_0based: Some(300),
+                    normalization_reference: None,
+                    top_peaks: vec![],
+                    forward_scores: vec![0.0; 8],
+                    reverse_scores: vec![0.0; 8],
+                },
+                TfbsScoreTrackRow {
+                    tf_id: "MA1961.2".to_string(),
+                    tf_name: Some("PATZ1".to_string()),
+                    motif_length_bp: 10,
+                    track_start_0based: 0,
+                    scored_window_count: 8,
+                    max_score: 4.0,
+                    max_position_0based: Some(148),
+                    normalization_reference: None,
+                    top_peaks: vec![],
+                    forward_scores: vec![0.0; 8],
+                    reverse_scores: vec![0.0; 8],
+                },
+            ],
+        };
+
+        let svg = render_tfbs_score_track_correlation_svg(&report);
+        assert!(svg.contains("TFBS track correlation"));
+        assert!(svg.contains("Smoothed Pearson r"));
+        assert!(svg.contains("Raw Pearson r"));
+        assert!(svg.contains("SP1 (MA0079.5)"));
+        assert!(svg.contains("MYC (MA0147.4)"));
+        assert!(svg.contains("PATZ1 (MA1961.2)"));
+        assert!(svg.contains("Top synchronized pairs"));
+        assert!(svg.contains("offset +80 bp"));
+        assert!(svg.contains("offset -152 bp"));
     }
 }

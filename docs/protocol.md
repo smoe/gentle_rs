@@ -169,6 +169,7 @@ gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN
 
 ```bash
 gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
+gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
 ```
 
 First-class operation routes:
@@ -181,6 +182,10 @@ First-class operation routes:
 {"RenderTfbsScoreTracksSvg":{"target":{"kind":"inline_sequence","sequence_text":"ACGTACGTACGT","topology":"linear","id_hint":"inline_promoter","span_start_0based":0,"span_end_0based_exclusive":12},"motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
 ```
 
+```json
+{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
+```
+
 Portable schema:
 
 - `gentle.tfbs_score_tracks.v1`
@@ -190,6 +195,14 @@ Behavior notes:
 - `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
   score arrays over a `SequenceScanTarget`, so the same report path works for
   stored `seq_id` spans and inline ASCII DNA.
+- the same shared report also carries a correlation sidecar:
+  - `signal_source`
+  - `smoothing_method`
+  - `smoothing_window_bp`
+  - `pair_count`
+  - `rows[]` with `left_tf_id`, optional `left_tf_name`, `right_tf_id`,
+    optional `right_tf_name`, `overlap_window_count`, `raw_pearson`,
+    `smoothed_pearson`, and optional `signed_primary_peak_offset_bp`
 - `score_kind` selects which per-window value is exported:
   - `llr_bits`
   - `llr_quantile`
@@ -235,6 +248,11 @@ Behavior notes:
     `delta_from_p99`
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
+- `RenderTfbsScoreTrackCorrelationSvg` reuses that exact same report and writes
+  a second deterministic SVG view:
+  - left panel: smoothed Pearson heatmap
+  - right panel: raw Pearson heatmap
+  - footer: top synchronized pairs with signed primary-peak offsets
 - the SVG figure now prints score-family-aware normalization labels per motif:
   - raw bit views keep the compact `p99 / Δp99 / bg+` summary
   - background-normalized views instead show `theory max / peak q / -log10 tail`

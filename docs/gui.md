@@ -3847,6 +3847,12 @@ Tutorial projects:
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style
     from shell/CLI workflows and README assets.
+  - the same window now also exposes `Export TF correlation SVG...`, which
+    goes through the shared `RenderTfbsScoreTrackCorrelationSvg` route and
+    writes one dual heatmap view:
+    - smoothed Pearson on the left
+    - raw Pearson on the right
+    - ranked synchronized pairs with signed peak offsets in the footer
   - stacked SVG exports now render motif labels as `TF name (JASPAR id)` and
     carry one shared dashed TSS line with a single top-level kinked arrow when
     the promoter span has either feature-derived or provenance-derived TSS

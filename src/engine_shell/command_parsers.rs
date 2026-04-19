@@ -1746,7 +1746,7 @@ fn build_sequence_scan_target_from_feature_state(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2161,6 +2161,164 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 output,
             })
         }
+        "tfbs-score-track-correlation-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features tfbs-score-track-correlation-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features tfbs-score-track-correlation-svg requires non-empty SEQ_ID"
+                        .to_string(),
+                );
+            }
+            let output = tokens[3].clone();
+            let mut motifs: Vec<String> = vec![];
+            let mut start_0based: Option<usize> = None;
+            let mut end_0based_exclusive: Option<usize> = None;
+            let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
+            let mut clip_negative = true;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--motif" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motif",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        let normalized = raw.trim();
+                        if normalized.is_empty() {
+                            return Err("--motif must not be empty".to_string());
+                        }
+                        motifs.push(normalized.to_string());
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--motifs",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        for token in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            motifs.push(token.to_string());
+                        }
+                    }
+                    "--range" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--range",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        let (start, end) =
+                            parse_feature_range(&raw, "features tfbs-score-track-correlation-svg")?;
+                        start_0based = Some(start);
+                        end_0based_exclusive = Some(end);
+                    }
+                    "--start" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--start",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        start_0based = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --start value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--end",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        end_0based_exclusive = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --end value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--score-kind",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        score_kind = match raw.trim() {
+                            "llr_bits" => TfbsScoreTrackValueKind::LlrBits,
+                            "llr_quantile" => TfbsScoreTrackValueKind::LlrQuantile,
+                            "llr_background_quantile" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundQuantile
+                            }
+                            "llr_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+                            }
+                            "true_log_odds_bits" => TfbsScoreTrackValueKind::TrueLogOddsBits,
+                            "true_log_odds_quantile" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsQuantile
+                            }
+                            "true_log_odds_background_quantile" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile
+                            }
+                            "true_log_odds_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --score-kind value '{other}' (expected llr_bits, llr_quantile, llr_background_quantile, llr_background_tail_log10, true_log_odds_bits, true_log_odds_quantile, true_log_odds_background_quantile, or true_log_odds_background_tail_log10)"
+                                ));
+                            }
+                        };
+                    }
+                    "--allow-negative" => {
+                        clip_negative = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features tfbs-score-track-correlation-svg"
+                        ));
+                    }
+                }
+            }
+            if motifs.is_empty() {
+                return Err(
+                    "features tfbs-score-track-correlation-svg requires at least one --motif TOKEN"
+                        .to_string(),
+                );
+            }
+            let start_0based = start_0based.unwrap_or(0);
+            let end_0based_exclusive = end_0based_exclusive.ok_or_else(|| {
+                "features tfbs-score-track-correlation-svg requires --range START..END or --end N"
+                    .to_string()
+            })?;
+            if start_0based >= end_0based_exclusive {
+                return Err(format!(
+                    "features tfbs-score-track-correlation-svg requires start < end (got {}..{})",
+                    start_0based, end_0based_exclusive
+                ));
+            }
+            Ok(ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                output,
+            })
+        }
         "tfbs-scan" => {
             if tokens.len() < 3 {
                 return Err(
@@ -2537,7 +2695,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-scan, or restriction-scan)"
+            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
         )),
     }
 }

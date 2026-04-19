@@ -6024,6 +6024,46 @@ impl GentleEngine {
                 ));
                 result.tfbs_score_tracks = Some(report);
             }
+            Operation::RenderTfbsScoreTrackCorrelationSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_score_tracks(
+                    SequenceScanTarget::SeqId {
+                        seq_id: seq_id.clone(),
+                        span_start_0based: Some(start_0based),
+                        span_end_0based_exclusive: Some(end_0based_exclusive),
+                    },
+                    &motifs,
+                    score_kind,
+                    clip_negative,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                let svg = crate::render_tfbs_score_tracks::render_tfbs_score_track_correlation_svg(
+                    &report,
+                );
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write TFBS correlation SVG to '{}': {e}", path),
+                })?;
+                result.messages.push(format!(
+                    "Wrote TFBS score-track correlation SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
+                    seq_id,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
+                    report.clip_negative,
+                    path
+                ));
+                result.tfbs_score_tracks = Some(report);
+            }
             Operation::RenderFeatureExpertSvg {
                 seq_id,
                 target,

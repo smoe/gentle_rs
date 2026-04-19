@@ -1463,6 +1463,15 @@ pub enum ShellCommand {
         clip_negative: bool,
         output: String,
     },
+    FeaturesTfbsScoreTrackCorrelationSvg {
+        seq_id: String,
+        motifs: Vec<String>,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        output: String,
+    },
     FeaturesTfbsScan {
         target: SequenceScanTarget,
         motifs: Vec<String>,
@@ -7066,6 +7075,24 @@ impl ShellCommand {
                     clip_negative
                 )
             }
+            Self::FeaturesTfbsScoreTrackCorrelationSvg {
+                seq_id,
+                motifs,
+                start_0based,
+                end_0based_exclusive,
+                score_kind,
+                clip_negative,
+                output,
+            } => format!(
+                "render TFBS score-track correlation SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, clip_negative={})",
+                seq_id,
+                output,
+                motifs.join(","),
+                start_0based,
+                end_0based_exclusive,
+                score_kind.as_str(),
+                clip_negative
+            ),
             Self::FeaturesTfbsScan {
                 target,
                 motifs,
@@ -20856,6 +20883,31 @@ fn execute_sequence_analysis_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg {
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderTfbsScoreTrackCorrelationSvg {
+                    seq_id: seq_id.clone(),
+                    motifs: motifs.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::FeaturesTfbsScan {
             target,
             motifs,
@@ -23657,6 +23709,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+            | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesRestrictionScan { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
@@ -23939,6 +23992,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+        | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
         | ShellCommand::FeaturesRestrictionScan { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }

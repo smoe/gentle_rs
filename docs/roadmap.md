@@ -1139,6 +1139,12 @@ order. Durable architecture constraints and decisions remain in
           raw Pearson stays available, but a smoothed (`25 bp`) centered-boxcar
           Pearson is treated as the main synchrony cue and is paired with a
           signed primary-peak offset
+        - the same shared score-track route now also has export parity for that
+          synchrony view:
+          `RenderTfbsScoreTrackCorrelationSvg` writes one dual heatmap
+          (smoothed Pearson left, raw Pearson right) plus a ranked synchronized
+          pair footer, so the “are these maxima actually synced?” question is
+          no longer trapped in GUI tables or JSON sidecars
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span
