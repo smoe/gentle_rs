@@ -2067,6 +2067,12 @@ order. Durable architecture constraints and decisions remain in
             accept the same `SequenceScanTarget` operand, so score-track
             summaries and SVG exports have the same stored-vs-inline parity as
             restriction-site and TFBS-hit scans
+          - GUI DNA-window `TFBS score tracks` menu now reuses the same motif
+            selection as `TFBS annotation` for current selection, visible
+            span, and whole active sequence, caches the shared
+            `TfbsScoreTrackReport` directly in the DNA window, and exports that
+            cached view through the same `RenderTfbsScoreTracksSvg` engine
+            route used by shell/CLI
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

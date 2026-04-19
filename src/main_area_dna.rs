@@ -1077,6 +1077,10 @@ struct EngineOpsUiState {
     tfbs_per_tf_min_llr_quantile: String,
     #[serde(default = "default_true")]
     tfbs_clear_existing: bool,
+    #[serde(default)]
+    tfbs_score_track_value_kind: TfbsScoreTrackValueKind,
+    #[serde(default = "default_true")]
+    tfbs_score_track_clip_negative: bool,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -2838,6 +2842,45 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_tfbs_score_track_controls() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.tfbs_score_track_value_kind = TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10;
+        area.tfbs_score_track_clip_negative = false;
+
+        let state = area.current_engine_ops_state();
+
+        assert_eq!(
+            state.tfbs_score_track_value_kind,
+            TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10
+        );
+        assert!(!state.tfbs_score_track_clip_negative);
+    }
+
+    #[test]
+    fn tfbs_score_track_controls_default_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("tfbs_score_track_value_kind");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("tfbs_score_track_clip_negative");
+
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+
+        assert_eq!(
+            decoded.tfbs_score_track_value_kind,
+            TfbsScoreTrackValueKind::LlrBits
+        );
+        assert!(decoded.tfbs_score_track_clip_negative);
+    }
+
+    #[test]
     fn whole_sequence_tfbs_scan_uses_shared_engine_report_path() {
         let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
         let mut state = ProjectState::default();
@@ -2851,6 +2894,31 @@ mod tests {
         assert!(area.op_status.contains("TFBS scan for whole sequence"));
         assert!(area.op_status.contains("matched"));
         assert!(area.op_status.contains("TATAAA@3+"));
+    }
+
+    #[test]
+    fn whole_sequence_tfbs_score_tracks_use_shared_engine_report_path() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.tfbs_motifs = "TATAAA".to_string();
+
+        area.show_whole_sequence_tfbs_score_tracks();
+
+        assert!(
+            area.op_status
+                .contains("TFBS score tracks for whole sequence")
+        );
+        assert!(area.op_status.contains("0..21"));
+        let report = area
+            .cached_tfbs_score_tracks
+            .as_ref()
+            .expect("cached TFBS score tracks");
+        assert_eq!(report.view_start_0based, 0);
+        assert_eq!(report.view_end_0based_exclusive, 21);
+        assert_eq!(report.motifs_requested, vec!["TATAAA".to_string()]);
     }
 
     #[test]
@@ -10964,6 +11032,9 @@ pub struct MainAreaDna {
     tfbs_per_tf_min_llr_bits: String,
     tfbs_per_tf_min_llr_quantile: String,
     tfbs_clear_existing: bool,
+    tfbs_score_track_value_kind: TfbsScoreTrackValueKind,
+    tfbs_score_track_clip_negative: bool,
+    cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
     primer_design_task: Option<PrimerDesignTask>,
@@ -11551,6 +11622,9 @@ impl MainAreaDna {
             tfbs_per_tf_min_llr_bits: String::new(),
             tfbs_per_tf_min_llr_quantile: String::new(),
             tfbs_clear_existing: true,
+            tfbs_score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
+            tfbs_score_track_clip_negative: true,
+            cached_tfbs_score_tracks: None,
             tfbs_task: None,
             tfbs_progress: None,
             primer_design_task: None,
@@ -14363,6 +14437,80 @@ impl MainAreaDna {
                         ui.close();
                     }
                 });
+                ui.menu_button("TFBS score tracks", |ui| {
+                    ui.small(
+                        "Uses the current TFBS/JASPAR motif selection from the TFBS annotation panel plus the score-track display mode configured there.",
+                    );
+                    let selection_response = ui.add_enabled(
+                        selection_roi.is_some() && tfbs_scan_ready,
+                        egui::Button::new("Show score tracks in selection"),
+                    );
+                    let selection_response = if !tfbs_scan_ready {
+                        selection_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if selection_roi.is_some() {
+                        selection_response.on_hover_text(
+                            "Compute continuous TFBS/JASPAR score tracks for the current map/text selection using the shared engine report path",
+                        )
+                    } else {
+                        selection_response.on_hover_text(
+                            "Requires a non-empty map/text selection; drag-select a region or click `Select visible` first",
+                        )
+                    };
+                    if selection_response.clicked() {
+                        self.show_current_selection_tfbs_score_tracks();
+                        ui.close();
+                    }
+
+                    let visible_response = ui.add_enabled(
+                        visible_span_roi.is_some() && tfbs_scan_ready,
+                        egui::Button::new("Show score tracks in visible span"),
+                    );
+                    let visible_response = if !tfbs_scan_ready {
+                        visible_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if visible_span_roi.is_some() {
+                        visible_response.on_hover_text(
+                            "Compute continuous TFBS/JASPAR score tracks for the current visible linear map span",
+                        )
+                    } else {
+                        visible_response.on_hover_text(
+                            "Requires a non-empty linear map view; unavailable in circular view",
+                        )
+                    };
+                    if visible_response.clicked() {
+                        self.show_visible_span_tfbs_score_tracks();
+                        ui.close();
+                    }
+
+                    let whole_sequence_response = ui.add_enabled(
+                        self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty())
+                            && tfbs_scan_ready,
+                        egui::Button::new("Show score tracks in whole sequence"),
+                    );
+                    let whole_sequence_response = if !tfbs_scan_ready {
+                        whole_sequence_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if self
+                        .seq_id
+                        .as_deref()
+                        .is_some_and(|seq_id| !seq_id.trim().is_empty())
+                    {
+                        whole_sequence_response.on_hover_text(
+                            "Compute continuous TFBS/JASPAR score tracks for the full active sequence",
+                        )
+                    } else {
+                        whole_sequence_response
+                            .on_hover_text("Requires an active sequence in the current DNA window")
+                    };
+                    if whole_sequence_response.clicked() {
+                        self.show_whole_sequence_tfbs_score_tracks();
+                        ui.close();
+                    }
+                });
                 let active_pcr_roi_source = self.active_pcr_roi_source_0based();
                 let set_roi_response =
                     ui.add_enabled(active_pcr_roi_source.is_some(), egui::Button::new("Set PCR ROI"));
@@ -15706,8 +15854,16 @@ impl MainAreaDna {
                 egui::CollapsingHeader::new("TFBS annotation (log-likelihood ratio)")
                     .default_open(true)
                     .show(ui, |ui| {
+                let mut tfbs_panel_state_changed = false;
+                let mut tfbs_score_track_settings_changed = false;
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.tfbs_use_all_motifs, "All known JASPAR motifs");
+                    if ui
+                        .checkbox(&mut self.tfbs_use_all_motifs, "All known JASPAR motifs")
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_score_track_settings_changed = true;
+                    }
                     if self.tfbs_use_all_motifs {
                         let motif_count = tf_motifs::all_motif_ids().len();
                         ui.label(format!("({motif_count} motifs)"));
@@ -15716,17 +15872,24 @@ impl MainAreaDna {
                 if !self.tfbs_use_all_motifs {
                     ui.horizontal(|ui| {
                         ui.label("Selected motifs (IDs/names/IUPAC)");
-                        ui.text_edit_singleline(&mut self.tfbs_motifs);
+                        if ui.text_edit_singleline(&mut self.tfbs_motifs).changed() {
+                            tfbs_panel_state_changed = true;
+                            tfbs_score_track_settings_changed = true;
+                        }
                     });
                     ui.horizontal(|ui| {
                         ui.label("JASPAR filter");
-                        ui.text_edit_singleline(&mut self.tfbs_catalog_filter);
+                        if ui.text_edit_singleline(&mut self.tfbs_catalog_filter).changed() {
+                            tfbs_panel_state_changed = true;
+                        }
                         if ui
                             .small_button("Clear list")
                             .on_hover_text("Clear selected motif list")
                             .clicked()
                         {
                             self.tfbs_motifs.clear();
+                            tfbs_panel_state_changed = true;
+                            tfbs_score_track_settings_changed = true;
                         }
                     });
 
@@ -15762,6 +15925,8 @@ impl MainAreaDna {
                                         .clicked()
                                     {
                                         self.add_tfbs_motif_selection(&motif.id);
+                                        tfbs_panel_state_changed = true;
+                                        tfbs_score_track_settings_changed = true;
                                     }
                                     if let Some(name) = &motif.name {
                                         ui.label(format!("{} ({})", motif.id, name));
@@ -15778,20 +15943,42 @@ impl MainAreaDna {
                 let llr_quantile_help = "Empirical quantile of the motif score among all scanned positions/windows for this transcription-factor motif on both strands of the current sequence. Quantiles are computed per motif (not across all motifs). 0.0 disables quantile filtering; 1.0 keeps only top-scoring hits.";
                 ui.horizontal(|ui| {
                     ui.label("min llr_bits");
-                    ui.text_edit_singleline(&mut self.tfbs_min_llr_bits);
+                    if ui.text_edit_singleline(&mut self.tfbs_min_llr_bits).changed() {
+                        tfbs_panel_state_changed = true;
+                    }
                     ui.label("min llr_quantile")
                         .on_hover_text(llr_quantile_help);
-                    ui.text_edit_singleline(&mut self.tfbs_min_llr_quantile);
-                    ui.checkbox(&mut self.tfbs_clear_existing, "Clear previous TFBS");
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_min_llr_quantile)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                    }
+                    if ui
+                        .checkbox(&mut self.tfbs_clear_existing, "Clear previous TFBS")
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                    }
                 });
                 ui.horizontal(|ui| {
                     ui.label("per-TF min llr_bits (TF=VALUE,...)");
-                    ui.text_edit_singleline(&mut self.tfbs_per_tf_min_llr_bits);
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_per_tf_min_llr_bits)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                    }
                 });
                 ui.horizontal(|ui| {
                     ui.label("per-TF min llr_quantile (TF=VALUE,...)")
                         .on_hover_text(llr_quantile_help);
-                    ui.text_edit_singleline(&mut self.tfbs_per_tf_min_llr_quantile);
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_per_tf_min_llr_quantile)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                    }
                 });
                 ui.separator();
                 ui.label("TFBS display filter (checkbox = criterion enabled)");
@@ -15921,6 +16108,77 @@ impl MainAreaDna {
                             }
                         }
                     }
+                }
+                ui.separator();
+                ui.label("TFBS score tracks (shared report + SVG export)");
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("value kind");
+                    egui::ComboBox::from_id_salt(("dna_window_tfbs_score_track_value_kind", self.panel_scope_key()))
+                        .selected_text(self.tfbs_score_track_value_kind.as_str())
+                        .show_ui(ui, |ui| {
+                            for value_kind in Self::tfbs_score_track_value_kind_options() {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.tfbs_score_track_value_kind,
+                                        value_kind,
+                                        value_kind.as_str(),
+                                    )
+                                    .changed()
+                                {
+                                    tfbs_panel_state_changed = true;
+                                    tfbs_score_track_settings_changed = true;
+                                }
+                            }
+                        });
+                    if ui
+                        .checkbox(&mut self.tfbs_score_track_clip_negative, "clip negatives")
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_score_track_settings_changed = true;
+                    }
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Score tracks reuse the current motif selection from this TFBS panel and stay non-mutating. Threshold fields above still govern hit annotation/quick scans, while continuous tracks depend on the selected score family and clipping mode here.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                if tfbs_score_track_settings_changed {
+                    self.cached_tfbs_score_tracks = None;
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.cached_tfbs_score_tracks.is_some(),
+                            egui::Button::new("Export cached TFBS score tracks SVG..."),
+                        )
+                        .on_hover_text(
+                            "Write the currently cached TFBS score-track plot as a shared SVG figure through the same engine-owned rendering route used by shell/CLI exports.",
+                        )
+                        .clicked()
+                    {
+                        self.export_cached_tfbs_score_tracks_svg();
+                    }
+                    if self.cached_tfbs_score_tracks.is_none() {
+                        ui.small(
+                            egui::RichText::new(
+                                "Use the toolbar menu `TFBS score tracks` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                });
+                let empty_track_markers: [(usize, &'static str, egui::Color32); 0] = [];
+                Self::render_tfbs_score_track_summary_panel(
+                    ui,
+                    "DNA-window TF score tracks",
+                    "No TF score tracks cached yet. Use the toolbar menu `TFBS score tracks` to inspect the current selection, visible span, or whole sequence through the shared engine report path.",
+                    self.cached_tfbs_score_tracks.as_ref(),
+                    &empty_track_markers,
+                );
+                if tfbs_panel_state_changed {
+                    self.save_engine_ops_state();
                 }
             });
 
@@ -17851,6 +18109,195 @@ impl MainAreaDna {
 
     fn scan_whole_sequence_for_tfbs_hits(&mut self) {
         self.run_tfbs_hit_scan_for_active_sequence(None, "whole sequence");
+    }
+
+    fn tfbs_score_track_value_kind_options() -> [TfbsScoreTrackValueKind; 8] {
+        [
+            TfbsScoreTrackValueKind::LlrBits,
+            TfbsScoreTrackValueKind::LlrQuantile,
+            TfbsScoreTrackValueKind::LlrBackgroundQuantile,
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            TfbsScoreTrackValueKind::TrueLogOddsBits,
+            TfbsScoreTrackValueKind::TrueLogOddsQuantile,
+            TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile,
+            TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10,
+        ]
+    }
+
+    fn collect_tfbs_score_track_request_for_active_sequence(
+        &self,
+        span: Option<(usize, usize)>,
+    ) -> Result<
+        (
+            String,
+            SequenceScanTarget,
+            Vec<String>,
+            TfbsScoreTrackValueKind,
+            bool,
+        ),
+        String,
+    > {
+        let seq_id = self.seq_id.clone().unwrap_or_default();
+        if seq_id.trim().is_empty() {
+            return Err("No active template sequence".to_string());
+        }
+        let (motifs, _, _, _) = self.collect_tfbs_scan_settings()?;
+        Ok((
+            seq_id.clone(),
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based: span.map(|(start, _)| start),
+                span_end_0based_exclusive: span.map(|(_, end_exclusive)| end_exclusive),
+            },
+            motifs,
+            self.tfbs_score_track_value_kind,
+            self.tfbs_score_track_clip_negative,
+        ))
+    }
+
+    fn summarize_tfbs_score_track_report_status(
+        report: &TfbsScoreTrackReport,
+        source_label: &str,
+    ) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            report.seq_id.as_str()
+        } else {
+            report.target_label.trim()
+        };
+        let peak_preview = report
+            .tracks
+            .iter()
+            .take(3)
+            .map(|track| {
+                let label =
+                    Self::promoter_design_track_label(&track.tf_id, track.tf_name.as_deref());
+                match track.max_position_0based {
+                    Some(position) => format!("{label}@{position} {:.2}", track.max_score),
+                    None => format!("{label} no_windows"),
+                }
+            })
+            .collect::<Vec<_>>();
+        if peak_preview.is_empty() {
+            format!(
+                "TFBS score tracks for {source_label} on '{}' cover no motif tracks across {}..{}",
+                target_label, report.view_start_0based, report.view_end_0based_exclusive
+            )
+        } else {
+            format!(
+                "TFBS score tracks for {source_label} on '{}' cover {} motif(s) across {}..{} [{}]: {}",
+                target_label,
+                report.tracks.len(),
+                report.view_start_0based,
+                report.view_end_0based_exclusive,
+                report.score_kind.as_str(),
+                peak_preview.join(", ")
+            )
+        }
+    }
+
+    fn run_tfbs_score_tracks_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) -> Option<TfbsScoreTrackReport> {
+        let (_seq_id, target, motifs, score_kind, clip_negative) =
+            match self.collect_tfbs_score_track_request_for_active_sequence(span) {
+                Ok(request) => request,
+                Err(message) => {
+                    self.op_status = message;
+                    return None;
+                }
+            };
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
+                target,
+                motifs,
+                score_kind,
+                clip_negative,
+                path: None,
+            });
+        let Some(report) = result.and_then(|row| row.tfbs_score_tracks) else {
+            return None;
+        };
+        self.cached_tfbs_score_tracks = Some(report.clone());
+        self.op_status = Self::summarize_tfbs_score_track_report_status(&report, source_label);
+        Some(report)
+    }
+
+    fn show_current_selection_tfbs_score_tracks(&mut self) {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No non-empty linear selection available for TFBS score tracks".to_string();
+            return;
+        };
+        let _ = self.run_tfbs_score_tracks_for_active_sequence(
+            Some((start, end_exclusive)),
+            "current selection",
+        );
+    }
+
+    fn show_visible_span_tfbs_score_tracks(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status = "Visible linear span is unavailable for TFBS score tracks".to_string();
+            return;
+        };
+        let _ = self.run_tfbs_score_tracks_for_active_sequence(
+            Some((start, end_exclusive)),
+            "visible span",
+        );
+    }
+
+    fn show_whole_sequence_tfbs_score_tracks(&mut self) {
+        let _ = self.run_tfbs_score_tracks_for_active_sequence(None, "whole sequence");
+    }
+
+    fn default_cached_tfbs_score_tracks_svg_file_name(report: &TfbsScoreTrackReport) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            report.seq_id.as_str()
+        } else {
+            report.target_label.trim()
+        };
+        format!(
+            "{}_tfbs_score_tracks_{}-{}_{}.svg",
+            Self::sanitize_export_name_component(target_label, "tfbs_score_tracks"),
+            report.view_start_0based,
+            report.view_end_0based_exclusive,
+            report.score_kind.as_str()
+        )
+    }
+
+    fn export_cached_tfbs_score_tracks_svg(&mut self) {
+        let Some(report) = self.cached_tfbs_score_tracks.clone() else {
+            self.op_status = "No cached TFBS score tracks available for SVG export".to_string();
+            return;
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        };
+        let default_name = Self::default_cached_tfbs_score_tracks_svg_file_name(&report);
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "TFBS score-track SVG export canceled".to_string();
+            return;
+        };
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::RenderTfbsScoreTracksSvg {
+                target: SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based: Some(report.view_start_0based),
+                    span_end_0based_exclusive: Some(report.view_end_0based_exclusive),
+                },
+                motifs: report.motifs_requested.clone(),
+                score_kind: report.score_kind,
+                clip_negative: report.clip_negative,
+                path: path.display().to_string(),
+            });
+        if let Some(updated_report) = result.and_then(|row| row.tfbs_score_tracks) {
+            self.cached_tfbs_score_tracks = Some(updated_report);
+        }
     }
 
     fn render_selection_simple_pcr_context_action(&mut self, ui: &mut egui::Ui) -> bool {
@@ -42631,6 +43078,8 @@ impl MainAreaDna {
             tfbs_per_tf_min_llr_bits: self.tfbs_per_tf_min_llr_bits.clone(),
             tfbs_per_tf_min_llr_quantile: self.tfbs_per_tf_min_llr_quantile.clone(),
             tfbs_clear_existing: self.tfbs_clear_existing,
+            tfbs_score_track_value_kind: self.tfbs_score_track_value_kind,
+            tfbs_score_track_clip_negative: self.tfbs_score_track_clip_negative,
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -42852,6 +43301,9 @@ impl MainAreaDna {
         self.tfbs_per_tf_min_llr_bits = s.tfbs_per_tf_min_llr_bits;
         self.tfbs_per_tf_min_llr_quantile = s.tfbs_per_tf_min_llr_quantile;
         self.tfbs_clear_existing = s.tfbs_clear_existing;
+        self.tfbs_score_track_value_kind = s.tfbs_score_track_value_kind;
+        self.tfbs_score_track_clip_negative = s.tfbs_score_track_clip_negative;
+        self.cached_tfbs_score_tracks = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;

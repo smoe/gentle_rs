@@ -1797,7 +1797,20 @@ Controls:
      quick scan, so CLI/shell/agent calls see the same report schema.
    - Status feedback summarizes the top hits inline; the quick GUI path caps
      the report at 200 hits to keep inspection responsive.
-21. Selection formula
+21. TFBS score tracks
+   - Toolbar menu for direct non-mutating continuous TFBS/JASPAR score
+     inspection on the current active DNA window.
+   - Available entry points:
+     - current selection
+     - current visible linear span
+     - whole active sequence
+   - Reuses the same motif selection as `TFBS annotation` while keeping the
+     chosen score-family/clipping mode in that panel, so no second GUI-only
+     motif configuration is introduced.
+   - Uses the shared `SummarizeTfbsScoreTracks` engine operation rather than a
+     GUI-only painter, and the cached view can be exported from the same panel
+     through `RenderTfbsScoreTracksSvg`.
+22. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Drag-selecting on the linear map now also updates this field to the
      current `=start .. end_exclusive` range, and existing map selections can
@@ -3197,6 +3210,19 @@ Safety behavior:
   settings for non-mutating quick inspection of the current selection, visible
   span, or whole sequence, with a smaller GUI-only preview cap (`200`) to keep
   those ad-hoc scans responsive.
+- The DNA-window toolbar `TFBS score tracks` menu reuses the same motif
+  selection for non-mutating continuous score inspection of the current
+  selection, visible span, or whole sequence.
+- The same `TFBS annotation` panel now also includes one cached score-track
+  inspector:
+  - choose the exported/displayed `value kind`
+  - optionally `clip negatives` for raw bit-score families
+  - inspect the shared `TfbsScoreTrackReport` immediately in the DNA window
+  - export the cached view through the shared `RenderTfbsScoreTracksSvg`
+    engine route instead of a GUI-only painter
+- Threshold fields remain relevant for hit annotation and `TFBS scan`; the
+  continuous score-track view depends on motif selection plus the chosen
+  score-family/clipping mode.
 
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:

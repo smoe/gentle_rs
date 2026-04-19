@@ -1778,7 +1778,7 @@ impl MainAreaDna {
         }
     }
 
-    fn promoter_design_track_label(tf_id: &str, tf_name: Option<&str>) -> String {
+    pub(super) fn promoter_design_track_label(tf_id: &str, tf_name: Option<&str>) -> String {
         let trimmed_name = tf_name.map(str::trim).unwrap_or_default();
         if trimmed_name.is_empty() {
             return tf_id.to_string();
@@ -1972,19 +1972,26 @@ impl MainAreaDna {
         );
     }
 
-    fn render_variant_followup_score_track_summary(&mut self, ui: &mut egui::Ui) {
-        let Some(report) = self.variant_followup_ui.cached_score_tracks.as_ref() else {
+    pub(super) fn render_tfbs_score_track_summary_panel(
+        ui: &mut egui::Ui,
+        title: &str,
+        empty_message: &str,
+        report: Option<&TfbsScoreTrackReport>,
+        markers: &[(usize, &'static str, egui::Color32)],
+    ) {
+        let Some(report) = report else {
             ui.small(
-                egui::RichText::new(
-                    "No TF score tracks cached yet. Run 'Show TF score tracks' to inspect positive-only motif scoring across the selected promoter span.",
-                )
-                .color(egui::Color32::from_rgb(100, 116, 139)),
+                egui::RichText::new(empty_message).color(egui::Color32::from_rgb(100, 116, 139)),
             );
             return;
         };
-        let markers = self.promoter_design_plot_markers();
+        let target_label = if report.target_label.trim().is_empty() {
+            report.seq_id.as_str()
+        } else {
+            report.target_label.trim()
+        };
         ui.group(|ui| {
-            ui.label(egui::RichText::new("Promoter TF score tracks").strong());
+            ui.label(egui::RichText::new(title).strong());
             ui.small(
                 egui::RichText::new(format!(
                     "{} motif(s) across {}..{} | score={}{}",
@@ -1999,6 +2006,16 @@ impl MainAreaDna {
                     }
                 ))
                 .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(format!(
+                    "target: {} '{}' | source length {} bp | topology {}",
+                    report.target_kind,
+                    target_label,
+                    report.source_sequence_length_bp,
+                    report.scan_topology.as_str()
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
             );
             if let Some(normalization) = report
                 .tracks
@@ -2061,6 +2078,17 @@ impl MainAreaDna {
             }
             Self::render_variant_followup_score_track_correlation_summary(ui, report);
         });
+    }
+
+    fn render_variant_followup_score_track_summary(&mut self, ui: &mut egui::Ui) {
+        let markers = self.promoter_design_plot_markers();
+        Self::render_tfbs_score_track_summary_panel(
+            ui,
+            "Promoter TF score tracks",
+            "No TF score tracks cached yet. Run 'Show TF score tracks' to inspect positive-only motif scoring across the selected promoter span.",
+            self.variant_followup_ui.cached_score_tracks.as_ref(),
+            &markers,
+        );
     }
 
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
