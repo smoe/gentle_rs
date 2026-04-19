@@ -12,6 +12,7 @@
 //! - RNA-read inspection/export/report-store helpers used across GUI and CLI
 
 use super::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default)]
 struct RnaReadConcatemerTranscriptCatalogSummary {
@@ -1976,6 +1977,183 @@ impl GentleEngine {
         ))
     }
 
+    fn make_rna_read_transcript_catalog_template_record(
+        template: SplicingTranscriptTemplate,
+        gene_id: String,
+    ) -> RnaReadTranscriptCatalogTemplateRecord {
+        RnaReadTranscriptCatalogTemplateRecord {
+            transcript_id: template.transcript_id,
+            transcript_label: template.transcript_label,
+            gene_id,
+            strand: template.strand,
+            sequence: String::from_utf8_lossy(&template.sequence).into_owned(),
+            kmer_positions: template.kmer_positions.into_iter().collect(),
+        }
+    }
+
+    pub fn build_rna_read_transcript_catalog_index(
+        fasta_paths: &[String],
+        seed_kmer_len: usize,
+    ) -> Result<RnaReadTranscriptCatalogIndex, EngineError> {
+        if fasta_paths.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read transcript catalog index requires at least one --transcript-fasta path".to_string(),
+            });
+        }
+        if seed_kmer_len == 0 || seed_kmer_len > 16 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read transcript catalog index requires --kmer-len within 1..=16"
+                    .to_string(),
+            });
+        }
+        let mut warnings = Vec::<String>::new();
+        let mut next_feature_id = 1usize;
+        let mut records = Vec::<RnaReadTranscriptCatalogTemplateRecord>::new();
+        for path in fasta_paths {
+            let (templates, transcript_gene_lookup, _transcript_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    seed_kmer_len,
+                    next_feature_id,
+                    &mut warnings,
+                )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            for template in templates {
+                let gene_id = transcript_gene_lookup
+                    .get(&template.transcript_feature_id)
+                    .cloned()
+                    .unwrap_or_else(|| template.transcript_label.clone());
+                records.push(Self::make_rna_read_transcript_catalog_template_record(
+                    template, gene_id,
+                ));
+            }
+        }
+        let gene_count = records
+            .iter()
+            .map(|record| record.gene_id.clone())
+            .collect::<HashSet<_>>()
+            .len();
+        let generated_at_unix_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        Ok(RnaReadTranscriptCatalogIndex {
+            schema: RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA.to_string(),
+            generated_at_unix_ms,
+            seed_kmer_len,
+            source_paths: fasta_paths.to_vec(),
+            transcript_count: records.len(),
+            gene_count,
+            warnings,
+            templates: records,
+        })
+    }
+
+    pub fn export_rna_read_transcript_catalog_index(
+        fasta_paths: &[String],
+        seed_kmer_len: usize,
+        output_path: &str,
+    ) -> Result<RnaReadTranscriptCatalogIndex, EngineError> {
+        let index = Self::build_rna_read_transcript_catalog_index(fasta_paths, seed_kmer_len)?;
+        let payload = serde_json::to_string_pretty(&index).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize RNA-read transcript catalog index for '{}': {}",
+                output_path, e
+            ),
+        })?;
+        std::fs::write(output_path, payload).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read transcript catalog index to '{}': {}",
+                output_path, e
+            ),
+        })?;
+        Ok(index)
+    }
+
+    fn load_external_rna_read_concatemer_templates_from_index(
+        path: &str,
+        expected_kmer_len: usize,
+        next_feature_id_start: usize,
+        warnings: &mut Vec<String>,
+    ) -> Result<
+        (
+            Vec<SplicingTranscriptTemplate>,
+            HashMap<usize, String>,
+            HashMap<String, String>,
+        ),
+        EngineError,
+    > {
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read RNA-read transcript catalog index '{}': {}",
+                path, e
+            ),
+        })?;
+        let index: RnaReadTranscriptCatalogIndex =
+            serde_json::from_str(&text).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse RNA-read transcript catalog index '{}': {}",
+                    path, e
+                ),
+            })?;
+        if index.schema != RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read transcript catalog index '{}' uses unsupported schema '{}' (expected '{}')",
+                    path, index.schema, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA
+                ),
+            });
+        }
+        if index.seed_kmer_len != expected_kmer_len {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read transcript catalog index '{}' was built with kmer_len={} but the report requires kmer_len={}",
+                    path, index.seed_kmer_len, expected_kmer_len
+                ),
+            });
+        }
+        for warning in &index.warnings {
+            warnings.push(format!("transcript index '{}': {}", path, warning));
+        }
+        let mut templates = Vec::<SplicingTranscriptTemplate>::with_capacity(index.templates.len());
+        let mut transcript_gene_lookup = HashMap::<usize, String>::new();
+        let mut transcript_gene_lookup_by_id = HashMap::<String, String>::new();
+        let mut next_feature_id = next_feature_id_start;
+        for record in index.templates {
+            let feature_id = next_feature_id;
+            next_feature_id = next_feature_id.saturating_add(1);
+            transcript_gene_lookup.insert(feature_id, record.gene_id.clone());
+            transcript_gene_lookup_by_id.insert(record.transcript_id.clone(), record.gene_id);
+            templates.push(SplicingTranscriptTemplate {
+                transcript_feature_id: feature_id,
+                transcript_id: record.transcript_id,
+                transcript_label: record.transcript_label,
+                strand: record.strand,
+                sequence: record.sequence.into_bytes(),
+                genomic_positions_1based: Vec::new(),
+                kmer_positions: record.kmer_positions.into_iter().collect(),
+            });
+        }
+        Ok((
+            templates,
+            transcript_gene_lookup,
+            transcript_gene_lookup_by_id,
+        ))
+    }
+
     fn lookup_rna_read_concatemer_transcript_gene(
         context: &RnaReadConcatemerFragmentContext,
         transcript_feature_id: usize,
@@ -2255,7 +2433,9 @@ impl GentleEngine {
             transcript_gene_lookup_by_id.insert(lane.transcript_id.clone(), gene_id);
         }
         let mut templates = templates;
-        if !settings.transcript_fasta_paths.is_empty() {
+        if !settings.transcript_index_paths.is_empty()
+            || !settings.transcript_fasta_paths.is_empty()
+        {
             let mut next_feature_id_start = transcript_gene_lookup
                 .keys()
                 .max()
@@ -2266,6 +2446,38 @@ impl GentleEngine {
                 .iter()
                 .map(|template| template.transcript_id.clone())
                 .collect::<HashSet<_>>();
+            for path in &settings.transcript_index_paths {
+                let (external_templates, external_gene_lookup, external_gene_lookup_by_id) =
+                    Self::load_external_rna_read_concatemer_templates_from_index(
+                        path,
+                        report.seed_filter.kmer_len,
+                        next_feature_id_start,
+                        warnings,
+                    )?;
+                next_feature_id_start = external_gene_lookup
+                    .keys()
+                    .max()
+                    .copied()
+                    .unwrap_or(next_feature_id_start.saturating_sub(1))
+                    .saturating_add(1);
+                for template in external_templates {
+                    if existing_transcript_ids.insert(template.transcript_id.clone()) {
+                        if let Some(gene_id) =
+                            external_gene_lookup.get(&template.transcript_feature_id)
+                        {
+                            transcript_gene_lookup
+                                .insert(template.transcript_feature_id, gene_id.clone());
+                        }
+                        if let Some(gene_id) =
+                            external_gene_lookup_by_id.get(&template.transcript_id)
+                        {
+                            transcript_gene_lookup_by_id
+                                .insert(template.transcript_id.clone(), gene_id.clone());
+                        }
+                        templates.push(template);
+                    }
+                }
+            }
             for path in &settings.transcript_fasta_paths {
                 let (external_templates, external_gene_lookup, external_gene_lookup_by_id) =
                     Self::load_external_rna_read_concatemer_templates(

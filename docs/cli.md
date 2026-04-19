@@ -487,6 +487,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
   - `rna-reads inspect-concatemers`
+  - `rna-reads build-transcript-index`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
@@ -552,6 +553,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `inspect-concatemers`: non-mutating fragment/concatemer suspicion audit
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
+  - `build-transcript-index`: prepares a reusable external transcript catalog
+    JSON for later concatemer audits, with precomputed per-template k-mer
+    positions and preserved source-path provenance.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
     downstream table-based triage.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
@@ -1710,7 +1714,8 @@ Shared shell command:
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
-    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]...`
+    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+    - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -1770,6 +1775,22 @@ Shared shell command:
         rerun `rna-reads align-report REPORT_ID --max-secondary-mappings 3`
         (or higher) before using this audit to argue for concatemer/fusion
         artifacts in real data
+      - practical transcript-catalog recipes:
+        - coding transcripts only:
+          `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz`
+        - coding + noncoding transcripts in one run:
+          `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
+        - reusable prepared transcript catalog for repeated runs:
+          `rna-reads build-transcript-index /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna_plus_ncrna.rna_read_index.json --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
+        - reuse the prepared index in later audits:
+          `rna-reads inspect-concatemers REPORT_ID --transcript-index /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna_plus_ncrna.rna_read_index.json`
+      - implementation note:
+        `build-transcript-index` now prepares a reusable transcript catalog
+        JSON with per-template k-mer positions so repeated concatemer audits do
+        not need to reparse every FASTA on every run. This is the first shared
+        prepared-index step for the external transcriptome path. It is not yet
+        the heavier fully joined global inverted seed index one might build for
+        even larger transcriptome-scale scans.
     - `rna-reads summarize-gene-support` returns a machine-readable
       `gentle.rna_read_gene_support_summary.v1` payload for one or more target
       genes from a saved aligned report:

@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -3297,11 +3297,23 @@ Status:
       across the full suspicious cohort before row truncation so recurring
       TP73-linked partners remain visible even when the ranked row view is
       limited
+    - external transcript catalogs can now be appended one by one with
+      repeated `--transcript-fasta` arguments (for example Ensembl `cdna` plus
+      `ncrna`) instead of forcing users to pre-merge one giant reference FASTA
     - the payload warns explicitly when the source report was aligned with
       `max_secondary_mappings=0`, because that removes the strongest current
       fragment-fusion evidence branch
     - intended use: triage rare-isoform failures and candidate partial-read
       fusions before deeper locus-specific review
+    - a first reusable transcript-catalog index path is now in place:
+      - `rna-reads build-transcript-index OUTPUT.json --transcript-fasta ...`
+      - `inspect-concatemers` can now reuse one or more prepared
+        `--transcript-index PATH` files
+      - the prepared JSON stores transcript/gene identity plus precomputed
+        per-template k-mer positions for repeated audits
+    - still missing if performance pressure warrants it later:
+      a heavier fully joined global inverted seed index across external
+      catalogs rather than the current reusable per-template catalog index
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.

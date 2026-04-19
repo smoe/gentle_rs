@@ -5820,7 +5820,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "inspect-concatemers" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]..."
+                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]..."
                         .to_string(),
                 );
             }
@@ -6010,6 +6010,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         )?;
                         settings.transcript_fasta_paths.push(raw);
                     }
+                    "--transcript-index" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-index",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.transcript_index_paths.push(raw);
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for rna-reads inspect-concatemers"
@@ -6022,6 +6031,65 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 selection,
                 limit,
                 settings,
+            })
+        }
+        "build-transcript-index" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads build-transcript-index requires OUTPUT.json --transcript-fasta PATH [--transcript-fasta PATH ...] [--kmer-len N]"
+                        .to_string(),
+                );
+            }
+            let path = tokens[2].trim().to_string();
+            if path.is_empty() {
+                return Err(
+                    "rna-reads build-transcript-index OUTPUT.json must not be empty".to_string(),
+                );
+            }
+            let mut seed_kmer_len = 10usize;
+            let mut transcript_fasta_paths = Vec::<String>::new();
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-fasta",
+                            "rna-reads build-transcript-index",
+                        )?;
+                        transcript_fasta_paths.push(raw);
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads build-transcript-index",
+                        )?;
+                        seed_kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --kmer-len value '{raw}' for rna-reads build-transcript-index: {e}"
+                            )
+                        })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads build-transcript-index"
+                        ));
+                    }
+                }
+            }
+            if transcript_fasta_paths.is_empty() {
+                return Err(
+                    "rna-reads build-transcript-index requires at least one --transcript-fasta PATH"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsBuildTranscriptIndex {
+                path,
+                seed_kmer_len,
+                transcript_fasta_paths,
             })
         }
         "export-report" => {
@@ -6445,7 +6513,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

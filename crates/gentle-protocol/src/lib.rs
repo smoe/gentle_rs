@@ -3495,6 +3495,8 @@ pub struct RnaReadConcatemerInspectionSettings {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub transcript_fasta_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_index_paths: Vec<String>,
 }
 
 impl Default for RnaReadConcatemerInspectionSettings {
@@ -3517,8 +3519,39 @@ impl Default for RnaReadConcatemerInspectionSettings {
             fragment_min_query_coverage_fraction:
                 default_rna_read_concatemer_fragment_min_query_coverage_fraction(),
             transcript_fasta_paths: Vec::new(),
+            transcript_index_paths: Vec::new(),
         }
     }
+}
+
+pub const RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA: &str =
+    "gentle.rna_read_transcript_catalog_index.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One normalized transcript template row stored in a reusable RNA-read
+/// transcript catalog index.
+pub struct RnaReadTranscriptCatalogTemplateRecord {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub gene_id: String,
+    pub strand: String,
+    pub sequence: String,
+    pub kmer_positions: BTreeMap<u32, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Reusable transcript catalog prepared for concatemer/fragment-origin audits.
+pub struct RnaReadTranscriptCatalogIndex {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub seed_kmer_len: usize,
+    pub source_paths: Vec<String>,
+    pub transcript_count: usize,
+    pub gene_count: usize,
+    pub warnings: Vec<String>,
+    pub templates: Vec<RnaReadTranscriptCatalogTemplateRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

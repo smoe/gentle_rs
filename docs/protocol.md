@@ -4869,6 +4869,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - `fragment_min_identity_fraction`
       - `fragment_min_query_coverage_fraction`
       - `transcript_fasta_paths[]`
+      - `transcript_index_paths[]`
     - current evidence signals:
       - low primary `query_coverage_fraction`
       - internal poly(A) run away from both read ends
@@ -4899,6 +4900,34 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - if the source report was aligned with `max_secondary_mappings = 0`, the
       payload includes a warning that the disjoint-secondary branch of the
       audit was unavailable
+  - reusable external transcript-catalog index behavior:
+    - schema:
+      - `gentle.rna_read_transcript_catalog_index.v1`
+    - built by the shared-shell command:
+      - `rna-reads build-transcript-index OUTPUT.json --transcript-fasta PATH [--transcript-fasta PATH ...] [--kmer-len N]`
+    - payload fields:
+      - `schema`
+      - `generated_at_unix_ms`
+      - `seed_kmer_len`
+      - `source_paths[]`
+      - `transcript_count`
+      - `gene_count`
+      - `warnings[]`
+      - `templates[]`
+    - each template row preserves:
+      - `transcript_id`
+      - `transcript_label`
+      - `gene_id`
+      - `strand`
+      - `sequence`
+      - precomputed `kmer_positions`
+    - `InspectRnaReadConcatemers` can reuse one or more prepared indexes via
+      `transcript_index_paths[]`
+    - current scope:
+      - this is a reusable prepared transcript-catalog layer for repeated
+        concatemer audits
+      - it is not yet a heavier fully joined global inverted seed index across
+        all external catalogs
   - on-demand pairwise-alignment detail behavior:
     - the engine can reconstruct the exact phase-2 read-vs-transcript-template
       alignment for one retained row from the saved report plus admitted
@@ -5118,7 +5147,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
   - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
-  - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]...`
+  - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+  - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -5160,6 +5190,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       catalogs to one audit run; the serialized settings now preserve those as
       `transcript_fasta_paths[]`, while legacy single-path payloads still
       deserialize via `transcript_fasta_path`
+    - `rna-reads build-transcript-index` returns the full
+      `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
+      writes the same JSON to the requested output path
 - Alignment-TSV export:
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`

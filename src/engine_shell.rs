@@ -1822,6 +1822,11 @@ pub enum ShellCommand {
         limit: usize,
         settings: RnaReadConcatemerInspectionSettings,
     },
+    RnaReadsBuildTranscriptIndex {
+        path: String,
+        seed_kmer_len: usize,
+        transcript_fasta_paths: Vec<String>,
+    },
     RnaReadsExportReport {
         report_id: String,
         path: String,
@@ -8089,7 +8094,7 @@ impl ShellCommand {
                 limit,
                 settings,
             } => format!(
-                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2}, transcript_fastas={})",
+                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2}, transcript_fastas={}, transcript_indexes={})",
                 report_id,
                 selection.as_str(),
                 limit,
@@ -8108,6 +8113,25 @@ impl ShellCommand {
                     "<none>".to_string()
                 } else {
                     settings.transcript_fasta_paths.join(",")
+                },
+                if settings.transcript_index_paths.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    settings.transcript_index_paths.join(",")
+                }
+            ),
+            Self::RnaReadsBuildTranscriptIndex {
+                path,
+                seed_kmer_len,
+                transcript_fasta_paths,
+            } => format!(
+                "build RNA-read transcript index '{}' (kmer_len={}, transcript_fastas={})",
+                path,
+                seed_kmer_len,
+                if transcript_fasta_paths.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    transcript_fasta_paths.join(",")
                 }
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
@@ -22804,6 +22828,25 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsBuildTranscriptIndex {
+            path,
+            seed_kmer_len,
+            transcript_fasta_paths,
+        } => {
+            let index = GentleEngine::export_rna_read_transcript_catalog_index(
+                transcript_fasta_paths,
+                *seed_kmer_len,
+                path,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "index": index,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::RnaReadsExportReport { report_id, path } => {
             let report = engine
                 .export_rna_read_report(report_id, path)
@@ -23708,6 +23751,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsInspectGeneSupport { .. }
             | ShellCommand::RnaReadsInspectAlignments { .. }
             | ShellCommand::RnaReadsInspectConcatemers { .. }
+            | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
             | ShellCommand::RnaReadsExportSampleSheet { .. }
@@ -25655,6 +25699,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsInspectGeneSupport { .. }
         | ShellCommand::RnaReadsInspectAlignments { .. }
         | ShellCommand::RnaReadsInspectConcatemers { .. }
+        | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }
         | ShellCommand::RnaReadsExportSampleSheet { .. }

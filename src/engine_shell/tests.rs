@@ -15854,7 +15854,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let inspect_concatemers = parse_shell_line(
-        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10 --adapter-fasta data/resources/nanopore_direct_cdna_kit14_adapters.fasta --adapter-min-match-bp 18 --fragment-min-bp 75 --fragment-max-parts 3 --fragment-min-identity 0.88 --fragment-min-query-cov 0.45 --transcript-fasta data/transcriptome_cdna.fa.gz --transcript-fasta data/transcriptome_ncrna.fa.gz",
+        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10 --adapter-fasta data/resources/nanopore_direct_cdna_kit14_adapters.fasta --adapter-min-match-bp 18 --fragment-min-bp 75 --fragment-max-parts 3 --fragment-min-identity 0.88 --fragment-min-query-cov 0.45 --transcript-fasta data/transcriptome_cdna.fa.gz --transcript-fasta data/transcriptome_ncrna.fa.gz --transcript-index data/transcriptome_joined.index.json",
     )
     .expect("parse rna-reads inspect-concatemers");
     assert!(matches!(
@@ -15875,6 +15875,24 @@ fn parse_rna_reads_commands() {
                 && (settings.fragment_min_identity_fraction - 0.88).abs() < 1e-9
                 && (settings.fragment_min_query_coverage_fraction - 0.45).abs() < 1e-9
                 && settings.transcript_fasta_paths == vec![
+                    "data/transcriptome_cdna.fa.gz".to_string(),
+                    "data/transcriptome_ncrna.fa.gz".to_string(),
+                ]
+                && settings.transcript_index_paths == vec![
+                    "data/transcriptome_joined.index.json".to_string(),
+                ]
+    ));
+
+    let build_transcript_index = parse_shell_line(
+        "rna-reads build-transcript-index data/transcriptome.index.json --kmer-len 11 --transcript-fasta data/transcriptome_cdna.fa.gz --transcript-fasta data/transcriptome_ncrna.fa.gz",
+    )
+    .expect("parse rna-reads build-transcript-index");
+    assert!(matches!(
+        build_transcript_index,
+        ShellCommand::RnaReadsBuildTranscriptIndex { path, seed_kmer_len, transcript_fasta_paths }
+            if path == "data/transcriptome.index.json"
+                && seed_kmer_len == 11
+                && transcript_fasta_paths == vec![
                     "data/transcriptome_cdna.fa.gz".to_string(),
                     "data/transcriptome_ncrna.fa.gz".to_string(),
                 ]
@@ -16667,6 +16685,49 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             .as_str(),
         Some("tx_secondary")
     );
+
+    let transcript_file_gene3 = fasta_dir.path().join("transcriptome_gene3.fa");
+    fs::write(
+        &transcript_file_gene3,
+        ">NM_GENE3_1 gene=GENE3 transcript=NM_GENE3_1\nATGCGTACGTTAGGCCATGCGTAC\n",
+    )
+    .expect("write gene3 transcript fasta");
+    let transcript_file_gene4 = fasta_dir.path().join("transcriptome_gene4.fa");
+    fs::write(
+        &transcript_file_gene4,
+        ">NM_GENE4_1 gene=GENE4 transcript=NM_GENE4_1\nCGTTAACCGGTTACCGGTTAACCG\n",
+    )
+    .expect("write gene4 transcript fasta");
+    let transcript_index_output = fasta_dir.path().join("transcriptome.index.json");
+    let build_index_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsBuildTranscriptIndex {
+            path: transcript_index_output.display().to_string(),
+            seed_kmer_len: 10,
+            transcript_fasta_paths: vec![
+                transcript_file_gene3.display().to_string(),
+                transcript_file_gene4.display().to_string(),
+            ],
+        },
+    )
+    .expect("build transcript index");
+    assert_eq!(
+        build_index_result.output["path"].as_str(),
+        Some(transcript_index_output.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        build_index_result.output["index"]["schema"].as_str(),
+        Some("gentle.rna_read_transcript_catalog_index.v1")
+    );
+    assert_eq!(
+        build_index_result.output["index"]["transcript_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        build_index_result.output["index"]["gene_count"].as_u64(),
+        Some(2)
+    );
+    assert!(transcript_index_output.exists());
 
     let exported_report = fasta_dir.path().join("report.json");
     let export_result = execute_shell_command(
