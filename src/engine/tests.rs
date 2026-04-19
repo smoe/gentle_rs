@@ -26815,20 +26815,24 @@ fn summarize_tfbs_score_tracks_clips_negative_scores_to_zero() {
 
     let unclipped = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(40),
+            },
             &[String::from("SP1")],
-            0,
-            40,
             TfbsScoreTrackValueKind::LlrBits,
             false,
         )
         .expect("unclipped score tracks");
     let clipped = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(40),
+            },
             &[String::from("SP1")],
-            0,
-            40,
             TfbsScoreTrackValueKind::LlrBits,
             true,
         )
@@ -26879,10 +26883,12 @@ fn summarize_tfbs_score_tracks_supports_quantile_scoring_modes() {
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(60),
+            },
             &[String::from("SP1")],
-            0,
-            60,
             TfbsScoreTrackValueKind::LlrQuantile,
             true,
         )
@@ -27031,10 +27037,12 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
 
     let result = engine
         .apply(Operation::SummarizeTfbsScoreTracks {
-            seq_id: "promoter".to_string(),
+            target: SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(5),
+                span_end_0based_exclusive: Some(85),
+            },
             motifs: vec!["SP1".to_string(), "TP73".to_string()],
-            start_0based: 5,
-            end_0based_exclusive: 85,
             score_kind: TfbsScoreTrackValueKind::LlrBits,
             clip_negative: true,
             path: None,
@@ -27047,6 +27055,9 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
         .tfbs_score_tracks
         .expect("score-track report should be attached");
     assert_eq!(report.seq_id, "promoter");
+    assert_eq!(report.target_kind, "seq_id");
+    assert_eq!(report.target_label, "promoter");
+    assert_eq!(report.source_sequence_length_bp, 200);
     assert_eq!(report.view_start_0based, 5);
     assert_eq!(report.view_end_0based_exclusive, 85);
     assert_eq!(report.score_kind, TfbsScoreTrackValueKind::LlrBits);
@@ -27224,10 +27235,12 @@ fn render_tfbs_score_tracks_svg_operation_writes_shared_plot() {
     let path_text = path.display().to_string();
     let result = engine
         .apply(Operation::RenderTfbsScoreTracksSvg {
-            seq_id: "tp73_context".to_string(),
+            target: SequenceScanTarget::SeqId {
+                seq_id: "tp73_context".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
             motifs: vec!["TP73".to_string(), "SP1".to_string(), "BACH2".to_string()],
-            start_0based: 0,
-            end_0based_exclusive: 120,
             score_kind: TfbsScoreTrackValueKind::LlrBits,
             clip_negative: true,
             path: path_text.clone(),
@@ -27244,6 +27257,7 @@ fn render_tfbs_score_tracks_svg_operation_writes_shared_plot() {
         .tfbs_score_tracks
         .expect("render op should attach underlying report");
     assert_eq!(report.seq_id, "tp73_context");
+    assert_eq!(report.target_label, "tp73_context");
     assert_eq!(report.tracks.len(), 3);
     let svg = std::fs::read_to_string(path_text).expect("read svg");
     assert!(svg.contains("<svg"));
@@ -27251,6 +27265,35 @@ fn render_tfbs_score_tracks_svg_operation_writes_shared_plot() {
     assert!(svg.contains("tp73_context"));
     assert!(svg.contains("SP1"));
     assert!(svg.contains("base-pair position in selected span"));
+}
+
+#[test]
+fn summarize_tfbs_score_tracks_supports_inline_sequence_targets() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            SequenceScanTarget::InlineSequence {
+                sequence_text: "ACGT".repeat(40),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_promoter".to_string()),
+                span_start_0based: Some(10),
+                span_end_0based_exclusive: Some(90),
+            },
+            &[String::from("SP1")],
+            TfbsScoreTrackValueKind::LlrQuantile,
+            true,
+        )
+        .expect("inline score tracks");
+
+    assert_eq!(report.target_kind, "inline_sequence");
+    assert_eq!(report.target_label, "inline_promoter");
+    assert_eq!(report.seq_id, "inline_promoter");
+    assert_eq!(report.source_sequence_length_bp, 160);
+    assert_eq!(report.view_start_0based, 10);
+    assert_eq!(report.view_end_0based_exclusive, 90);
+    assert_eq!(report.scan_topology, InlineSequenceTopology::Linear);
+    assert!(report.tss_markers.is_empty());
+    assert_eq!(report.tracks.len(), 1);
 }
 
 #[test]

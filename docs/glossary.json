@@ -2287,7 +2287,7 @@
          ],
          "path": "features tfbs-score-tracks-svg",
          "summary": "Render one stacked SVG plot of continuous TFBS/PSSM score tracks over a selected sequence span.",
-         "usage": "features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
+         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
       },
       {
          "aliases": [],

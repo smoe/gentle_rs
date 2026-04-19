@@ -1705,6 +1705,44 @@ fn finalize_feature_query_options(
     Ok(())
 }
 
+fn build_sequence_scan_target_from_feature_state(
+    seq_id: Option<String>,
+    sequence_text: Option<String>,
+    topology: InlineSequenceTopology,
+    id_hint: Option<String>,
+    state: FeatureQueryOptionState,
+    context: &str,
+) -> Result<SequenceScanTarget, String> {
+    let (span_start_0based, span_end_0based_exclusive) =
+        if state.range_arg.is_some() || state.start_arg.is_some() || state.end_arg.is_some() {
+            let mut query = SequenceFeatureQuery::default();
+            finalize_feature_query_options(state, context, &mut query)?;
+            (query.start_0based, query.end_0based_exclusive)
+        } else {
+            (None, None)
+        };
+    match (seq_id, sequence_text) {
+        (Some(seq_id), None) => Ok(SequenceScanTarget::SeqId {
+            seq_id,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (None, Some(sequence_text)) => Ok(SequenceScanTarget::InlineSequence {
+            sequence_text,
+            topology,
+            id_hint,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (Some(_), Some(_)) => Err(format!(
+            "{context} accepts either SEQ_ID or --sequence-text DNA, not both"
+        )),
+        (None, None) => Err(format!(
+            "{context} requires either SEQ_ID or --sequence-text DNA"
+        )),
+    }
+}
+
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -1908,23 +1946,71 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "tfbs-score-tracks-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "features tfbs-score-tracks-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
+                    "features tfbs-score-tracks-svg requires either SEQ_ID OUTPUT.svg or --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
                         .to_string(),
                 );
             }
-            let seq_id = tokens[2].trim().to_string();
-            if seq_id.is_empty() {
-                return Err("features tfbs-score-tracks-svg requires non-empty SEQ_ID".to_string());
-            }
-            let output = tokens[3].clone();
+            let mut seq_id: Option<String> = None;
+            let mut sequence_text: Option<String> = None;
+            let mut topology = InlineSequenceTopology::Linear;
+            let mut id_hint: Option<String> = None;
+            let mut output: Option<String> = None;
             let mut motifs: Vec<String> = vec![];
-            let mut start_0based: Option<usize> = None;
-            let mut end_0based_exclusive: Option<usize> = None;
             let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
             let mut clip_negative = true;
-            let mut idx = 4usize;
+            let mut state = FeatureQueryOptionState::default();
+            let mut idx = 2usize;
+            if tokens[2].starts_with("--") {
+                // options-only inline form
+            } else {
+                let raw = tokens[2].trim().to_string();
+                if raw.is_empty() {
+                    return Err(
+                        "features tfbs-score-tracks-svg requires non-empty SEQ_ID".to_string()
+                    );
+                }
+                seq_id = Some(raw);
+                output = Some(tokens[3].clone());
+                idx = 4usize;
+            }
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--sequence-text" => {
+                        sequence_text = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-text",
+                            "features tfbs-score-tracks-svg",
+                        )?);
+                    }
+                    "--topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--topology",
+                            "features tfbs-score-tracks-svg",
+                        )?;
+                        topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--id-hint" => {
+                        id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--id-hint",
+                            "features tfbs-score-tracks-svg",
+                        )?);
+                    }
+                    "--output" => {
+                        let value = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "features tfbs-score-tracks-svg",
+                        )?;
+                        if output.replace(value).is_some() {
+                            return Err("--output was specified multiple times".to_string());
+                        }
+                    }
                     "--motif" => {
                         let raw = parse_option_path(
                             tokens,
@@ -1960,10 +2046,11 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                             "--range",
                             "features tfbs-score-tracks-svg",
                         )?;
-                        let (start, end) =
-                            parse_feature_range(&raw, "features tfbs-score-tracks-svg")?;
-                        start_0based = Some(start);
-                        end_0based_exclusive = Some(end);
+                        if state.range_arg.is_some() {
+                            return Err("--range was specified multiple times".to_string());
+                        }
+                        state.range_arg =
+                            Some(parse_feature_range(&raw, "features tfbs-score-tracks-svg")?);
                     }
                     "--start" => {
                         let raw = parse_option_path(
@@ -1972,7 +2059,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                             "--start",
                             "features tfbs-score-tracks-svg",
                         )?;
-                        start_0based = Some(
+                        state.start_arg = Some(
                             raw.parse::<usize>()
                                 .map_err(|e| format!("Invalid --start value '{raw}': {e}"))?,
                         );
@@ -1984,7 +2071,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                             "--end",
                             "features tfbs-score-tracks-svg",
                         )?;
-                        end_0based_exclusive = Some(
+                        state.end_arg = Some(
                             raw.parse::<usize>()
                                 .map_err(|e| format!("Invalid --end value '{raw}': {e}"))?,
                         );
@@ -2039,21 +2126,36 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         .to_string(),
                 );
             }
-            let start_0based = start_0based.unwrap_or(0);
-            let end_0based_exclusive = end_0based_exclusive.ok_or_else(|| {
-                "features tfbs-score-tracks-svg requires --range START..END or --end N".to_string()
+            let output = output.ok_or_else(|| {
+                "features tfbs-score-tracks-svg requires OUTPUT.svg or --output OUTPUT.svg"
+                    .to_string()
             })?;
-            if start_0based >= end_0based_exclusive {
-                return Err(format!(
-                    "features tfbs-score-tracks-svg requires start < end (got {}..{})",
-                    start_0based, end_0based_exclusive
-                ));
+            let target = build_sequence_scan_target_from_feature_state(
+                seq_id,
+                sequence_text,
+                topology,
+                id_hint,
+                state,
+                "features tfbs-score-tracks-svg",
+            )?;
+            if !matches!(
+                &target,
+                SequenceScanTarget::SeqId {
+                    span_end_0based_exclusive: Some(_),
+                    ..
+                } | SequenceScanTarget::InlineSequence {
+                    span_end_0based_exclusive: Some(_),
+                    ..
+                }
+            ) {
+                return Err(
+                    "features tfbs-score-tracks-svg requires --range START..END or --end N"
+                        .to_string(),
+                );
             }
             Ok(ShellCommand::FeaturesTfbsScoreTracksSvg {
-                seq_id,
+                target,
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 output,
@@ -2258,42 +2360,14 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             if motifs.is_empty() {
                 return Err("features tfbs-scan requires at least one --motif TOKEN".to_string());
             }
-            let (span_start_0based, span_end_0based_exclusive) = if state.range_arg.is_some()
-                || state.start_arg.is_some()
-                || state.end_arg.is_some()
-            {
-                let mut query = SequenceFeatureQuery::default();
-                finalize_feature_query_options(state, "features tfbs-scan", &mut query)?;
-                (query.start_0based, query.end_0based_exclusive)
-            } else {
-                (None, None)
-            };
-            let target = match (seq_id, sequence_text) {
-                (Some(seq_id), None) => SequenceScanTarget::SeqId {
-                    seq_id,
-                    span_start_0based,
-                    span_end_0based_exclusive,
-                },
-                (None, Some(sequence_text)) => SequenceScanTarget::InlineSequence {
-                    sequence_text,
-                    topology,
-                    id_hint,
-                    span_start_0based,
-                    span_end_0based_exclusive,
-                },
-                (Some(_), Some(_)) => {
-                    return Err(
-                        "features tfbs-scan accepts either SEQ_ID or --sequence-text DNA, not both"
-                            .to_string(),
-                    );
-                }
-                (None, None) => {
-                    return Err(
-                        "features tfbs-scan requires either SEQ_ID or --sequence-text DNA"
-                            .to_string(),
-                    );
-                }
-            };
+            let target = build_sequence_scan_target_from_feature_state(
+                seq_id,
+                sequence_text,
+                topology,
+                id_hint,
+                state,
+                "features tfbs-scan",
+            )?;
             Ok(ShellCommand::FeaturesTfbsScan {
                 target,
                 motifs,
@@ -2446,42 +2520,14 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                     }
                 }
             }
-            let (span_start_0based, span_end_0based_exclusive) = if state.range_arg.is_some()
-                || state.start_arg.is_some()
-                || state.end_arg.is_some()
-            {
-                let mut query = SequenceFeatureQuery::default();
-                finalize_feature_query_options(state, "features restriction-scan", &mut query)?;
-                (query.start_0based, query.end_0based_exclusive)
-            } else {
-                (None, None)
-            };
-            let target = match (seq_id, sequence_text) {
-                (Some(seq_id), None) => SequenceScanTarget::SeqId {
-                    seq_id,
-                    span_start_0based,
-                    span_end_0based_exclusive,
-                },
-                (None, Some(sequence_text)) => SequenceScanTarget::InlineSequence {
-                    sequence_text,
-                    topology,
-                    id_hint,
-                    span_start_0based,
-                    span_end_0based_exclusive,
-                },
-                (Some(_), Some(_)) => {
-                    return Err(
-                        "features restriction-scan accepts either SEQ_ID or --sequence-text DNA, not both"
-                            .to_string(),
-                    );
-                }
-                (None, None) => {
-                    return Err(
-                        "features restriction-scan requires either SEQ_ID or --sequence-text DNA"
-                            .to_string(),
-                    );
-                }
-            };
+            let target = build_sequence_scan_target_from_feature_state(
+                seq_id,
+                sequence_text,
+                topology,
+                id_hint,
+                state,
+                "features restriction-scan",
+            )?;
             Ok(ShellCommand::FeaturesRestrictionScan {
                 target,
                 enzymes,

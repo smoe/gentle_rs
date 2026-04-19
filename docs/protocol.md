@@ -167,14 +167,18 @@ Current shared-shell route:
 gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
 ```
 
+```bash
+gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
+```
+
 First-class operation routes:
 
 ```json
-{"SummarizeTfbsScoreTracks":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false}}
+{"SummarizeTfbsScoreTracks":{"target":{"kind":"seq_id","seq_id":"SEQ_ID","span_start_0based":15564,"span_end_0based_exclusive":16764},"motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"score_kind":"llr_background_tail_log10","clip_negative":false}}
 ```
 
 ```json
-{"RenderTfbsScoreTracksSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
+{"RenderTfbsScoreTracksSvg":{"target":{"kind":"inline_sequence","sequence_text":"ACGTACGTACGT","topology":"linear","id_hint":"inline_promoter","span_start_0based":0,"span_end_0based_exclusive":12},"motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
 ```
 
 Portable schema:
@@ -184,7 +188,8 @@ Portable schema:
 Behavior notes:
 
 - `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
-  score arrays.
+  score arrays over a `SequenceScanTarget`, so the same report path works for
+  stored `seq_id` spans and inline ASCII DNA.
 - `score_kind` selects which per-window value is exported:
   - `llr_bits`
   - `llr_quantile`
@@ -234,6 +239,9 @@ Behavior notes:
   - raw bit views keep the compact `p99 / Δp99 / bg+` summary
   - background-normalized views instead show `theory max / peak q / -log10 tail`
     so a visually busy tail plot still carries its calibration context
+- The shared report labels the source span through `target_kind`,
+  `target_label`, `source_sequence_length_bp`, and `scan_topology` so adapter
+  surfaces do not need live GUI state to explain what was scored.
 - The shared report also carries transcription-start markers for covered or
   directly adjacent starts, and the SVG renderer shows them as short hooked
   arrows so strand direction survives figure-oriented exports.
@@ -386,11 +394,11 @@ Implemented first-class operation on top of that operand:
     - `motifs=["ALL"]` or `motifs=["*"]` expands to the full local motif
       registry before scanning
 
-Still planned:
+Implemented follow-up:
 
-- additive follow-up for `SummarizeTfbsScoreTracks`
-  - accept the same `target` operand in addition to the current `seq_id`
-    route
+- `SummarizeTfbsScoreTracks` and `RenderTfbsScoreTracksSvg` now accept the same
+  `SequenceScanTarget` operand used by stateless restriction-site and TFBS-hit
+  scans
 
 UX parity expectations:
 
@@ -1304,9 +1312,11 @@ Current draft operations:
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
   - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
-- `SummarizeTfbsScoreTracks { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path? }`
+- `SummarizeTfbsScoreTracks { target, motifs, score_kind, clip_negative, path? }`
   - non-mutating continuous motif-score export for Promoter design and headless
     ClawBio/OpenClaw-style inspection
+  - accepts the shared `SequenceScanTarget` operand so the same summary path
+    works for stored `seq_id` spans and inline ASCII DNA
   - returns schema `gentle.tfbs_score_tracks.v1`
   - reports per-position forward and reverse score tracks for each requested
     TF/PSSM token across one shared span
@@ -1339,8 +1349,10 @@ Current draft operations:
     explicit transcription-start marker even without imported feature rows
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
-- `RenderTfbsScoreTracksSvg { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path }`
+- `RenderTfbsScoreTracksSvg { target, motifs, score_kind, clip_negative, path }`
   - shared stacked SVG renderer for the same TFBS score-track payload
+  - accepts the same `SequenceScanTarget` operand as
+    `SummarizeTfbsScoreTracks`
   - writes a deterministic figure suitable for GUI/CLI/agent/README parity
   - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
     also returns that report in `OpResult.tfbs_score_tracks`

@@ -2058,9 +2058,11 @@ order. Durable architecture constraints and decisions remain in
           deterministic equivalence tests now compare inline-target results
           against stored-`seq_id` results for the same sequence for both
           restriction-site and TFBS hit scans
-        - next follow-up on the same operand family:
-          - let `SummarizeTfbsScoreTracks` accept the same operand in addition
-            to `seq_id`
+        - implemented follow-up on the same operand family:
+          - `SummarizeTfbsScoreTracks` and `RenderTfbsScoreTracksSvg` now
+            accept the same `SequenceScanTarget` operand, so score-track
+            summaries and SVG exports have the same stored-vs-inline parity as
+            restriction-site and TFBS-hit scans
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

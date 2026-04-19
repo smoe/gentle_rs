@@ -372,9 +372,14 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
     let (bp_start_text, bp_mid_text, bp_end_text) =
         format_bp_ticks(report.view_start_0based, report.view_end_0based_exclusive);
     let title = "Continuous TF motif score tracks";
+    let target_label = if report.target_label.trim().is_empty() {
+        report.seq_id.as_str()
+    } else {
+        report.target_label.trim()
+    };
     let subtitle = format!(
-        "seq={} | span={}..{} | motifs={} | score={}{}",
-        report.seq_id,
+        "target={} | span={}..{} | motifs={} | score={}{}",
+        target_label,
         report.view_start_0based,
         report.view_end_0based_exclusive,
         report.tracks.len(),
@@ -613,8 +618,12 @@ mod tests {
     fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
         let report = TfbsScoreTrackReport {
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
+            target_kind: "seq_id".to_string(),
+            target_label: "tp73_upstream".to_string(),
             seq_id: "tp73_upstream".to_string(),
+            source_sequence_length_bp: 4000,
             sequence_length_bp: 4000,
+            scan_topology: crate::engine::InlineSequenceTopology::Linear,
             generated_at_unix_ms: 0,
             op_id: None,
             run_id: None,
@@ -723,8 +732,12 @@ mod tests {
     fn render_tfbs_score_tracks_svg_supports_negative_ranges() {
         let report = TfbsScoreTrackReport {
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
+            target_kind: "seq_id".to_string(),
+            target_label: "tp73_context".to_string(),
             seq_id: "tp73_context".to_string(),
+            source_sequence_length_bp: 80,
             sequence_length_bp: 80,
+            scan_topology: crate::engine::InlineSequenceTopology::Linear,
             generated_at_unix_ms: 0,
             op_id: None,
             run_id: None,

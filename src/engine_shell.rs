@@ -1457,10 +1457,8 @@ pub enum ShellCommand {
         request: TfbsRegionSummaryRequest,
     },
     FeaturesTfbsScoreTracksSvg {
-        seq_id: String,
+        target: SequenceScanTarget,
         motifs: Vec<String>,
-        start_0based: usize,
-        end_0based_exclusive: usize,
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         output: String,
@@ -4845,6 +4843,15 @@ fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAn
         .map_err(|e| format!("Invalid {} JSON '{}': {}", option_name, raw, e))
 }
 
+fn format_optional_span(start: Option<usize>, end_exclusive: Option<usize>) -> String {
+    match (start, end_exclusive) {
+        (Some(start), Some(end_exclusive)) => format!("[{}..{}]", start, end_exclusive),
+        (Some(start), None) => format!("[{}..]", start),
+        (None, Some(end_exclusive)) => format!("[..{}]", end_exclusive),
+        (None, None) => String::new(),
+    }
+}
+
 impl ShellCommand {
     pub fn preview(&self) -> String {
         match self {
@@ -7012,23 +7019,48 @@ impl ShellCommand {
                     .unwrap_or_else(|| "default".to_string()),
             ),
             Self::FeaturesTfbsScoreTracksSvg {
-                seq_id,
+                target,
                 motifs,
-                start_0based,
-                end_0based_exclusive,
                 score_kind,
                 clip_negative,
                 output,
-            } => format!(
-                "render TFBS score-track SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, clip_negative={})",
-                seq_id,
-                output,
-                motifs.join(","),
-                start_0based,
-                end_0based_exclusive,
-                score_kind.as_str(),
-                clip_negative
-            ),
+            } => {
+                let target_label = match target {
+                    SequenceScanTarget::SeqId {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "{}{}",
+                        seq_id,
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                    SequenceScanTarget::InlineSequence {
+                        id_hint,
+                        topology,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                        ..
+                    } => format!(
+                        "{}[{}]{}",
+                        id_hint
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or("inline_sequence"),
+                        topology.as_str(),
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                };
+                format!(
+                    "render TFBS score-track SVG for '{}' to '{}' (motifs={}, score_kind={}, clip_negative={})",
+                    target_label,
+                    output,
+                    motifs.join(","),
+                    score_kind.as_str(),
+                    clip_negative
+                )
+            }
             Self::FeaturesTfbsScan {
                 target,
                 motifs,
@@ -20780,20 +20812,16 @@ fn execute_sequence_analysis_command(
             })
         }
         ShellCommand::FeaturesTfbsScoreTracksSvg {
-            seq_id,
+            target,
             motifs,
-            start_0based,
-            end_0based_exclusive,
             score_kind,
             clip_negative,
             output,
         } => {
             let op_result = engine
                 .apply(Operation::RenderTfbsScoreTracksSvg {
-                    seq_id: seq_id.clone(),
+                    target: target.clone(),
                     motifs: motifs.clone(),
-                    start_0based: *start_0based,
-                    end_0based_exclusive: *end_0based_exclusive,
                     score_kind: *score_kind,
                     clip_negative: *clip_negative,
                     path: output.clone(),
