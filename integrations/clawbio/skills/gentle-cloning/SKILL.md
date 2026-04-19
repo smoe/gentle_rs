@@ -32,7 +32,10 @@ metadata:
       - qpcr design
       - analyze dna sequence
       - restriction sites
+      - tfbs score tracks
+      - motif score tracks
       - tfbs scan
+      - jaspar motif
       - sequence context
       - extract gene from ensembl
       - promoter sequence
@@ -273,7 +276,13 @@ Current shared GENtle routes behind this capability:
 
 - `AnnotateTfbs`
 - `ScanTfbsHits` with either stored `seq_id` targets or inline DNA text
+- `SummarizeTfbsRegion`
+- `SummarizeTfbsScoreTracks` with stored or inline `SequenceScanTarget`
+- `RenderTfbsScoreTracksSvg` with stored or inline `SequenceScanTarget`
+- `SummarizeJasparEntries`
 - `features tfbs-summary ...`
+- `features tfbs-score-tracks-svg ...`
+- `resources summarize-jaspar ...`
 - `inspect-feature-expert SEQ_ID tfbs FEATURE_ID`
 - `render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg`
 - `features export-bed ... --kind TFBS`
@@ -283,6 +292,9 @@ Expected outputs:
 - scored TFBS feature annotations
 - direct stateless TFBS-hit JSON reports on pasted DNA fragments
 - grouped focus-vs-context TFBS summaries
+- continuous TFBS/PSSM score-track JSON reports
+- TFBS score-track SVG figures
+- JASPAR entry-presentation JSON for motif-level background/max/min context
 - TFBS expert text
 - TFBS expert SVG or linear-sequence SVG with TFBS display enabled
 
@@ -535,8 +547,26 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json \
   --output /tmp/gentle_clawbio_extract_tp53
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53_auto_prepare.json \
+  --output /tmp/gentle_clawbio_extract_tp53_auto_prepare
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json \
   --output /tmp/gentle_clawbio_puc19_blast
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_find_restriction_sites_inline_sequence_ecori_smai.json \
+  --output /tmp/gentle_clawbio_inline_restriction_scan
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json \
+  --output /tmp/gentle_clawbio_inline_tfbs_scan
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_summary.json \
+  --output /tmp/gentle_clawbio_tp73_tfbs_score_tracks_summary
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json \
+  --output /tmp/gentle_clawbio_tp73_tfbs_score_tracks_svg
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json \
+  --output /tmp/gentle_clawbio_jaspar_sp1_rest
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json \
   --output /tmp/gentle_clawbio_vkorc1_planning
@@ -841,6 +871,16 @@ Apply the following methodology:
   - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
     - stateless direct-DNA example: scans one pasted fragment for SP1/TP73
       hits without creating TFBS features or a project-state record first
+  - `examples/request_workflow_tp73_tfbs_score_tracks_summary.json`
+    - workflow-backed TFBS presentation example: loads the bundled TP73 locus
+      source and writes the shared continuous score-track JSON summary for one
+      promoter-proximal window
+  - `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
+    - matching workflow-backed TFBS presentation example that exports the same
+      TP73 promoter score-track view as one stacked SVG figure
+  - `examples/request_resources_summarize_jaspar_sp1_rest.json`
+    - motif-presentation example: summarizes local JASPAR entries for SP1 and
+      REST into one deterministic background/max/min report
   - `examples/request_workflow_vkorc1_planning.json`
     - the main graphical answer for "functional analyses of genetic
       variations" in the current scaffold
@@ -928,6 +968,9 @@ Apply the following methodology:
 - "Scan this pasted DNA fragment for EcoRI and SmaI without creating project
   state."
 - "Check SP1 and TP73 motif hits on this inline promoter fragment."
+- "Show TFBS score tracks over this promoter window."
+- "Export the TP73 promoter TFBS score-track figure."
+- "Summarize the local JASPAR SP1 and REST motif entries."
 - "Summarize TFBS hits near this SNP and also render the chosen TFBS as an
   expert figure."
 - "Show me the EcoRI cleavage context as both text and SVG."

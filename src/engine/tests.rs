@@ -26945,10 +26945,12 @@ fn summarize_tfbs_score_tracks_supports_background_tail_score_kinds() {
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(35),
+            },
             &[String::from("SP1")],
-            0,
-            35,
             TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             true,
         )
@@ -27000,10 +27002,12 @@ fn summarize_tfbs_score_tracks_reports_top_peaks_against_background() {
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(35),
+            },
             &[String::from("SP1")],
-            0,
-            35,
             TfbsScoreTrackValueKind::LlrBits,
             true,
         )
@@ -27143,10 +27147,12 @@ fn summarize_tfbs_score_tracks_uses_promoter_provenance_tss_when_features_are_ab
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
             &[String::from("SP1")],
-            0,
-            120,
             TfbsScoreTrackValueKind::LlrBits,
             true,
         )
@@ -27168,10 +27174,12 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "promoter",
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
             &[String::from("SP1"), String::from("MYC")],
-            0,
-            120,
             TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             true,
         )
@@ -27209,10 +27217,12 @@ fn summarize_tfbs_score_tracks_prefers_named_myc_registry_entry_over_iupac_lette
 
     let report = engine
         .summarize_tfbs_score_tracks(
-            "tert_like",
+            SequenceScanTarget::SeqId {
+                seq_id: "tert_like".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(72),
+            },
             &[String::from("MYC")],
-            0,
-            72,
             TfbsScoreTrackValueKind::LlrBits,
             true,
         )

@@ -1,0 +1,33 @@
+{
+  "run_id": "clawbio_tp73_tfbs_score_tracks_summary",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_context"
+      }
+    },
+    {
+      "SummarizeTfbsScoreTracks": {
+        "target": {
+          "kind": "seq_id",
+          "seq_id": "tp73_context",
+          "span_start_0based": 15564,
+          "span_end_0based_exclusive": 16764
+        },
+        "motifs": [
+          "TP53",
+          "TP63",
+          "TP73",
+          "PATZ1",
+          "SP1",
+          "BACH2",
+          "REST"
+        ],
+        "score_kind": "llr_background_tail_log10",
+        "clip_negative": false,
+        "path": "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
+      }
+    }
+  ]
+}

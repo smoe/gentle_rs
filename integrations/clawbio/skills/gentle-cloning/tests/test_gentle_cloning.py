@@ -1023,6 +1023,21 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             180,
         ),
+        "request_workflow_tp73_tfbs_score_tracks_summary.json": (
+            "workflow",
+            None,
+            300,
+        ),
+        "request_workflow_tp73_tfbs_score_tracks_svg.json": (
+            "workflow",
+            None,
+            300,
+        ),
+        "request_resources_summarize_jaspar_sp1_rest.json": (
+            "shell",
+            "resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output artifacts/jaspar_sp1_rest.presentation.json",
+            180,
+        ),
         "request_render_svg_pgex_fasta_circular.json": (
             "shell",
             "render-svg pgex_fasta circular artifacts/pgex_fasta.circular.svg",
@@ -1231,6 +1246,28 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/inline_sp1_tp73.tfbs_scan.json"
             ]
+        if name == "request_workflow_tp73_tfbs_score_tracks_summary.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "integrations/clawbio/skills/gentle-cloning/examples/workflows/tp73_tfbs_score_tracks_summary.workflow.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
+            ]
+        if name == "request_workflow_tp73_tfbs_score_tracks_svg.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "integrations/clawbio/skills/gentle-cloning/examples/workflows/tp73_tfbs_score_tracks_svg.workflow.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/tp73_upstream_tfbs_score_tracks.svg"
+            ]
+        if name == "request_resources_summarize_jaspar_sp1_rest.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/jaspar_sp1_rest.presentation.json"
+            ]
         if name == "request_render_feature_expert_pgex_fasta_tfbs_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.tfbs.expert.svg"
@@ -1305,6 +1342,130 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
     ]
+
+    tfbs_score_track_summary_payload = json.loads(
+        (examples_dir / "request_workflow_tp73_tfbs_score_tracks_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert tfbs_score_track_summary_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert tfbs_score_track_summary_payload["mode"] == "workflow"
+    assert tfbs_score_track_summary_payload["state_path"] == ".gentle_state.json"
+    assert (
+        tfbs_score_track_summary_payload["workflow_path"]
+        == "integrations/clawbio/skills/gentle-cloning/examples/workflows/tp73_tfbs_score_tracks_summary.workflow.json"
+    )
+    assert tfbs_score_track_summary_payload["expected_artifacts"] == [
+        "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
+    ]
+    assert tfbs_score_track_summary_payload["timeout_secs"] == 300
+
+    tfbs_score_track_svg_payload = json.loads(
+        (examples_dir / "request_workflow_tp73_tfbs_score_tracks_svg.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert tfbs_score_track_svg_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert tfbs_score_track_svg_payload["mode"] == "workflow"
+    assert tfbs_score_track_svg_payload["state_path"] == ".gentle_state.json"
+    assert (
+        tfbs_score_track_svg_payload["workflow_path"]
+        == "integrations/clawbio/skills/gentle-cloning/examples/workflows/tp73_tfbs_score_tracks_svg.workflow.json"
+    )
+    assert tfbs_score_track_svg_payload["expected_artifacts"] == [
+        "artifacts/tp73_upstream_tfbs_score_tracks.svg"
+    ]
+    assert tfbs_score_track_svg_payload["timeout_secs"] == 300
+
+    tfbs_score_track_summary_workflow = json.loads(
+        (
+            examples_dir
+            / "workflows"
+            / "tp73_tfbs_score_tracks_summary.workflow.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert tfbs_score_track_summary_workflow["run_id"] == (
+        "clawbio_tp73_tfbs_score_tracks_summary"
+    )
+    summary_ops = tfbs_score_track_summary_workflow["ops"]
+    assert summary_ops[0]["LoadFile"] == {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_context",
+    }
+    assert summary_ops[1]["SummarizeTfbsScoreTracks"]["target"] == {
+        "kind": "seq_id",
+        "seq_id": "tp73_context",
+        "span_start_0based": 15564,
+        "span_end_0based_exclusive": 16764,
+    }
+    assert summary_ops[1]["SummarizeTfbsScoreTracks"]["motifs"] == [
+        "TP53",
+        "TP63",
+        "TP73",
+        "PATZ1",
+        "SP1",
+        "BACH2",
+        "REST",
+    ]
+    assert summary_ops[1]["SummarizeTfbsScoreTracks"]["score_kind"] == (
+        "llr_background_tail_log10"
+    )
+    assert summary_ops[1]["SummarizeTfbsScoreTracks"]["clip_negative"] is False
+    assert summary_ops[1]["SummarizeTfbsScoreTracks"]["path"] == (
+        "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
+    )
+
+    tfbs_score_track_svg_workflow = json.loads(
+        (
+            examples_dir
+            / "workflows"
+            / "tp73_tfbs_score_tracks_svg.workflow.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert tfbs_score_track_svg_workflow["run_id"] == "clawbio_tp73_tfbs_score_tracks_svg"
+    svg_ops = tfbs_score_track_svg_workflow["ops"]
+    assert svg_ops[0]["LoadFile"] == {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_context",
+    }
+    assert svg_ops[1]["RenderTfbsScoreTracksSvg"]["target"] == {
+        "kind": "seq_id",
+        "seq_id": "tp73_context",
+        "span_start_0based": 15564,
+        "span_end_0based_exclusive": 16764,
+    }
+    assert svg_ops[1]["RenderTfbsScoreTracksSvg"]["motifs"] == [
+        "TP53",
+        "TP63",
+        "TP73",
+        "PATZ1",
+        "SP1",
+        "BACH2",
+        "REST",
+    ]
+    assert svg_ops[1]["RenderTfbsScoreTracksSvg"]["score_kind"] == (
+        "llr_background_tail_log10"
+    )
+    assert svg_ops[1]["RenderTfbsScoreTracksSvg"]["clip_negative"] is False
+    assert svg_ops[1]["RenderTfbsScoreTracksSvg"]["path"] == (
+        "artifacts/tp73_upstream_tfbs_score_tracks.svg"
+    )
+
+    jaspar_presentation_payload = json.loads(
+        (examples_dir / "request_resources_summarize_jaspar_sp1_rest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert jaspar_presentation_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert jaspar_presentation_payload["mode"] == "shell"
+    assert (
+        jaspar_presentation_payload["shell_line"]
+        == "resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output artifacts/jaspar_sp1_rest.presentation.json"
+    )
+    assert jaspar_presentation_payload["expected_artifacts"] == [
+        "artifacts/jaspar_sp1_rest.presentation.json"
+    ]
+    assert jaspar_presentation_payload["timeout_secs"] == 180
 
     isoform_workflow_payload = json.loads(
         (examples_dir / "request_workflow_tp53_isoform_architecture_online.json").read_text(
@@ -1454,3 +1615,5 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "reference blast" in trigger_keywords
     assert "restriction sites" in trigger_keywords
     assert "extract gene from ensembl" in trigger_keywords
+    assert "tfbs score tracks" in trigger_keywords
+    assert "jaspar motif" in trigger_keywords

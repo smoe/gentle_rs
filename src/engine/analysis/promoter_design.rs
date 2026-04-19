@@ -758,7 +758,8 @@ impl GentleEngine {
                 .sequences
                 .get(&seq_id)
                 .map(|dna| {
-                    Self::summarize_tfbs_score_track_tss_markers(
+                    self.summarize_tfbs_score_track_tss_markers(
+                        &seq_id,
                         dna,
                         scan_start_0based,
                         scan_end_0based_exclusive,

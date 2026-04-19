@@ -1960,6 +1960,9 @@ order. Durable architecture constraints and decisions remain in
     instead of only from `capabilities`
   - the example request pack now also includes follow-on routes for:
     - stateless inline-sequence restriction/TFBS scans on pasted DNA text
+    - TFBS presentation routes:
+      grouped summaries, continuous score-track JSON/SVG, and JASPAR
+      entry-presentation reports
     - one request that couples `ensure_reference_prepared` with
       `genomes extract-gene` so local Ensembl-backed gene extraction is easier
       to ask for
@@ -2003,7 +2006,8 @@ order. Durable architecture constraints and decisions remain in
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export
-      - TFBS annotation, grouped TFBS summary, TFBS expert text/SVG
+      - TFBS annotation, grouped TFBS summary, continuous TFBS score-track
+        summary/SVG, JASPAR entry presentation, and TFBS expert text/SVG
       - restriction-site BED export plus restriction expert text/SVG
       - splicing expert text/SVG
       - isoform expert text/SVG

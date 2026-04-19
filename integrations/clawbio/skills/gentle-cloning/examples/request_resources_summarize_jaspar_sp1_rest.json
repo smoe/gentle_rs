@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output artifacts/jaspar_sp1_rest.presentation.json",
+  "expected_artifacts": [
+    "artifacts/jaspar_sp1_rest.presentation.json"
+  ],
+  "timeout_secs": 180
+}

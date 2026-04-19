@@ -47,6 +47,8 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
+- GENtle's TFBS surface now also includes continuous score-track views and
+  JASPAR motif-presentation reports, not only thresholded annotation hits.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
   BLAST-capable indices, that may also be useful to external bioinformatics
   tools. Its added value is deterministic preparation, cataloging, provenance,
@@ -159,6 +161,9 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_find_restriction_sites_inline_sequence_ecori_smai.json --output /tmp/gentle_inline_restriction_scan
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json --output /tmp/gentle_inline_tfbs_scan
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_summary.json --output /tmp/gentle_tp73_tfbs_score_tracks_summary
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json --output /tmp/gentle_tp73_tfbs_score_tracks_svg
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json --output /tmp/gentle_jaspar_sp1_rest
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_pgex_fasta_tfbs_restriction.json --output /tmp/gentle_pgex_bed
@@ -233,6 +238,13 @@ Notes:
   `request_scan_tfbs_hits_inline_sequence_sp1_tp73.json` are stateless direct
   DNA examples; they inspect pasted DNA text through shared inline-sequence
   operands instead of requiring a pre-existing GENtle state record
+- `request_workflow_tp73_tfbs_score_tracks_summary.json` and
+  `request_workflow_tp73_tfbs_score_tracks_svg.json` expose the newer TFBS
+  presentation layer for ClawBio: one JSON score-track summary and one stacked
+  SVG figure over the promoter-proximal TP73 window
+- `request_resources_summarize_jaspar_sp1_rest.json` exposes the newer
+  motif-presentation layer as one deterministic JASPAR background/max/min
+  summary for SP1 and REST
 - `request_export_bed_pgex_fasta_tfbs_restriction.json` is a matching
   follow-on tabular route on that same `pgex_fasta` state; it annotates TFBS,
   exports TFBS rows, and appends selected restriction-site rows into one BED
@@ -401,6 +413,15 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
   - stateless direct-DNA example that scans one pasted fragment for SP1/TP73
     hits without creating TFBS features or a project-state record first
+- `examples/request_workflow_tp73_tfbs_score_tracks_summary.json`
+  - workflow-backed TFBS presentation example that writes the shared TP73
+    promoter score-track JSON summary
+- `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
+  - matching workflow-backed TFBS presentation example that exports the same
+    TP73 promoter score-track view as one stacked SVG figure
+- `examples/request_resources_summarize_jaspar_sp1_rest.json`
+  - motif-presentation example that summarizes local JASPAR entries for SP1
+    and REST into one deterministic background/max/min report
 - `examples/request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after running
     `examples/request_workflow_file.json`
