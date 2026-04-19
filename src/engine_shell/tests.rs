@@ -15727,7 +15727,7 @@ fn parse_rna_reads_commands() {
     ));
 
     let inspect_concatemers = parse_shell_line(
-        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10",
+        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10 --adapter-fasta data/resources/nanopore_direct_cdna_kit14_adapters.fasta --adapter-min-match-bp 18 --fragment-min-bp 75 --fragment-max-parts 3 --fragment-min-identity 0.88 --fragment-min-query-cov 0.45",
     )
     .expect("parse rna-reads inspect-concatemers");
     assert!(matches!(
@@ -15741,6 +15741,12 @@ fn parse_rna_reads_commands() {
                 && (settings.max_primary_query_coverage_fraction - 0.80).abs() < 1e-9
                 && (settings.min_secondary_identity_fraction - 0.90).abs() < 1e-9
                 && (settings.max_secondary_query_overlap_fraction - 0.10).abs() < 1e-9
+                && settings.adapter_fasta_path.as_deref() == Some("data/resources/nanopore_direct_cdna_kit14_adapters.fasta")
+                && settings.adapter_min_match_bp == 18
+                && settings.fragment_min_bp == 75
+                && settings.fragment_max_parts == 3
+                && (settings.fragment_min_identity_fraction - 0.88).abs() < 1e-9
+                && (settings.fragment_min_query_coverage_fraction - 0.45).abs() < 1e-9
     ));
 
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")

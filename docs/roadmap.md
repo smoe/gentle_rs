@@ -3169,6 +3169,13 @@ Status:
     - current signals combine low primary query coverage, internal poly(A/T)
       bridges away from read ends, disjoint secondary mappings, and phase-1
       local-block / partial-origin classes
+    - adapter signatures are now externalized via
+      `data/resources/nanopore_direct_cdna_kit14_adapters.fasta` plus
+      `--adapter-fasta`, so kit-specific oligos can be swapped without engine
+      changes
+    - the audit can now also perform iterative fragment decomposition against
+      the admitted transcript-template set to count how many distinct
+      genes/groups contribute to one suspicious read
     - the payload warns explicitly when the source report was aligned with
       `max_secondary_mappings=0`, because that removes the strongest current
       fragment-fusion evidence branch

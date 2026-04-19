@@ -1,0 +1,25 @@
+; Oxford Nanopore direct cDNA oligo signatures for internal-fragment/concatemer review.
+; Source: ONT Ligation sequencing V14 - Direct cDNA sequencing (SQK-LSK114),
+; protocol DCS_9187_v114_revK_24Feb2026 / community protocol mirror.
+; Sequences are written as plain nucleotide/IUPAC text for matching only.
+; The strand-switching primer contains terminal mGmGmG in the protocol; here it
+; is represented as GGG for adapter-signature detection.
+; The poly(T) VN primer is stored without the terminal degenerate `VN` tail for
+; similarity search. Those two anchored positions are intentionally ignored in
+; the default matching file because the upstream primer body is already highly
+; specific and `V` would otherwise exclude `T` rather than behaving like a
+; fully ignorable anchor. For the anchored-primer semantics itself, see EURx
+; E0106 "Anchored Oligo(dT)20 VN Primers".
+;
+; FASTA header metadata currently understood by GENtle:
+;   internal_scan=false   -> do not use this signature for internal-read scans
+;
+; If your dataset used an older ONT cDNA kit, replace or supplement these
+; records with the kit-specific oligos from the corresponding ONT document.
+
+>sqk_lsk114_vn_primer role=poly_t_anchored internal_scan=false
+ACTTGCCTGTCGCTCTATCTTCTTTTTTTTTTTTTTTTTTTT
+>sqk_lsk114_strand_switching_primer role=strand_switch_primer
+TTTCTGTTGGTGCTGATATTGCTGGG
+>sqk_lsk114_pr2_primer role=second_strand_primer
+TTTCTGTTGGTGCTGATATTGC

@@ -3399,6 +3399,26 @@ fn default_rna_read_concatemer_max_secondary_query_overlap_fraction() -> f64 {
     0.20
 }
 
+fn default_rna_read_concatemer_adapter_min_match_bp() -> usize {
+    16
+}
+
+fn default_rna_read_concatemer_fragment_min_bp() -> usize {
+    60
+}
+
+fn default_rna_read_concatemer_fragment_max_parts() -> usize {
+    4
+}
+
+fn default_rna_read_concatemer_fragment_min_identity_fraction() -> f64 {
+    0.80
+}
+
+fn default_rna_read_concatemer_fragment_min_query_coverage_fraction() -> f64 {
+    0.35
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Conservative severity label for fragment/concatemer-like RNA-read rows.
@@ -3435,13 +3455,24 @@ pub struct RnaReadConcatemerInspectionSettings {
     pub min_secondary_identity_fraction: f64,
     #[serde(default = "default_rna_read_concatemer_max_secondary_query_overlap_fraction")]
     pub max_secondary_query_overlap_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_fasta_path: Option<String>,
+    #[serde(default = "default_rna_read_concatemer_adapter_min_match_bp")]
+    pub adapter_min_match_bp: usize,
+    #[serde(default = "default_rna_read_concatemer_fragment_min_bp")]
+    pub fragment_min_bp: usize,
+    #[serde(default = "default_rna_read_concatemer_fragment_max_parts")]
+    pub fragment_max_parts: usize,
+    #[serde(default = "default_rna_read_concatemer_fragment_min_identity_fraction")]
+    pub fragment_min_identity_fraction: f64,
+    #[serde(default = "default_rna_read_concatemer_fragment_min_query_coverage_fraction")]
+    pub fragment_min_query_coverage_fraction: f64,
 }
 
 impl Default for RnaReadConcatemerInspectionSettings {
     fn default() -> Self {
         Self {
-            internal_homopolymer_min_bp:
-                default_rna_read_concatemer_internal_homopolymer_min_bp(),
+            internal_homopolymer_min_bp: default_rna_read_concatemer_internal_homopolymer_min_bp(),
             end_margin_bp: default_rna_read_concatemer_end_margin_bp(),
             max_primary_query_coverage_fraction:
                 default_rna_read_concatemer_max_primary_query_coverage_fraction(),
@@ -3449,8 +3480,45 @@ impl Default for RnaReadConcatemerInspectionSettings {
                 default_rna_read_concatemer_min_secondary_identity_fraction(),
             max_secondary_query_overlap_fraction:
                 default_rna_read_concatemer_max_secondary_query_overlap_fraction(),
+            adapter_fasta_path: None,
+            adapter_min_match_bp: default_rna_read_concatemer_adapter_min_match_bp(),
+            fragment_min_bp: default_rna_read_concatemer_fragment_min_bp(),
+            fragment_max_parts: default_rna_read_concatemer_fragment_max_parts(),
+            fragment_min_identity_fraction:
+                default_rna_read_concatemer_fragment_min_identity_fraction(),
+            fragment_min_query_coverage_fraction:
+                default_rna_read_concatemer_fragment_min_query_coverage_fraction(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One internal adapter-signature match found away from the read ends.
+pub struct RnaReadConcatemerAdapterHit {
+    pub label: String,
+    pub orientation: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub matched_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One iteratively recovered transcript-origin fragment from a suspicious read.
+pub struct RnaReadConcatemerFragmentOrigin {
+    pub fragment_rank: usize,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub query_length_bp: usize,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub gene_id: String,
+    pub strand: String,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+    pub score: isize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3478,6 +3546,12 @@ pub struct RnaReadConcatemerSuspicionRow {
     #[serde(default)]
     pub internal_poly_t_run_bp: usize,
     #[serde(default)]
+    pub internal_adapter_hit_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_internal_adapter_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_internal_adapter_match_bp: Option<usize>,
+    #[serde(default)]
     pub disjoint_secondary_mapping_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_disjoint_secondary_transcript_id: Option<String>,
@@ -3495,6 +3569,14 @@ pub struct RnaReadConcatemerSuspicionRow {
     pub suspicion_signals: Vec<String>,
     #[serde(default)]
     pub suspicion_summary: String,
+    #[serde(default)]
+    pub fragment_origin_gene_count: usize,
+    #[serde(default)]
+    pub fragment_origin_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub adapter_hits: Vec<RnaReadConcatemerAdapterHit>,
+    #[serde(default)]
+    pub fragment_origins: Vec<RnaReadConcatemerFragmentOrigin>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3511,8 +3593,10 @@ pub struct RnaReadConcatemerInspection {
     pub low_query_coverage_count: usize,
     pub internal_poly_a_count: usize,
     pub internal_poly_t_count: usize,
+    pub internal_adapter_match_count: usize,
     pub disjoint_secondary_mapping_count: usize,
     pub phase1_partial_origin_count: usize,
+    pub multi_gene_fragment_count: usize,
     pub limit: usize,
     pub max_secondary_mappings: usize,
     pub settings: RnaReadConcatemerInspectionSettings,

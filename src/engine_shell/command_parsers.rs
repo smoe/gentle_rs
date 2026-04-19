@@ -5762,15 +5762,13 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "inspect-concatemers" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F]"
+                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F]"
                         .to_string(),
                 );
             }
             let report_id = tokens[2].trim().to_string();
             if report_id.is_empty() {
-                return Err(
-                    "rna-reads inspect-concatemers REPORT_ID must not be empty".to_string(),
-                );
+                return Err("rna-reads inspect-concatemers REPORT_ID must not be empty".to_string());
             }
             let mut selection = RnaReadHitSelection::All;
             let mut limit = 50usize;
@@ -5866,6 +5864,82 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                             raw.parse::<f64>().map_err(|e| {
                                 format!(
                                     "Invalid --max-secondary-query-overlap value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    "--adapter-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--adapter-fasta",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.adapter_fasta_path = Some(raw);
+                    }
+                    "--adapter-min-match-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--adapter-min-match-bp",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.adapter_min_match_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --adapter-min-match-bp value '{raw}' for rna-reads inspect-concatemers: {e}"
+                            )
+                        })?;
+                    }
+                    "--fragment-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-bp",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.fragment_min_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --fragment-min-bp value '{raw}' for rna-reads inspect-concatemers: {e}"
+                            )
+                        })?;
+                    }
+                    "--fragment-max-parts" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-max-parts",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.fragment_max_parts = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --fragment-max-parts value '{raw}' for rna-reads inspect-concatemers: {e}"
+                            )
+                        })?;
+                    }
+                    "--fragment-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-identity",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.fragment_min_identity_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-min-identity value '{raw}' for rna-reads inspect-concatemers: {e}"
+                                )
+                            })?;
+                    }
+                    "--fragment-min-query-cov" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-query-cov",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        settings.fragment_min_query_coverage_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-min-query-cov value '{raw}' for rna-reads inspect-concatemers: {e}"
                                 )
                             })?;
                     }

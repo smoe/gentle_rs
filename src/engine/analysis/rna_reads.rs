@@ -90,6 +90,21 @@ struct RnaReadGeneSupportAccumulator {
     direct_transition_counts: BTreeMap<(String, usize, usize), usize>,
 }
 
+#[derive(Debug, Clone)]
+struct RnaReadAdapterSignature {
+    label: String,
+    sequence: Vec<u8>,
+    internal_scan: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RnaReadConcatemerFragmentContext {
+    templates: Vec<SplicingTranscriptTemplate>,
+    transcript_gene_lookup: HashMap<usize, String>,
+    align_config: RnaReadAlignConfig,
+    seed_kmer_len: usize,
+}
+
 impl RnaReadGeneSupportAccumulator {
     fn add_read(
         &mut self,
@@ -1681,11 +1696,7 @@ impl GentleEngine {
         }
     }
 
-    fn longest_internal_homopolymer_run(
-        sequence: &str,
-        base: u8,
-        end_margin_bp: usize,
-    ) -> usize {
+    fn longest_internal_homopolymer_run(sequence: &str, base: u8, end_margin_bp: usize) -> usize {
         let normalized = sequence
             .as_bytes()
             .iter()
@@ -1731,6 +1742,389 @@ impl GentleEngine {
         overlap_len as f64 / denom as f64
     }
 
+    fn normalize_rna_read_adapter_header(raw: &str) -> (String, bool) {
+        let mut parts = raw.split_whitespace();
+        let label = parts
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("adapter")
+            .to_string();
+        let mut internal_scan = true;
+        for token in parts {
+            let Some((key, value)) = token.split_once('=') else {
+                continue;
+            };
+            if key.eq_ignore_ascii_case("internal_scan")
+                && matches!(
+                    value,
+                    "false" | "False" | "FALSE" | "0" | "no" | "No" | "NO"
+                )
+            {
+                internal_scan = false;
+            }
+        }
+        (label, internal_scan)
+    }
+
+    fn iupac_matches_adapter_base(adapter_base: u8, read_base: u8) -> bool {
+        let read_base = Self::normalize_nucleotide_base(read_base);
+        match Self::normalize_nucleotide_base(adapter_base) {
+            b'A' => read_base == b'A',
+            b'C' => read_base == b'C',
+            b'G' => read_base == b'G',
+            b'T' => read_base == b'T',
+            b'R' => matches!(read_base, b'A' | b'G'),
+            b'Y' => matches!(read_base, b'C' | b'T'),
+            b'S' => matches!(read_base, b'G' | b'C'),
+            b'W' => matches!(read_base, b'A' | b'T'),
+            b'K' => matches!(read_base, b'G' | b'T'),
+            b'M' => matches!(read_base, b'A' | b'C'),
+            b'B' => matches!(read_base, b'C' | b'G' | b'T'),
+            b'D' => matches!(read_base, b'A' | b'G' | b'T'),
+            b'H' => matches!(read_base, b'A' | b'C' | b'T'),
+            b'V' => matches!(read_base, b'A' | b'C' | b'G'),
+            b'N' => matches!(read_base, b'A' | b'C' | b'G' | b'T'),
+            _ => false,
+        }
+    }
+
+    fn complement_iupac_base(base: u8) -> u8 {
+        match Self::normalize_nucleotide_base(base) {
+            b'A' => b'T',
+            b'C' => b'G',
+            b'G' => b'C',
+            b'T' => b'A',
+            b'R' => b'Y',
+            b'Y' => b'R',
+            b'S' => b'S',
+            b'W' => b'W',
+            b'K' => b'M',
+            b'M' => b'K',
+            b'B' => b'V',
+            b'D' => b'H',
+            b'H' => b'D',
+            b'V' => b'B',
+            b'N' => b'N',
+            _ => b'N',
+        }
+    }
+
+    fn reverse_complement_iupac_sequence(sequence: &[u8]) -> Vec<u8> {
+        sequence
+            .iter()
+            .rev()
+            .map(|base| Self::complement_iupac_base(*base))
+            .collect()
+    }
+
+    fn load_rna_read_adapter_signatures(
+        path: &str,
+    ) -> Result<Vec<RnaReadAdapterSignature>, EngineError> {
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read RNA-read adapter FASTA '{}': {e}", path),
+        })?;
+        let mut signatures = Vec::<RnaReadAdapterSignature>::new();
+        let mut current_header = None::<String>;
+        let mut current_sequence = String::new();
+        for raw_line in text.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Some(stripped) = line.strip_prefix('>') {
+                if let Some(header) = current_header.take() {
+                    let (label, internal_scan) = Self::normalize_rna_read_adapter_header(&header);
+                    let sequence = current_sequence
+                        .as_bytes()
+                        .iter()
+                        .map(|base| base.to_ascii_uppercase())
+                        .filter(|base| !base.is_ascii_whitespace())
+                        .collect::<Vec<_>>();
+                    if !sequence.is_empty() {
+                        signatures.push(RnaReadAdapterSignature {
+                            label,
+                            sequence,
+                            internal_scan,
+                        });
+                    }
+                    current_sequence.clear();
+                }
+                current_header = Some(stripped.trim().to_string());
+            } else if !line.starts_with('#') && !line.starts_with(';') {
+                current_sequence.push_str(line);
+            }
+        }
+        if let Some(header) = current_header.take() {
+            let (label, internal_scan) = Self::normalize_rna_read_adapter_header(&header);
+            let sequence = current_sequence
+                .as_bytes()
+                .iter()
+                .map(|base| base.to_ascii_uppercase())
+                .filter(|base| !base.is_ascii_whitespace())
+                .collect::<Vec<_>>();
+            if !sequence.is_empty() {
+                signatures.push(RnaReadAdapterSignature {
+                    label,
+                    sequence,
+                    internal_scan,
+                });
+            }
+        }
+        if signatures.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "RNA-read adapter FASTA '{}' did not contain any readable sequences",
+                    path
+                ),
+            });
+        }
+        Ok(signatures)
+    }
+
+    fn find_internal_rna_read_adapter_hits(
+        sequence: &str,
+        signatures: &[RnaReadAdapterSignature],
+        min_match_bp: usize,
+        end_margin_bp: usize,
+    ) -> Vec<RnaReadConcatemerAdapterHit> {
+        let query = sequence
+            .as_bytes()
+            .iter()
+            .map(|base| Self::normalize_nucleotide_base(*base))
+            .collect::<Vec<_>>();
+        let len = query.len();
+        if len == 0 {
+            return vec![];
+        }
+        let mut hits = Vec::<RnaReadConcatemerAdapterHit>::new();
+        for signature in signatures
+            .iter()
+            .filter(|signature| signature.internal_scan)
+        {
+            let orientations = [
+                ("forward", signature.sequence.clone()),
+                (
+                    "reverse_complement",
+                    Self::reverse_complement_iupac_sequence(&signature.sequence),
+                ),
+            ];
+            let mut best_hit = None::<RnaReadConcatemerAdapterHit>;
+            for (orientation, adapter) in orientations {
+                if adapter.is_empty() {
+                    continue;
+                }
+                for read_start in 0..len {
+                    for adapter_start in 0..adapter.len() {
+                        let mut matched = 0usize;
+                        while read_start + matched < len
+                            && adapter_start + matched < adapter.len()
+                            && Self::iupac_matches_adapter_base(
+                                adapter[adapter_start + matched],
+                                query[read_start + matched],
+                            )
+                        {
+                            matched = matched.saturating_add(1);
+                        }
+                        if matched < min_match_bp {
+                            continue;
+                        }
+                        let hit_end = read_start.saturating_add(matched);
+                        let effective_margin = end_margin_bp.min(len.saturating_sub(matched) / 2);
+                        if read_start < effective_margin
+                            || hit_end > len.saturating_sub(effective_margin)
+                        {
+                            continue;
+                        }
+                        let candidate = RnaReadConcatemerAdapterHit {
+                            label: signature.label.clone(),
+                            orientation: orientation.to_string(),
+                            start_0based: read_start,
+                            end_0based_exclusive: hit_end,
+                            matched_bp: matched,
+                        };
+                        if best_hit.as_ref().is_none_or(|current| {
+                            candidate.matched_bp > current.matched_bp
+                                || (candidate.matched_bp == current.matched_bp
+                                    && candidate.start_0based < current.start_0based)
+                        }) {
+                            best_hit = Some(candidate);
+                        }
+                    }
+                }
+            }
+            if let Some(hit) = best_hit {
+                hits.push(hit);
+            }
+        }
+        hits.sort_by(|left, right| {
+            right
+                .matched_bp
+                .cmp(&left.matched_bp)
+                .then(left.start_0based.cmp(&right.start_0based))
+                .then(left.label.cmp(&right.label))
+        });
+        hits
+    }
+
+    fn collect_unmasked_query_segments(masked: &[bool], min_bp: usize) -> Vec<(usize, usize)> {
+        let mut out = Vec::<(usize, usize)>::new();
+        let mut current_start = None::<usize>;
+        for (idx, is_masked) in masked.iter().copied().enumerate() {
+            match (current_start, is_masked) {
+                (None, false) => current_start = Some(idx),
+                (Some(start), true) => {
+                    if idx.saturating_sub(start) >= min_bp {
+                        out.push((start, idx));
+                    }
+                    current_start = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(start) = current_start
+            && masked.len().saturating_sub(start) >= min_bp
+        {
+            out.push((start, masked.len()));
+        }
+        out
+    }
+
+    fn build_rna_read_concatemer_fragment_context(
+        &self,
+        report: &RnaReadInterpretationReport,
+        _warnings: &mut Vec<String>,
+        settings: &RnaReadConcatemerInspectionSettings,
+    ) -> Option<RnaReadConcatemerFragmentContext> {
+        if report.seq_id.trim().is_empty() {
+            return None;
+        }
+        let Some(dna) = self.state.sequences.get(&report.seq_id) else {
+            return None;
+        };
+        let Ok((_splicing, transcript_lanes)) =
+            self.collect_rna_read_report_transcript_lanes(dna, report)
+        else {
+            return None;
+        };
+        let templates = transcript_lanes
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, report.seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return None;
+        }
+        let mut transcript_gene_lookup = HashMap::<usize, String>::new();
+        for lane in &transcript_lanes {
+            let gene_id = dna
+                .features()
+                .get(lane.transcript_feature_id)
+                .map(|feature| Self::splicing_group_label(feature, lane.transcript_feature_id))
+                .filter(|label| !label.trim().is_empty())
+                .unwrap_or_else(|| lane.label.clone());
+            transcript_gene_lookup.insert(lane.transcript_feature_id, gene_id);
+        }
+        let mut align_config = report.align_config.clone();
+        align_config.min_identity_fraction =
+            settings.fragment_min_identity_fraction.clamp(0.0, 1.0);
+        align_config.max_secondary_mappings = 0;
+        Some(RnaReadConcatemerFragmentContext {
+            templates,
+            transcript_gene_lookup,
+            align_config,
+            seed_kmer_len: report.seed_filter.kmer_len,
+        })
+    }
+
+    fn decompose_rna_read_fragment_origins(
+        sequence: &str,
+        context: &RnaReadConcatemerFragmentContext,
+        settings: &RnaReadConcatemerInspectionSettings,
+    ) -> Vec<RnaReadConcatemerFragmentOrigin> {
+        let query = sequence
+            .as_bytes()
+            .iter()
+            .map(|base| Self::normalize_nucleotide_base(*base))
+            .collect::<Vec<_>>();
+        if query.len() < settings.fragment_min_bp || settings.fragment_max_parts == 0 {
+            return vec![];
+        }
+        let mut masked = vec![false; query.len()];
+        let mut fragments = Vec::<RnaReadConcatemerFragmentOrigin>::new();
+        while fragments.len() < settings.fragment_max_parts {
+            let mut best_candidate = None::<RnaReadConcatemerFragmentOrigin>;
+            for (segment_start, segment_end) in
+                Self::collect_unmasked_query_segments(&masked, settings.fragment_min_bp)
+            {
+                let segment = &query[segment_start..segment_end];
+                let Some(mapping) = Self::align_read_to_templates(
+                    segment,
+                    &context.templates,
+                    &context.align_config,
+                    context.seed_kmer_len,
+                )
+                .0
+                else {
+                    continue;
+                };
+                let matched_bp = mapping
+                    .query_end_0based_exclusive
+                    .saturating_sub(mapping.query_start_0based);
+                if matched_bp < settings.fragment_min_bp
+                    || mapping.query_coverage_fraction + f64::EPSILON
+                        < settings.fragment_min_query_coverage_fraction
+                {
+                    continue;
+                }
+                let global_start = segment_start.saturating_add(mapping.query_start_0based);
+                let global_end = segment_start.saturating_add(mapping.query_end_0based_exclusive);
+                let gene_id = context
+                    .transcript_gene_lookup
+                    .get(&mapping.transcript_feature_id)
+                    .cloned()
+                    .unwrap_or_else(|| mapping.transcript_label.clone());
+                let candidate = RnaReadConcatemerFragmentOrigin {
+                    fragment_rank: fragments.len().saturating_add(1),
+                    query_start_0based: global_start,
+                    query_end_0based_exclusive: global_end,
+                    query_length_bp: global_end.saturating_sub(global_start),
+                    transcript_feature_id: mapping.transcript_feature_id,
+                    transcript_id: mapping.transcript_id,
+                    transcript_label: mapping.transcript_label,
+                    gene_id,
+                    strand: mapping.strand,
+                    identity_fraction: mapping.identity_fraction,
+                    query_coverage_fraction: mapping.query_coverage_fraction,
+                    score: mapping.score,
+                };
+                if best_candidate.as_ref().is_none_or(|current| {
+                    candidate.query_length_bp > current.query_length_bp
+                        || (candidate.query_length_bp == current.query_length_bp
+                            && candidate.score > current.score)
+                        || (candidate.query_length_bp == current.query_length_bp
+                            && candidate.score == current.score
+                            && candidate.identity_fraction > current.identity_fraction)
+                }) {
+                    best_candidate = Some(candidate);
+                }
+            }
+            let Some(best) = best_candidate else {
+                break;
+            };
+            for idx in best.query_start_0based..best.query_end_0based_exclusive.min(masked.len()) {
+                masked[idx] = true;
+            }
+            fragments.push(best);
+        }
+        for (idx, fragment) in fragments.iter_mut().enumerate() {
+            fragment.fragment_rank = idx.saturating_add(1);
+        }
+        fragments
+    }
+
     fn rna_read_concatemer_origin_partial(origin_class: RnaReadOriginClass) -> bool {
         matches!(
             origin_class,
@@ -1768,13 +2162,20 @@ impl GentleEngine {
         let mut settings = settings;
         settings.internal_homopolymer_min_bp = settings.internal_homopolymer_min_bp.max(1);
         settings.end_margin_bp = settings.end_margin_bp.max(1);
-        settings.max_primary_query_coverage_fraction = settings
-            .max_primary_query_coverage_fraction
-            .clamp(0.0, 1.0);
+        settings.adapter_min_match_bp = settings.adapter_min_match_bp.max(1);
+        settings.fragment_min_bp = settings.fragment_min_bp.max(1);
+        settings.fragment_max_parts = settings.fragment_max_parts.max(1);
+        settings.max_primary_query_coverage_fraction =
+            settings.max_primary_query_coverage_fraction.clamp(0.0, 1.0);
         settings.min_secondary_identity_fraction =
             settings.min_secondary_identity_fraction.clamp(0.0, 1.0);
         settings.max_secondary_query_overlap_fraction = settings
             .max_secondary_query_overlap_fraction
+            .clamp(0.0, 1.0);
+        settings.fragment_min_identity_fraction =
+            settings.fragment_min_identity_fraction.clamp(0.0, 1.0);
+        settings.fragment_min_query_coverage_fraction = settings
+            .fragment_min_query_coverage_fraction
             .clamp(0.0, 1.0);
 
         let report = self.get_rna_read_report(report_id)?;
@@ -1785,6 +2186,13 @@ impl GentleEngine {
                     .to_string(),
             );
         }
+        let adapter_signatures = settings
+            .adapter_fasta_path
+            .as_deref()
+            .map(Self::load_rna_read_adapter_signatures)
+            .transpose()?;
+        let fragment_context =
+            self.build_rna_read_concatemer_fragment_context(&report, &mut warnings, &settings);
 
         let mut inspected_count = 0usize;
         let mut suspicious_count = 0usize;
@@ -1792,8 +2200,10 @@ impl GentleEngine {
         let mut low_query_coverage_count = 0usize;
         let mut internal_poly_a_count = 0usize;
         let mut internal_poly_t_count = 0usize;
+        let mut internal_adapter_match_count = 0usize;
         let mut disjoint_secondary_mapping_count = 0usize;
         let mut phase1_partial_origin_count = 0usize;
+        let mut multi_gene_fragment_count = 0usize;
         let mut rows = Vec::<RnaReadConcatemerSuspicionRow>::new();
 
         for hit in report
@@ -1811,20 +2221,12 @@ impl GentleEngine {
                 low_query_coverage_count = low_query_coverage_count.saturating_add(1);
             }
 
-            let internal_poly_a_run_bp = Self::longest_internal_homopolymer_run(
-                &hit.sequence,
-                b'A',
-                settings.end_margin_bp,
-            );
-            let internal_poly_t_run_bp = Self::longest_internal_homopolymer_run(
-                &hit.sequence,
-                b'T',
-                settings.end_margin_bp,
-            );
-            let internal_poly_a =
-                internal_poly_a_run_bp >= settings.internal_homopolymer_min_bp;
-            let internal_poly_t =
-                internal_poly_t_run_bp >= settings.internal_homopolymer_min_bp;
+            let internal_poly_a_run_bp =
+                Self::longest_internal_homopolymer_run(&hit.sequence, b'A', settings.end_margin_bp);
+            let internal_poly_t_run_bp =
+                Self::longest_internal_homopolymer_run(&hit.sequence, b'T', settings.end_margin_bp);
+            let internal_poly_a = internal_poly_a_run_bp >= settings.internal_homopolymer_min_bp;
+            let internal_poly_t = internal_poly_t_run_bp >= settings.internal_homopolymer_min_bp;
             if internal_poly_a {
                 internal_poly_a_count = internal_poly_a_count.saturating_add(1);
             }
@@ -1832,10 +2234,40 @@ impl GentleEngine {
                 internal_poly_t_count = internal_poly_t_count.saturating_add(1);
             }
 
-            let phase1_partial_origin =
-                Self::rna_read_concatemer_origin_partial(hit.origin_class);
+            let phase1_partial_origin = Self::rna_read_concatemer_origin_partial(hit.origin_class);
             if phase1_partial_origin {
                 phase1_partial_origin_count = phase1_partial_origin_count.saturating_add(1);
+            }
+            let adapter_hits = adapter_signatures
+                .as_ref()
+                .map(|signatures| {
+                    Self::find_internal_rna_read_adapter_hits(
+                        &hit.sequence,
+                        signatures,
+                        settings.adapter_min_match_bp,
+                        settings.end_margin_bp,
+                    )
+                })
+                .unwrap_or_default();
+            let has_internal_adapter = !adapter_hits.is_empty();
+            if has_internal_adapter {
+                internal_adapter_match_count = internal_adapter_match_count.saturating_add(1);
+            }
+            let fragment_origins = fragment_context
+                .as_ref()
+                .map(|context| {
+                    Self::decompose_rna_read_fragment_origins(&hit.sequence, context, &settings)
+                })
+                .unwrap_or_default();
+            let fragment_origin_gene_ids = fragment_origins
+                .iter()
+                .map(|fragment| fragment.gene_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let multi_gene_fragment = fragment_origin_gene_ids.len() > 1;
+            if multi_gene_fragment {
+                multi_gene_fragment_count = multi_gene_fragment_count.saturating_add(1);
             }
 
             let disjoint_secondary_mappings = best_mapping
@@ -1872,8 +2304,8 @@ impl GentleEngine {
                 })
                 .unwrap_or_default();
             if !disjoint_secondary_mappings.is_empty() {
-                disjoint_secondary_mapping_count = disjoint_secondary_mapping_count
-                    .saturating_add(1);
+                disjoint_secondary_mapping_count =
+                    disjoint_secondary_mapping_count.saturating_add(1);
             }
 
             let mut suspicion_signals = Vec::<String>::new();
@@ -1886,20 +2318,33 @@ impl GentleEngine {
             if internal_poly_t {
                 suspicion_signals.push("internal_poly_t".to_string());
             }
+            if has_internal_adapter {
+                suspicion_signals.push("internal_adapter_match".to_string());
+            }
             if !disjoint_secondary_mappings.is_empty() {
                 suspicion_signals.push("disjoint_secondary_mapping".to_string());
             }
             if phase1_partial_origin {
                 suspicion_signals.push("phase1_partial_origin".to_string());
             }
+            if multi_gene_fragment {
+                suspicion_signals.push("multi_gene_fragment".to_string());
+            }
 
             let suspicion_score = (low_query_coverage as usize).saturating_mul(2)
                 + (internal_poly_a as usize)
                 + (internal_poly_t as usize)
+                + (has_internal_adapter as usize).saturating_mul(2)
                 + ((!disjoint_secondary_mappings.is_empty()) as usize).saturating_mul(3)
-                + (phase1_partial_origin as usize);
+                + (phase1_partial_origin as usize)
+                + (multi_gene_fragment as usize).saturating_mul(2);
             let suspicion_level = if !disjoint_secondary_mappings.is_empty()
-                && (low_query_coverage || internal_poly_a || internal_poly_t || phase1_partial_origin)
+                && (low_query_coverage
+                    || internal_poly_a
+                    || internal_poly_t
+                    || has_internal_adapter
+                    || phase1_partial_origin
+                    || multi_gene_fragment)
             {
                 RnaReadConcatemerSuspicionLevel::Strong
             } else if suspicion_signals.len() >= 2 {
@@ -1918,10 +2363,20 @@ impl GentleEngine {
                 strong_count = strong_count.saturating_add(1);
             }
             let top_disjoint_secondary = disjoint_secondary_mappings.first();
-            let phase1_primary_transcript_id = Self::primary_phase1_transcript_id(hit)
-                .trim()
-                .to_string();
-            let suspicion_summary = if !disjoint_secondary_mappings.is_empty() {
+            let phase1_primary_transcript_id =
+                Self::primary_phase1_transcript_id(hit).trim().to_string();
+            let suspicion_summary = if multi_gene_fragment {
+                format!(
+                    "{} signal(s): fragment decomposition suggests {} distinct gene/group origins within one retained read",
+                    suspicion_signals.len(),
+                    fragment_origin_gene_ids.len()
+                )
+            } else if has_internal_adapter {
+                format!(
+                    "{} signal(s): internal adapter-like sequence plus partial mapping support a fragment-fusion hypothesis",
+                    suspicion_signals.len()
+                )
+            } else if !disjoint_secondary_mappings.is_empty() {
                 format!(
                     "{} signal(s): low primary query coverage plus a disjoint secondary mapping make this read look fragmentary or concatemer-like",
                     suspicion_signals.len()
@@ -1950,14 +2405,16 @@ impl GentleEngine {
                 phase1_primary_transcript_id: (!phase1_primary_transcript_id.is_empty())
                     .then_some(phase1_primary_transcript_id),
                 best_transcript_id: best_mapping.map(|mapping| mapping.transcript_id.clone()),
-                best_transcript_label: best_mapping
-                    .map(|mapping| mapping.transcript_label.clone()),
+                best_transcript_label: best_mapping.map(|mapping| mapping.transcript_label.clone()),
                 best_identity_fraction: best_mapping.map(|mapping| mapping.identity_fraction),
                 best_query_coverage_fraction: best_mapping
                     .map(|mapping| mapping.query_coverage_fraction),
                 secondary_mapping_count: hit.secondary_mappings.len(),
                 internal_poly_a_run_bp,
                 internal_poly_t_run_bp,
+                internal_adapter_hit_count: adapter_hits.len(),
+                top_internal_adapter_label: adapter_hits.first().map(|hit| hit.label.clone()),
+                top_internal_adapter_match_bp: adapter_hits.first().map(|hit| hit.matched_bp),
                 disjoint_secondary_mapping_count: disjoint_secondary_mappings.len(),
                 top_disjoint_secondary_transcript_id: top_disjoint_secondary
                     .map(|mapping| mapping.transcript_id.clone()),
@@ -1970,6 +2427,10 @@ impl GentleEngine {
                 suspicion_level,
                 suspicion_signals,
                 suspicion_summary,
+                fragment_origin_gene_count: fragment_origin_gene_ids.len(),
+                fragment_origin_gene_ids,
+                adapter_hits,
+                fragment_origins,
             });
         }
 
@@ -2004,8 +2465,10 @@ impl GentleEngine {
             low_query_coverage_count,
             internal_poly_a_count,
             internal_poly_t_count,
+            internal_adapter_match_count,
             disjoint_secondary_mapping_count,
             phase1_partial_origin_count,
+            multi_gene_fragment_count,
             limit,
             max_secondary_mappings: report.align_config.max_secondary_mappings,
             settings,

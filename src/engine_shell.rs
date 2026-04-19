@@ -54,11 +54,10 @@ use crate::{
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
-        RnaReadConcatemerInspectionSettings,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadGeneSupportAuditCohortFilter,
-        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
+        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -8058,7 +8057,7 @@ impl ShellCommand {
                 limit,
                 settings,
             } => format!(
-                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2})",
+                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2})",
                 report_id,
                 selection.as_str(),
                 limit,
@@ -8066,7 +8065,13 @@ impl ShellCommand {
                 settings.end_margin_bp,
                 settings.max_primary_query_coverage_fraction,
                 settings.min_secondary_identity_fraction,
-                settings.max_secondary_query_overlap_fraction
+                settings.max_secondary_query_overlap_fraction,
+                settings.adapter_fasta_path.as_deref().unwrap_or("<none>"),
+                settings.adapter_min_match_bp,
+                settings.fragment_min_bp,
+                settings.fragment_max_parts,
+                settings.fragment_min_identity_fraction,
+                settings.fragment_min_query_coverage_fraction
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",

@@ -1692,7 +1692,7 @@ Shared shell command:
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
-    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F]`
+    - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -1724,6 +1724,18 @@ Shared shell command:
         - internal poly(T) bridge away from read ends
         - disjoint secondary mappings with limited query overlap
         - phase-1 local-block / partial-origin classification
+        - optional internal adapter-like matches from an external oligo FASTA
+        - optional iterative fragment decomposition over the admitted
+          transcript-template set, reporting how many distinct genes/groups a
+          suspicious read can be explained by
+      - committed default adapter signatures live at
+        `data/resources/nanopore_direct_cdna_kit14_adapters.fasta`
+      - if your study used a different ONT kit, point `--adapter-fasta` at
+        the correct oligo FASTA instead of editing engine code
+      - fragment decomposition is BLAST-like but engine-local: the best
+        transcript-template fragment is found, masked, and the remaining
+        unmasked sequence is queried again until no sufficiently good fragment
+        remains or `--fragment-max-parts` is reached
       - `strong` rows currently require a disjoint secondary mapping plus at
         least one additional signal
       - if the aligned report was built with `max_secondary_mappings=0`, the
