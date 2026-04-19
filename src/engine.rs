@@ -2600,6 +2600,8 @@ pub enum Operation {
         end_0based_exclusive: usize,
         #[serde(default = "default_tfbs_score_track_value_kind")]
         score_kind: TfbsScoreTrackValueKind,
+        #[serde(default)]
+        correlation_metric: TfbsScoreTrackCorrelationMetric,
         clip_negative: bool,
         path: String,
     },

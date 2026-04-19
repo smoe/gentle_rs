@@ -3836,8 +3836,10 @@ Tutorial projects:
     users can jump from “busy trace” to the concrete strongest local windows
     without manually scanning the entire line plot first.
   - the same panel now also presents `TFBS track correlation`, which keeps
-    both the strict raw Pearson correlation and a smoothed (`25 bp` centered
-    boxcar) correlation over the displayed per-position signals:
+    one selectable correlation family over the displayed per-position signals:
+    - `Pearson`
+    - `Spearman`
+    and shows each family as:
     - smoothed correlation is the main “do these maxima live in the same
       neighborhood?” cue
     - raw correlation stays visible as the unsmoothed sanity check
@@ -3850,13 +3852,14 @@ Tutorial projects:
   - the same window now also exposes `Export TF correlation SVG...`, which
     goes through the shared `RenderTfbsScoreTrackCorrelationSvg` route and
     writes one dual heatmap view:
-    - smoothed Pearson on the left
-    - raw Pearson on the right
+    - smoothed selected-metric correlation on the left
+    - raw selected-metric correlation on the right
     - ranked synchronized pairs with signed peak offsets in the footer
   - stacked SVG exports now render motif labels as `TF name (JASPAR id)` and
     carry one shared dashed TSS line with a single top-level kinked arrow when
     the promoter span has either feature-derived or provenance-derived TSS
-    context available.
+    context available; the TSS label now also gets a small outline box so the
+    shared marker survives README/downsampled figure use better.
   - the same window now also exposes `Export handoff bundle`, which writes a
     portable ClawBio-facing bundle containing:
     - promoter-context JSON

@@ -63,7 +63,8 @@ use crate::{
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackValueKind,
+        TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
+        TfbsScoreTrackValueKind,
         TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
         VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
         WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
@@ -1469,6 +1470,7 @@ pub enum ShellCommand {
         start_0based: usize,
         end_0based_exclusive: usize,
         score_kind: TfbsScoreTrackValueKind,
+        correlation_metric: TfbsScoreTrackCorrelationMetric,
         clip_negative: bool,
         output: String,
     },
@@ -7081,16 +7083,18 @@ impl ShellCommand {
                 start_0based,
                 end_0based_exclusive,
                 score_kind,
+                correlation_metric,
                 clip_negative,
                 output,
             } => format!(
-                "render TFBS score-track correlation SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, clip_negative={})",
+                "render TFBS score-track correlation SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, correlation_metric={}, clip_negative={})",
                 seq_id,
                 output,
                 motifs.join(","),
                 start_0based,
                 end_0based_exclusive,
                 score_kind.as_str(),
+                correlation_metric.as_str(),
                 clip_negative
             ),
             Self::FeaturesTfbsScan {
@@ -20889,6 +20893,7 @@ fn execute_sequence_analysis_command(
             start_0based,
             end_0based_exclusive,
             score_kind,
+            correlation_metric,
             clip_negative,
             output,
         } => {
@@ -20899,6 +20904,7 @@ fn execute_sequence_analysis_command(
                     start_0based: *start_0based,
                     end_0based_exclusive: *end_0based_exclusive,
                     score_kind: *score_kind,
+                    correlation_metric: *correlation_metric,
                     clip_negative: *clip_negative,
                     path: output.clone(),
                 })

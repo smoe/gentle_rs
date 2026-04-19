@@ -292,6 +292,43 @@ impl GentleEngine {
         }
     }
 
+    fn rank_signal_for_spearman(signal: &[f64]) -> Vec<f64> {
+        if signal.is_empty() {
+            return vec![];
+        }
+        let mut indexed = signal
+            .iter()
+            .copied()
+            .enumerate()
+            .collect::<Vec<_>>();
+        indexed.sort_by(|left, right| left.1.total_cmp(&right.1).then(left.0.cmp(&right.0)));
+        let mut ranks = vec![0.0; signal.len()];
+        let mut idx = 0usize;
+        while idx < indexed.len() {
+            let start = idx;
+            let value = indexed[idx].1;
+            idx += 1;
+            while idx < indexed.len() && indexed[idx].1 == value {
+                idx += 1;
+            }
+            let average_rank = ((start + 1) as f64 + idx as f64) / 2.0;
+            for entry in &indexed[start..idx] {
+                ranks[entry.0] = average_rank;
+            }
+        }
+        ranks
+    }
+
+    fn spearman_correlation(left: &[f64], right: &[f64]) -> f64 {
+        let len = left.len().min(right.len());
+        if len < 2 {
+            return 0.0;
+        }
+        let left_ranks = Self::rank_signal_for_spearman(&left[..len]);
+        let right_ranks = Self::rank_signal_for_spearman(&right[..len]);
+        Self::pearson_correlation(&left_ranks, &right_ranks)
+    }
+
     fn summarize_tfbs_track_primary_peak_offset_bp(
         left: &TfbsScoreTrackRow,
         right: &TfbsScoreTrackRow,
@@ -347,6 +384,14 @@ impl GentleEngine {
                         &right_signal[..overlap_window_count],
                     ),
                     smoothed_pearson: Self::pearson_correlation(
+                        &left_smoothed[..overlap_window_count],
+                        &right_smoothed[..overlap_window_count],
+                    ),
+                    raw_spearman: Self::spearman_correlation(
+                        &left_signal[..overlap_window_count],
+                        &right_signal[..overlap_window_count],
+                    ),
+                    smoothed_spearman: Self::spearman_correlation(
                         &left_smoothed[..overlap_window_count],
                         &right_smoothed[..overlap_window_count],
                     ),

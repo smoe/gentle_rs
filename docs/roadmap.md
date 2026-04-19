@@ -1136,19 +1136,23 @@ order. Durable architecture constraints and decisions remain in
         - the same shared score-track route now also carries pairwise
           correlation summaries so promoter interpretation can ask “are these
           motifs peaking together?” without inventing GUI-only statistics:
-          raw Pearson stays available, but a smoothed (`25 bp`) centered-boxcar
-          Pearson is treated as the main synchrony cue and is paired with a
-          signed primary-peak offset
+          Pearson stays available, and Spearman is now a first-class shared
+          option too for non-normal/tied score landscapes; both families keep
+          raw and smoothed (`25 bp`) centered-boxcar views plus a signed
+          primary-peak offset
         - the same shared score-track route now also has export parity for that
           synchrony view:
           `RenderTfbsScoreTrackCorrelationSvg` writes one dual heatmap
-          (smoothed Pearson left, raw Pearson right) plus a ranked synchronized
-          pair footer, so the “are these maxima actually synced?” question is
-          no longer trapped in GUI tables or JSON sidecars
+          (smoothed selected metric left, raw selected metric right) plus a
+          ranked synchronized pair footer, so the “are these maxima actually
+          synced?” question is no longer trapped in GUI tables or JSON sidecars
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span
           intentionally skipped imported annotation features
+        - the same TSS marker is now presentation-hardened a bit more too:
+          the dashed shared line and kinked top arrow keep the genomic anchor,
+          and the small label box survives README/downsampled figure use better
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is

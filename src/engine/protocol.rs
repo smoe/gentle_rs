@@ -447,8 +447,38 @@ pub struct TfbsScoreTrackCorrelationRow {
     pub overlap_window_count: usize,
     pub raw_pearson: f64,
     pub smoothed_pearson: f64,
+    pub raw_spearman: f64,
+    pub smoothed_spearman: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signed_primary_peak_offset_bp: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which pairwise statistic is used when presenting TFBS score-track
+/// synchrony.
+pub enum TfbsScoreTrackCorrelationMetric {
+    #[default]
+    Pearson,
+    Spearman,
+}
+
+impl TfbsScoreTrackCorrelationMetric {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pearson => "pearson",
+            Self::Spearman => "spearman",
+        }
+    }
+
+    pub fn display_label(self, smoothed: bool) -> &'static str {
+        match (self, smoothed) {
+            (Self::Pearson, true) => "Smoothed Pearson r",
+            (Self::Pearson, false) => "Raw Pearson r",
+            (Self::Spearman, true) => "Smoothed Spearman rho",
+            (Self::Spearman, false) => "Raw Spearman rho",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

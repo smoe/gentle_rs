@@ -147,6 +147,19 @@ fn correlation_text_color(value: f64) -> &'static str {
     }
 }
 
+fn correlation_value(
+    row: &crate::engine::TfbsScoreTrackCorrelationRow,
+    metric: crate::engine::TfbsScoreTrackCorrelationMetric,
+    smoothed: bool,
+) -> f64 {
+    match (metric, smoothed) {
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, true) => row.smoothed_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, false) => row.raw_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, true) => row.smoothed_spearman,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, false) => row.raw_spearman,
+    }
+}
+
 fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
     let mut min_score = 0.0_f64;
     let mut max_score = report.global_max_score.max(0.0);
@@ -353,10 +366,10 @@ fn render_tss_marker_annotations(
             "#0e7490"
         };
         svg.push_str(&format!(
-            "<line x1=\"{x:.2}\" y1=\"{line_top:.2}\" x2=\"{x:.2}\" y2=\"{line_bottom:.2}\" stroke=\"{color}\" stroke-width=\"1.25\" stroke-dasharray=\"6 4\" opacity=\"0.85\" data-gentle-role=\"tfbs-score-track-tss-line\"/>\n"
+            "<line x1=\"{x:.2}\" y1=\"{line_top:.2}\" x2=\"{x:.2}\" y2=\"{line_bottom:.2}\" stroke=\"{color}\" stroke-width=\"1.6\" stroke-dasharray=\"6 4\" opacity=\"0.95\" data-gentle-role=\"tfbs-score-track-tss-line\"/>\n"
         ));
         svg.push_str(&format!(
-            "<path d=\"M{x:.2},{line_top:.2} L{x:.2},{stem_y:.2} Q{x:.2},{hook_y:.2} {elbow_x:.2},{hook_y:.2} L{tip_x:.2},{hook_y:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-gentle-role=\"tfbs-score-track-tss-arrow\"/>\n"
+            "<path d=\"M{x:.2},{line_top:.2} L{x:.2},{stem_y:.2} Q{x:.2},{hook_y:.2} {elbow_x:.2},{hook_y:.2} L{tip_x:.2},{hook_y:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-gentle-role=\"tfbs-score-track-tss-arrow\"/>\n"
         ));
         let (head_tip_x, base_x) = if marker.is_reverse {
             (tip_x - 2.2, tip_x + 3.4)
@@ -374,6 +387,13 @@ fn render_tss_marker_annotations(
             tip_x + 6.0
         }
         .clamp(plot_left, (plot_right - label_width).max(plot_left));
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"16\" rx=\"3\" fill=\"#fffdf8\" fill-opacity=\"0.92\" stroke=\"{}\" stroke-width=\"0.8\" data-gentle-role=\"tfbs-score-track-tss-label-bg\"/>\n",
+            label_x - 4.0,
+            label_y - 11.0,
+            label_width + 8.0,
+            color
+        ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"{}\">{}</text>\n",
             label_x,
@@ -645,7 +665,10 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
 }
 
 /// Render one TFBS-track correlation summary as SVG text.
-pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) -> String {
+pub fn render_tfbs_score_track_correlation_svg(
+    report: &TfbsScoreTrackReport,
+    metric: crate::engine::TfbsScoreTrackCorrelationMetric,
+) -> String {
     let Some(correlation) = report.correlation_summary.as_ref() else {
         return format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
@@ -730,8 +753,10 @@ pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) ->
         correlation.pair_count
     ));
     svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"71\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">Smoothed Pearson is the main neighborhood-synchrony view; raw Pearson stays alongside it as the strict per-position check.</text>\n",
-        CORR_MARGIN_LEFT
+        "<text x=\"{:.1}\" y=\"71\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">Smoothed {} is the main neighborhood-synchrony view; raw {} stays alongside it as the strict per-position check.</text>\n",
+        CORR_MARGIN_LEFT,
+        escape_svg_text(metric.as_str()),
+        escape_svg_text(metric.as_str())
     ));
     svg.push_str(&format!(
         "<text x=\"{:.1}\" y=\"86\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">signal={} | smoothing={} {} bp | diagonal fixed at 1.000</text>\n",
@@ -742,8 +767,8 @@ pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) ->
     ));
 
     for (panel_left, panel_title, is_smoothed) in [
-        (left_panel_left, "Smoothed Pearson r", true),
-        (right_panel_left, "Raw Pearson r", false),
+        (left_panel_left, metric.display_label(true), true),
+        (right_panel_left, metric.display_label(false), false),
     ] {
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"106\" font-family=\"monospace\" font-size=\"12\" fill=\"#0f172a\">{}</text>\n",
@@ -787,8 +812,7 @@ pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) ->
                         .get(&(row_idx.min(col_idx), row_idx.max(col_idx)))
                         .copied();
                     match lookup {
-                        Some(row) if is_smoothed => row.smoothed_pearson,
-                        Some(row) => row.raw_pearson,
+                        Some(row) => correlation_value(row, metric, is_smoothed),
                         None => 0.0,
                     }
                 };
@@ -846,12 +870,27 @@ pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) ->
         list_top
     ));
     svg.push_str(&format!(
-        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">ranked by |smoothed r|, then |raw r|; offset uses primary peak start positions</text>\n",
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">ranked by |smoothed {}|, then |raw {}|; offset uses primary peak start positions</text>\n",
         CORR_MARGIN_LEFT,
-        list_top + 14.0
+        list_top + 14.0,
+        escape_svg_text(metric.as_str()),
+        escape_svg_text(metric.as_str())
     ));
+    let mut ranked_rows = correlation.rows.iter().collect::<Vec<_>>();
+    ranked_rows.sort_by(|left, right| {
+        correlation_value(right, metric, true)
+            .abs()
+            .total_cmp(&correlation_value(left, metric, true).abs())
+            .then(
+                correlation_value(right, metric, false)
+                    .abs()
+                    .total_cmp(&correlation_value(left, metric, false).abs()),
+            )
+            .then(left.left_tf_id.cmp(&right.left_tf_id))
+            .then(left.right_tf_id.cmp(&right.right_tf_id))
+    });
     let mut line_y = list_top + 32.0;
-    for row in correlation.rows.iter().take(list_rows) {
+    for row in ranked_rows.into_iter().take(list_rows) {
         let left_label = format_tf_track_label(&row.left_tf_id, row.left_tf_name.as_deref());
         let right_label = format_tf_track_label(&row.right_tf_id, row.right_tf_name.as_deref());
         let offset = row
@@ -860,7 +899,11 @@ pub fn render_tfbs_score_track_correlation_svg(report: &TfbsScoreTrackReport) ->
             .unwrap_or_else(|| "n/a".to_string());
         let summary = format!(
             "{} vs {} | smoothed {:+.3} | raw {:+.3} | offset {}",
-            left_label, right_label, row.smoothed_pearson, row.raw_pearson, offset
+            left_label,
+            right_label,
+            correlation_value(row, metric, true),
+            correlation_value(row, metric, false),
+            offset
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>\n",
@@ -988,6 +1031,7 @@ mod tests {
         assert!(svg.contains("#b45309"));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-line\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-arrow\""));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-label-bg\""));
         assert!(svg.contains("TSS NM_TP73"));
         assert!(svg.contains(
             "normalization=uniform_random_dna 10000bp deterministic background | chance_model=quantized_iid_uniform_window_dp"
@@ -1092,6 +1136,8 @@ mod tests {
                         overlap_window_count: 100,
                         raw_pearson: 0.42,
                         smoothed_pearson: 0.81,
+                        raw_spearman: 0.55,
+                        smoothed_spearman: 0.88,
                         signed_primary_peak_offset_bp: Some(80),
                     },
                     crate::engine::TfbsScoreTrackCorrelationRow {
@@ -1102,6 +1148,8 @@ mod tests {
                         overlap_window_count: 100,
                         raw_pearson: 0.38,
                         smoothed_pearson: 0.96,
+                        raw_spearman: 0.48,
+                        smoothed_spearman: 0.97,
                         signed_primary_peak_offset_bp: Some(-152),
                     },
                     crate::engine::TfbsScoreTrackCorrelationRow {
@@ -1112,6 +1160,8 @@ mod tests {
                         overlap_window_count: 100,
                         raw_pearson: 0.21,
                         smoothed_pearson: 0.44,
+                        raw_spearman: 0.27,
+                        smoothed_spearman: 0.52,
                         signed_primary_peak_offset_bp: Some(-72),
                     },
                 ],
@@ -1159,10 +1209,13 @@ mod tests {
             ],
         };
 
-        let svg = render_tfbs_score_track_correlation_svg(&report);
+        let svg = render_tfbs_score_track_correlation_svg(
+            &report,
+            crate::engine::TfbsScoreTrackCorrelationMetric::Spearman,
+        );
         assert!(svg.contains("TFBS track correlation"));
-        assert!(svg.contains("Smoothed Pearson r"));
-        assert!(svg.contains("Raw Pearson r"));
+        assert!(svg.contains("Smoothed Spearman rho"));
+        assert!(svg.contains("Raw Spearman rho"));
         assert!(svg.contains("SP1 (MA0079.5)"));
         assert!(svg.contains("MYC (MA0147.4)"));
         assert!(svg.contains("PATZ1 (MA1961.2)"));

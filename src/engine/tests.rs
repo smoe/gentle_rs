@@ -27366,8 +27366,12 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
     assert_eq!(row.right_tf_id, "MA0147.4");
     assert!(row.raw_pearson.is_finite());
     assert!(row.smoothed_pearson.is_finite());
+    assert!(row.raw_spearman.is_finite());
+    assert!(row.smoothed_spearman.is_finite());
     assert!((-1.0..=1.0).contains(&row.raw_pearson));
     assert!((-1.0..=1.0).contains(&row.smoothed_pearson));
+    assert!((-1.0..=1.0).contains(&row.raw_spearman));
+    assert!((-1.0..=1.0).contains(&row.smoothed_spearman));
     assert_eq!(
         row.overlap_window_count,
         report.tracks[0]

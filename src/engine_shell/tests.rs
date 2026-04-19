@@ -4409,7 +4409,7 @@ fn parse_features_tfbs_score_tracks_svg_for_inline_target() {
 #[test]
 fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_scores() {
     let cmd = parse_shell_line(
-        "features tfbs-score-track-correlation-svg seq_a /tmp/seq_a.tfbs_corr.svg --motif SP1 --motif MYC --range 2900..3100 --score-kind llr_background_tail_log10 --allow-negative",
+        "features tfbs-score-track-correlation-svg seq_a /tmp/seq_a.tfbs_corr.svg --motif SP1 --motif MYC --range 2900..3100 --score-kind llr_background_tail_log10 --correlation-metric spearman --allow-negative",
     )
     .expect("parse features tfbs-score-track-correlation-svg");
     match cmd {
@@ -4419,6 +4419,7 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             start_0based,
             end_0based_exclusive,
             score_kind,
+            correlation_metric,
             clip_negative,
             output,
         } => {
@@ -4427,6 +4428,7 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             assert_eq!(start_0based, 2900);
             assert_eq!(end_0based_exclusive, 3100);
             assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert_eq!(correlation_metric, TfbsScoreTrackCorrelationMetric::Spearman);
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs_corr.svg");
         }
@@ -9703,6 +9705,7 @@ fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_an
             start_0based: 0,
             end_0based_exclusive: 160,
             score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            correlation_metric: TfbsScoreTrackCorrelationMetric::Spearman,
             clip_negative: true,
             output: output.display().to_string(),
         },
@@ -9721,8 +9724,8 @@ fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_an
     let svg = fs::read_to_string(&output).expect("read svg");
     assert!(svg.contains("<svg"));
     assert!(svg.contains("TFBS track correlation"));
-    assert!(svg.contains("Smoothed Pearson r"));
-    assert!(svg.contains("Raw Pearson r"));
+    assert!(svg.contains("Smoothed Spearman rho"));
+    assert!(svg.contains("Raw Spearman rho"));
     assert!(svg.contains("SP1"));
     assert!(svg.contains("MYC"));
 }

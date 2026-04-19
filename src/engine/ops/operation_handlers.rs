@@ -6030,6 +6030,7 @@ impl GentleEngine {
                 start_0based,
                 end_0based_exclusive,
                 score_kind,
+                correlation_metric,
                 clip_negative,
                 path,
             } => {
@@ -6047,18 +6048,20 @@ impl GentleEngine {
                 report.run_id = Some(run_id.to_string());
                 let svg = crate::render_tfbs_score_tracks::render_tfbs_score_track_correlation_svg(
                     &report,
+                    correlation_metric,
                 );
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not write TFBS correlation SVG to '{}': {e}", path),
                 })?;
                 result.messages.push(format!(
-                    "Wrote TFBS score-track correlation SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
+                    "Wrote TFBS score-track correlation SVG for '{}' ({} motif(s), {}..{}, score_kind={}, correlation_metric={}, clip_negative={}) to '{}'",
                     seq_id,
                     report.tracks.len(),
                     report.view_start_0based,
                     report.view_end_0based_exclusive,
                     report.score_kind.as_str(),
+                    correlation_metric.as_str(),
                     report.clip_negative,
                     path
                 ));

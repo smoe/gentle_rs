@@ -12,7 +12,7 @@
 //! - places to extend when a shell family gets too large for `engine_shell.rs`
 
 use super::*;
-use crate::engine::TfbsScoreTrackValueKind;
+use crate::engine::{TfbsScoreTrackCorrelationMetric, TfbsScoreTrackValueKind};
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
@@ -2164,7 +2164,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "tfbs-score-track-correlation-svg" => {
             if tokens.len() < 4 {
                 return Err(
-                    "features tfbs-score-track-correlation-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
+                    "features tfbs-score-track-correlation-svg requires SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]"
                         .to_string(),
                 );
             }
@@ -2180,6 +2180,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             let mut start_0based: Option<usize> = None;
             let mut end_0based_exclusive: Option<usize> = None;
             let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
+            let mut correlation_metric = TfbsScoreTrackCorrelationMetric::Pearson;
             let mut clip_negative = true;
             let mut idx = 4usize;
             while idx < tokens.len() {
@@ -2281,6 +2282,23 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                             }
                         };
                     }
+                    "--correlation-metric" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--correlation-metric",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        correlation_metric = match raw.trim() {
+                            "pearson" => TfbsScoreTrackCorrelationMetric::Pearson,
+                            "spearman" => TfbsScoreTrackCorrelationMetric::Spearman,
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --correlation-metric value '{other}' (expected pearson or spearman)"
+                                ));
+                            }
+                        };
+                    }
                     "--allow-negative" => {
                         clip_negative = false;
                         idx += 1;
@@ -2315,6 +2333,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 start_0based,
                 end_0based_exclusive,
                 score_kind,
+                correlation_metric,
                 clip_negative,
                 output,
             })

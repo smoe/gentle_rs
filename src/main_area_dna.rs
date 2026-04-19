@@ -96,6 +96,7 @@ use crate::{
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
         SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        TfbsScoreTrackCorrelationMetric,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsProgress, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
@@ -11246,6 +11247,7 @@ struct VariantFollowupUiState {
     score_track_end_0based_exclusive: String,
     score_track_value_kind: TfbsScoreTrackValueKind,
     score_track_clip_negative: bool,
+    score_track_correlation_metric: TfbsScoreTrackCorrelationMetric,
     promoter_upstream_bp: String,
     promoter_downstream_bp: String,
     tfbs_focus_half_window_bp: String,
@@ -11276,6 +11278,7 @@ impl Default for VariantFollowupUiState {
             score_track_end_0based_exclusive: String::new(),
             score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             score_track_clip_negative: true,
+            score_track_correlation_metric: TfbsScoreTrackCorrelationMetric::Pearson,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
             tfbs_focus_half_window_bp: "100".to_string(),
@@ -16176,6 +16179,7 @@ impl MainAreaDna {
                     "No TF score tracks cached yet. Use the toolbar menu `TFBS score tracks` to inspect the current selection, visible span, or whole sequence through the shared engine report path.",
                     self.cached_tfbs_score_tracks.as_ref(),
                     &empty_track_markers,
+                    None,
                 );
                 if tfbs_panel_state_changed {
                     self.save_engine_ops_state();

@@ -1670,9 +1670,13 @@ Shared shell command:
         and TSS context uses one shared dashed line with a single top-level
         kinked arrow if feature-derived or promoter-provenance TSS metadata is
         available
-    - `features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
+    - `features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]`
       - renders the same shared synchrony sidecar as a dedicated dual heatmap:
-        smoothed Pearson on the left, raw Pearson on the right
+        smoothed selected-metric correlation on the left, raw selected-metric
+        correlation on the right
+      - `--correlation-metric spearman` is often the better promoter-reading
+        choice when the displayed score tracks are clearly non-normal or
+        heavily tied by clipping/background thresholding
       - the footer ranks the strongest synchronized TF pairs and keeps signed
         primary-peak offsets visible for quick promoter interpretation
     - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`

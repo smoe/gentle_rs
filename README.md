@@ -439,6 +439,44 @@ cargo run --quiet --bin gentle_examples_docs -- \
   docs/figures/tp73_upstream_tfbs_score_tracks.png
 ```
 
+### TERT Promoter Tail-Calibrated TFBS Tracks
+
+![GENtle TERT upstream/early-coding TFBS score tracks](docs/figures/tert_upstream_early_coding_llr_background_tail_log10.png)
+
+GENtle can also carry the same TFBS score-track machinery into a real promoter
+case study and keep the genomic anchor visible. This TERT example is derived
+through GENtle’s own internal promoter-slice path (`1000 bp` upstream plus
+`200 bp` into the transcribed region) rather than by pasting an external
+sequence into the plotter. The stacked figure uses one tail-calibrated
+`llr_background_tail_log10` view for the requested factors
+`POU5F1 (MA1115.2)`, `SOX2 (MA0143.5)`, `KLF4 (MA0039.5)`,
+`MYC (MA0147.4)`, `SP1 (MA0079.5)`, `BACH2 (MA1101.3)`,
+`PATZ1 (MA1961.2)`, `TP53 (MA0106.3)`, `TP63 (MA0525.2)`, and
+`TP73 (MA0861.2)`, and it keeps the transcription start site explicit as one
+shared dashed line with a single kinked top arrow so the whole plot still
+reads as one DNA span instead of ten independent traces.
+
+In this TERT slice, `SP1 (MA0079.5)` and `MYC (MA0147.4)` stand out most
+clearly in the tail-calibrated track view, while `PATZ1 (MA1961.2)`,
+`TP63 (MA0525.2)`, and `KLF4 (MA0039.5)` stay visible as
+secondary-but-real tail events instead of collapsing into random-looking
+texture.
+
+### TERT Promoter Synchrony View
+
+![GENtle TERT TFBS Spearman correlation heatmap](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.png)
+
+The same shared report can also be rendered as a synchrony view. For promoter
+work like this, GENtle now offers both Pearson and Spearman on the exact and
+smoothed per-position signals. This README figure uses Spearman because the
+track values are clearly non-normal and often tied by clipping/background
+thresholding, so rank-based correlation is the more honest default summary.
+
+That makes the TERT story easier to read: we can see not just which motifs
+peak, but which ones peak in the same neighborhoods. In the current slice,
+`SP1 (MA0079.5)` and `PATZ1 (MA1961.2)` form the strongest synchronized pair,
+with `KLF4 (MA0039.5)` also tracking the same neighborhood.
+
 ### Ongoing Work With ClawBio
 
 ![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)

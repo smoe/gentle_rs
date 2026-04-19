@@ -169,7 +169,7 @@ gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN
 
 ```bash
 gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
-gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
+gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]'
 ```
 
 First-class operation routes:
@@ -183,7 +183,7 @@ First-class operation routes:
 ```
 
 ```json
-{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
+{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","correlation_metric":"spearman","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
 ```
 
 Portable schema:
@@ -250,9 +250,12 @@ Behavior notes:
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
 - `RenderTfbsScoreTrackCorrelationSvg` reuses that exact same report and writes
   a second deterministic SVG view:
-  - left panel: smoothed Pearson heatmap
-  - right panel: raw Pearson heatmap
+  - left panel: smoothed selected-metric heatmap
+  - right panel: raw selected-metric heatmap
   - footer: top synchronized pairs with signed primary-peak offsets
+  - `correlation_metric` accepts `pearson` or `spearman`
+  - `spearman` is often the safer interpretation mode when promoter score
+    tracks are clearly non-normal or contain many tied values from clipping
 - the SVG figure now prints score-family-aware normalization labels per motif:
   - raw bit views keep the compact `p99 / Δp99 / bg+` summary
   - background-normalized views instead show `theory max / peak q / -log10 tail`
@@ -262,7 +265,9 @@ Behavior notes:
   surfaces do not need live GUI state to explain what was scored.
 - The shared report also carries transcription-start markers for covered or
   directly adjacent starts, and the SVG renderer shows them as short hooked
-  arrows so strand direction survives figure-oriented exports.
+  arrows so strand direction survives figure-oriented exports; the TSS label
+  now also carries a small outline box so it survives README/downsampled
+  figure use better.
 - `clip_negative=true` is the default presentation mode for promoter-design
   inspection on the bit-based score kinds because it suppresses negative-only
   windows and leaves only positive support.
@@ -1358,6 +1363,8 @@ Current draft operations:
     - exact raw Pearson correlation over the displayed per-position signal
     - smoothed Pearson correlation over the same signal after centered boxcar
       smoothing (`25 bp`)
+    - exact raw Spearman correlation over the same displayed signal
+    - smoothed Spearman correlation over the same centered-boxcar signal
     - and a signed primary-peak offset so “are the strongest windows actually
       co-localized?” is explicit instead of guessed from the traces alone
   - the report’s TSS markers now also fall back to promoter-slice provenance
