@@ -4,7 +4,7 @@
 //! GUI, CLI, shell, and future adapters can all export the same visual rather
 //! than only the raw per-position arrays.
 
-use crate::engine::TfbsScoreTrackReport;
+use crate::engine::{TfbsScoreTrackReport, TfbsScoreTrackValueKind};
 
 const SVG_WIDTH: f64 = 1180.0;
 const SVG_MARGIN_LEFT: f64 = 32.0;
@@ -19,6 +19,13 @@ const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
 const SVG_TSS_MARKER_ROW_HEIGHT: f64 = 18.0;
 const SVG_TSS_MARKER_MAX_LANES: usize = 3;
+
+#[derive(Clone)]
+struct SvgTssMarkerLabel {
+    label: String,
+    position_0based: usize,
+    is_reverse: bool,
+}
 
 fn escape_svg_text(raw: &str) -> String {
     raw.replace('&', "&amp;")
@@ -54,15 +61,39 @@ fn format_positive_fraction_as_percent(fraction: f64) -> String {
     format!("{:.1}%", fraction.max(0.0) * 100.0)
 }
 
+fn format_tf_track_label(tf_id: &str, tf_name: Option<&str>) -> String {
+    let trimmed_name = tf_name.map(str::trim).unwrap_or_default();
+    if trimmed_name.is_empty() {
+        return tf_id.to_string();
+    }
+    if trimmed_name.eq_ignore_ascii_case(tf_id) {
+        trimmed_name.to_string()
+    } else {
+        format!("{trimmed_name} ({tf_id})")
+    }
+}
+
 fn format_track_normalization_summary(
+    score_kind: TfbsScoreTrackValueKind,
     normalization: &crate::engine::TfbsScoreTrackNormalizationReference,
 ) -> String {
-    format!(
-        "p99 {:.2} | Δp99 {:+.2} | bg+ {}",
-        normalization.p99_score,
-        normalization.observed_peak_delta_from_p99,
-        format_positive_fraction_as_percent(normalization.positive_fraction)
-    )
+    match score_kind {
+        TfbsScoreTrackValueKind::LlrBackgroundQuantile
+        | TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+        | TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile
+        | TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10 => format!(
+            "theory max {:.2} | peak q {:.6} | -log10 tail {:.2}",
+            normalization.theoretical_max_score,
+            normalization.observed_peak_modeled_quantile,
+            normalization.observed_peak_modeled_tail_log10,
+        ),
+        _ => format!(
+            "p99 {:.2} | Δp99 {:+.2} | bg+ {}",
+            normalization.p99_score,
+            normalization.observed_peak_delta_from_p99,
+            format_positive_fraction_as_percent(normalization.positive_fraction)
+        ),
+    }
 }
 
 fn format_report_normalization_note(report: &TfbsScoreTrackReport) -> Option<String> {
@@ -71,8 +102,10 @@ fn format_report_normalization_note(report: &TfbsScoreTrackReport) -> Option<Str
         .iter()
         .find_map(|track| track.normalization_reference.as_ref())?;
     Some(format!(
-        "normalization={} {}bp deterministic background",
-        normalization.background_model, normalization.random_sequence_length_bp
+        "normalization={} {}bp deterministic background | chance_model={}",
+        normalization.background_model,
+        normalization.random_sequence_length_bp,
+        normalization.chance_model
     ))
 }
 
@@ -148,26 +181,66 @@ fn summarize_tss_label(raw: &str) -> String {
     format!("{shortened}...")
 }
 
+fn summarize_svg_tss_markers(report: &TfbsScoreTrackReport) -> Vec<SvgTssMarkerLabel> {
+    let mut markers: Vec<SvgTssMarkerLabel> = vec![];
+    for marker in &report.tss_markers {
+        if let Some(existing) = markers.iter_mut().find(|existing| {
+            existing.position_0based == marker.position_0based
+                && existing.is_reverse == marker.is_reverse
+        }) {
+            if existing.label != marker.label && !existing.label.contains("(+") {
+                existing.label = format!("{} (+1)", existing.label);
+            }
+            continue;
+        }
+        markers.push(SvgTssMarkerLabel {
+            label: marker.label.clone(),
+            position_0based: marker.position_0based,
+            is_reverse: marker.is_reverse,
+        });
+    }
+    markers.sort_by(|left, right| {
+        left.position_0based
+            .cmp(&right.position_0based)
+            .then(left.label.cmp(&right.label))
+    });
+    markers
+}
+
+fn tss_marker_x(
+    marker_position_0based: usize,
+    view_start_0based: usize,
+    view_end_0based_exclusive: usize,
+    plot_left: f64,
+    plot_right: f64,
+) -> f64 {
+    let span = view_end_0based_exclusive
+        .saturating_sub(view_start_0based)
+        .max(1) as f64;
+    let clamped_pos = marker_position_0based.clamp(view_start_0based, view_end_0based_exclusive);
+    plot_left
+        + ((clamped_pos.saturating_sub(view_start_0based) as f64) / span) * (plot_right - plot_left)
+}
+
 fn layout_tss_marker_lanes(
-    report: &TfbsScoreTrackReport,
+    markers: &[SvgTssMarkerLabel],
+    view_start_0based: usize,
+    view_end_0based_exclusive: usize,
     plot_left: f64,
     plot_right: f64,
 ) -> usize {
-    if report.tss_markers.is_empty() {
+    if markers.is_empty() {
         return 0;
     }
-    let span = report
-        .view_end_0based_exclusive
-        .saturating_sub(report.view_start_0based)
-        .max(1) as f64;
     let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
-    for marker in &report.tss_markers {
-        let clamped_pos = marker
-            .position_0based
-            .clamp(report.view_start_0based, report.view_end_0based_exclusive);
-        let x = plot_left
-            + ((clamped_pos.saturating_sub(report.view_start_0based) as f64) / span)
-                * (plot_right - plot_left);
+    for marker in markers {
+        let x = tss_marker_x(
+            marker.position_0based,
+            view_start_0based,
+            view_end_0based_exclusive,
+            plot_left,
+            plot_right,
+        );
         let label = summarize_tss_label(&marker.label);
         let width = (label.chars().count() as f64) * 6.0 + 18.0;
         let left = x.min(plot_right - 4.0);
@@ -193,28 +266,28 @@ fn layout_tss_marker_lanes(
 }
 
 fn render_tss_marker_annotations(
-    report: &TfbsScoreTrackReport,
+    markers: &[SvgTssMarkerLabel],
+    view_start_0based: usize,
+    view_end_0based_exclusive: usize,
     plot_left: f64,
     plot_right: f64,
     marker_top: f64,
-    first_row_top: f64,
+    line_top: f64,
+    line_bottom: f64,
 ) -> String {
-    if report.tss_markers.is_empty() {
+    if markers.is_empty() {
         return String::new();
     }
-    let span = report
-        .view_end_0based_exclusive
-        .saturating_sub(report.view_start_0based)
-        .max(1) as f64;
     let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
     let mut svg = String::new();
-    for marker in &report.tss_markers {
-        let clamped_pos = marker
-            .position_0based
-            .clamp(report.view_start_0based, report.view_end_0based_exclusive);
-        let x = plot_left
-            + ((clamped_pos.saturating_sub(report.view_start_0based) as f64) / span)
-                * (plot_right - plot_left);
+    for marker in markers {
+        let x = tss_marker_x(
+            marker.position_0based,
+            view_start_0based,
+            view_end_0based_exclusive,
+            plot_left,
+            plot_right,
+        );
         let label = summarize_tss_label(&marker.label);
         let label_width = (label.chars().count() as f64) * 6.0 + 18.0;
         let mut lane_idx = SVG_TSS_MARKER_MAX_LANES - 1;
@@ -228,8 +301,7 @@ fn render_tss_marker_annotations(
             }
         }
         let label_y = marker_top + lane_idx as f64 * SVG_TSS_MARKER_ROW_HEIGHT + 10.0;
-        let anchor_y = first_row_top - 6.0;
-        let stem_y = anchor_y - 8.0;
+        let stem_y = line_top - 8.0;
         let hook_y = label_y + 2.0;
         let elbow_x = if marker.is_reverse { x - 4.0 } else { x + 4.0 };
         let tip_x = if marker.is_reverse {
@@ -243,7 +315,10 @@ fn render_tss_marker_annotations(
             "#0e7490"
         };
         svg.push_str(&format!(
-            "<path d=\"M{x:.2},{anchor_y:.2} L{x:.2},{stem_y:.2} Q{x:.2},{hook_y:.2} {elbow_x:.2},{hook_y:.2} L{tip_x:.2},{hook_y:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-gentle-role=\"tfbs-score-track-tss-tick\"/>\n"
+            "<line x1=\"{x:.2}\" y1=\"{line_top:.2}\" x2=\"{x:.2}\" y2=\"{line_bottom:.2}\" stroke=\"{color}\" stroke-width=\"1.25\" stroke-dasharray=\"6 4\" opacity=\"0.85\" data-gentle-role=\"tfbs-score-track-tss-line\"/>\n"
+        ));
+        svg.push_str(&format!(
+            "<path d=\"M{x:.2},{line_top:.2} L{x:.2},{stem_y:.2} Q{x:.2},{hook_y:.2} {elbow_x:.2},{hook_y:.2} L{tip_x:.2},{hook_y:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-gentle-role=\"tfbs-score-track-tss-arrow\"/>\n"
         ));
         let (head_tip_x, base_x) = if marker.is_reverse {
             (tip_x - 2.2, tip_x + 3.4)
@@ -274,8 +349,11 @@ fn render_tss_marker_annotations(
 
 /// Render one stacked TFBS score-track figure as SVG text.
 pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
+    let summarized_tss_markers = summarize_svg_tss_markers(report);
     let tss_marker_lanes = layout_tss_marker_lanes(
-        report,
+        &summarized_tss_markers,
+        report.view_start_0based,
+        report.view_end_0based_exclusive,
         SVG_MARGIN_LEFT + SVG_LABEL_WIDTH,
         SVG_WIDTH - SVG_MARGIN_RIGHT,
     );
@@ -349,7 +427,7 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         let row_bottom = row_top + SVG_ROW_HEIGHT;
         let plot_top = row_top + SVG_TRACK_PADDING_Y;
         let plot_bottom = row_bottom - 20.0;
-        let label = track.tf_name.as_deref().unwrap_or(track.tf_id.as_str());
+        let label = format_tf_track_label(&track.tf_id, track.tf_name.as_deref());
         let max_position = track
             .max_position_0based
             .map(|value| format!(" @ {value}"))
@@ -358,10 +436,9 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             "{} windows | max {:.2}{}",
             track.scored_window_count, track.max_score, max_position
         );
-        let normalization_meta = track
-            .normalization_reference
-            .as_ref()
-            .map(format_track_normalization_summary);
+        let normalization_meta = track.normalization_reference.as_ref().map(|normalization| {
+            format_track_normalization_summary(report.score_kind, normalization)
+        });
         let row_fill = if row_idx % 2 == 0 {
             "#fffaf0"
         } else {
@@ -379,7 +456,7 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>\n",
             content_left + 12.0,
             row_top + 24.0,
-            escape_svg_text(label)
+            escape_svg_text(&label)
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
@@ -476,12 +553,19 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
     }
 
     if tss_marker_lanes > 0 {
+        let stack_bottom = header_height
+            + report.tracks.len().max(1) as f64 * (SVG_ROW_HEIGHT + SVG_ROW_GAP)
+            - SVG_ROW_GAP
+            - 10.0;
         svg.push_str(&render_tss_marker_annotations(
-            report,
+            &summarized_tss_markers,
+            report.view_start_0based,
+            report.view_end_0based_exclusive,
             plot_left + SVG_TRACK_PADDING_X,
             plot_right - SVG_TRACK_PADDING_X,
             SVG_HEADER_HEIGHT - 2.0,
-            header_height,
+            header_height - 6.0,
+            stack_bottom,
         ));
     }
 
@@ -547,9 +631,10 @@ mod tests {
                 position_0based: 12,
                 is_reverse: false,
             }],
+            correlation_summary: None,
             tracks: vec![
                 TfbsScoreTrackRow {
-                    tf_id: "TP73".to_string(),
+                    tf_id: "MA0828.2".to_string(),
                     tf_name: Some("p73".to_string()),
                     motif_length_bp: 10,
                     track_start_0based: 0,
@@ -558,6 +643,7 @@ mod tests {
                     max_position_0based: Some(12),
                     normalization_reference: Some(TfbsScoreTrackNormalizationReference {
                         background_model: "uniform_random_dna".to_string(),
+                        chance_model: "quantized_iid_uniform_window_dp".to_string(),
                         random_sequence_length_bp: 10_000,
                         random_seed: 7,
                         sample_count: 100,
@@ -567,15 +653,20 @@ mod tests {
                         p99_score: 3.1,
                         positive_fraction: 0.045,
                         observed_peak_empirical_quantile: 1.0,
+                        observed_peak_modeled_quantile: 0.999999,
+                        observed_peak_modeled_tail_probability: 1e-6,
+                        observed_peak_modeled_tail_log10: 6.0,
                         observed_peak_delta_from_p95: 6.1,
                         observed_peak_delta_from_p99: 5.4,
+                        theoretical_min_score: -4.2,
+                        theoretical_max_score: 12.3,
                     }),
                     top_peaks: vec![],
                     forward_scores: vec![0.0, 3.0, 8.5, 2.0],
                     reverse_scores: vec![0.0, 1.0, 2.0, 0.5],
                 },
                 TfbsScoreTrackRow {
-                    tf_id: "SP1".to_string(),
+                    tf_id: "MA0079.3".to_string(),
                     tf_name: Some("SP1".to_string()),
                     motif_length_bp: 9,
                     track_start_0based: 0,
@@ -584,6 +675,7 @@ mod tests {
                     max_position_0based: Some(8),
                     normalization_reference: Some(TfbsScoreTrackNormalizationReference {
                         background_model: "uniform_random_dna".to_string(),
+                        chance_model: "quantized_iid_uniform_window_dp".to_string(),
                         random_sequence_length_bp: 10_000,
                         random_seed: 7,
                         sample_count: 100,
@@ -593,8 +685,13 @@ mod tests {
                         p99_score: 2.2,
                         positive_fraction: 0.022,
                         observed_peak_empirical_quantile: 0.997,
+                        observed_peak_modeled_quantile: 0.9985,
+                        observed_peak_modeled_tail_probability: 0.0015,
+                        observed_peak_modeled_tail_log10: 2.8239,
                         observed_peak_delta_from_p95: 2.2,
                         observed_peak_delta_from_p99: 1.8,
+                        theoretical_min_score: -3.1,
+                        theoretical_max_score: 8.4,
                     }),
                     top_peaks: vec![],
                     forward_scores: vec![0.5, 4.0, 1.0, 0.0],
@@ -607,15 +704,17 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Continuous TF motif score tracks"));
         assert!(svg.contains("tp73_upstream"));
-        assert!(svg.contains("p73"));
-        assert!(svg.contains("SP1"));
+        assert!(svg.contains("p73 (MA0828.2)"));
+        assert!(svg.contains("SP1 (MA0079.3)"));
         assert!(svg.contains("base-pair position in selected span"));
         assert!(svg.contains("#0e7490"));
         assert!(svg.contains("#b45309"));
-        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-tick\""));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-line\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-arrow\""));
         assert!(svg.contains("TSS NM_TP73"));
-        assert!(svg.contains("normalization=uniform_random_dna 10000bp deterministic background"));
+        assert!(svg.contains(
+            "normalization=uniform_random_dna 10000bp deterministic background | chance_model=quantized_iid_uniform_window_dp"
+        ));
         assert!(svg.contains("Δp99 +5.40"));
         assert!(svg.contains("bg+ 4.5%"));
     }
@@ -636,6 +735,7 @@ mod tests {
             motifs_requested: vec!["REST".to_string()],
             global_max_score: 4.0,
             tss_markers: vec![],
+            correlation_summary: None,
             tracks: vec![TfbsScoreTrackRow {
                 tf_id: "REST".to_string(),
                 tf_name: Some("REST".to_string()),
@@ -646,6 +746,7 @@ mod tests {
                 max_position_0based: Some(14),
                 normalization_reference: Some(TfbsScoreTrackNormalizationReference {
                     background_model: "uniform_random_dna".to_string(),
+                    chance_model: "quantized_iid_uniform_window_dp".to_string(),
                     random_sequence_length_bp: 10_000,
                     random_seed: 7,
                     sample_count: 100,
@@ -655,8 +756,13 @@ mod tests {
                     p99_score: 3.0,
                     positive_fraction: 0.019,
                     observed_peak_empirical_quantile: 0.991,
+                    observed_peak_modeled_quantile: 0.992,
+                    observed_peak_modeled_tail_probability: 0.008,
+                    observed_peak_modeled_tail_log10: 2.0969,
                     observed_peak_delta_from_p95: 2.0,
                     observed_peak_delta_from_p99: 1.0,
+                    theoretical_min_score: -5.0,
+                    theoretical_max_score: 6.0,
                 }),
                 top_peaks: vec![],
                 forward_scores: vec![-2.0, -1.0, 2.0, 4.0],

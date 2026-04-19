@@ -3793,20 +3793,38 @@ Tutorial projects:
     `true_log_odds_background_tail_log10`), so promoter inspection is not
     locked to one scoring view.
   - the same score-track panel now also shows deterministic random-background
-    normalization context (`p99`, `Δp99`, `bg+`) per motif so permissive score
-    families can be read against their baseline instead of as free-floating
-    texture.
+    normalization context per motif so permissive score families can be read
+    against their baseline instead of as free-floating texture:
+    - raw bit views show `p99`, `Δp99`, and `bg+`
+    - background-normalized views show `theory max`, `peak q`, and
+      `-log10 tail`
   - the background-normalized percentile and tail views intentionally suppress
     everything below the `0.95` deterministic random-background quantile, which
     keeps the plot focused on unusual windows rather than random low-level
     motif texture.
+  - the background-normalized views are now calibrated against a quantized IID
+    random-DNA window model instead of only against a finite sampled
+    background, which keeps strong motifs from collapsing onto the same visual
+    ceiling quite so easily.
   - the same panel now also lists a small `top peaks` summary per motif so
     users can jump from “busy trace” to the concrete strongest local windows
     without manually scanning the entire line plot first.
+  - the same panel now also presents `TFBS track correlation`, which keeps
+    both the strict raw Pearson correlation and a smoothed (`25 bp` centered
+    boxcar) correlation over the displayed per-position signals:
+    - smoothed correlation is the main “do these maxima live in the same
+      neighborhood?” cue
+    - raw correlation stays visible as the unsmoothed sanity check
+    - a signed peak offset reports whether one motif’s strongest window leads
+      or trails another
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style
     from shell/CLI workflows and README assets.
+  - stacked SVG exports now render motif labels as `TF name (JASPAR id)` and
+    carry one shared dashed TSS line with a single top-level kinked arrow when
+    the promoter span has either feature-derived or provenance-derived TSS
+    context available.
   - the same window now also exposes `Export handoff bundle`, which writes a
     portable ClawBio-facing bundle containing:
     - promoter-context JSON

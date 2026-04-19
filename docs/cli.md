@@ -1650,10 +1650,21 @@ Shared shell command:
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
       - the background-normalized score kinds suppress everything below the
-        `0.95` empirical quantile on deterministic random DNA and can show
-        either the surviving percentile itself or `-log10(background tail)`
+        `0.95` modeled random-background quantile and can show either the
+        surviving mid-rank percentile itself or `-log10(background tail)`
+      - those background-normalized views are no longer limited by the old
+        finite-sample ceiling alone: GENtle now calibrates them against a
+        quantized IID random-DNA window model while still carrying a larger
+        deterministic random sample for summary statistics
       - the shared JSON payload now also includes `top_peaks` per motif so
         agents can reason over a short ranked list of unusual windows instead
+      - the same JSON payload now also includes pairwise raw/smoothed
+        correlation summaries and primary-peak offsets so agent/CLI workflows
+        can judge whether strong motif neighborhoods are actually synchronized
+      - stacked SVG labels now render as `TF name (JASPAR id)` when possible,
+        and TSS context uses one shared dashed line with a single top-level
+        kinked arrow if feature-derived or promoter-provenance TSS metadata is
+        available
         of only over the full continuous arrays
     - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
     - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`

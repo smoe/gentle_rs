@@ -1112,17 +1112,37 @@ order. Durable architecture constraints and decisions remain in
           shell, CLI, JSON, and SVG export paths
         - the same shared score-track route now also carries deterministic
           random-background normalization reference data per motif and surfaces
-          compact `p99 / Δp99 / bg+` labels in GUI/SVG exports, which makes
-          real promoter exercises such as TERT much easier to read without
-          mistaking permissive score families for meaningful signal
+          score-family-aware labels in GUI/SVG exports:
+          raw bit views keep `p99 / Δp99 / bg+`, while background-normalized
+          views now show `theory max / peak q / -log10 tail`
         - the background-normalized percentile and tail views now intentionally
           hide everything below the `0.95` deterministic random-background
           quantile, which turns promoter plots into “show me the unusual tail”
           views instead of raw motif texture maps
+        - the same shared score-track route no longer relies only on a finite
+          `10000 bp` random sample for tail calibration:
+          a larger deterministic random background now feeds summary moments,
+          while a quantized IID random-DNA window model provides theoretical
+          min/max support plus non-saturating percentile/tail estimates for the
+          upper tail
+        - that same pass also exposed and fixed a useful internal-first bug:
+          motif names that are also valid IUPAC strings (for example `MYC`)
+          are now resolved against the local motif registry before falling back
+          to “treat this token as a literal consensus sequence”
         - the same shared score-track route now also returns a short engine-owned
           `top_peaks` list per motif, so agents and GUI users can move from the
           continuous trace to the strongest unusual windows without inventing
           adapter-only peak pickers
+        - the same shared score-track route now also carries pairwise
+          correlation summaries so promoter interpretation can ask “are these
+          motifs peaking together?” without inventing GUI-only statistics:
+          raw Pearson stays available, but a smoothed (`25 bp`) centered-boxcar
+          Pearson is treated as the main synchrony cue and is paired with a
+          signed primary-peak offset
+        - the same shared score-track renderer now labels tracks as
+          `TF (JASPAR id)` when possible and can recover one explicit TSS
+          marker from promoter-slice provenance even when the extracted span
+          intentionally skipped imported annotation features
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is

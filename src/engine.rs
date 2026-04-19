@@ -470,6 +470,8 @@ pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP: usize = 10_000;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED: u64 = 0x4A_41_53_50_41_52_5F_31;
+pub const DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP: usize = 100_000;
+pub const DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED: u64 = 0x54_46_42_53_5F_54_52_31;
 const DEFAULT_VARIANT_PROMOTER_TFBS_FOCUS_HALF_WINDOW_BP: usize = 100;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_DOWNSTREAM_FROM_TSS_BP: usize = 200;
 const DEFAULT_PROMOTER_REPORTER_RETAIN_UPSTREAM_BEYOND_VARIANT_BP: usize = 500;
@@ -22324,6 +22326,28 @@ impl GentleEngine {
                 "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene/ExtendGenomeAnchor first"
             ),
         })
+    }
+
+    fn latest_genome_extraction_provenance_for_seq(
+        &self,
+        seq_id: &str,
+    ) -> Option<GenomeExtractionProvenance> {
+        let provenance = self.state.metadata.get(PROVENANCE_METADATA_KEY)?;
+        let entries = provenance
+            .get(GENOME_EXTRACTIONS_METADATA_KEY)
+            .cloned()
+            .and_then(|value| {
+                serde_json::from_value::<Vec<GenomeExtractionProvenance>>(value).ok()
+            })?;
+        entries
+            .into_iter()
+            .filter(|entry| entry.seq_id == seq_id)
+            .max_by(|left, right| {
+                left.recorded_at_unix_ms
+                    .cmp(&right.recorded_at_unix_ms)
+                    .then(left.start_1based.cmp(&right.start_1based))
+                    .then(left.end_1based.cmp(&right.end_1based))
+            })
     }
 
     fn normalize_chromosome_alias(raw: &str) -> String {

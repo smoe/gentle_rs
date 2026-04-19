@@ -3,19 +3,44 @@
 //! This module currently owns continuous TF motif score tracks used by the
 //! GUI-side Promoter design expert and by headless JSON export paths.
 
+use super::motif_statistics::ModeledTfbsScoreDistribution;
 use super::*;
 use crate::feature_location::{feature_is_reverse, feature_ranges_sorted_i64};
 
 impl GentleEngine {
     const TFBS_BACKGROUND_TAIL_SHOW_QUANTILE: f64 = 0.95;
+    const TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP: usize = 25;
 
-    fn tfbs_background_tail_log10(quantile: f64, sample_count: usize) -> f64 {
-        if quantile < Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
+    fn tfbs_background_tail_log10(tail_probability: f64, modeled_quantile: f64) -> f64 {
+        if modeled_quantile < Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
             return 0.0;
         }
-        let min_tail = (1.0 / sample_count.max(1) as f64).max(1e-12);
-        let tail = (1.0 - quantile).max(min_tail);
-        -tail.log10()
+        -tail_probability.max(1e-300).log10()
+    }
+
+    fn tfbs_modeled_background_quantile(
+        score: f64,
+        modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+        empirical_background_sorted_scores: &[f64],
+    ) -> f64 {
+        modeled_distribution
+            .map(|distribution| distribution.modeled_quantile(score))
+            .unwrap_or_else(|| Self::empirical_quantile(empirical_background_sorted_scores, score))
+    }
+
+    fn tfbs_modeled_background_tail_probability(
+        score: f64,
+        modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+        empirical_background_sorted_scores: &[f64],
+    ) -> f64 {
+        modeled_distribution
+            .map(|distribution| distribution.modeled_tail_probability(score))
+            .unwrap_or_else(|| {
+                let quantile = Self::empirical_quantile(empirical_background_sorted_scores, score);
+                (1.0 - quantile)
+                    .max(1.0 / empirical_background_sorted_scores.len().max(1) as f64)
+                    .clamp(0.0, 1.0)
+            })
     }
 
     fn tfbs_score_track_presented_value(
@@ -25,6 +50,8 @@ impl GentleEngine {
         true_log_odds_quantile: f64,
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
+        llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+        true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         llr_background_sorted_scores: &[f64],
         true_log_odds_background_sorted_scores: &[f64],
     ) -> f64 {
@@ -34,7 +61,11 @@ impl GentleEngine {
             }
             TfbsScoreTrackValueKind::LlrQuantile => llr_quantile,
             TfbsScoreTrackValueKind::LlrBackgroundQuantile => {
-                let quantile = Self::empirical_quantile(llr_background_sorted_scores, llr_bits);
+                let quantile = Self::tfbs_modeled_background_quantile(
+                    llr_bits,
+                    llr_modeled_distribution,
+                    llr_background_sorted_scores,
+                );
                 if quantile >= Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
                     quantile
                 } else {
@@ -42,17 +73,27 @@ impl GentleEngine {
                 }
             }
             TfbsScoreTrackValueKind::LlrBackgroundTailLog10 => {
-                let quantile = Self::empirical_quantile(llr_background_sorted_scores, llr_bits);
-                Self::tfbs_background_tail_log10(quantile, llr_background_sorted_scores.len())
+                let quantile = Self::tfbs_modeled_background_quantile(
+                    llr_bits,
+                    llr_modeled_distribution,
+                    llr_background_sorted_scores,
+                );
+                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                    llr_bits,
+                    llr_modeled_distribution,
+                    llr_background_sorted_scores,
+                );
+                Self::tfbs_background_tail_log10(tail_probability, quantile)
             }
             TfbsScoreTrackValueKind::TrueLogOddsBits => {
                 Self::promoter_design_clip_score(true_log_odds_bits, clip_negative)
             }
             TfbsScoreTrackValueKind::TrueLogOddsQuantile => true_log_odds_quantile,
             TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile => {
-                let quantile = Self::empirical_quantile(
-                    true_log_odds_background_sorted_scores,
+                let quantile = Self::tfbs_modeled_background_quantile(
                     true_log_odds_bits,
+                    true_log_odds_modeled_distribution,
+                    true_log_odds_background_sorted_scores,
                 );
                 if quantile >= Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
                     quantile
@@ -61,14 +102,17 @@ impl GentleEngine {
                 }
             }
             TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10 => {
-                let quantile = Self::empirical_quantile(
-                    true_log_odds_background_sorted_scores,
+                let quantile = Self::tfbs_modeled_background_quantile(
                     true_log_odds_bits,
+                    true_log_odds_modeled_distribution,
+                    true_log_odds_background_sorted_scores,
                 );
-                Self::tfbs_background_tail_log10(
-                    quantile,
-                    true_log_odds_background_sorted_scores.len(),
-                )
+                let tail_probability = Self::tfbs_modeled_background_tail_probability(
+                    true_log_odds_bits,
+                    true_log_odds_modeled_distribution,
+                    true_log_odds_background_sorted_scores,
+                );
+                Self::tfbs_background_tail_log10(tail_probability, quantile)
             }
         }
     }
@@ -83,7 +127,49 @@ impl GentleEngine {
         }
     }
 
+    fn summarize_tfbs_score_track_tss_markers_from_provenance(
+        &self,
+        seq_id: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Vec<TfbsScoreTrackTssMarker> {
+        let Some(provenance) = self.latest_genome_extraction_provenance_for_seq(seq_id) else {
+            return vec![];
+        };
+        let (Some(interval_start_1based), Some(interval_end_1based), Some(tss_1based)) = (
+            provenance.start_1based,
+            provenance.end_1based,
+            provenance.tss_1based,
+        ) else {
+            return vec![];
+        };
+        if tss_1based < interval_start_1based || tss_1based > interval_end_1based {
+            return vec![];
+        }
+        let position_0based = tss_1based.saturating_sub(interval_start_1based);
+        if position_0based.saturating_add(1) < start_0based
+            || position_0based > end_0based_exclusive
+        {
+            return vec![];
+        }
+        let label = provenance
+            .transcript_id
+            .clone()
+            .or(provenance.gene_name.clone())
+            .or(provenance.gene_query.clone())
+            .unwrap_or_else(|| "genome_promoter_slice".to_string());
+        vec![TfbsScoreTrackTssMarker {
+            feature_id: usize::MAX,
+            feature_kind: "genome_promoter_slice".to_string(),
+            label,
+            position_0based,
+            is_reverse: matches!(provenance.strand, Some('-')),
+        }]
+    }
+
     fn summarize_tfbs_score_track_tss_markers(
+        &self,
+        seq_id: &str,
         dna: &DNAsequence,
         start_0based: usize,
         end_0based_exclusive: usize,
@@ -140,7 +226,154 @@ impl GentleEngine {
                 && left.is_reverse == right.is_reverse
                 && left.label == right.label
         });
+        if markers.is_empty() {
+            markers.extend(self.summarize_tfbs_score_track_tss_markers_from_provenance(
+                seq_id,
+                start_0based,
+                end_0based_exclusive,
+            ));
+        }
         markers
+    }
+
+    fn tfbs_track_display_signal(track: &TfbsScoreTrackRow) -> Vec<f64> {
+        track
+            .forward_scores
+            .iter()
+            .copied()
+            .zip(track.reverse_scores.iter().copied())
+            .map(|(forward, reverse)| forward.max(reverse))
+            .collect()
+    }
+
+    fn smooth_tfbs_track_signal(signal: &[f64], window_bp: usize) -> Vec<f64> {
+        if signal.is_empty() || window_bp <= 1 {
+            return signal.to_vec();
+        }
+        let radius = window_bp / 2;
+        let mut prefix = Vec::with_capacity(signal.len() + 1);
+        prefix.push(0.0);
+        for value in signal {
+            prefix.push(prefix.last().copied().unwrap_or(0.0) + value);
+        }
+        let mut smoothed = Vec::with_capacity(signal.len());
+        for idx in 0..signal.len() {
+            let start = idx.saturating_sub(radius);
+            let end = (idx + radius + 1).min(signal.len());
+            let sum = prefix[end] - prefix[start];
+            smoothed.push(sum / (end - start).max(1) as f64);
+        }
+        smoothed
+    }
+
+    fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+        let len = left.len().min(right.len());
+        if len < 2 {
+            return 0.0;
+        }
+        let left = &left[..len];
+        let right = &right[..len];
+        let left_mean = left.iter().sum::<f64>() / len as f64;
+        let right_mean = right.iter().sum::<f64>() / len as f64;
+        let mut covariance = 0.0;
+        let mut left_variance = 0.0;
+        let mut right_variance = 0.0;
+        for (left_value, right_value) in left.iter().zip(right.iter()) {
+            let left_centered = *left_value - left_mean;
+            let right_centered = *right_value - right_mean;
+            covariance += left_centered * right_centered;
+            left_variance += left_centered * left_centered;
+            right_variance += right_centered * right_centered;
+        }
+        if left_variance <= f64::EPSILON || right_variance <= f64::EPSILON {
+            0.0
+        } else {
+            (covariance / (left_variance.sqrt() * right_variance.sqrt())).clamp(-1.0, 1.0)
+        }
+    }
+
+    fn summarize_tfbs_track_primary_peak_offset_bp(
+        left: &TfbsScoreTrackRow,
+        right: &TfbsScoreTrackRow,
+    ) -> Option<i64> {
+        let left_peak = left
+            .top_peaks
+            .first()
+            .map(|peak| peak.start_0based)
+            .or(left.max_position_0based)?;
+        let right_peak = right
+            .top_peaks
+            .first()
+            .map(|peak| peak.start_0based)
+            .or(right.max_position_0based)?;
+        Some(right_peak as i64 - left_peak as i64)
+    }
+
+    fn summarize_tfbs_score_track_correlation_summary(
+        tracks: &[TfbsScoreTrackRow],
+    ) -> Option<TfbsScoreTrackCorrelationSummary> {
+        if tracks.len() < 2 {
+            return None;
+        }
+        let mut rows = vec![];
+        for left_idx in 0..tracks.len() {
+            let left = &tracks[left_idx];
+            let left_signal = Self::tfbs_track_display_signal(left);
+            if left_signal.len() < 2 {
+                continue;
+            }
+            let left_smoothed = Self::smooth_tfbs_track_signal(
+                &left_signal,
+                Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+            );
+            for right in tracks.iter().skip(left_idx + 1) {
+                let right_signal = Self::tfbs_track_display_signal(right);
+                let overlap_window_count = left_signal.len().min(right_signal.len());
+                if overlap_window_count < 2 {
+                    continue;
+                }
+                let right_smoothed = Self::smooth_tfbs_track_signal(
+                    &right_signal,
+                    Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+                );
+                rows.push(TfbsScoreTrackCorrelationRow {
+                    left_tf_id: left.tf_id.clone(),
+                    left_tf_name: left.tf_name.clone(),
+                    right_tf_id: right.tf_id.clone(),
+                    right_tf_name: right.tf_name.clone(),
+                    overlap_window_count,
+                    raw_pearson: Self::pearson_correlation(
+                        &left_signal[..overlap_window_count],
+                        &right_signal[..overlap_window_count],
+                    ),
+                    smoothed_pearson: Self::pearson_correlation(
+                        &left_smoothed[..overlap_window_count],
+                        &right_smoothed[..overlap_window_count],
+                    ),
+                    signed_primary_peak_offset_bp:
+                        Self::summarize_tfbs_track_primary_peak_offset_bp(left, right),
+                });
+            }
+        }
+        if rows.is_empty() {
+            return None;
+        }
+        rows.sort_by(|left, right| {
+            right
+                .smoothed_pearson
+                .abs()
+                .total_cmp(&left.smoothed_pearson.abs())
+                .then(right.raw_pearson.abs().total_cmp(&left.raw_pearson.abs()))
+                .then(left.left_tf_id.cmp(&right.left_tf_id))
+                .then(left.right_tf_id.cmp(&right.right_tf_id))
+        });
+        Some(TfbsScoreTrackCorrelationSummary {
+            signal_source: "max(forward_score, reverse_score)".to_string(),
+            smoothing_method: "centered_boxcar".to_string(),
+            smoothing_window_bp: Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+            pair_count: rows.len(),
+            rows,
+        })
     }
 
     fn collect_tfbs_score_track_background_scores(
@@ -149,7 +382,9 @@ impl GentleEngine {
         true_log_odds_matrix: &[[f64; 4]],
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
-    ) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+        llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+        true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+    ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
         let hits = Self::scan_tf_scores(
             random_background,
             llr_matrix,
@@ -171,45 +406,93 @@ impl GentleEngine {
                         true_log_odds_quantile,
                         score_kind,
                         clip_negative,
+                        llr_modeled_distribution,
+                        true_log_odds_modeled_distribution,
                         &llr_background_scores,
                         &true_log_odds_background_scores,
                     )
                 },
             )
             .collect::<Vec<_>>();
+        let underlying_background_scores = if score_kind.uses_llr_background_bits() {
+            llr_background_scores.clone()
+        } else {
+            true_log_odds_background_scores.clone()
+        };
         (
             displayed_scores,
+            underlying_background_scores,
             llr_background_scores,
             true_log_odds_background_scores,
         )
     }
 
     fn summarize_tfbs_score_track_normalization_reference(
-        background_scores: &[f64],
-        observed_peak_score: f64,
+        underlying_background_scores: &[f64],
+        observed_peak_underlying_score: f64,
+        modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
     ) -> Option<TfbsScoreTrackNormalizationReference> {
-        if background_scores.is_empty() {
+        if underlying_background_scores.is_empty() {
             return None;
         }
-        let distribution = Self::summarize_jaspar_score_distribution(background_scores);
-        let mut sorted_scores = background_scores.to_vec();
+        let distribution = Self::summarize_jaspar_score_distribution(underlying_background_scores);
+        let mut sorted_scores = underlying_background_scores.to_vec();
         sorted_scores.sort_by(|left, right| left.total_cmp(right));
+        let modeled_quantile = modeled_distribution
+            .map(|distribution| distribution.modeled_quantile(observed_peak_underlying_score))
+            .unwrap_or_else(|| {
+                Self::empirical_quantile(&sorted_scores, observed_peak_underlying_score)
+            });
+        let modeled_tail_probability = modeled_distribution
+            .map(|distribution| {
+                distribution.modeled_tail_probability(observed_peak_underlying_score)
+            })
+            .unwrap_or_else(|| {
+                (1.0 - modeled_quantile)
+                    .max(1.0_f64 / sorted_scores.len().max(1) as f64)
+                    .clamp(0.0, 1.0)
+            });
+        let modeled_tail_log10 = modeled_distribution
+            .map(|distribution| distribution.modeled_tail_log10(observed_peak_underlying_score))
+            .unwrap_or_else(|| -modeled_tail_probability.max(1e-300).log10());
+        let theoretical_min_score = modeled_distribution
+            .map(|distribution| distribution.theoretical_min_score)
+            .unwrap_or_else(|| distribution.min_score.min(observed_peak_underlying_score));
+        let theoretical_max_score = modeled_distribution
+            .map(|distribution| distribution.theoretical_max_score)
+            .unwrap_or_else(|| distribution.max_score.max(observed_peak_underlying_score));
         Some(TfbsScoreTrackNormalizationReference {
             background_model: "uniform_random_dna".to_string(),
-            random_sequence_length_bp: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
-            random_seed: DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+            chance_model: "quantized_iid_uniform_window_dp".to_string(),
+            random_sequence_length_bp: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
+            random_seed: DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
             sample_count: distribution.sample_count,
             mean_score: distribution.mean_score,
             stddev_score: distribution.stddev_score,
-            p95_score: distribution.p95_score,
-            p99_score: distribution.p99_score,
+            p95_score: modeled_distribution
+                .map(|distribution| distribution.score_at_quantile(0.95))
+                .unwrap_or(distribution.p95_score),
+            p99_score: modeled_distribution
+                .map(|distribution| distribution.score_at_quantile(0.99))
+                .unwrap_or(distribution.p99_score),
             positive_fraction: distribution.positive_fraction,
             observed_peak_empirical_quantile: Self::empirical_quantile(
                 &sorted_scores,
-                observed_peak_score,
+                observed_peak_underlying_score,
             ),
-            observed_peak_delta_from_p95: observed_peak_score - distribution.p95_score,
-            observed_peak_delta_from_p99: observed_peak_score - distribution.p99_score,
+            observed_peak_modeled_quantile: modeled_quantile,
+            observed_peak_modeled_tail_probability: modeled_tail_probability,
+            observed_peak_modeled_tail_log10: modeled_tail_log10,
+            observed_peak_delta_from_p95: observed_peak_underlying_score
+                - modeled_distribution
+                    .map(|distribution| distribution.score_at_quantile(0.95))
+                    .unwrap_or(distribution.p95_score),
+            observed_peak_delta_from_p99: observed_peak_underlying_score
+                - modeled_distribution
+                    .map(|distribution| distribution.score_at_quantile(0.99))
+                    .unwrap_or(distribution.p99_score),
+            theoretical_min_score,
+            theoretical_max_score,
         })
     }
 
@@ -218,8 +501,7 @@ impl GentleEngine {
         motif_length_bp: usize,
         forward_scores: &[f64],
         reverse_scores: &[f64],
-        background_scores: &[f64],
-        normalization_reference: Option<&TfbsScoreTrackNormalizationReference>,
+        displayed_background_scores: &[f64],
     ) -> Vec<TfbsScoreTrackPeak> {
         fn is_local_peak(scores: &[f64], idx: usize) -> bool {
             let score = scores[idx];
@@ -240,8 +522,11 @@ impl GentleEngine {
         }
 
         let mut candidates = vec![];
-        let mut background_sorted_scores = background_scores.to_vec();
+        let mut background_sorted_scores = displayed_background_scores.to_vec();
         background_sorted_scores.sort_by(|left, right| left.total_cmp(right));
+        let displayed_distribution =
+            Self::summarize_jaspar_score_distribution(displayed_background_scores);
+        let displayed_p99 = displayed_distribution.p99_score;
         let mut push_candidates = |scores: &[f64], is_reverse: bool| {
             for (idx, score) in scores.iter().copied().enumerate() {
                 if !score.is_finite() || !is_local_peak(scores, idx) {
@@ -253,9 +538,7 @@ impl GentleEngine {
                 } else {
                     Self::empirical_quantile(&background_sorted_scores, score)
                 };
-                let delta_from_p99 = normalization_reference
-                    .map(|normalization| score - normalization.p99_score)
-                    .unwrap_or(0.0);
+                let delta_from_p99 = score - displayed_p99;
                 candidates.push(PeakCandidate {
                     start_0based,
                     end_0based_exclusive: start_0based + motif_length_bp,
@@ -280,9 +563,7 @@ impl GentleEngine {
                 .then(left.is_reverse.cmp(&right.is_reverse))
         });
 
-        let threshold = normalization_reference
-            .map(|normalization| normalization.p99_score)
-            .unwrap_or(0.0);
+        let threshold = displayed_p99;
         let mut selected = vec![];
         for candidate in &candidates {
             if candidate.score <= threshold {
@@ -364,8 +645,8 @@ impl GentleEngine {
         let bytes = sequence.as_bytes();
         let view = &bytes[start_0based..end_0based_exclusive];
         let random_background = Self::deterministic_random_dna_bytes(
-            DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
-            DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+            DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP,
+            DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED,
         );
 
         let mut tracks = vec![];
@@ -374,6 +655,9 @@ impl GentleEngine {
             let (tf_id, tf_name, _consensus, matrix_counts) =
                 Self::resolve_tf_motif_for_scoring(motif)?;
             let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
+            let llr_modeled_distribution = Self::modeled_tfbs_score_distribution(&llr_matrix);
+            let true_log_odds_modeled_distribution =
+                Self::modeled_tfbs_score_distribution(&true_log_odds_matrix);
             let motif_length_bp = llr_matrix.len();
             let scored_window_count = if motif_length_bp == 0 || view.len() < motif_length_bp {
                 0
@@ -383,9 +667,11 @@ impl GentleEngine {
             let mut forward_scores = Vec::with_capacity(scored_window_count);
             let mut reverse_scores = Vec::with_capacity(scored_window_count);
             let mut max_score = 0.0_f64;
+            let mut max_underlying_score = f64::NEG_INFINITY;
             let mut max_position_0based = None;
             let (
-                background_scores,
+                displayed_background_scores,
+                underlying_background_scores,
                 llr_background_sorted_scores,
                 true_log_odds_background_sorted_scores,
             ) = Self::collect_tfbs_score_track_background_scores(
@@ -394,6 +680,8 @@ impl GentleEngine {
                 &true_log_odds_matrix,
                 score_kind,
                 clip_negative,
+                llr_modeled_distribution.as_ref(),
+                true_log_odds_modeled_distribution.as_ref(),
             );
 
             if scored_window_count > 0 {
@@ -417,6 +705,8 @@ impl GentleEngine {
                         true_log_odds_quantile,
                         score_kind,
                         clip_negative,
+                        llr_modeled_distribution.as_ref(),
+                        true_log_odds_modeled_distribution.as_ref(),
                         &llr_background_sorted_scores,
                         &true_log_odds_background_sorted_scores,
                     );
@@ -425,33 +715,40 @@ impl GentleEngine {
                     } else {
                         forward_scores[offset] = score;
                     }
-                }
-                for offset in 0..scored_window_count {
-                    let forward_score = forward_scores[offset];
-                    let reverse_score = reverse_scores[offset];
-                    let local_max = forward_score.max(reverse_score);
-                    if local_max > max_score {
-                        max_score = local_max;
+                    if score > max_score {
+                        max_score = score;
                         max_position_0based = Some(start_0based + offset);
+                        max_underlying_score = if score_kind.uses_llr_background_bits() {
+                            llr_bits
+                        } else {
+                            true_log_odds_bits
+                        };
                     }
                 }
             }
+            if !max_underlying_score.is_finite() {
+                max_underlying_score = 0.0;
+            }
             let normalization_reference = Self::summarize_tfbs_score_track_normalization_reference(
-                &background_scores,
-                max_score,
+                &underlying_background_scores,
+                max_underlying_score,
+                if score_kind.uses_llr_background_bits() {
+                    llr_modeled_distribution.as_ref()
+                } else {
+                    true_log_odds_modeled_distribution.as_ref()
+                },
             );
             let top_peaks = Self::summarize_tfbs_score_track_top_peaks(
                 start_0based,
                 motif_length_bp,
                 &forward_scores,
                 &reverse_scores,
-                &background_scores,
-                normalization_reference.as_ref(),
+                &displayed_background_scores,
             );
             global_max_score = global_max_score.max(max_score);
             tracks.push(TfbsScoreTrackRow {
                 tf_id,
-                tf_name,
+                tf_name: tf_name.or_else(|| Some(motif.clone())),
                 motif_length_bp,
                 track_start_0based: start_0based,
                 scored_window_count,
@@ -477,11 +774,13 @@ impl GentleEngine {
             clip_negative,
             motifs_requested: motifs.to_vec(),
             global_max_score,
-            tss_markers: Self::summarize_tfbs_score_track_tss_markers(
+            tss_markers: self.summarize_tfbs_score_track_tss_markers(
+                seq_id,
                 dna,
                 start_0based,
                 end_0based_exclusive,
             ),
+            correlation_summary: Self::summarize_tfbs_score_track_correlation_summary(&tracks),
             tracks,
         })
     }

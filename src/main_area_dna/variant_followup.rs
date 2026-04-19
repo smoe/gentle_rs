@@ -1752,14 +1752,38 @@ impl MainAreaDna {
     }
 
     fn promoter_design_track_normalization_summary(
+        score_kind: TfbsScoreTrackValueKind,
         normalization: &crate::engine::TfbsScoreTrackNormalizationReference,
     ) -> String {
-        format!(
-            "p99 {:.2} | Δp99 {:+.2} | bg+ {:.1}%",
-            normalization.p99_score,
-            normalization.observed_peak_delta_from_p99,
-            normalization.positive_fraction.max(0.0) * 100.0
-        )
+        match score_kind {
+            TfbsScoreTrackValueKind::LlrBackgroundQuantile
+            | TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+            | TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile
+            | TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10 => format!(
+                "theory max {:.2} | peak q {:.6} | -log10 tail {:.2}",
+                normalization.theoretical_max_score,
+                normalization.observed_peak_modeled_quantile,
+                normalization.observed_peak_modeled_tail_log10,
+            ),
+            _ => format!(
+                "p99 {:.2} | Δp99 {:+.2} | bg+ {:.1}%",
+                normalization.p99_score,
+                normalization.observed_peak_delta_from_p99,
+                normalization.positive_fraction.max(0.0) * 100.0
+            ),
+        }
+    }
+
+    fn promoter_design_track_label(tf_id: &str, tf_name: Option<&str>) -> String {
+        let trimmed_name = tf_name.map(str::trim).unwrap_or_default();
+        if trimmed_name.is_empty() {
+            return tf_id.to_string();
+        }
+        if trimmed_name.eq_ignore_ascii_case(tf_id) {
+            trimmed_name.to_string()
+        } else {
+            format!("{trimmed_name} ({tf_id})")
+        }
     }
 
     fn promoter_design_track_peak_summary(
@@ -1783,6 +1807,62 @@ impl MainAreaDna {
                 .collect::<Vec<_>>()
                 .join(", ")
         ))
+    }
+
+    fn render_variant_followup_score_track_correlation_summary(
+        ui: &mut egui::Ui,
+        report: &TfbsScoreTrackReport,
+    ) {
+        let Some(correlation) = report.correlation_summary.as_ref() else {
+            return;
+        };
+        if correlation.rows.is_empty() {
+            return;
+        }
+        ui.add_space(8.0);
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("TFBS track correlation").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "Signal source: {} | smoothed view: {} {} bp | raw and smoothed Pearson are both shown.",
+                    correlation.signal_source,
+                    correlation.smoothing_method,
+                    correlation.smoothing_window_bp
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            egui::Grid::new((
+                "variant_followup_tfbs_track_correlation_grid",
+                report.seq_id.as_str(),
+                report.score_kind.as_str(),
+            ))
+            .num_columns(4)
+            .spacing([12.0, 4.0])
+            .show(ui, |ui| {
+                ui.small("Pair");
+                ui.small("Smoothed r");
+                ui.small("Raw r");
+                ui.small("Peak offset");
+                ui.end_row();
+                for row in &correlation.rows {
+                    let left_label =
+                        Self::promoter_design_track_label(&row.left_tf_id, row.left_tf_name.as_deref());
+                    let right_label = Self::promoter_design_track_label(
+                        &row.right_tf_id,
+                        row.right_tf_name.as_deref(),
+                    );
+                    ui.small(format!("{left_label} <> {right_label}"));
+                    ui.monospace(format!("{:+.3}", row.smoothed_pearson));
+                    ui.monospace(format!("{:+.3}", row.raw_pearson));
+                    ui.monospace(
+                        row.signed_primary_peak_offset_bp
+                            .map(|value| format!("{value:+} bp"))
+                            .unwrap_or_else(|| "n/a".to_string()),
+                    );
+                    ui.end_row();
+                }
+            });
+        });
     }
 
     fn paint_promoter_design_track_plot(
@@ -1934,7 +2014,10 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.set_min_width(150.0);
                     ui.vertical(|ui| {
-                        let label = track.tf_name.clone().unwrap_or_else(|| track.tf_id.clone());
+                        let label = Self::promoter_design_track_label(
+                            &track.tf_id,
+                            track.tf_name.as_deref(),
+                        );
                         ui.label(egui::RichText::new(label).strong());
                         ui.small(format!(
                             "{} windows | max {:.2}{}",
@@ -1949,6 +2032,7 @@ impl MainAreaDna {
                             ui.small(
                                 egui::RichText::new(
                                     Self::promoter_design_track_normalization_summary(
+                                        report.score_kind,
                                         normalization,
                                     ),
                                 )
@@ -1971,6 +2055,7 @@ impl MainAreaDna {
                     });
                 });
             }
+            Self::render_variant_followup_score_track_correlation_summary(ui, report);
         });
     }
 
@@ -2145,7 +2230,7 @@ impl MainAreaDna {
             });
             ui.small(
                 egui::RichText::new(
-                    "Choose raw bits, in-window quantiles, or random-background tail views. Background percentile and -log10 tail plots suppress everything below the 0.95 random-background quantile. Negative clipping only affects the raw bit score kinds.",
+                    "Choose raw bits, in-window quantiles, or random-background tail views. Background percentile and -log10 tail plots suppress everything below the 0.95 random-background quantile and are calibrated against a quantized IID random-DNA window model rather than only against a finite sampled background. Negative clipping only affects the raw bit score kinds.",
                 )
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );

@@ -26915,16 +26915,19 @@ fn summarize_tfbs_score_tracks_supports_quantile_scoring_modes() {
         .expect("quantile score tracks should carry normalization reference");
     assert_eq!(
         normalization.random_sequence_length_bp,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP
+        DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP
     );
     assert_eq!(
         normalization.random_seed,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED
+        DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEED
     );
     assert!(normalization.sample_count > 0);
     assert!(normalization.p99_score >= normalization.p95_score);
     assert!((0.0..=1.0).contains(&normalization.positive_fraction));
     assert!((0.0..=1.0).contains(&normalization.observed_peak_empirical_quantile));
+    assert!((0.0..=1.0).contains(&normalization.observed_peak_modeled_quantile));
+    assert!(normalization.observed_peak_modeled_tail_probability > 0.0);
+    assert!(normalization.theoretical_max_score >= normalization.theoretical_min_score);
 }
 
 #[test]
@@ -26976,6 +26979,10 @@ fn summarize_tfbs_score_tracks_supports_background_tail_score_kinds() {
         .as_ref()
         .expect("background-tail tracks should carry normalization reference");
     assert!(normalization.p99_score >= normalization.p95_score);
+    assert!(normalization.observed_peak_modeled_quantile < 1.0);
+    assert!(normalization.observed_peak_modeled_tail_probability > 0.0);
+    assert!(normalization.observed_peak_modeled_tail_probability < 1.0);
+    assert!(normalization.observed_peak_modeled_tail_log10 > 0.0);
 }
 
 #[test]
@@ -27064,6 +27071,10 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
             .as_ref()
             .expect("bit score tracks should carry normalization reference");
         assert_eq!(normalization.background_model, "uniform_random_dna");
+        assert_eq!(
+            normalization.chance_model,
+            "quantized_iid_uniform_window_dp"
+        );
         assert!(normalization.p99_score >= normalization.p95_score);
         assert!(
             (track.max_score
@@ -27072,7 +27083,133 @@ fn apply_summarize_tfbs_score_tracks_operation_returns_score_track_payload() {
                 .abs()
                 < 1e-9
         );
+        assert!(normalization.theoretical_max_score >= track.max_score);
     }
+}
+
+#[test]
+fn summarize_tfbs_score_tracks_uses_promoter_provenance_tss_when_features_are_absent() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(40)).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    state.metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": "promoter",
+                    "recorded_at_unix_ms": 1,
+                    "operation": "ExtractGenomePromoterSlice",
+                    "genome_id": "ToyGenome",
+                    "catalog_path": "synthetic",
+                    "cache_dir": null,
+                    "chromosome": "chr1",
+                    "start_1based": 100,
+                    "end_1based": 259,
+                    "gene_query": "TERT",
+                    "occurrence": 1,
+                    "gene_extract_mode": null,
+                    "transcript_id": "ENST_TERT_SYNTH",
+                    "tss_1based": 120,
+                    "promoter_upstream_bp": 1000,
+                    "promoter_downstream_bp": 200,
+                    "gene_id": "ENSG_TERT_SYNTH",
+                    "gene_name": "TERT",
+                    "strand": "-",
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "sequence_source_type": "synthetic",
+                    "annotation_source_type": "synthetic",
+                    "sequence_source": "synthetic",
+                    "annotation_source": "synthetic",
+                    "sequence_sha1": null,
+                    "annotation_sha1": null
+                }
+            ]
+        }),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1")],
+            0,
+            120,
+            TfbsScoreTrackValueKind::LlrBits,
+            true,
+        )
+        .expect("score tracks");
+
+    assert_eq!(report.tss_markers.len(), 1);
+    assert_eq!(report.tss_markers[0].position_0based, 20);
+    assert_eq!(report.tss_markers[0].label, "ENST_TERT_SYNTH");
+    assert!(report.tss_markers[0].is_reverse);
+}
+
+#[test]
+fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
+    let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
+        .expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "promoter",
+            &[String::from("SP1"), String::from("MYC")],
+            0,
+            120,
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+        )
+        .expect("score tracks");
+
+    let summary = report
+        .correlation_summary
+        .as_ref()
+        .expect("correlation summary");
+    assert_eq!(summary.signal_source, "max(forward_score, reverse_score)");
+    assert_eq!(summary.smoothing_method, "centered_boxcar");
+    assert_eq!(summary.smoothing_window_bp, 25);
+    assert_eq!(summary.pair_count, 1);
+    let row = summary.rows.first().expect("pair row");
+    assert_eq!(row.left_tf_id, "MA0079.3");
+    assert_eq!(row.right_tf_id, "MA0147.4");
+    assert!(row.raw_pearson.is_finite());
+    assert!(row.smoothed_pearson.is_finite());
+    assert!((-1.0..=1.0).contains(&row.raw_pearson));
+    assert!((-1.0..=1.0).contains(&row.smoothed_pearson));
+    assert_eq!(
+        row.overlap_window_count,
+        report.tracks[0]
+            .scored_window_count
+            .min(report.tracks[1].scored_window_count)
+    );
+}
+
+#[test]
+fn summarize_tfbs_score_tracks_prefers_named_myc_registry_entry_over_iupac_letters() {
+    let dna = DNAsequence::from_sequence("CACGTG".repeat(12).as_str()).expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("tert_like".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            "tert_like",
+            &[String::from("MYC")],
+            0,
+            72,
+            TfbsScoreTrackValueKind::LlrBits,
+            true,
+        )
+        .expect("MYC score tracks");
+
+    let track = report.tracks.first().expect("MYC track");
+    assert_eq!(track.tf_name.as_deref(), Some("MYC"));
+    assert_ne!(track.tf_id, "MYC");
 }
 
 #[test]
@@ -27988,13 +28125,10 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
         .expect("persisted graph");
     assert_eq!(persisted.graph_id, graph.graph_id);
     assert_eq!(persisted.evidence.len(), graph.evidence.len());
-    assert!(
-        persisted
-            .annotation_candidates
-            .iter()
-            .any(|row| row.role == ConstructRole::Exon
-                && row.source_kind == "confirmed_annotation")
-    );
+    assert!(persisted
+        .annotation_candidates
+        .iter()
+        .any(|row| row.role == ConstructRole::Exon && row.source_kind == "confirmed_annotation"));
     assert!(
         persisted
             .annotation_candidates

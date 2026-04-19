@@ -195,19 +195,31 @@ Behavior notes:
   - `true_log_odds_background_quantile`
   - `true_log_odds_background_tail_log10`
 - the background-normalized score kinds suppress everything below the `0.95`
-  empirical quantile on deterministic random DNA, so the plot can focus on the
-  unusual tail instead of the visually noisy body of the background
+  modeled random-background quantile, so the plot can focus on the unusual
+  tail instead of the visually noisy body of the background
 - each returned track now also carries a deterministic normalization reference
-  computed on `10000 bp` of uniform random DNA with the same score family and
-  the same clipping semantics as the exported track itself:
+  computed from two shared sources:
+  - a larger deterministic random sample (`100000 bp`) used for summary
+    moments such as `mean_score`, `stddev_score`, and `positive_fraction`
+  - a quantized IID random-DNA window model used for upper-tail calibration,
+    theoretical bounds, and the non-saturating background percentile/tail
+    views
+  with the same underlying score family and the same clipping semantics as the
+  exported track itself:
+  - `chance_model`
   - `mean_score`
   - `stddev_score`
   - `p95_score`
   - `p99_score`
   - `positive_fraction`
   - `observed_peak_empirical_quantile`
+  - `observed_peak_modeled_quantile`
+  - `observed_peak_modeled_tail_probability`
+  - `observed_peak_modeled_tail_log10`
   - `observed_peak_delta_from_p95`
   - `observed_peak_delta_from_p99`
+  - `theoretical_min_score`
+  - `theoretical_max_score`
 - each returned track now also carries up to three highlighted motif windows
   (`top_peaks`) chosen from local maxima on the rendered strands:
   - windows at or above the deterministic random-background `p99` threshold are
@@ -218,9 +230,10 @@ Behavior notes:
     `delta_from_p99`
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
-- the SVG figure now also prints compact `p99 / Δp99 / bg+` labels per motif so
-  permissive score families such as `true_log_odds_bits` can be read against
-  their random-background baseline instead of looking like unanchored texture
+- the SVG figure now prints score-family-aware normalization labels per motif:
+  - raw bit views keep the compact `p99 / Δp99 / bg+` summary
+  - background-normalized views instead show `theory max / peak q / -log10 tail`
+    so a visually busy tail plot still carries its calibration context
 - The shared report also carries transcription-start markers for covered or
   directly adjacent starts, and the SVG renderer shows them as short hooked
   arrows so strand direction survives figure-oriented exports.
@@ -1305,13 +1318,25 @@ Current draft operations:
   - `clip_negative=true` clamps negative scores to `0.0` for the bit-based
     kinds, which is the intended display mode for promoter-design plots when
     only positive support should be shown
-  - the background-normalized kinds convert raw motif scores into empirical
-    percentile or `-log10(tail)` views against deterministic random DNA and
-    zero out everything below the `0.95` random-background quantile
+  - the background-normalized kinds convert raw motif scores into modeled
+    percentile or `-log10(tail)` views against a quantized IID random-DNA
+    window model and zero out everything below the `0.95`
+    random-background quantile
   - each returned track also carries a deterministic background-normalization
-    block computed on the same presented score family so `p99` and `Δp99`
-    remain interpretable even when negative raw values are clipped out of the
-    display
+    block that now combines a larger deterministic random sample with
+    theoretical motif-score bounds and modeled tail calibration, so the score
+    tracks no longer flatten onto the old finite-sample `1.0` ceiling
+  - the same report now also carries one pairwise correlation sidecar:
+    - exact raw Pearson correlation over the displayed per-position signal
+    - smoothed Pearson correlation over the same signal after centered boxcar
+      smoothing (`25 bp`)
+    - and a signed primary-peak offset so “are the strongest windows actually
+      co-localized?” is explicit instead of guessed from the traces alone
+  - the report’s TSS markers now also fall back to promoter-slice provenance
+    when the selected sequence was derived through
+    `ExtractGenomePromoterSlice`/`extract-promoter` with
+    `annotation_scope=none`, so exported promoter plots can still carry one
+    explicit transcription-start marker even without imported feature rows
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
 - `RenderTfbsScoreTracksSvg { seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative, path }`
@@ -1319,8 +1344,15 @@ Current draft operations:
   - writes a deterministic figure suitable for GUI/CLI/agent/README parity
   - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
     also returns that report in `OpResult.tfbs_score_tracks`
-  - the figure includes the same random-background normalization context used by
-    the JSON payload, surfaced as compact `p99 / Δp99 / bg+` labels
+  - the figure includes the same score-family-aware normalization context used
+    by the JSON payload, surfaced either as `p99 / Δp99 / bg+` or as
+    `theory max / peak q / -log10 tail`
+  - stacked track labels now render as `TF name (JASPAR id)` when both are
+    known, which avoids ambiguity for motifs whose names are also valid IUPAC
+    strings (for example `MYC`)
+  - TSS markers now render as one vertical dashed line with one top-level
+    kinked arrow/label per position so the whole stacked figure reads as one
+    shared DNA span instead of unrelated per-row ornaments
 - `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
   - non-mutating thresholded TFBS/JASPAR hit scan over either stored `seq_id`
     input or inline ASCII DNA through `SequenceScanTarget`
@@ -1413,7 +1445,10 @@ Current draft operations:
   - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
   - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
   - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
-  - provenance rows record `gene_query`, `occurrence`, `transcript_id`, and both promoter flank lengths so GUI/CLI/agents can audit how the slice was derived.
+  - provenance rows record `gene_query`, `occurrence`, `transcript_id`,
+    `tss_1based`, and both promoter flank lengths so GUI/CLI/agents can audit
+    how the slice was derived and later recover an explicit TSS marker even
+    when feature projection was intentionally disabled.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 

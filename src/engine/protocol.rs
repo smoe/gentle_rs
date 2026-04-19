@@ -390,6 +390,8 @@ pub struct TfbsRegionSummary {
 /// scores are hidden from the presentation.
 pub struct TfbsScoreTrackNormalizationReference {
     pub background_model: String,
+    #[serde(default)]
+    pub chance_model: String,
     pub random_sequence_length_bp: usize,
     pub random_seed: u64,
     pub sample_count: usize,
@@ -399,8 +401,18 @@ pub struct TfbsScoreTrackNormalizationReference {
     pub p99_score: f64,
     pub positive_fraction: f64,
     pub observed_peak_empirical_quantile: f64,
+    #[serde(default)]
+    pub observed_peak_modeled_quantile: f64,
+    #[serde(default)]
+    pub observed_peak_modeled_tail_probability: f64,
+    #[serde(default)]
+    pub observed_peak_modeled_tail_log10: f64,
     pub observed_peak_delta_from_p95: f64,
     pub observed_peak_delta_from_p99: f64,
+    #[serde(default)]
+    pub theoretical_min_score: f64,
+    #[serde(default)]
+    pub theoretical_max_score: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -414,6 +426,39 @@ pub struct TfbsScoreTrackPeak {
     pub score: f64,
     pub empirical_quantile: f64,
     pub delta_from_p99: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One pairwise synchrony estimate between two TF score tracks.
+///
+/// `raw_pearson` works on the exact displayed per-position vectors, while
+/// `smoothed_pearson` uses the same vectors after centered boxcar smoothing.
+/// The smoothed value is generally the better "are these peaks in the same
+/// neighborhood?" measure for promoter interpretation.
+pub struct TfbsScoreTrackCorrelationRow {
+    pub left_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_tf_name: Option<String>,
+    pub right_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_tf_name: Option<String>,
+    pub overlap_window_count: usize,
+    pub raw_pearson: f64,
+    pub smoothed_pearson: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_primary_peak_offset_bp: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared correlation-sidecar for one TFBS score-track report.
+pub struct TfbsScoreTrackCorrelationSummary {
+    pub signal_source: String,
+    pub smoothing_method: String,
+    pub smoothing_window_bp: usize,
+    pub pair_count: usize,
+    pub rows: Vec<TfbsScoreTrackCorrelationRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -531,6 +576,8 @@ pub struct TfbsScoreTrackReport {
     pub global_max_score: f64,
     #[serde(default)]
     pub tss_markers: Vec<TfbsScoreTrackTssMarker>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_summary: Option<TfbsScoreTrackCorrelationSummary>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
 }
@@ -1781,6 +1828,8 @@ pub struct GenomeExtractionProvenance {
     pub gene_extract_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_1based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_upstream_bp: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

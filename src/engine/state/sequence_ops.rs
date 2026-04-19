@@ -2116,6 +2116,10 @@ impl GentleEngine {
                 message: "Empty TF motif token".to_string(),
             });
         }
+        if let Some(motif) = tf_motifs::resolve_motif_definition(&normalized) {
+            let consensus = Self::normalize_iupac_text(&motif.consensus_iupac)?;
+            return Ok((motif.id, motif.name, consensus, motif.matrix_counts));
+        }
         if normalized
             .as_bytes()
             .iter()
@@ -2124,10 +2128,6 @@ impl GentleEngine {
             let consensus = Self::normalize_iupac_text(&normalized)?;
             let matrix = Self::matrix_from_iupac(&consensus);
             return Ok((consensus.clone(), None, consensus, matrix));
-        }
-        if let Some(motif) = tf_motifs::resolve_motif_definition(&normalized) {
-            let consensus = Self::normalize_iupac_text(&motif.consensus_iupac)?;
-            return Ok((motif.id, motif.name, consensus, motif.matrix_counts));
         }
         Err(EngineError {
             code: ErrorCode::NotFound,

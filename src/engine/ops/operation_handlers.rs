@@ -34,6 +34,7 @@ struct GenomeExtractionProvenanceOverrides {
     occurrence: Option<usize>,
     gene_extract_mode: Option<String>,
     transcript_id: Option<String>,
+    tss_1based: Option<usize>,
     promoter_upstream_bp: Option<usize>,
     promoter_downstream_bp: Option<usize>,
     gene_id: Option<String>,
@@ -376,6 +377,9 @@ impl GentleEngine {
             transcript_id: provenance_overrides
                 .as_ref()
                 .and_then(|value| value.transcript_id.clone()),
+            tss_1based: provenance_overrides
+                .as_ref()
+                .and_then(|value| value.tss_1based),
             promoter_upstream_bp: provenance_overrides
                 .as_ref()
                 .and_then(|value| value.promoter_upstream_bp),
@@ -3504,6 +3508,7 @@ impl GentleEngine {
                 occurrence: None,
                 gene_extract_mode: None,
                 transcript_id: None,
+                tss_1based: None,
                 promoter_upstream_bp: None,
                 promoter_downstream_bp: None,
                 gene_id: None,
@@ -5874,6 +5879,7 @@ impl GentleEngine {
                         occurrence: None,
                         gene_extract_mode: None,
                         transcript_id: None,
+                        tss_1based: None,
                         promoter_upstream_bp: None,
                         promoter_downstream_bp: None,
                         gene_id: None,
@@ -7486,6 +7492,7 @@ impl GentleEngine {
                     occurrence: Some(occurrence),
                     gene_extract_mode: Some(extract_mode.as_str().to_string()),
                     transcript_id: None,
+                    tss_1based: None,
                     promoter_upstream_bp: matches!(
                         extract_mode,
                         GenomeGeneExtractMode::CodingWithPromoter
@@ -7733,6 +7740,7 @@ impl GentleEngine {
                         gene_query: Some(query.to_string()),
                         occurrence: Some(occurrence),
                         transcript_id: Some(selected_transcript.transcript_id.clone()),
+                        tss_1based: Some(tss_1based),
                         promoter_upstream_bp: Some(upstream_bp),
                         promoter_downstream_bp: Some(downstream_bp),
                         gene_id: selected_gene.gene_id.clone(),
@@ -7978,6 +7986,7 @@ impl GentleEngine {
                     occurrence: None,
                     gene_extract_mode: None,
                     transcript_id: None,
+                    tss_1based: None,
                     promoter_upstream_bp: None,
                     promoter_downstream_bp: None,
                     gene_id: None,
@@ -8183,6 +8192,7 @@ impl GentleEngine {
                     occurrence: None,
                     gene_extract_mode: None,
                     transcript_id: None,
+                    tss_1based: None,
                     promoter_upstream_bp: None,
                     promoter_downstream_bp: None,
                     gene_id: None,
