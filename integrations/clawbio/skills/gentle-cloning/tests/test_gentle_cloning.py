@@ -998,6 +998,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
             600,
         ),
+        "request_genomes_extract_gene_tp53_auto_prepare.json": (
+            "shell",
+            'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
+            1200,
+        ),
         "request_genomes_blast_grch38_short.json": (
             "shell",
             'genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10',
@@ -1007,6 +1012,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "shell",
             'helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10',
             300,
+        ),
+        "request_find_restriction_sites_inline_sequence_ecori_smai.json": (
+            "op",
+            None,
+            180,
+        ),
+        "request_scan_tfbs_hits_inline_sequence_sp1_tp73.json": (
+            "op",
+            None,
+            180,
         ),
         "request_render_svg_pgex_fasta_circular.json": (
             "shell",
@@ -1058,6 +1073,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
             180,
         ),
+        "request_protocol_cartoon_qpcr_svg.json": (
+            "shell",
+            "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
+            180,
+        ),
     }
 
     for name, (mode, shell_line, timeout_secs) in expected.items():
@@ -1076,6 +1096,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_render_svg_rs9923231_vkorc1_linear.json",
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
+            "request_genomes_extract_gene_tp53_auto_prepare.json",
             "request_tfbs_summary_pgex_fasta.json",
             "request_inspect_feature_expert_pgex_fasta_tfbs.json",
             "request_render_feature_expert_pgex_fasta_tfbs_svg.json",
@@ -1117,6 +1138,14 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert ops[-1]["RenderSequenceSvg"]["path"] == (
                 "artifacts/rs9923231_vkorc1.context.demo.svg"
             )
+        if name == "request_genomes_extract_gene_tp53_auto_prepare.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert payload["ensure_reference_prepared"] == {
+                "genome_id": "Human GRCh38 Ensembl 116",
+                "catalog_path": "assets/genomes.json",
+                "cache_dir": "data/genomes",
+                "prepare_timeout_secs": 7200,
+            }
         if name == "request_workflow_vkorc1_planning.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert payload["expected_artifacts"] == [
@@ -1163,6 +1192,45 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/rs9923231_vkorc1.context_bundle/context_summary.txt",
                 "artifacts/rs9923231_vkorc1.context_bundle/context_features.bed",
             ]
+        if name == "request_find_restriction_sites_inline_sequence_ecori_smai.json":
+            assert payload["operation"] == {
+                "FindRestrictionSites": {
+                    "target": {
+                        "kind": "inline_sequence",
+                        "sequence_text": "GAATTCCCGGGATCC",
+                        "topology": "linear",
+                        "id_hint": "inline_ecori_smai_window",
+                        "span_start_0based": 0,
+                        "span_end_0based_exclusive": 15,
+                    },
+                    "enzymes": ["EcoRI", "SmaI"],
+                    "include_cut_geometry": True,
+                    "path": "artifacts/inline_ecori_smai.restriction_scan.json",
+                }
+            }
+            assert payload["expected_artifacts"] == [
+                "artifacts/inline_ecori_smai.restriction_scan.json"
+            ]
+        if name == "request_scan_tfbs_hits_inline_sequence_sp1_tp73.json":
+            assert payload["operation"] == {
+                "ScanTfbsHits": {
+                    "target": {
+                        "kind": "inline_sequence",
+                        "sequence_text": "GGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+                        "topology": "linear",
+                        "id_hint": "inline_sp1_tp73_window",
+                        "span_start_0based": 0,
+                        "span_end_0based_exclusive": 32,
+                    },
+                    "motifs": ["SP1", "TP73"],
+                    "min_llr_quantile": 0.95,
+                    "max_hits": 50,
+                    "path": "artifacts/inline_sp1_tp73.tfbs_scan.json",
+                }
+            }
+            assert payload["expected_artifacts"] == [
+                "artifacts/inline_sp1_tp73.tfbs_scan.json"
+            ]
         if name == "request_render_feature_expert_pgex_fasta_tfbs_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.tfbs.expert.svg"
@@ -1178,6 +1246,10 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_export_bed_grch38_tp53_gene_models.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/grch38_tp53.gene_models.bed"
+            ]
+        if name == "request_protocol_cartoon_qpcr_svg.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/qpcr.assay.protocol.svg"
             ]
 
     tfbs_payload = json.loads(
@@ -1371,6 +1443,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
 
     description = catalog_entry["description"]
     assert "patient-data observations" in description
+    assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "reusable local reference assets" in description
 
@@ -1379,3 +1452,5 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "splicing effect" in trigger_keywords
     assert "prepare ensembl" in trigger_keywords
     assert "reference blast" in trigger_keywords
+    assert "restriction sites" in trigger_keywords
+    assert "extract gene from ensembl" in trigger_keywords

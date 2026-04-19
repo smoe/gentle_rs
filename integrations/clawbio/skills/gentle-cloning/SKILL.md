@@ -2,13 +2,14 @@
 name: gentle-cloning
 description: >-
   Deterministic sequence-design and genome-context specialist powered by
-  GENtle. Translates cohort or patient-data observations into
-  sequence-grounded mechanistic follow-up, assay-planning artifacts, and
-  reusable local reference-preparation workflows.
+  GENtle. Translates cohort or patient-data observations or direct DNA
+  fragment requests into sequence-grounded mechanistic follow-up,
+  assay-planning artifacts, stateless sequence inspection, and reusable local
+  reference-preparation workflows.
 version: 0.1.0
 author: GENtle project
 license: MIT
-tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility]
+tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl]
 metadata:
   openclaw:
     requires:
@@ -29,6 +30,12 @@ metadata:
       - primer design
       - pcr design
       - qpcr design
+      - analyze dna sequence
+      - restriction sites
+      - tfbs scan
+      - sequence context
+      - extract gene from ensembl
+      - promoter sequence
       - prepare genome
       - blast sequence
       - genome anchor
@@ -78,6 +85,9 @@ capability-led language:
 - For patient/cohort signals, describe the path explicitly:
   `observation -> mechanistic hypothesis -> GENtle sequence/context analysis -> wet-lab validation plan`.
 - Be explicit that GENtle can:
+  - inspect pasted DNA fragments directly for restriction sites or TFBS hits
+    without first creating project-state records when the task is purely
+    read-only,
   - extract loci/genes/regions from prepared references,
   - inspect annotations, isoforms, splicing structure, TFBS/JASPAR hits, and
     restriction-enzyme features,
@@ -103,7 +113,8 @@ Preferred broad answer wording:
 > GENtle helps me move from a cohort or patient-data observation to a
 > sequence-grounded mechanistic follow-up. I can recover the relevant locus,
 > inspect annotations, isoforms, splicing, TFBS/JASPAR and restriction-site
-> context, prepare reusable Ensembl/BLAST reference assets, and export
+> context, analyze pasted DNA fragments directly when a fast stateless check is
+> enough, prepare reusable Ensembl/BLAST reference assets, and export
 > reproducible graphics or tables that support wet-lab validation planning.
 
 Always keep the boundary explicit:
@@ -143,6 +154,14 @@ Use a status-first answer shape:
    - already prepared locally
    - not yet prepared
    - currently being prepared / indexed, if that is known from the active run
+6. if the user asks for a concrete gene/region export rather than generic
+   availability, distinguish the current supported path from the missing one:
+   - supported today: extract from a prepared local Ensembl-backed reference,
+     optionally in one request by pairing `ensure_reference_prepared` with
+     `genomes extract-gene`, `genomes extract-region`, or
+     `genomes extract-promoter`
+   - not yet a first-class GENtle/ClawBio route: one-off live remote Ensembl
+     gene/region fetch that avoids whole-reference preparation
 
 Preferred wording pattern:
 
@@ -175,6 +194,28 @@ in this order:
 5. in that case, restart the ClawBio chat-serving process and re-test with a
    phrasing that explicitly asks to use this skill
 
+## Stateless DNA Fragment Requests
+
+When the user pastes one DNA sequence and asks for direct inspection, do not
+force a "create/load an initial vial first" workflow when the task is
+non-mutating.
+
+Current shared stateless routes already support inline DNA text through
+`SequenceScanTarget` with `kind="inline_sequence"`:
+
+- `FindRestrictionSites` for REBASE-backed site/cut-geometry scans
+- `ScanTfbsHits` for thresholded TFBS/JASPAR hit scans
+
+Preferred handling:
+
+1. use inline-sequence targets when the request is "scan this DNA text" rather
+   than "add this sequence to a project and continue editing/designing it"
+2. keep the request stateless unless the user explicitly asks to persist,
+   branch, render from project state, or combine the fragment into a larger
+   construct workflow
+3. only escalate into stateful `LoadFile`/workflow/vial-style paths when later
+   design steps actually require a named stored sequence
+
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should
@@ -197,7 +238,8 @@ Current shared GENtle routes behind this capability:
 - `SetLinearViewport`
 - `SetDisplayVisibility`
 - `features export-bed ... --coordinate-mode genomic`
-- `FetchDbSnpRegion`, `ExtractRegion`, `genomes extract-gene`, and related
+- `FetchDbSnpRegion`, `ExtractRegion`, `genomes extract-region`,
+  `genomes extract-gene`, `genomes extract-promoter`, and related
   locus-loading routes
 
 Expected outputs:
@@ -219,6 +261,7 @@ Expected outputs:
     one best-first figure deterministically
 - one SVG map
 - one BED/tabular coordinate export
+- one extracted region/gene/promoter slice from a prepared local reference
 - one reproducibility bundle from the ClawBio wrapper
 
 ### 2. TFBS Analysis
@@ -229,6 +272,7 @@ inspection, or figure export.
 Current shared GENtle routes behind this capability:
 
 - `AnnotateTfbs`
+- `ScanTfbsHits` with either stored `seq_id` targets or inline DNA text
 - `features tfbs-summary ...`
 - `inspect-feature-expert SEQ_ID tfbs FEATURE_ID`
 - `render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg`
@@ -237,6 +281,7 @@ Current shared GENtle routes behind this capability:
 Expected outputs:
 
 - scored TFBS feature annotations
+- direct stateless TFBS-hit JSON reports on pasted DNA fragments
 - grouped focus-vs-context TFBS summaries
 - TFBS expert text
 - TFBS expert SVG or linear-sequence SVG with TFBS display enabled
@@ -248,6 +293,7 @@ or coordinate export.
 
 Current shared GENtle routes behind this capability:
 
+- `FindRestrictionSites` with either stored `seq_id` targets or inline DNA text
 - restriction-aware `RenderSequenceSvg`
 - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED ...`
 - `render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED ... OUTPUT.svg`
@@ -255,6 +301,7 @@ Current shared GENtle routes behind this capability:
 
 Expected outputs:
 
+- direct stateless restriction-site JSON reports on pasted DNA fragments
 - restriction-cleavage text/expert payloads
 - restriction-cleavage SVGs
 - BED rows for deterministic REBASE-derived cut sites
@@ -344,17 +391,20 @@ Expected outputs:
    patient-data observations into explicit sequence-grounded follow-up steps,
    while keeping the boundary between association, mechanism, and validation
    visible.
-4. **Cloning and assay workflow replay**: execute saved GENtle workflows for
+4. **Fragment-first stateless inspection**: analyze pasted DNA text directly
+   for restriction sites and TFBS hits when the user only needs a read-only
+   answer and does not need project state yet.
+5. **Cloning and assay workflow replay**: execute saved GENtle workflows for
    Gibson assembly, PCR design, primer-pair reports, reporter planning, and
    related sequence engineering tasks.
-5. **Reusable reference bootstrapping**: prepare Ensembl/reference datasets and
+6. **Reusable reference bootstrapping**: prepare Ensembl/reference datasets and
    BLAST-capable local assets that are useful both to GENtle and to external
    bioinformatics tooling.
-6. **State-aware automation**: operate against an explicit GENtle state file so
+7. **State-aware automation**: operate against an explicit GENtle state file so
    project IDs, lineage, and intermediate artifacts remain inspectable.
-7. **Reproducibility export**: emit exact commands, environment details, and
+8. **Reproducibility export**: emit exact commands, environment details, and
    checksums for every run.
-8. **Graceful execution diagnostics**: record resolver choice, exit code,
+9. **Graceful execution diagnostics**: record resolver choice, exit code,
    stdout, stderr, and timeout/failure state in a predictable result envelope.
 
 ## Input Formats
@@ -365,6 +415,7 @@ Expected outputs:
 | Referenced GENtle state file | `.json` | `state_path` inside the request when stateful inspection or mutation is required | `.gentle_state.json` |
 | Referenced GENtle workflow file | `.json` | `workflow_path` inside the request when replaying a saved workflow | `examples/request_workflow_file.json` |
 | Embedded operation payload | JSON object | `operation` when `mode=op` | `{"ExtractRegion": {...}}` |
+| Embedded stateless inline-sequence op | JSON object | `operation.target.kind="inline_sequence"` for non-mutating direct DNA inspection | `{"FindRestrictionSites":{"target":{"kind":"inline_sequence","sequence_text":"GAATTCCCGGG"}}}` |
 | Embedded shell command | string | `shell_line` when `mode=shell` | `"genomes prepare \"Human GRCh38 Ensembl 116\" --timeout-secs 7200"` |
 | Optional reference-preparation preflight | JSON object | `ensure_reference_prepared` when the request should first confirm a local Ensembl-backed reference is prepared | `{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}` |
 
@@ -383,6 +434,9 @@ task:
    - isoform architecture
    - variant follow-up
    - general cloning/workflow replay if none of the above fits better
+   - if the user only supplied raw DNA text and asked for a read-only scan,
+     prefer the stateless inline-sequence operation path under TFBS or
+     restriction analysis instead of inventing project state
 3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
@@ -683,6 +737,8 @@ Apply the following methodology:
 2. **Keep state and provenance visible**: if a task depends on an existing
    project, require or infer an explicit `state_path` instead of pretending the
    state is implicit.
+   - inverse rule: if the task is a read-only inline DNA scan, do not invent a
+     `state_path` or a dummy vial/sequence record
 3. **Preserve GENtle's deterministic engine contract**: do not rewrite the
    biology logic outside GENtle. Let GENtle compute the action and report what
    it returned.
@@ -738,10 +794,18 @@ Apply the following methodology:
   - `examples/request_helpers_prepare_puc19.json`
 - Included follow-on request examples:
   - `examples/request_genomes_extract_gene_tp53.json`
+  - `examples/request_genomes_extract_gene_tp53_auto_prepare.json`
+    - same `genomes extract-gene` route, but as one ClawBio request that first
+      checks/prepares `Human GRCh38 Ensembl 116` when the local cache is
+      missing
   - `examples/request_export_bed_grch38_tp53_gene_models.json`
     - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
     - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4
       artifact
+  - `examples/request_inspect_sequence_context_rs9923231_vkorc1.json`
+    - chat-first follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
+    - emits one compact viewport-aware JSON/text summary without requiring the
+      larger SVG/BED bundle
   - `examples/request_render_svg_rs9923231_vkorc1_linear.json`
     - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
     - renders the fetched VKORC1 / rs9923231 locus as a linear genomic-context
@@ -771,6 +835,12 @@ Apply the following methodology:
     - exercises the shared `genomes blast ...` route against the prepared
       GRCh38 Ensembl 116 reference catalog entry
   - `examples/request_helpers_blast_puc19_short.json`
+  - `examples/request_find_restriction_sites_inline_sequence_ecori_smai.json`
+    - stateless direct-DNA example: scans one pasted fragment for EcoRI/SmaI
+      sites and cut geometry without creating project state first
+  - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
+    - stateless direct-DNA example: scans one pasted fragment for SP1/TP73
+      hits without creating TFBS features or a project-state record first
   - `examples/request_workflow_vkorc1_planning.json`
     - the main graphical answer for "functional analyses of genetic
       variations" in the current scaffold
@@ -831,6 +901,8 @@ Apply the following methodology:
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`
+  - `examples/request_protocol_cartoon_qpcr_svg.json`
+    - matching protocol-cartoon graphics/export route for a qPCR assay layout
   - shipped BED-export request examples now cover both common follow-on
     surfaces:
     - shell/direct CLI:
@@ -853,6 +925,9 @@ Apply the following methodology:
 - "Run a GENtle shell command for primer reports and save the audit trail."
 - "Render the current genomic neighborhood as a DNA-window SVG and export the
   same displayed features with genomic coordinates."
+- "Scan this pasted DNA fragment for EcoRI and SmaI without creating project
+  state."
+- "Check SP1 and TP73 motif hits on this inline promoter fragment."
 - "Summarize TFBS hits near this SNP and also render the chosen TFBS as an
   expert figure."
 - "Show me the EcoRI cleavage context as both text and SVG."
@@ -864,6 +939,8 @@ Apply the following methodology:
   follow-up?"
 - "Can GENtle prepare Ensembl references and reusable BLAST-ready assets for
   later sequence queries?"
+- "Extract TP53 from the local Ensembl-backed GRCh38 reference, preparing it
+  first if needed."
 
 ## Output Structure
 

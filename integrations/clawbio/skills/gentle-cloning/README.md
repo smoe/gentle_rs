@@ -3,10 +3,11 @@
 This folder is a ClawBio/OpenClaw-ready skill scaffold for GENtle.
 
 It is intended to position GENtle as a deterministic bridge from biological
-observations, including patient/cohort-derived leads, to sequence-grounded
-mechanistic follow-up and wet-lab planning. It also makes clear that prepared
-Ensembl/reference assets and BLAST-capable indices are reusable local
-infrastructure, not GENtle-only byproducts.
+observations, including patient/cohort-derived leads, or from direct DNA
+fragment requests, to sequence-grounded mechanistic follow-up and wet-lab
+planning. It also makes clear that prepared Ensembl/reference assets and
+BLAST-capable indices are reusable local infrastructure, not GENtle-only
+byproducts.
 
 ## Logical capability split
 
@@ -31,7 +32,8 @@ surfaces for those tasks instead of one vague "cloning" box.
 - `gentle_local_checkout_cli.sh`: local-checkout launcher for `cargo run --bin gentle_cli --`
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
-- `examples/*.json`: request payload examples, including bootstrap, extract/BLAST, planning, and graphics flows
+- `examples/*.json`: request payload examples, including bootstrap, stateless
+  inline-sequence scans, extract/BLAST, planning, and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
 ## Positioning for OpenClaw
@@ -43,6 +45,8 @@ intended framing is:
 - For patient/cohort signals, that means:
   `statistical observation -> mechanistic hypothesis -> sequence/context analysis -> wet-lab validation plan`.
 - GENtle does not prove causality by itself.
+- GENtle can also inspect pasted DNA fragments directly for restriction sites
+  or TFBS hits without first creating project state when the task is read-only.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
   BLAST-capable indices, that may also be useful to external bioinformatics
   tools. Its added value is deterministic preparation, cataloging, provenance,
@@ -63,6 +67,11 @@ ClawBio/OpenClaw answer pattern is:
   - `genomes ensembl-available --collection vertebrates --filter human`
 - if the reference is not prepared yet, say so explicitly and offer the local
   prepare path rather than presenting the request as a dead end
+- if the user asks for a concrete gene/region export, be clear that the
+  supported route today is extraction from a prepared local Ensembl-backed
+  reference, optionally preceded by `ensure_reference_prepared`
+- do not imply that a one-off live remote Ensembl gene/region fetch already
+  exists as a first-class ClawBio route; that remains a gap
 
 This keeps the answer truthful while still surfacing the practical path
 forward.
@@ -145,8 +154,11 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_context_svg_auto_prepare.json --output /tmp/gentle_rs9923231_context_demo
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_rs9923231_vkorc1_context_features.json --output /tmp/gentle_rs9923231_context_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53.json --output /tmp/gentle_extract_tp53
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_extract_gene_tp53_auto_prepare.json --output /tmp/gentle_extract_tp53_auto_prepare
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_grch38_tp53_gene_models.json --output /tmp/gentle_tp53_bed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_find_restriction_sites_inline_sequence_ecori_smai.json --output /tmp/gentle_inline_restriction_scan
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json --output /tmp/gentle_inline_tfbs_scan
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_export_bed_pgex_fasta_tfbs_restriction.json --output /tmp/gentle_pgex_bed
@@ -164,6 +176,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json --output /tmp/gentle_qpcr_graphics
 ```
 
 Notes:
@@ -212,6 +225,14 @@ Notes:
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
   artifact
+- `request_genomes_extract_gene_tp53_auto_prepare.json` is the same TP53
+  extraction route as `request_genomes_extract_gene_tp53.json`, but wrapped in
+  one request that first checks/prepares the local `Human GRCh38 Ensembl 116`
+  reference when needed
+- `request_find_restriction_sites_inline_sequence_ecori_smai.json` and
+  `request_scan_tfbs_hits_inline_sequence_sp1_tp73.json` are stateless direct
+  DNA examples; they inspect pasted DNA text through shared inline-sequence
+  operands instead of requiring a pre-existing GENtle state record
 - `request_export_bed_pgex_fasta_tfbs_restriction.json` is a matching
   follow-on tabular route on that same `pgex_fasta` state; it annotates TFBS,
   exports TFBS rows, and appends selected restriction-site rows into one BED
@@ -363,6 +384,9 @@ Included follow-on analysis/planning/graphics requests:
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
   - exports the fetched locus' gene/mRNA/variation rows with genomic coordinates
 - `examples/request_genomes_extract_gene_tp53.json`
+- `examples/request_genomes_extract_gene_tp53_auto_prepare.json`
+  - same `genomes extract-gene` route, but as one ClawBio request that first
+    checks/prepares `Human GRCh38 Ensembl 116` when the local cache is missing
 - `examples/request_export_bed_grch38_tp53_gene_models.json`
   - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
   - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4 artifact
@@ -371,6 +395,12 @@ Included follow-on analysis/planning/graphics requests:
   - exercises the shared `genomes blast ...` route against the prepared GRCh38
     Ensembl 116 reference catalog entry
 - `examples/request_helpers_blast_puc19_short.json`
+- `examples/request_find_restriction_sites_inline_sequence_ecori_smai.json`
+  - stateless direct-DNA example that scans one pasted fragment for EcoRI/SmaI
+    sites and cut geometry without creating project state first
+- `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
+  - stateless direct-DNA example that scans one pasted fragment for SP1/TP73
+    hits without creating TFBS features or a project-state record first
 - `examples/request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after running
     `examples/request_workflow_file.json`
@@ -421,6 +451,8 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
   wrapper output bundle under `generated/...`
+- `examples/request_protocol_cartoon_qpcr_svg.json`
+  - matching protocol-cartoon graphics/export route for a qPCR assay layout
 - shipped BED-export examples now cover both common follow-on surfaces:
   - shell mode:
     `request_export_bed_grch38_tp53_gene_models.json`

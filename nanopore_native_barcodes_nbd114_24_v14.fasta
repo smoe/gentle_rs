@@ -1,0 +1,96 @@
+>NB01_forward kind=barcode internal_scan=true
+CACAAAGACACCGACAACTTTCTT
+>NB01_reverse kind=barcode internal_scan=true
+AAGAAAGTTGTCGGTGTCTTTGTG
+>NB02_forward kind=barcode internal_scan=true
+ACAGACGACTACAAACGGAATCGA
+>NB02_reverse kind=barcode internal_scan=true
+TCGATTCCGTTTGTAGTCGTCTGT
+>NB03_forward kind=barcode internal_scan=true
+CCTGGTAACTGGGACACAAGACTC
+>NB03_reverse kind=barcode internal_scan=true
+GAGTCTTGTGTCCCAGTTACCAGG
+>NB04_forward kind=barcode internal_scan=true
+TAGGGAAACACGATAGAATCCGAA
+>NB04_reverse kind=barcode internal_scan=true
+TTCGGATTCTATCGTGTTTCCCTA
+>NB05_forward kind=barcode internal_scan=true
+AAGGTTACACAAACCCTGGACAAG
+>NB05_reverse kind=barcode internal_scan=true
+CTTGTCCAGGGTTTGTGTAACCTT
+>NB06_forward kind=barcode internal_scan=true
+GACTACTTTCTGCCTTTGCGAGAA
+>NB06_reverse kind=barcode internal_scan=true
+TTCTCGCAAAGGCAGAAAGTAGTC
+>NB07_forward kind=barcode internal_scan=true
+AAGGATTCATTCCCACGGTAACAC
+>NB07_reverse kind=barcode internal_scan=true
+GTGTTACCGTGGGAATGAATCCTT
+>NB08_forward kind=barcode internal_scan=true
+ACGTAACTTGGTTTGTTCCCTGAA
+>NB08_reverse kind=barcode internal_scan=true
+TTCAGGGAACAAACCAAGTTACGT
+>NB09_forward kind=barcode internal_scan=true
+AACCAAGACTCGCTGTGCCTAGTT
+>NB09_reverse kind=barcode internal_scan=true
+AACTAGGCACAGCGAGTCTTGGTT
+>NB10_forward kind=barcode internal_scan=true
+GAGAGGACAAAGGTTTCAACGCTT
+>NB10_reverse kind=barcode internal_scan=true
+AAGCGTTGAAACCTTTGTCCTCTC
+>NB11_forward kind=barcode internal_scan=true
+TCCATTCCCTCCGATAGATGAAAC
+>NB11_reverse kind=barcode internal_scan=true
+GTTTCATCTATCGGAGGGAATGGA
+>NB12_forward kind=barcode internal_scan=true
+TCCGATTCTGCTTCTTTCTACCTG
+>NB12_reverse kind=barcode internal_scan=true
+CAGGTAGAAAGAAGCAGAATCGGA
+>NB13_forward kind=barcode internal_scan=true
+AGAACGACTTCCATACTCGTGTGA
+>NB13_reverse kind=barcode internal_scan=true
+TCACACGAGTATGGAAGTCGTTCT
+>NB14_forward kind=barcode internal_scan=true
+AACGAGTCTCTTGGGACCCATAGA
+>NB14_reverse kind=barcode internal_scan=true
+TCTATGGGTCCCAAGAGACTCGTT
+>NB15_forward kind=barcode internal_scan=true
+AGGTCTACCTCGCTAACACCACTG
+>NB15_reverse kind=barcode internal_scan=true
+CAGTGGTGTTAGCGAGGTAGACCT
+>NB16_forward kind=barcode internal_scan=true
+CGTCAACTGACAGTGGTTCGTACT
+>NB16_reverse kind=barcode internal_scan=true
+AGTACGAACCACTGTCAGTTGACG
+>NB17_forward kind=barcode internal_scan=true
+ACCCTCCAGGAAAGTACCTCTGAT
+>NB17_reverse kind=barcode internal_scan=true
+ATCAGAGGTACTTTCCTGGAGGGT
+>NB18_forward kind=barcode internal_scan=true
+CCAAACCCAACAACCTAGATAGGC
+>NB18_reverse kind=barcode internal_scan=true
+GCCTATCTAGGTTGTTGGGTTTGG
+>NB19_forward kind=barcode internal_scan=true
+GTTCCTCGTGCAGTGTCAAGAGAT
+>NB19_reverse kind=barcode internal_scan=true
+ATCTCTTGACACTGCACGAGGAAC
+>NB20_forward kind=barcode internal_scan=true
+TTGCGTCCTGTTACGAGAACTCAT
+>NB20_reverse kind=barcode internal_scan=true
+ATGAGTTCTCGTAACAGGACGCAA
+>NB21_forward kind=barcode internal_scan=true
+GAGCCTCTCATTGTCCGTTCTCTA
+>NB21_reverse kind=barcode internal_scan=true
+TAGAGAACGGACAATGAGAGGCTC
+>NB22_forward kind=barcode internal_scan=true
+ACCACTGCCATGTATCAAAGTACG
+>NB22_reverse kind=barcode internal_scan=true
+CGTACTTTGATACATGGCAGTGGT
+>NB23_forward kind=barcode internal_scan=true
+CTTACTACCCAGTGAACCTCCTCG
+>NB23_reverse kind=barcode internal_scan=true
+CGAGGAGGTTCACTGGGTAGTAAG
+>NB24_forward kind=barcode internal_scan=true
+GCATAGTTCTGCATGATGGGTTAG
+>NB24_reverse kind=barcode internal_scan=true
+CTAACCCATCATGCAGAACTATGC

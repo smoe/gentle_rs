@@ -1,0 +1,26 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "op",
+  "operation": {
+    "FindRestrictionSites": {
+      "target": {
+        "kind": "inline_sequence",
+        "sequence_text": "GAATTCCCGGGATCC",
+        "topology": "linear",
+        "id_hint": "inline_ecori_smai_window",
+        "span_start_0based": 0,
+        "span_end_0based_exclusive": 15
+      },
+      "enzymes": [
+        "EcoRI",
+        "SmaI"
+      ],
+      "include_cut_geometry": true,
+      "path": "artifacts/inline_ecori_smai.restriction_scan.json"
+    }
+  },
+  "expected_artifacts": [
+    "artifacts/inline_ecori_smai.restriction_scan.json"
+  ],
+  "timeout_secs": 180
+}

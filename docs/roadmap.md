@@ -1205,6 +1205,11 @@ order. Durable architecture constraints and decisions remain in
           `ensure_reference_prepared`, which runs
           `genomes status ...` and only then `genomes prepare ...` when needed,
           while recording the before/after status payloads in the bundle
+        - the same ClawBio-facing layer should now also surface GENtle's new
+          stateless inline-DNA scan path directly:
+          pasted sequence requests for restriction-site or TFBS inspection
+          should not force the older "create/load a project sequence first"
+          pattern when the task is read-only
         - the wrapper now also reports failing direct commands more helpfully:
           `result.json.error` and `result.json.failure_summary` include the
           failing command, execution cwd, exit code, and a short
@@ -1240,6 +1245,11 @@ order. Durable architecture constraints and decisions remain in
           detection) and deeper ATtRACT runtime detail (for example active
           snapshot version/content hash), not only best-effort phase/progress
           hints
+        - a direct one-off remote Ensembl gene/region fetch route is still
+          missing:
+          current ClawBio/GENtle gene/region export remains the prepared-local
+          reference path, so users who explicitly want ROI-only Ensembl access
+          without full reference preparation still hit a real capability gap
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text
@@ -1949,6 +1959,10 @@ order. Durable architecture constraints and decisions remain in
     so new remote installs can start from "prepare what you need locally"
     instead of only from `capabilities`
   - the example request pack now also includes follow-on routes for:
+    - stateless inline-sequence restriction/TFBS scans on pasted DNA text
+    - one request that couples `ensure_reference_prepared` with
+      `genomes extract-gene` so local Ensembl-backed gene extraction is easier
+      to ask for
     - reference extraction (`TP53`)
     - BED export for extracted genome annotation (`TP53` gene/mRNA/exon/CDS)
     - reference-genome BLAST against prepared `Human GRCh38 Ensembl 116`
@@ -2763,11 +2777,17 @@ Planned work:
    - Bootstrap plus first follow-on examples are now in place; keep expanding
      the example library so common requests no longer require hand-crafted
      request JSON:
+     - stateless pasted-DNA inspection
      - helper discovery/search
      - state summary / current-project inspection
      - public record fetch (`genbank fetch`, `dbsnp fetch`)
+     - single-request local Ensembl-backed gene/region extraction with
+       `ensure_reference_prepared`
      - sequence-map graphics from a known state
      - common stateful figure-generation and planning/report flows
+   - treat direct remote Ensembl ROI/gene fetch that avoids whole-reference
+     preparation as a separate missing capability, not as something the skill
+     should imply already exists
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

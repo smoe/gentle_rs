@@ -1,0 +1,13 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "ensure_reference_prepared": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "catalog_path": "assets/genomes.json",
+    "cache_dir": "data/genomes",
+    "prepare_timeout_secs": 7200
+  },
+  "shell_line": "genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53",
+  "timeout_secs": 1200
+}
