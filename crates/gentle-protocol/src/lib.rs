@@ -8,7 +8,7 @@
 pub mod construct_reasoning;
 pub mod dna_ladder;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
@@ -994,7 +994,7 @@ impl FeatureExpertTarget {
 }
 
 #[cfg(test)]
-mod tests {
+mod feature_expert_target_tests {
     use super::{FeatureExpertTarget, SplicingScopePreset};
 
     #[test]
@@ -3419,6 +3419,27 @@ fn default_rna_read_concatemer_fragment_min_query_coverage_fraction() -> f64 {
     0.35
 }
 
+fn deserialize_rna_read_concatemer_transcript_fasta_paths<'de, D>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    let value = Option::<OneOrMany>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(OneOrMany::One(path)) => vec![path],
+        Some(OneOrMany::Many(paths)) => paths,
+        None => Vec::new(),
+    })
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Conservative severity label for fragment/concatemer-like RNA-read rows.
@@ -3467,8 +3488,13 @@ pub struct RnaReadConcatemerInspectionSettings {
     pub fragment_min_identity_fraction: f64,
     #[serde(default = "default_rna_read_concatemer_fragment_min_query_coverage_fraction")]
     pub fragment_min_query_coverage_fraction: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transcript_fasta_path: Option<String>,
+    #[serde(
+        default,
+        alias = "transcript_fasta_path",
+        deserialize_with = "deserialize_rna_read_concatemer_transcript_fasta_paths",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub transcript_fasta_paths: Vec<String>,
 }
 
 impl Default for RnaReadConcatemerInspectionSettings {
@@ -3490,7 +3516,7 @@ impl Default for RnaReadConcatemerInspectionSettings {
                 default_rna_read_concatemer_fragment_min_identity_fraction(),
             fragment_min_query_coverage_fraction:
                 default_rna_read_concatemer_fragment_min_query_coverage_fraction(),
-            transcript_fasta_path: None,
+            transcript_fasta_paths: Vec::new(),
         }
     }
 }
@@ -4320,10 +4346,11 @@ pub struct RnaReadInterpretationReportSummary {
 }
 
 #[cfg(test)]
-mod tests {
+mod dotplot_and_concatemer_setting_tests {
     use super::{
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
         DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView,
+        RnaReadConcatemerInspectionSettings,
     };
 
     #[test]
@@ -4436,5 +4463,31 @@ mod tests {
             ]
         );
         assert_eq!(view.query_anchor_label(), Some("shared core motif"));
+    }
+
+    #[test]
+    fn rna_read_concatemer_settings_accept_legacy_single_transcript_fasta_path() {
+        let settings: RnaReadConcatemerInspectionSettings =
+            serde_json::from_str("{\"transcript_fasta_path\":\"data/transcriptome.fa.gz\"}")
+                .expect("deserialize legacy concatemer settings");
+        assert_eq!(
+            settings.transcript_fasta_paths,
+            vec!["data/transcriptome.fa.gz".to_string()]
+        );
+    }
+
+    #[test]
+    fn rna_read_concatemer_settings_accept_multiple_transcript_fasta_paths() {
+        let settings: RnaReadConcatemerInspectionSettings = serde_json::from_str(
+            "{\"transcript_fasta_paths\":[\"data/cdna.fa.gz\",\"data/ncrna.fa.gz\"]}",
+        )
+        .expect("deserialize plural concatemer settings");
+        assert_eq!(
+            settings.transcript_fasta_paths,
+            vec![
+                "data/cdna.fa.gz".to_string(),
+                "data/ncrna.fa.gz".to_string()
+            ]
+        );
     }
 }

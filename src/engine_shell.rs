@@ -8057,7 +8057,7 @@ impl ShellCommand {
                 limit,
                 settings,
             } => format!(
-                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2})",
+                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2}, transcript_fastas={})",
                 report_id,
                 selection.as_str(),
                 limit,
@@ -8071,7 +8071,12 @@ impl ShellCommand {
                 settings.fragment_min_bp,
                 settings.fragment_max_parts,
                 settings.fragment_min_identity_fraction,
-                settings.fragment_min_query_coverage_fraction
+                settings.fragment_min_query_coverage_fraction,
+                if settings.transcript_fasta_paths.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    settings.transcript_fasta_paths.join(",")
+                }
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",

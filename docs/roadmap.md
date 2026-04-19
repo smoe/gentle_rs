@@ -3225,9 +3225,9 @@ Status:
       ligation/barcoding artifact review does not have to reuse only the
       direct-cDNA primer file
     - the audit can now also perform iterative fragment decomposition against
-      the admitted transcript-template set, or an appended external
-      transcript FASTA catalog via `--transcript-fasta`, to count how many
-      distinct genes/groups contribute to one suspicious read
+      the admitted transcript-template set, or one or more appended external
+      transcript FASTA catalogs via repeated `--transcript-fasta`, to count
+      how many distinct genes/groups contribute to one suspicious read
     - repeated non-primary partner-gene/transcript summaries are now computed
       across the full suspicious cohort before row truncation so recurring
       TP73-linked partners remain visible even when the ranked row view is

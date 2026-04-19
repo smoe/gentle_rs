@@ -24598,7 +24598,8 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
 }
 
 #[test]
-fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_external_catalog() {
+fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_multiple_external_catalogs()
+ {
     let mut state = ProjectState::default();
     state
         .sequences
@@ -24640,14 +24641,18 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_exte
     let adapter_file = tempfile::NamedTempFile::new().expect("temp adapter file");
     std::fs::write(adapter_file.path(), ">barcoding\nTTTCTGTTGGTGCTGATATTGC\n")
         .expect("write adapter fasta");
-    let transcript_file = tempfile::NamedTempFile::new().expect("temp transcript file");
+    let transcript_file_gene3 = tempfile::NamedTempFile::new().expect("temp gene3 transcript file");
     std::fs::write(
-        transcript_file.path(),
-        format!(
-            ">NM_GENE3_1 gene=GENE3 transcript=NM_GENE3_1\n{gene3_sequence}\n>NM_GENE4_1 gene=GENE4 transcript=NM_GENE4_1\n{gene4_sequence}\n"
-        ),
+        transcript_file_gene3.path(),
+        format!(">NM_GENE3_1 gene=GENE3 transcript=NM_GENE3_1\n{gene3_sequence}\n"),
     )
-    .expect("write transcript fasta");
+    .expect("write gene3 transcript fasta");
+    let transcript_file_gene4 = tempfile::NamedTempFile::new().expect("temp gene4 transcript file");
+    std::fs::write(
+        transcript_file_gene4.path(),
+        format!(">NM_GENE4_1 gene=GENE4 transcript=NM_GENE4_1\n{gene4_sequence}\n"),
+    )
+    .expect("write gene4 transcript fasta");
 
     let read_gene3_a = format!("{gene1_sequence}{adapter}{gene3_sequence}");
     let read_gene3_b = format!("{gene1_sequence}{adapter}{gene3_sequence}");
@@ -24751,7 +24756,10 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_exte
                 fragment_max_parts: 4,
                 fragment_min_identity_fraction: 0.60,
                 fragment_min_query_coverage_fraction: 0.20,
-                transcript_fasta_path: Some(transcript_file.path().display().to_string()),
+                transcript_fasta_paths: vec![
+                    transcript_file_gene3.path().display().to_string(),
+                    transcript_file_gene4.path().display().to_string(),
+                ],
                 ..RnaReadConcatemerInspectionSettings::default()
             },
         )

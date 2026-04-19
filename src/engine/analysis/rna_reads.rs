@@ -2255,36 +2255,47 @@ impl GentleEngine {
             transcript_gene_lookup_by_id.insert(lane.transcript_id.clone(), gene_id);
         }
         let mut templates = templates;
-        if let Some(path) = settings.transcript_fasta_path.as_deref() {
-            let next_feature_id_start = transcript_gene_lookup
+        if !settings.transcript_fasta_paths.is_empty() {
+            let mut next_feature_id_start = transcript_gene_lookup
                 .keys()
                 .max()
                 .copied()
                 .unwrap_or(0)
                 .saturating_add(1);
-            let (external_templates, external_gene_lookup, external_gene_lookup_by_id) =
-                Self::load_external_rna_read_concatemer_templates(
-                    path,
-                    report.seed_filter.kmer_len,
-                    next_feature_id_start,
-                    warnings,
-                )?;
             let mut existing_transcript_ids = templates
                 .iter()
                 .map(|template| template.transcript_id.clone())
                 .collect::<HashSet<_>>();
-            for template in external_templates {
-                if existing_transcript_ids.insert(template.transcript_id.clone()) {
-                    if let Some(gene_id) = external_gene_lookup.get(&template.transcript_feature_id)
-                    {
-                        transcript_gene_lookup
-                            .insert(template.transcript_feature_id, gene_id.clone());
+            for path in &settings.transcript_fasta_paths {
+                let (external_templates, external_gene_lookup, external_gene_lookup_by_id) =
+                    Self::load_external_rna_read_concatemer_templates(
+                        path,
+                        report.seed_filter.kmer_len,
+                        next_feature_id_start,
+                        warnings,
+                    )?;
+                next_feature_id_start = external_gene_lookup
+                    .keys()
+                    .max()
+                    .copied()
+                    .unwrap_or(next_feature_id_start.saturating_sub(1))
+                    .saturating_add(1);
+                for template in external_templates {
+                    if existing_transcript_ids.insert(template.transcript_id.clone()) {
+                        if let Some(gene_id) =
+                            external_gene_lookup.get(&template.transcript_feature_id)
+                        {
+                            transcript_gene_lookup
+                                .insert(template.transcript_feature_id, gene_id.clone());
+                        }
+                        if let Some(gene_id) =
+                            external_gene_lookup_by_id.get(&template.transcript_id)
+                        {
+                            transcript_gene_lookup_by_id
+                                .insert(template.transcript_id.clone(), gene_id.clone());
+                        }
+                        templates.push(template);
                     }
-                    if let Some(gene_id) = external_gene_lookup_by_id.get(&template.transcript_id) {
-                        transcript_gene_lookup_by_id
-                            .insert(template.transcript_id.clone(), gene_id.clone());
-                    }
-                    templates.push(template);
                 }
             }
         }
