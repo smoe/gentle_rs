@@ -1988,6 +1988,10 @@ order. Durable architecture constraints and decisions remain in
         - implemented parity surface:
           - GUI DNA-window `RE scan` menu for current selection, visible span,
             and whole active sequence
+          - GUI DNA-window `TFBS scan` menu for current selection, visible
+            span, and whole active sequence, reusing the current TFBS
+            annotation motif/threshold settings through the shared
+            `ScanTfbsHits` report path
           - shared shell / direct CLI:
             `features restriction-scan ...`
           - shared shell / direct CLI:
@@ -1999,9 +2003,6 @@ order. Durable architecture constraints and decisions remain in
         - next follow-up on the same operand family:
           - let `SummarizeTfbsScoreTracks` accept the same operand in addition
             to `seq_id`
-          - add a GUI selection-first non-mutating TFBS/JASPAR inspection
-            surface on top of the shared `ScanTfbsHits` report instead of
-            inventing a GUI-only analysis path
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

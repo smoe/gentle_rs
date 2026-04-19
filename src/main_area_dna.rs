@@ -2800,6 +2800,60 @@ mod tests {
     }
 
     #[test]
+    fn collect_tfbs_scan_settings_merges_and_sorts_per_tf_thresholds() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.tfbs_motifs = "TP73,SP1".to_string();
+        area.tfbs_min_llr_bits = "1.5".to_string();
+        area.tfbs_min_llr_quantile = "0.8".to_string();
+        area.tfbs_per_tf_min_llr_bits = "TP73=0.5,SP1=1.25".to_string();
+        area.tfbs_per_tf_min_llr_quantile = "TP73=0.95".to_string();
+
+        let (motifs, min_bits, min_quantile, overrides) = area
+            .collect_tfbs_scan_settings()
+            .expect("tfbs scan settings");
+
+        assert_eq!(motifs, vec!["TP73".to_string(), "SP1".to_string()]);
+        assert_eq!(min_bits, Some(1.5));
+        assert_eq!(min_quantile, Some(0.8));
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(overrides[0].tf, "SP1");
+        assert_eq!(overrides[0].min_llr_bits, Some(1.25));
+        assert_eq!(overrides[0].min_llr_quantile, None);
+        assert_eq!(overrides[1].tf, "TP73");
+        assert_eq!(overrides[1].min_llr_bits, Some(0.5));
+        assert_eq!(overrides[1].min_llr_quantile, Some(0.95));
+    }
+
+    #[test]
+    fn collect_tfbs_scan_settings_requires_motif_selection() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+
+        let err = area
+            .collect_tfbs_scan_settings()
+            .expect_err("missing motif selection should fail");
+
+        assert!(err.contains("Provide at least one TF motif"));
+    }
+
+    #[test]
+    fn whole_sequence_tfbs_scan_uses_shared_engine_report_path() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.tfbs_motifs = "TATAAA".to_string();
+
+        area.scan_whole_sequence_for_tfbs_hits();
+
+        assert!(area.op_status.contains("TFBS scan for whole sequence"));
+        assert!(area.op_status.contains("matched"));
+        assert!(area.op_status.contains("TATAAA@3+"));
+    }
+
+    #[test]
     fn parse_positive_usize_text_rejects_zero_and_non_integer() {
         assert!(
             MainAreaDna::parse_positive_usize_text("0", "extension length")
@@ -10324,6 +10378,7 @@ const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
 const DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS: usize = 80_000;
 const DOTPLOT_SPARSE_POINT_HINT_THRESHOLD: usize = 80;
 const DOTPLOT_HIT_ENVELOPE_PADDING_BP: usize = 250;
+const GUI_TFBS_SCAN_MAX_HITS: usize = 200;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
     ("NEB 100bp + 1kb", "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"),
@@ -14233,6 +14288,81 @@ impl MainAreaDna {
                         ui.close();
                     }
                 });
+                let tfbs_scan_ready = self.has_tfbs_scan_motifs_configured();
+                ui.menu_button("TFBS scan", |ui| {
+                    ui.small(
+                        "Uses current TFBS/JASPAR motif and threshold settings from the TFBS annotation panel.",
+                    );
+                    let selection_response = ui.add_enabled(
+                        selection_roi.is_some() && tfbs_scan_ready,
+                        egui::Button::new("TFBS hits in selection"),
+                    );
+                    let selection_response = if !tfbs_scan_ready {
+                        selection_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if selection_roi.is_some() {
+                        selection_response.on_hover_text(
+                            "Scan the current map/text selection for TFBS/JASPAR hits using the shared engine report path",
+                        )
+                    } else {
+                        selection_response.on_hover_text(
+                            "Requires a non-empty map/text selection; drag-select a region or click `Select visible` first",
+                        )
+                    };
+                    if selection_response.clicked() {
+                        self.scan_current_selection_for_tfbs_hits();
+                        ui.close();
+                    }
+
+                    let visible_response = ui.add_enabled(
+                        visible_span_roi.is_some() && tfbs_scan_ready,
+                        egui::Button::new("TFBS hits in visible span"),
+                    );
+                    let visible_response = if !tfbs_scan_ready {
+                        visible_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if visible_span_roi.is_some() {
+                        visible_response.on_hover_text(
+                            "Scan the current visible linear map span for TFBS/JASPAR hits",
+                        )
+                    } else {
+                        visible_response.on_hover_text(
+                            "Requires a non-empty linear map view; unavailable in circular view",
+                        )
+                    };
+                    if visible_response.clicked() {
+                        self.scan_visible_span_for_tfbs_hits();
+                        ui.close();
+                    }
+
+                    let whole_sequence_response = ui.add_enabled(
+                        self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty())
+                            && tfbs_scan_ready,
+                        egui::Button::new("TFBS hits in whole sequence"),
+                    );
+                    let whole_sequence_response = if !tfbs_scan_ready {
+                        whole_sequence_response.on_hover_text(
+                            "Configure at least one TFBS/JASPAR motif first, or enable `All known JASPAR motifs` in the TFBS annotation panel",
+                        )
+                    } else if self
+                        .seq_id
+                        .as_deref()
+                        .is_some_and(|seq_id| !seq_id.trim().is_empty())
+                    {
+                        whole_sequence_response.on_hover_text(
+                            "Scan the full active sequence for TFBS/JASPAR hits",
+                        )
+                    } else {
+                        whole_sequence_response
+                            .on_hover_text("Requires an active sequence in the current DNA window")
+                    };
+                    if whole_sequence_response.clicked() {
+                        self.scan_whole_sequence_for_tfbs_hits();
+                        ui.close();
+                    }
+                });
                 let active_pcr_roi_source = self.active_pcr_roi_source_0based();
                 let set_roi_response =
                     ui.add_enabled(active_pcr_roi_source.is_some(), egui::Button::new("Set PCR ROI"));
@@ -15773,85 +15903,26 @@ impl MainAreaDna {
                     if seq_id.is_empty() {
                         self.op_status = "No active sequence".to_string();
                     } else {
-                        let motifs = self.collect_tfbs_motifs();
-                        if motifs.is_empty() {
-                            self.op_status = "Provide at least one TF motif, or enable all JASPAR motifs".to_string();
-                        } else {
-                            let min_llr_bits = if self.tfbs_min_llr_bits.trim().is_empty() {
-                                Ok(None)
-                            } else {
-                                self.tfbs_min_llr_bits
-                                    .trim()
-                                    .parse::<f64>()
-                                    .map(Some)
-                                    .map_err(|_| "Invalid min llr_bits value".to_string())
-                            };
-                            let min_llr_quantile = if self.tfbs_min_llr_quantile.trim().is_empty() {
-                                Ok(None)
-                            } else {
-                                self.tfbs_min_llr_quantile
-                                    .trim()
-                                    .parse::<f64>()
-                                    .map(Some)
-                                    .map_err(|_| "Invalid min llr_quantile value".to_string())
-                            };
-                            let per_bits =
-                                Self::parse_tf_threshold_map(&self.tfbs_per_tf_min_llr_bits);
-                            let per_quantiles =
-                                Self::parse_tf_threshold_map(&self.tfbs_per_tf_min_llr_quantile);
-
-                            match (min_llr_bits, min_llr_quantile, per_bits, per_quantiles) {
-                                (
-                                    Ok(min_llr_bits),
-                                    Ok(min_llr_quantile),
-                                    Ok(per_bits),
-                                    Ok(per_quantiles),
-                                ) => {
-                                    let mut merged: HashMap<String, TfThresholdOverride> =
-                                        HashMap::new();
-                                    for (tf, v) in per_bits {
-                                        merged.insert(
-                                            tf.clone(),
-                                            TfThresholdOverride {
-                                                tf,
-                                                min_llr_bits: Some(v),
-                                                min_llr_quantile: None,
-                                            },
-                                        );
-                                    }
-                                    for (tf, v) in per_quantiles {
-                                        let entry = merged
-                                            .entry(tf.clone())
-                                            .or_insert(TfThresholdOverride {
-                                                tf: tf.clone(),
-                                                min_llr_bits: None,
-                                                min_llr_quantile: None,
-                                            });
-                                        entry.min_llr_quantile = Some(v);
-                                    }
-
-                                    let op = Operation::AnnotateTfbs {
-                                        seq_id,
-                                        motifs,
-                                        min_llr_bits,
-                                        min_llr_quantile,
-                                        per_tf_thresholds: merged.into_values().collect(),
-                                        clear_existing: Some(self.tfbs_clear_existing),
-                                        max_hits: None,
-                                    };
-                                    self.start_tfbs_annotation(op);
-                                }
-                                (Err(e), _, _, _)
-                                | (_, Err(e), _, _)
-                                | (_, _, Err(e), _)
-                                | (_, _, _, Err(e)) => {
-                                    self.op_status = e;
-                                }
+                        match self.collect_tfbs_scan_settings() {
+                            Ok((motifs, min_llr_bits, min_llr_quantile, per_tf_thresholds)) => {
+                                let op = Operation::AnnotateTfbs {
+                                    seq_id,
+                                    motifs,
+                                    min_llr_bits,
+                                    min_llr_quantile,
+                                    per_tf_thresholds,
+                                    clear_existing: Some(self.tfbs_clear_existing),
+                                    max_hits: None,
+                                };
+                                self.start_tfbs_annotation(op);
+                            }
+                            Err(e) => {
+                                self.op_status = e;
                             }
                         }
                     }
                 }
-                    });
+            });
 
                 egui::CollapsingHeader::new("Isoform architecture panels")
                     .default_open(false)
@@ -17680,6 +17751,106 @@ impl MainAreaDna {
 
     fn scan_whole_sequence_for_restriction_sites(&mut self) {
         self.run_restriction_site_scan_for_active_sequence(None, "whole sequence");
+    }
+
+    fn run_tfbs_hit_scan_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let (motifs, min_llr_bits, min_llr_quantile, per_tf_thresholds) =
+            match self.collect_tfbs_scan_settings() {
+                Ok(settings) => settings,
+                Err(message) => {
+                    self.op_status = message;
+                    return;
+                }
+            };
+        let target = SequenceScanTarget::SeqId {
+            seq_id: template.clone(),
+            span_start_0based: span.map(|(start, _)| start),
+            span_end_0based_exclusive: span.map(|(_, end_exclusive)| end_exclusive),
+        };
+        let Some(result) = self.apply_operation_with_feedback_and_result(Operation::ScanTfbsHits {
+            target,
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            per_tf_thresholds,
+            max_hits: Some(GUI_TFBS_SCAN_MAX_HITS),
+            path: None,
+        }) else {
+            return;
+        };
+        let Some(report) = result.tfbs_hit_scan else {
+            return;
+        };
+        let hit_preview = report
+            .rows
+            .iter()
+            .take(4)
+            .map(|row| {
+                format!(
+                    "{}@{}{}",
+                    row.tf_name.as_deref().unwrap_or(&row.tf_id),
+                    row.source_match_start_0based,
+                    if row.forward_strand { "+" } else { "-" }
+                )
+            })
+            .collect::<Vec<_>>();
+        let truncation_note = if report.truncated_at_max_hits {
+            format!(
+                " (truncated at {} hits for quick GUI inspection)",
+                report.max_hits.unwrap_or_default()
+            )
+        } else {
+            String::new()
+        };
+        self.op_status = if hit_preview.is_empty() {
+            format!(
+                "TFBS scan for {source_label} on '{}' found no hits across {} motif(s){}",
+                template,
+                report.motifs_scanned.len(),
+                truncation_note
+            )
+        } else {
+            format!(
+                "TFBS scan for {source_label} on '{}' matched {} hit(s) across {} motif(s): {}{}",
+                template,
+                report.matched_hit_count,
+                report.motifs_scanned.len(),
+                hit_preview.join(", "),
+                truncation_note
+            )
+        };
+    }
+
+    fn scan_current_selection_for_tfbs_hits(&mut self) {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status = "No non-empty linear selection available for TFBS scan".to_string();
+            return;
+        };
+        self.run_tfbs_hit_scan_for_active_sequence(
+            Some((start, end_exclusive)),
+            "current selection",
+        );
+    }
+
+    fn scan_visible_span_for_tfbs_hits(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status = "Visible linear span is unavailable for TFBS scan".to_string();
+            return;
+        };
+        self.run_tfbs_hit_scan_for_active_sequence(Some((start, end_exclusive)), "visible span");
+    }
+
+    fn scan_whole_sequence_for_tfbs_hits(&mut self) {
+        self.run_tfbs_hit_scan_for_active_sequence(None, "whole sequence");
     }
 
     fn render_selection_simple_pcr_context_action(&mut self, ui: &mut egui::Ui) -> bool {
@@ -42203,6 +42374,10 @@ impl MainAreaDna {
         }
     }
 
+    fn has_tfbs_scan_motifs_configured(&self) -> bool {
+        self.tfbs_use_all_motifs || !Self::parse_ids(&self.tfbs_motifs).is_empty()
+    }
+
     fn add_tfbs_motif_selection(&mut self, motif_id: &str) {
         let mut motifs = Self::parse_ids(&self.tfbs_motifs);
         if motifs
@@ -42239,6 +42414,56 @@ impl MainAreaDna {
             out.insert(key, value);
         }
         Ok(out)
+    }
+
+    fn collect_tfbs_scan_settings(
+        &self,
+    ) -> Result<
+        (
+            Vec<String>,
+            Option<f64>,
+            Option<f64>,
+            Vec<TfThresholdOverride>,
+        ),
+        String,
+    > {
+        let motifs = self.collect_tfbs_motifs();
+        if motifs.is_empty() {
+            return Err("Provide at least one TF motif, or enable all JASPAR motifs".to_string());
+        }
+
+        let min_llr_bits = Self::parse_optional_f64_text(&self.tfbs_min_llr_bits, "min llr_bits")?;
+        let min_llr_quantile =
+            Self::parse_optional_f64_text(&self.tfbs_min_llr_quantile, "min llr_quantile")?;
+        let per_bits = Self::parse_tf_threshold_map(&self.tfbs_per_tf_min_llr_bits)?;
+        let per_quantiles = Self::parse_tf_threshold_map(&self.tfbs_per_tf_min_llr_quantile)?;
+
+        let mut merged: BTreeMap<String, TfThresholdOverride> = BTreeMap::new();
+        for (tf, value) in per_bits {
+            merged.insert(
+                tf.clone(),
+                TfThresholdOverride {
+                    tf,
+                    min_llr_bits: Some(value),
+                    min_llr_quantile: None,
+                },
+            );
+        }
+        for (tf, value) in per_quantiles {
+            let entry = merged.entry(tf.clone()).or_insert(TfThresholdOverride {
+                tf: tf.clone(),
+                min_llr_bits: None,
+                min_llr_quantile: None,
+            });
+            entry.min_llr_quantile = Some(value);
+        }
+
+        Ok((
+            motifs,
+            min_llr_bits,
+            min_llr_quantile,
+            merged.into_values().collect(),
+        ))
     }
 
     fn engine_ops_state_key(&self) -> String {
