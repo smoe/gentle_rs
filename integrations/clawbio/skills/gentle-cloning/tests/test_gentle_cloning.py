@@ -236,6 +236,99 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
     assert "- Visible classes: gene, mrna, variation" in report
 
 
+def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "workflow",
+                "state_path": ".gentle_state.json",
+                "workflow_path": "variant_luciferase_storyboard_demo.json",
+                "timeout_secs": 1800,
+                "expected_artifacts": [
+                    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+                    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+                    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    figure_dir = (
+        tmp_path
+        / "docs"
+        / "tutorial"
+        / "reproducibility"
+        / "vkorc1_rs9923231_promoter_reporter"
+    )
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    for name, fill in (
+        ("vkorc1_rs9923231_promoter_context.svg", "#cbd5e1"),
+        ("vkorc1_rs9923231_reporter_reference.svg", "#86efac"),
+        ("vkorc1_rs9923231_reporter_alternate.svg", "#fca5a5"),
+    ):
+        (figure_dir / name).write_text(
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">'
+                f'<rect width="400" height="240" fill="{fill}" />'
+                f'<text x="24" y="44" font-size="28">{name}</text>'
+                "</svg>\n"
+            ),
+            encoding="utf-8",
+        )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.workflow_run.v1","run_id":"example_vkorc1"}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    preferred = result["preferred_artifacts"]
+    assert preferred[0]["artifact_id"] == "clawbio_storyboard_svg"
+    assert preferred[0]["path"] == "generated/clawbio_storyboard.svg"
+    assert preferred[0]["is_best_first_artifact"] is True
+    assert any(
+        artifact["path"].endswith("vkorc1_rs9923231_promoter_context.svg")
+        for artifact in preferred[1:]
+    )
+    storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
+    assert storyboard_path.exists()
+    storyboard = storyboard_path.read_text(encoding="utf-8")
+    assert "Variant-to-Synthetic-Biology assay storyboard" in storyboard
+    assert "Genomic context" in storyboard
+    assert "Reference allele reporter" in storyboard
+    assert "Alternate allele reporter" in storyboard
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "generated/clawbio_storyboard.svg" in report
+
+
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
     fake_runtime = tmp_path / "apptainer"
     capture_path = tmp_path / "apptainer_args.txt"
@@ -1024,6 +1117,13 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert ops[-1]["RenderSequenceSvg"]["path"] == (
                 "artifacts/rs9923231_vkorc1.context.demo.svg"
             )
+        if name == "request_workflow_vkorc1_planning.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert payload["expected_artifacts"] == [
+                "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+                "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+                "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
+            ]
         if name == "request_inspect_sequence_context_rs9923231_vkorc1.json":
             assert payload["operation"] == {
                 "InspectSequenceContextView": {
@@ -1128,6 +1228,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         == "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"
     )
     assert planning_payload["timeout_secs"] == 1800
+    assert planning_payload["expected_artifacts"] == [
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
+    ]
 
     isoform_workflow_payload = json.loads(
         (examples_dir / "request_workflow_tp53_isoform_architecture_online.json").read_text(

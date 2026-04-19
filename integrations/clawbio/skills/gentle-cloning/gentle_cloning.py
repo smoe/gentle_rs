@@ -4,21 +4,27 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import dataclasses
 import datetime as dt
 import hashlib
+import html
 import json
+import math
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 from typing import Any
+import xml.etree.ElementTree as ET
 
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
+SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 
 
 class SkillError(RuntimeError):
@@ -477,6 +483,305 @@ def _copy_collected_artifacts(
             }
         )
     return collected
+
+
+def _parse_svg_dimension(value: str | None) -> float | None:
+    if value is None:
+        return None
+    match = SVG_DIMENSION_RE.match(value)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def _storyboard_caption_for_artifact(raw_path: str, preferred: dict[str, Any] | None) -> str:
+    if preferred is not None and isinstance(preferred.get("caption"), str):
+        caption = preferred["caption"].strip()
+        if caption:
+            return caption
+    stem = Path(raw_path).stem.replace("_", " ").replace(".", " ")
+    return " ".join(part for part in stem.split() if part)
+
+
+def _storyboard_panel_title(raw_path: str, preferred: dict[str, Any] | None) -> str:
+    lowered = raw_path.lower()
+    if "context" in lowered:
+        return "Genomic context"
+    if "reference" in lowered and ("reporter" in lowered or "construct" in lowered):
+        return "Reference allele reporter"
+    if "alternate" in lowered and ("reporter" in lowered or "construct" in lowered):
+        return "Alternate allele reporter"
+    return _storyboard_caption_for_artifact(raw_path, preferred)
+
+
+def _storyboard_panel_priority(raw_path: str) -> tuple[int, str]:
+    lowered = raw_path.lower()
+    if "context" in lowered:
+        return (0, lowered)
+    if "reference" in lowered:
+        return (1, lowered)
+    if "alternate" in lowered:
+        return (2, lowered)
+    return (3, lowered)
+
+
+def _storyboard_panel_record(
+    copied_artifact: dict[str, str],
+    preferred: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    copied_path = Path(copied_artifact["copied_path"])
+    if copied_path.suffix.lower() != ".svg":
+        return None
+    try:
+        text = copied_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+
+    width = None
+    height = None
+    view_box = root.get("viewBox")
+    if view_box:
+        parts = view_box.replace(",", " ").split()
+        if len(parts) == 4:
+            try:
+                width = float(parts[2])
+                height = float(parts[3])
+            except ValueError:
+                width = None
+                height = None
+    if width is None or height is None or width <= 0.0 or height <= 0.0:
+        width = _parse_svg_dimension(root.get("width")) or 800.0
+        height = _parse_svg_dimension(root.get("height")) or 600.0
+    if width <= 0.0 or height <= 0.0:
+        return None
+
+    return {
+        "declared_path": copied_artifact["declared_path"],
+        "copied_path": copied_artifact["copied_path"],
+        "artifact_id": (
+            preferred.get("artifact_id")
+            if preferred is not None and isinstance(preferred.get("artifact_id"), str)
+            else Path(copied_artifact["declared_path"]).stem
+        ),
+        "caption": _storyboard_caption_for_artifact(copied_artifact["declared_path"], preferred),
+        "panel_title": _storyboard_panel_title(copied_artifact["declared_path"], preferred),
+        "priority": _storyboard_panel_priority(copied_artifact["declared_path"]),
+        "width": width,
+        "height": height,
+        "data_uri": (
+            "data:image/svg+xml;base64,"
+            + base64.b64encode(text.encode("utf-8")).decode("ascii")
+        ),
+    }
+
+
+def _storyboard_frame_rects(
+    panel_count: int,
+    variant_layout: bool,
+) -> list[tuple[float, float, float, float]]:
+    if variant_layout and panel_count >= 3:
+        return [
+            (64.0, 172.0, 900.0, 860.0),
+            (1000.0, 172.0, 536.0, 404.0),
+            (1000.0, 628.0, 536.0, 404.0),
+        ]
+    columns = 2 if panel_count > 1 else 1
+    rows = max(1, math.ceil(panel_count / columns))
+    margin = 64.0
+    gutter = 36.0
+    top = 172.0
+    canvas_width = 1600.0
+    canvas_height = 1100.0
+    frame_width = (canvas_width - margin * 2 - gutter * (columns - 1)) / columns
+    frame_height = (canvas_height - top - 72.0 - gutter * (rows - 1)) / rows
+    rects: list[tuple[float, float, float, float]] = []
+    for idx in range(panel_count):
+        row = idx // columns
+        col = idx % columns
+        rects.append(
+            (
+                margin + col * (frame_width + gutter),
+                top + row * (frame_height + gutter),
+                frame_width,
+                frame_height,
+            )
+        )
+    return rects
+
+
+def _write_storyboard_svg(
+    title: str,
+    subtitle: str,
+    panels: list[dict[str, Any]],
+    output_path: Path,
+) -> None:
+    variant_layout = (
+        len(panels) == 3
+        and "context" in panels[0]["declared_path"].lower()
+        and any("reference" in panel["declared_path"].lower() for panel in panels)
+        and any("alternate" in panel["declared_path"].lower() for panel in panels)
+    )
+    frame_rects = _storyboard_frame_rects(len(panels), variant_layout)
+
+    lines = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100" role="img" aria-labelledby="title subtitle">',
+        "  <defs>",
+        '    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">',
+        '      <stop offset="0%" stop-color="#f8fafc" />',
+        '      <stop offset="100%" stop-color="#e2e8f0" />',
+        "    </linearGradient>",
+        '    <filter id="card-shadow" x="-10%" y="-10%" width="130%" height="140%">',
+        '      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#0f172a" flood-opacity="0.12" />',
+        "    </filter>",
+        "  </defs>",
+        '  <rect width="1600" height="1100" fill="url(#bg)" />',
+        '  <text id="title" x="64" y="78" font-family="Inter,Segoe UI,sans-serif" font-size="34" font-weight="700" fill="#0f172a">'
+        + html.escape(title)
+        + "</text>",
+        '  <text id="subtitle" x="64" y="114" font-family="Inter,Segoe UI,sans-serif" font-size="16" fill="#334155">'
+        + html.escape(subtitle)
+        + "</text>",
+        '  <text x="64" y="144" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#475569">Deterministic GENtle figures bundled for a ClawBio/OpenClaw variant follow-up reply.</text>',
+    ]
+
+    for panel, (x, y, width, height) in zip(panels, frame_rects):
+        header_height = 76.0
+        image_pad = 20.0
+        image_box_x = x + image_pad
+        image_box_y = y + header_height
+        image_box_width = width - image_pad * 2
+        image_box_height = height - header_height - image_pad
+        scale = min(
+            image_box_width / panel["width"],
+            image_box_height / panel["height"],
+        )
+        render_width = panel["width"] * scale
+        render_height = panel["height"] * scale
+        render_x = image_box_x + (image_box_width - render_width) / 2.0
+        render_y = image_box_y + (image_box_height - render_height) / 2.0
+        lines.extend(
+            [
+                f'  <g filter="url(#card-shadow)">',
+                f'    <rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" rx="28" fill="#ffffff" />',
+                f'  </g>',
+                f'  <text x="{x + 24.0:.1f}" y="{y + 32.0:.1f}" font-family="Inter,Segoe UI,sans-serif" font-size="20" font-weight="700" fill="#0f172a">{html.escape(panel["panel_title"])}</text>',
+                f'  <text x="{x + 24.0:.1f}" y="{y + 56.0:.1f}" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#64748b">{html.escape(panel["caption"])}</text>',
+                f'  <image href="{panel["data_uri"]}" x="{render_x:.1f}" y="{render_y:.1f}" width="{render_width:.1f}" height="{render_height:.1f}" preserveAspectRatio="xMidYMid meet" />',
+            ]
+        )
+
+    lines.extend(
+        [
+            '  <text x="64" y="1070" font-family="Inter,Segoe UI,sans-serif" font-size="12" fill="#64748b">Typical answer shape: locus context, assayable promoter fragment logic, and engineered allele-specific reporter constructs for synthetic-biology follow-up.</text>',
+            "</svg>",
+        ]
+    )
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _augment_artifacts_with_storyboard(
+    request: Request,
+    output_dir: Path,
+    collected_artifacts: list[dict[str, str]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, str]], list[dict[str, Any]] | None]:
+    preferred_by_path = {
+        artifact["path"]: artifact
+        for artifact in (preferred_artifacts or [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("path"), str)
+    }
+    panels = []
+    for artifact in collected_artifacts:
+        preferred = preferred_by_path.get(artifact["declared_path"])
+        panel = _storyboard_panel_record(artifact, preferred)
+        if panel is not None:
+            panels.append(panel)
+    panels.sort(key=lambda panel: panel["priority"])
+    if len(panels) < 2:
+        return collected_artifacts, preferred_artifacts
+
+    workflow_hint = " ".join(
+        value
+        for value in (
+            request.workflow_path or "",
+            request.shell_line or "",
+        )
+        if value
+    ).lower()
+    variant_story = (
+        any("context" in panel["declared_path"].lower() for panel in panels)
+        and any("reference" in panel["declared_path"].lower() for panel in panels)
+        and any("alternate" in panel["declared_path"].lower() for panel in panels)
+    ) or ("variant" in workflow_hint or "luciferase" in workflow_hint)
+    if variant_story:
+        title = "Variant-to-Synthetic-Biology assay storyboard"
+        subtitle = (
+            "GENtle bridges genomic variant context to engineered allele-specific "
+            "reporter constructs for reproducible functional follow-up."
+        )
+    else:
+        title = "GENtle graphical storyboard"
+        subtitle = "One shareable figure assembled from the deterministic graphics in this run."
+
+    storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
+    storyboard_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_storyboard_svg(title, subtitle, panels[:4], storyboard_path)
+
+    storyboard_artifact = {
+        "declared_path": "generated/clawbio_storyboard.svg",
+        "source_path": str(storyboard_path.resolve()),
+        "copied_path": str(storyboard_path.resolve()),
+    }
+    updated_collected = [*collected_artifacts, storyboard_artifact]
+
+    storyboard_entry = {
+        "artifact_id": "clawbio_storyboard_svg",
+        "path": "generated/clawbio_storyboard.svg",
+        "caption": title,
+        "recommended_use": "best_first_figure",
+        "presentation_rank": 0,
+        "is_best_first_artifact": True,
+    }
+    merged_preferred: list[dict[str, Any]] = [storyboard_entry]
+    seen_paths = {storyboard_entry["path"]}
+
+    source_entries = preferred_artifacts or []
+    if not source_entries:
+        source_entries = [
+            {
+                "artifact_id": panel["artifact_id"],
+                "path": panel["declared_path"],
+                "caption": panel["caption"],
+                "recommended_use": "supporting_figure",
+                "presentation_rank": idx + 1,
+                "is_best_first_artifact": False,
+            }
+            for idx, panel in enumerate(panels)
+        ]
+
+    for idx, artifact in enumerate(source_entries, start=1):
+        if not isinstance(artifact, dict):
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or path in seen_paths:
+            continue
+        updated = dict(artifact)
+        updated["is_best_first_artifact"] = False
+        if not isinstance(updated.get("presentation_rank"), int):
+            updated["presentation_rank"] = idx
+        elif updated["presentation_rank"] <= 0:
+            updated["presentation_rank"] = idx
+        seen_paths.add(path)
+        merged_preferred.append(updated)
+
+    return updated_collected, merged_preferred
 
 
 def _build_cli_args(request: Request, script_path: Path) -> list[str]:
@@ -1110,6 +1415,12 @@ def main() -> int:
         preferred_artifacts = _extract_preferred_artifacts(stdout_json)
         collected_artifacts = _copy_collected_artifacts(
             request, output_dir, execution_cwd
+        )
+        collected_artifacts, preferred_artifacts = _augment_artifacts_with_storyboard(
+            request,
+            output_dir,
+            collected_artifacts,
+            preferred_artifacts,
         )
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()

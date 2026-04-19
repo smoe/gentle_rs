@@ -181,6 +181,16 @@ Notes:
   it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
   `rs9923231` and exports one linear genomic-context SVG into the wrapper
   bundle
+- `request_workflow_vkorc1_planning.json` is the strongest graphical reply to
+  "How can you help me with functional analyses of genetic variations?" in the
+  current scaffold:
+  it replays the VKORC1 / rs9923231 promoter-luciferase workflow, copies the
+  promoter-context plus paired reporter SVGs into the wrapper bundle, and the
+  wrapper synthesizes a best-first `generated/clawbio_storyboard.svg` hero
+  sheet from those figures
+  - treat this as the synthetic-biology bridge:
+    one interpreted variant becomes one engineered allele-paired reporter
+    design for experimental follow-up
 - `request_inspect_sequence_context_rs9923231_vkorc1.json` is the compact
   summary follow-on after `request_dbsnp_fetch_rs9923231.json`; it returns the
   shared `InspectSequenceContextView` report so chat layers can answer with one

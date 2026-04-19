@@ -3,5 +3,10 @@
   "mode": "workflow",
   "state_path": ".gentle_state.json",
   "workflow_path": "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json",
-  "timeout_secs": 1800
+  "timeout_secs": 1800,
+  "expected_artifacts": [
+    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+    "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg"
+  ]
 }

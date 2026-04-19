@@ -301,6 +301,14 @@ Expected outputs:
 Use this when ClawBio starts from a patient/cohort variant or pharmacogenomic
 alert and wants a sequence-grounded assay-planning handoff.
 
+This is the right lane when the user asks a broad question like
+"How can you help me with functional analyses of genetic variations?" and
+expects one concrete graphical answer rather than only a text capability list.
+The synthetic-biology bridge here is explicit: GENtle turns a variant context
+into engineered follow-up systems such as allele-paired promoter reporters,
+regulatory reporters, or related assay constructs rather than stopping at
+annotation or prioritization.
+
 Current shared GENtle routes behind this capability:
 
 - `FetchDbSnpRegion`
@@ -316,6 +324,8 @@ Expected outputs:
 - reporter-fragment candidates
 - paired allele inserts
 - construct previews and handoff bundle artifacts
+- one best-first storyboard-style SVG when the wrapper collects multiple
+  variant-analysis figures from the same run
 
 ## Core Capabilities
 
@@ -762,6 +772,15 @@ Apply the following methodology:
       GRCh38 Ensembl 116 reference catalog entry
   - `examples/request_helpers_blast_puc19_short.json`
   - `examples/request_workflow_vkorc1_planning.json`
+    - the main graphical answer for "functional analyses of genetic
+      variations" in the current scaffold
+    - replays the VKORC1 / rs9923231 promoter-luciferase workflow and copies
+      the promoter-context plus paired reporter SVGs into the wrapper bundle
+    - the wrapper then synthesizes one best-first
+      `generated/clawbio_storyboard.svg` artifact from those figures
+    - present this as a variant-to-synthetic-biology handoff, not just a
+      variant-annotation figure: the output shows how one locus becomes one
+      engineered reporter-design plan
   - `examples/request_render_svg_pgex_fasta_circular.json`
     - expects a state containing `pgex_fasta`, for example after running
       `examples/request_workflow_file.json`
