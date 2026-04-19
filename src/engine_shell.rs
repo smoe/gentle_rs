@@ -64,10 +64,10 @@ use crate::{
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
-        TfbsScoreTrackValueKind,
-        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        VariantAlleleChoice, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow,
-        WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        TfbsScoreTrackValueKind, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -16388,6 +16388,58 @@ fn execute_agents_ask_command(
     })
 }
 
+fn execute_agent_meta_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::AgentsList { catalog_path } => {
+            let (resolved_catalog_path, catalog) =
+                load_agent_system_catalog(catalog_path.as_deref())?;
+            let systems = catalog
+                .systems
+                .iter()
+                .map(|system| {
+                    let availability = agent_system_availability(system);
+                    json!({
+                        "id": system.id,
+                        "label": system.label,
+                        "description": system.description,
+                        "transport": system.transport.as_str(),
+                        "command": system.command,
+                        "model": system.model,
+                        "base_url": system.base_url,
+                        "working_dir": system.working_dir,
+                        "available": availability.available,
+                        "availability_reason": availability.reason,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.agent_systems_list.v1",
+                    "catalog_path": resolved_catalog_path,
+                    "catalog_schema": catalog.schema,
+                    "system_count": systems.len(),
+                    "systems": systems
+                }),
+            })
+        }
+        ShellCommand::Capabilities => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(GentleEngine::capabilities())
+                .map_err(|e| format!("Could not serialize capabilities: {e}"))?,
+        }),
+        ShellCommand::StateSummary => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(engine.summarize_state())
+                .map_err(|e| format!("Could not serialize state summary: {e}"))?,
+        }),
+        _ => Err("execute_agent_meta_command called with unsupported command".to_string()),
+    }
+}
+
 fn execute_macros_run_command(
     engine: &mut GentleEngine,
     script: &str,
@@ -23460,6 +23512,12 @@ pub fn execute_shell_command_with_options(
             options,
         );
     }
+    if matches!(
+        command,
+        ShellCommand::AgentsList { .. } | ShellCommand::Capabilities | ShellCommand::StateSummary
+    ) {
+        return execute_agent_meta_command(engine, command);
+    }
     if let ShellCommand::MacrosRun {
         script,
         transactional,
@@ -23907,16 +23965,9 @@ fn execute_shell_command_with_options_inner(
                 output: help_output,
             }
         }
-        ShellCommand::Capabilities => ShellRunResult {
-            state_changed: false,
-            output: serde_json::to_value(GentleEngine::capabilities())
-                .map_err(|e| format!("Could not serialize capabilities: {e}"))?,
-        },
-        ShellCommand::StateSummary => ShellRunResult {
-            state_changed: false,
-            output: serde_json::to_value(engine.summarize_state())
-                .map_err(|e| format!("Could not serialize state summary: {e}"))?,
-        },
+        ShellCommand::Capabilities | ShellCommand::StateSummary => {
+            execute_agent_meta_command(engine, command)?
+        }
         ShellCommand::LoadProject { path } => {
             let state = ProjectState::load_from_path(path).map_err(|e| e.to_string())?;
             *engine = GentleEngine::from_state(state);
@@ -24587,39 +24638,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PlanningSyncStatus
         | ShellCommand::PlanningSyncPull { .. }
         | ShellCommand::PlanningSyncPush { .. } => execute_planning_command(engine, command)?,
-        ShellCommand::AgentsList { catalog_path } => {
-            let (resolved_catalog_path, catalog) =
-                load_agent_system_catalog(catalog_path.as_deref())?;
-            let systems = catalog
-                .systems
-                .iter()
-                .map(|system| {
-                    let availability = agent_system_availability(system);
-                    json!({
-                        "id": system.id,
-                        "label": system.label,
-                        "description": system.description,
-                        "transport": system.transport.as_str(),
-                        "command": system.command,
-                        "model": system.model,
-                        "base_url": system.base_url,
-                        "working_dir": system.working_dir,
-                        "available": availability.available,
-                        "availability_reason": availability.reason,
-                    })
-                })
-                .collect::<Vec<_>>();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.agent_systems_list.v1",
-                    "catalog_path": resolved_catalog_path,
-                    "catalog_schema": catalog.schema,
-                    "system_count": systems.len(),
-                    "systems": systems
-                }),
-            }
-        }
+        ShellCommand::AgentsList { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::AgentsAsk {
             system_id,
             prompt,

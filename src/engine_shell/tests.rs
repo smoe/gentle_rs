@@ -4428,7 +4428,10 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             assert_eq!(start_0based, 2900);
             assert_eq!(end_0based_exclusive, 3100);
             assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
-            assert_eq!(correlation_metric, TfbsScoreTrackCorrelationMetric::Spearman);
+            assert_eq!(
+                correlation_metric,
+                TfbsScoreTrackCorrelationMetric::Spearman
+            );
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs_corr.svg");
         }

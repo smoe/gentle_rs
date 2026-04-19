@@ -7563,6 +7563,55 @@ fn test_annotate_tfbs_progress_reaches_completion() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_progress_reports_background_and_target_stages() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), seq("GGGGCGGGGGGGGCGGGG"));
+    let mut engine = GentleEngine::from_state(state);
+    let mut progress_events: Vec<TfbsProgress> = vec![];
+    let res = engine
+        .apply_with_progress(
+            Operation::SummarizeTfbsScoreTracks {
+                target: SequenceScanTarget::SeqId {
+                    seq_id: "s".to_string(),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                motifs: vec!["SP1".to_string()],
+                score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+                clip_negative: true,
+                path: None,
+            },
+            |progress| {
+                if let OperationProgress::Tfbs(p) = progress {
+                    progress_events.push(p);
+                }
+                true
+            },
+        )
+        .unwrap();
+    let report = res.tfbs_score_tracks.expect("score-track report");
+    assert!(!progress_events.is_empty());
+    assert!(progress_events.iter().any(|event| {
+        event.task_kind.as_deref() == Some("score_tracks")
+            && event.stage_label.as_deref() == Some("background calibration")
+    }));
+    assert!(progress_events.iter().any(|event| {
+        event.task_kind.as_deref() == Some("score_tracks")
+            && event.stage_label.as_deref() == Some("target scan")
+    }));
+    let last = progress_events.last().unwrap();
+    assert_eq!(last.motif_index, last.motif_count);
+    assert!((last.total_percent - 100.0).abs() < f64::EPSILON);
+    assert_eq!(report.tracks.len(), 1);
+    assert_eq!(
+        report.tracks[0].motif_logo_columns.len(),
+        report.tracks[0].motif_length_bp
+    );
+}
+
+#[test]
 fn test_annotate_tfbs_per_tf_override_changes_quantile_threshold() {
     let mut state = ProjectState::default();
     state

@@ -3231,6 +3231,9 @@ Safety behavior:
   - choose the exported/displayed `value kind`
   - optionally `clip negatives` for raw bit-score families
   - inspect the shared `TfbsScoreTrackReport` immediately in the DNA window
+  - each motif row now includes a compact sequence logo beside the label, so
+    short/high-degeneracy motifs are easier to read against the displayed
+    random-background calibration
   - export the cached view through the shared `RenderTfbsScoreTracksSvg`
     engine route instead of a GUI-only painter
 - Threshold fields remain relevant for hit annotation and `TFBS scan`; the
@@ -3242,6 +3245,13 @@ repainting until completion:
 
 - per-motif percentage (based on actual scan steps)
 - total percentage across all selected motifs (fraction of TFs addressed)
+
+When TFBS score tracks are being computed, the same GUI now also shows live
+progress for:
+
+- deterministic background calibration
+- target-span scanning
+- overall motif completion across the requested track set
 
 TFBS display reduction (no recomputation needed):
 
@@ -3837,6 +3847,10 @@ Tutorial projects:
     - raw bit views show `p99`, `Δp99`, and `bg+`
     - background-normalized views show `theory max`, `peak q`, and
       `-log10 tail`
+  - each motif row now also carries a compact sequence logo in the left label
+    lane, so motif length/composition and random-hit susceptibility can be
+    read next to the normalization summary instead of only from a separate
+    JASPAR lookup
   - the background-normalized percentile and tail views intentionally suppress
     everything below the `0.95` deterministic random-background quantile, which
     keeps the plot focused on unusual windows rather than random low-level
@@ -3856,6 +3870,9 @@ Tutorial projects:
     - smoothed correlation is the main “do these maxima live in the same
       neighborhood?” cue
     - raw correlation stays visible as the unsmoothed sanity check
+  - when score tracks are being recomputed, the window now keeps a live TFBS
+    progress widget visible so deterministic background calibration and
+    target-span scanning do not look like a stall on longer/randomized runs
     - a signed peak offset reports whether one motif’s strongest window leads
       or trails another
   - the same window now also exposes `Export TF score tracks SVG...`, which

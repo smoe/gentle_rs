@@ -504,6 +504,8 @@ pub struct TfbsScoreTrackRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tf_name: Option<String>,
     pub motif_length_bp: usize,
+    #[serde(default)]
+    pub motif_logo_columns: Vec<JasparExpertColumn>,
     pub track_start_0based: usize,
     pub scored_window_count: usize,
     pub max_score: f64,

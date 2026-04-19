@@ -2703,6 +2703,14 @@ pub struct TfbsProgress {
     pub total_steps: usize,
     pub motif_percent: f64,
     pub total_percent: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

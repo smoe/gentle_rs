@@ -229,7 +229,7 @@ impl GentleEngine {
         }
     }
 
-    fn jaspar_expert_columns(matrix_counts: &[[f64; 4]]) -> Vec<JasparExpertColumn> {
+    pub(crate) fn jaspar_expert_columns(matrix_counts: &[[f64; 4]]) -> Vec<JasparExpertColumn> {
         const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
         matrix_counts
             .iter()

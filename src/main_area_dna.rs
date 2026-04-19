@@ -97,10 +97,10 @@ use crate::{
         SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
         SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
         SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-        TfbsScoreTrackCorrelationMetric,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsHitScanReport, TfbsProgress, TfbsScoreTrackReport,
+        TfThresholdOverride, TfbsHitScanReport, TfbsProgress, TfbsScoreTrackCorrelationMetric,
+        TfbsScoreTrackReport,
         TfbsScoreTrackValueKind, VariantAlleleChoice, VariantPromoterContextReport, Workflow,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
@@ -2952,7 +2952,20 @@ mod tests {
         area.tfbs_motifs = "TATAAA".to_string();
 
         area.show_whole_sequence_tfbs_score_tracks();
+        assert!(area.tfbs_task.is_some());
 
+        let ctx = eframe::egui::Context::default();
+        for _ in 0..300 {
+            area.poll_tfbs_task(&ctx);
+            if area.tfbs_task.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            area.tfbs_task.is_none(),
+            "tfbs score-track task should finish"
+        );
         assert!(
             area.op_status
                 .contains("TFBS score tracks for whole sequence")
@@ -10868,8 +10881,17 @@ enum TfbsTaskMessage {
 }
 
 #[derive(Clone, Debug)]
+enum TfbsTaskKind {
+    Annotation,
+    ActiveSequenceScoreTracks { source_label: String },
+    VariantFollowupScoreTracks,
+}
+
+#[derive(Clone, Debug)]
 struct TfbsTask {
     started: Instant,
+    task_kind: TfbsTaskKind,
+    operation_label: String,
     motif_count: usize,
     receiver: Arc<Mutex<Receiver<TfbsTaskMessage>>>,
 }
@@ -16144,42 +16166,12 @@ impl MainAreaDna {
                     self.sync_tfbs_display_criteria_to_engine(tfbs_display);
                     self.save_engine_ops_state();
                 }
-                if let Some(task) = &self.tfbs_task {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        if let Some(progress) = &self.tfbs_progress {
-                            ui.label(format!(
-                                "Annotating TFBS... motif {}/{} ({}) {:.1}% | total {:.1}% | {:.1}s elapsed",
-                                progress.motif_index,
-                                progress.motif_count,
-                                progress.motif_id,
-                                progress.motif_percent,
-                                progress.total_percent,
-                                task.started.elapsed().as_secs_f32()
-                            ));
-                        } else {
-                            ui.label(format!(
-                                "Annotating TFBS... {} motif(s), {:.1}s elapsed",
-                                task.motif_count,
-                                task.started.elapsed().as_secs_f32()
-                            ));
-                        }
-                    });
-                    if let Some(progress) = &self.tfbs_progress {
-                        ui.add(
-                            egui::ProgressBar::new((progress.total_percent / 100.0) as f32)
-                                .show_percentage()
-                                .text(format!(
-                                    "Total TFs addressed: {}/{}",
-                                    progress.motif_index, progress.motif_count
-                                )),
-                        );
-                        ui.add(
-                            egui::ProgressBar::new((progress.motif_percent / 100.0) as f32)
-                                .show_percentage()
-                                .text(format!("Current motif: {}", progress.motif_id)),
-                        );
-                    }
+                if let Some(task) = self
+                    .tfbs_task
+                    .as_ref()
+                    .filter(|task| matches!(task.task_kind, TfbsTaskKind::Annotation))
+                {
+                    Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref());
                 }
                 if ui
                     .add_enabled(self.tfbs_task.is_none(), egui::Button::new("Annotate TFBS"))
@@ -16251,10 +16243,15 @@ impl MainAreaDna {
                 if tfbs_score_track_settings_changed {
                     self.cached_tfbs_score_tracks = None;
                 }
+                if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
+                    matches!(task.task_kind, TfbsTaskKind::ActiveSequenceScoreTracks { .. })
+                }) {
+                    Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref());
+                }
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
-                            self.cached_tfbs_score_tracks.is_some(),
+                            self.cached_tfbs_score_tracks.is_some() && self.tfbs_task.is_none(),
                             egui::Button::new("Export cached TFBS score tracks SVG..."),
                         )
                         .on_hover_text(
@@ -18399,33 +18396,32 @@ impl MainAreaDna {
         }
     }
 
-    fn run_tfbs_score_tracks_for_active_sequence(
+    fn start_tfbs_score_tracks_for_active_sequence(
         &mut self,
         span: Option<(usize, usize)>,
         source_label: &str,
-    ) -> Option<TfbsScoreTrackReport> {
+    ) {
         let (_seq_id, target, motifs, score_kind, clip_negative) =
             match self.collect_tfbs_score_track_request_for_active_sequence(span) {
                 Ok(request) => request,
                 Err(message) => {
                     self.op_status = message;
-                    return None;
+                    return;
                 }
             };
-        let result =
-            self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
+        self.start_tfbs_operation(
+            Operation::SummarizeTfbsScoreTracks {
                 target,
                 motifs,
                 score_kind,
                 clip_negative,
                 path: None,
-            });
-        let Some(report) = result.and_then(|row| row.tfbs_score_tracks) else {
-            return None;
-        };
-        self.cached_tfbs_score_tracks = Some(report.clone());
-        self.op_status = Self::summarize_tfbs_score_track_report_status(&report, source_label);
-        Some(report)
+            },
+            TfbsTaskKind::ActiveSequenceScoreTracks {
+                source_label: source_label.to_string(),
+            },
+            &format!("TFBS score tracks ({source_label})"),
+        );
     }
 
     fn show_current_selection_tfbs_score_tracks(&mut self) {
@@ -18434,7 +18430,7 @@ impl MainAreaDna {
                 "No non-empty linear selection available for TFBS score tracks".to_string();
             return;
         };
-        let _ = self.run_tfbs_score_tracks_for_active_sequence(
+        self.start_tfbs_score_tracks_for_active_sequence(
             Some((start, end_exclusive)),
             "current selection",
         );
@@ -18445,14 +18441,14 @@ impl MainAreaDna {
             self.op_status = "Visible linear span is unavailable for TFBS score tracks".to_string();
             return;
         };
-        let _ = self.run_tfbs_score_tracks_for_active_sequence(
+        self.start_tfbs_score_tracks_for_active_sequence(
             Some((start, end_exclusive)),
             "visible span",
         );
     }
 
     fn show_whole_sequence_tfbs_score_tracks(&mut self) {
-        let _ = self.run_tfbs_score_tracks_for_active_sequence(None, "whole sequence");
+        self.start_tfbs_score_tracks_for_active_sequence(None, "whole sequence");
     }
 
     fn scan_target_summary_line(
@@ -31751,25 +31747,93 @@ impl MainAreaDna {
             .map(Self::primer_design_progress_summary)
     }
 
-    fn start_tfbs_annotation(&mut self, op: Operation) {
+    fn tfbs_task_summary_label(task_kind: &TfbsTaskKind) -> &'static str {
+        match task_kind {
+            TfbsTaskKind::Annotation => "TFBS annotation",
+            TfbsTaskKind::ActiveSequenceScoreTracks { .. } => "TFBS score tracks",
+            TfbsTaskKind::VariantFollowupScoreTracks => "Promoter TF score tracks",
+        }
+    }
+
+    fn tfbs_progress_detail_label(progress: &TfbsProgress) -> String {
+        match progress
+            .stage_label
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+        {
+            "" => progress.motif_id.clone(),
+            stage => match progress
+                .detail
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default()
+            {
+                "" => format!("{stage}: {}", progress.motif_id),
+                detail => format!("{stage}: {} ({detail})", progress.motif_id),
+            },
+        }
+    }
+
+    fn summarize_tfbs_task_status(task: &TfbsTask, progress: Option<&TfbsProgress>) -> String {
+        let activity = task.operation_label.as_str();
+        match progress {
+            Some(progress) => {
+                let stage_percent = progress.stage_percent.unwrap_or(progress.motif_percent);
+                format!(
+                    "{activity} running: motif {}/{} ({}) {:.1}% | total {:.1}% | {:.1}s elapsed",
+                    progress.motif_index,
+                    progress.motif_count,
+                    Self::tfbs_progress_detail_label(progress),
+                    stage_percent,
+                    progress.total_percent,
+                    task.started.elapsed().as_secs_f32()
+                )
+            }
+            None => format!(
+                "{activity} running... {} motif(s), {:.1}s elapsed",
+                task.motif_count,
+                task.started.elapsed().as_secs_f32()
+            ),
+        }
+    }
+
+    fn start_tfbs_operation(
+        &mut self,
+        op: Operation,
+        task_kind: TfbsTaskKind,
+        operation_label: &str,
+    ) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
             return;
         };
         if self.tfbs_task.is_some() {
-            self.op_status = "TFBS annotation is already running".to_string();
+            self.op_status = format!(
+                "{} is already running",
+                Self::tfbs_task_summary_label(
+                    &self
+                        .tfbs_task
+                        .as_ref()
+                        .map(|task| task.task_kind.clone())
+                        .unwrap_or(TfbsTaskKind::Annotation)
+                )
+            );
             return;
         }
         let motif_count = match &op {
             Operation::AnnotateTfbs { motifs, .. } => motifs.len(),
+            Operation::SummarizeTfbsScoreTracks { motifs, .. } => motifs.len(),
             _ => 0,
         };
         let (tx, rx) = mpsc::channel::<TfbsTaskMessage>();
         let started = Instant::now();
         self.tfbs_progress = None;
-        self.op_status = format!("TFBS annotation started for {motif_count} motif(s)");
+        self.op_status = format!("{operation_label} started for {motif_count} motif(s)");
         self.tfbs_task = Some(TfbsTask {
             started,
+            task_kind,
+            operation_label: operation_label.to_string(),
             motif_count,
             receiver: Arc::new(Mutex::new(rx)),
         });
@@ -31799,11 +31863,48 @@ impl MainAreaDna {
                 }
                 Err(_) => Err(EngineError {
                     code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while running TFBS annotation".to_string(),
+                    message: "Engine lock poisoned while running TFBS work".to_string(),
                 }),
             };
             let _ = tx.send(TfbsTaskMessage::Done(outcome));
         });
+    }
+
+    fn start_tfbs_annotation(&mut self, op: Operation) {
+        self.start_tfbs_operation(op, TfbsTaskKind::Annotation, "TFBS annotation");
+    }
+
+    fn handle_completed_tfbs_task_result(
+        &mut self,
+        task_kind: TfbsTaskKind,
+        result: OpResult,
+        started: Instant,
+    ) {
+        if let Some(report) = result.tfbs_score_tracks.clone() {
+            match task_kind {
+                TfbsTaskKind::Annotation => {}
+                TfbsTaskKind::ActiveSequenceScoreTracks { source_label } => {
+                    self.cached_tfbs_score_tracks = Some(report.clone());
+                    self.op_status =
+                        Self::summarize_tfbs_score_track_report_status(&report, &source_label);
+                    self.op_error_popup = None;
+                    return;
+                }
+                TfbsTaskKind::VariantFollowupScoreTracks => {
+                    self.variant_followup_ui.cached_score_tracks = Some(report.clone());
+                    self.op_status = format!(
+                        "Promoter TF score tracks updated for '{}' across {}..{} [{}]",
+                        report.target_label,
+                        report.view_start_0based,
+                        report.view_end_0based_exclusive,
+                        report.score_kind.as_str()
+                    );
+                    self.op_error_popup = None;
+                    return;
+                }
+            }
+        }
+        self.handle_operation_success(result, started);
     }
 
     fn poll_tfbs_task(&mut self, ctx: &egui::Context) {
@@ -31847,23 +31948,8 @@ impl MainAreaDna {
                         }
                     }
                     if done.is_none() {
-                        if let Some(progress) = &self.tfbs_progress {
-                            self.op_status = format!(
-                                "TFBS annotation running: motif {}/{} ({}) {:.1}%, total {:.1}%, elapsed {:.1}s",
-                                progress.motif_index,
-                                progress.motif_count,
-                                progress.motif_id,
-                                progress.motif_percent,
-                                progress.total_percent,
-                                task.started.elapsed().as_secs_f32()
-                            );
-                        } else {
-                            self.op_status = format!(
-                                "TFBS annotation running... {} motif(s), {:.1}s elapsed",
-                                task.motif_count,
-                                task.started.elapsed().as_secs_f32()
-                            );
-                        }
+                        self.op_status =
+                            Self::summarize_tfbs_task_status(task, self.tfbs_progress.as_ref());
                     }
                     processed_progress_messages = processed_progress;
                     task_still_running = done.is_none();
@@ -31890,10 +31976,15 @@ impl MainAreaDna {
                 .as_ref()
                 .map(|t| t.started)
                 .unwrap_or_else(Instant::now);
+            let task_kind = self
+                .tfbs_task
+                .as_ref()
+                .map(|t| t.task_kind.clone())
+                .unwrap_or(TfbsTaskKind::Annotation);
             self.tfbs_task = None;
             self.tfbs_progress = None;
             match done {
-                Ok(result) => self.handle_operation_success(result, started),
+                Ok(result) => self.handle_completed_tfbs_task_result(task_kind, result, started),
                 Err(e) => self.handle_operation_error(e, started),
             }
         }

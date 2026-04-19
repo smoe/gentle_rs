@@ -14,6 +14,8 @@ const SVG_FOOTER_HEIGHT: f64 = 42.0;
 const SVG_ROW_HEIGHT: f64 = 88.0;
 const SVG_ROW_GAP: f64 = 14.0;
 const SVG_LABEL_WIDTH: f64 = 260.0;
+const SVG_LOGO_WIDTH: f64 = 92.0;
+const SVG_LOGO_HEIGHT: f64 = 54.0;
 const SVG_TRACK_PADDING_X: f64 = 10.0;
 const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
@@ -79,6 +81,74 @@ fn format_tf_track_label(tf_id: &str, tf_name: Option<&str>) -> String {
     } else {
         format!("{trimmed_name} ({tf_id})")
     }
+}
+
+fn tfbs_logo_base_color(base: char) -> &'static str {
+    match base {
+        'A' => "#228b22",
+        'C' => "#1e90ff",
+        'G' => "#ff8c00",
+        'T' => "#dc143c",
+        _ => "#94a3b8",
+    }
+}
+
+fn render_tf_track_logo_svg(
+    columns: &[crate::engine::JasparExpertColumn],
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> String {
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<g data-gentle-role=\"tfbs-score-track-logo\"><rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/></g>\n"
+    ));
+    if columns.is_empty() {
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">logo</text>\n",
+            x + width * 0.5,
+            y + height * 0.5,
+        ));
+        return svg;
+    }
+    let margin_x = 6.0_f64;
+    let margin_y = 5.0_f64;
+    let left = x + margin_x;
+    let baseline = y + height - margin_y;
+    let usable_width = (width - margin_x * 2.0).max(8.0);
+    let usable_height = (height - margin_y * 2.0).max(8.0);
+    let column_width = (usable_width / columns.len() as f64).max(3.0);
+    let bits_to_px = usable_height / 2.0;
+    svg.push_str(&format!(
+        "<line x1=\"{left:.1}\" y1=\"{baseline:.1}\" x2=\"{:.1}\" y2=\"{baseline:.1}\" stroke=\"#cbd5e1\" stroke-width=\"0.8\"/>\n",
+        x + width - margin_x,
+    ));
+    for column in columns {
+        let x_center = left + (column.position_1based as f64 - 0.5) * column_width;
+        let mut rows = vec![
+            ('A', column.a_logo_bits),
+            ('C', column.c_logo_bits),
+            ('G', column.g_logo_bits),
+            ('T', column.t_logo_bits),
+        ];
+        rows.sort_by(|left, right| left.1.total_cmp(&right.1));
+        let mut used_height = 0.0_f64;
+        for (base, bits) in rows {
+            if bits <= 0.0001 {
+                continue;
+            }
+            let font_size = ((bits * bits_to_px).max(5.0)).min((column_width * 1.35).max(5.0));
+            svg.push_str(&format!(
+                "<text x=\"{x_center:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{font_size:.2}\" fill=\"{}\">{}</text>\n",
+                baseline - used_height,
+                tfbs_logo_base_color(base),
+                base,
+            ));
+            used_height += font_size * 0.82;
+        }
+    }
+    svg
 }
 
 fn format_track_normalization_summary(
@@ -495,9 +565,12 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             .max_position_0based
             .map(|value| format!(" @ {value}"))
             .unwrap_or_default();
+        let logo_x = content_left + 12.0;
+        let logo_y = row_top + 12.0;
+        let text_x = logo_x + SVG_LOGO_WIDTH + 12.0;
         let meta = format!(
-            "{} windows | max {:.2}{}",
-            track.scored_window_count, track.max_score, max_position
+            "{} bp motif | {} windows | max {:.2}{}",
+            track.motif_length_bp, track.scored_window_count, track.max_score, max_position
         );
         let normalization_meta = track.normalization_reference.as_ref().map(|normalization| {
             format_track_normalization_summary(report.score_kind, normalization)
@@ -515,22 +588,29 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             SVG_ROW_HEIGHT,
             row_fill
         ));
+        svg.push_str(&render_tf_track_logo_svg(
+            &track.motif_logo_columns,
+            logo_x,
+            logo_y,
+            SVG_LOGO_WIDTH,
+            SVG_LOGO_HEIGHT,
+        ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>\n",
-            content_left + 12.0,
+            text_x,
             row_top + 24.0,
             escape_svg_text(&label)
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
-            content_left + 12.0,
+            text_x,
             row_top + 40.0,
             escape_svg_text(&meta)
         ));
         if let Some(normalization_meta) = normalization_meta {
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
-                content_left + 12.0,
+                text_x,
                 row_top + 56.0,
                 escape_svg_text(&normalization_meta)
             ));
@@ -921,9 +1001,32 @@ pub fn render_tfbs_score_track_correlation_svg(
 mod tests {
     use super::*;
     use crate::engine::{
-        TfbsScoreTrackNormalizationReference, TfbsScoreTrackReport, TfbsScoreTrackRow,
-        TfbsScoreTrackValueKind,
+        JasparExpertColumn, TfbsScoreTrackNormalizationReference, TfbsScoreTrackReport,
+        TfbsScoreTrackRow, TfbsScoreTrackValueKind,
     };
+
+    fn sample_logo_columns(len: usize) -> Vec<JasparExpertColumn> {
+        (0..len)
+            .map(|idx| JasparExpertColumn {
+                position_1based: idx + 1,
+                total_count: 10.0,
+                dominant_base: if idx % 2 == 0 { "G" } else { "C" }.to_string(),
+                a_count: 1.0,
+                c_count: if idx % 2 == 0 { 2.0 } else { 6.0 },
+                g_count: if idx % 2 == 0 { 6.0 } else { 2.0 },
+                t_count: 1.0,
+                a_fraction: 0.1,
+                c_fraction: if idx % 2 == 0 { 0.2 } else { 0.6 },
+                g_fraction: if idx % 2 == 0 { 0.6 } else { 0.2 },
+                t_fraction: 0.1,
+                information_content_bits: 1.4,
+                a_logo_bits: 0.14,
+                c_logo_bits: if idx % 2 == 0 { 0.28 } else { 0.84 },
+                g_logo_bits: if idx % 2 == 0 { 0.84 } else { 0.28 },
+                t_logo_bits: 0.14,
+            })
+            .collect()
+    }
 
     #[test]
     fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
@@ -957,6 +1060,7 @@ mod tests {
                     tf_id: "MA0828.2".to_string(),
                     tf_name: Some("p73".to_string()),
                     motif_length_bp: 10,
+                    motif_logo_columns: sample_logo_columns(10),
                     track_start_0based: 0,
                     scored_window_count: 4,
                     max_score: 8.5,
@@ -989,6 +1093,7 @@ mod tests {
                     tf_id: "MA0079.3".to_string(),
                     tf_name: Some("SP1".to_string()),
                     motif_length_bp: 9,
+                    motif_logo_columns: sample_logo_columns(9),
                     track_start_0based: 0,
                     scored_window_count: 4,
                     max_score: 4.0,
@@ -1026,6 +1131,7 @@ mod tests {
         assert!(svg.contains("tp73_upstream"));
         assert!(svg.contains("p73 (MA0828.2)"));
         assert!(svg.contains("SP1 (MA0079.3)"));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
         assert!(svg.contains("base-pair position in selected span"));
         assert!(svg.contains("#0e7490"));
         assert!(svg.contains("#b45309"));
@@ -1065,6 +1171,7 @@ mod tests {
                 tf_id: "REST".to_string(),
                 tf_name: Some("REST".to_string()),
                 motif_length_bp: 8,
+                motif_logo_columns: sample_logo_columns(8),
                 track_start_0based: 10,
                 scored_window_count: 4,
                 max_score: 4.0,
@@ -1171,6 +1278,7 @@ mod tests {
                     tf_id: "MA0079.5".to_string(),
                     tf_name: Some("SP1".to_string()),
                     motif_length_bp: 10,
+                    motif_logo_columns: sample_logo_columns(10),
                     track_start_0based: 0,
                     scored_window_count: 8,
                     max_score: 4.0,
@@ -1184,6 +1292,7 @@ mod tests {
                     tf_id: "MA0147.4".to_string(),
                     tf_name: Some("MYC".to_string()),
                     motif_length_bp: 10,
+                    motif_logo_columns: sample_logo_columns(10),
                     track_start_0based: 0,
                     scored_window_count: 8,
                     max_score: 4.0,
@@ -1197,6 +1306,7 @@ mod tests {
                     tf_id: "MA1961.2".to_string(),
                     tf_name: Some("PATZ1".to_string()),
                     motif_length_bp: 10,
+                    motif_logo_columns: sample_logo_columns(10),
                     track_start_0based: 0,
                     scored_window_count: 8,
                     max_score: 4.0,

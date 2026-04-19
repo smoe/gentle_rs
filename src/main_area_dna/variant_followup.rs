@@ -444,20 +444,17 @@ impl MainAreaDna {
         }
     }
 
-    fn run_variant_followup_score_tracks(
-        &mut self,
-        path: Option<String>,
-    ) -> Option<TfbsScoreTrackReport> {
+    fn start_variant_followup_score_tracks(&mut self) {
         let (seq_id, motifs, start_0based, end_0based_exclusive, score_kind, clip_negative) =
             match self.variant_followup_score_track_request() {
                 Ok(value) => value,
                 Err(err) => {
                     self.op_status = err;
-                    return None;
+                    return;
                 }
             };
-        let result =
-            self.apply_operation_with_feedback_and_result(Operation::SummarizeTfbsScoreTracks {
+        self.start_tfbs_operation(
+            Operation::SummarizeTfbsScoreTracks {
                 target: SequenceScanTarget::SeqId {
                     seq_id,
                     span_start_0based: Some(start_0based),
@@ -466,18 +463,15 @@ impl MainAreaDna {
                 motifs,
                 score_kind,
                 clip_negative,
-                path,
-            });
-        if let Some(report) = result.and_then(|row| row.tfbs_score_tracks) {
-            self.variant_followup_ui.cached_score_tracks = Some(report.clone());
-            Some(report)
-        } else {
-            None
-        }
+                path: None,
+            },
+            TfbsTaskKind::VariantFollowupScoreTracks,
+            "Promoter TF score tracks",
+        );
     }
 
     fn summarize_variant_followup_score_tracks(&mut self) {
-        let _ = self.run_variant_followup_score_tracks(None);
+        self.start_variant_followup_score_tracks();
     }
 
     fn variant_followup_score_track_request(
@@ -1830,6 +1824,118 @@ impl MainAreaDna {
         }
     }
 
+    fn tfbs_logo_base_color(base: char) -> egui::Color32 {
+        match base {
+            'A' => egui::Color32::from_rgb(34, 139, 34),
+            'C' => egui::Color32::from_rgb(30, 144, 255),
+            'G' => egui::Color32::from_rgb(255, 140, 0),
+            'T' => egui::Color32::from_rgb(220, 20, 60),
+            _ => egui::Color32::GRAY,
+        }
+    }
+
+    fn paint_compact_tfbs_track_logo(
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        columns: &[crate::engine::JasparExpertColumn],
+    ) {
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+        if columns.is_empty() {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "logo",
+                egui::FontId::proportional(10.0),
+                egui::Color32::from_rgb(100, 116, 139),
+            );
+            return;
+        }
+        let margin_x = 6.0_f32;
+        let margin_y = 5.0_f32;
+        let left = rect.left() + margin_x;
+        let baseline = rect.bottom() - margin_y;
+        let usable_width = (rect.width() - margin_x * 2.0).max(8.0);
+        let usable_height = (rect.height() - margin_y * 2.0).max(8.0);
+        let column_width = (usable_width / columns.len() as f32).max(3.0);
+        let bits_to_px = usable_height / 2.0;
+        painter.line_segment(
+            [
+                egui::pos2(left, baseline),
+                egui::pos2(rect.right() - margin_x, baseline),
+            ],
+            egui::Stroke::new(0.8, egui::Color32::from_rgb(203, 213, 225)),
+        );
+        for column in columns {
+            let x = left + (column.position_1based as f32 - 0.5) * column_width;
+            let mut rows = vec![
+                ('A', column.a_logo_bits),
+                ('C', column.c_logo_bits),
+                ('G', column.g_logo_bits),
+                ('T', column.t_logo_bits),
+            ];
+            rows.sort_by(|left, right| left.1.total_cmp(&right.1));
+            let mut used_height = 0.0_f32;
+            for (base, bits) in rows {
+                if bits <= 0.0001 {
+                    continue;
+                }
+                let height_px = ((bits as f32) * bits_to_px)
+                    .max(5.0)
+                    .min((column_width * 1.35).max(5.0));
+                painter.text(
+                    egui::pos2(x, baseline - used_height),
+                    egui::Align2::CENTER_BOTTOM,
+                    base.to_string(),
+                    egui::FontId::monospace(height_px),
+                    Self::tfbs_logo_base_color(base),
+                );
+                used_height += height_px * 0.82;
+            }
+        }
+    }
+
+    fn render_compact_tfbs_track_logo(ui: &mut egui::Ui, track: &crate::engine::TfbsScoreTrackRow) {
+        let desired = egui::vec2(92.0, 54.0);
+        let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        Self::paint_compact_tfbs_track_logo(&painter, rect, &track.motif_logo_columns);
+    }
+
+    pub(super) fn render_tfbs_task_progress_panel(
+        ui: &mut egui::Ui,
+        task: &TfbsTask,
+        progress: Option<&TfbsProgress>,
+    ) {
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label(MainAreaDna::summarize_tfbs_task_status(task, progress));
+            });
+            if let Some(progress) = progress {
+                ui.add(
+                    egui::ProgressBar::new((progress.total_percent / 100.0) as f32)
+                        .show_percentage()
+                        .text(format!(
+                            "Overall: motif {}/{}",
+                            progress.motif_index, progress.motif_count
+                        )),
+                );
+                ui.add(
+                    egui::ProgressBar::new(
+                        (progress.stage_percent.unwrap_or(progress.motif_percent) / 100.0) as f32,
+                    )
+                    .show_percentage()
+                    .text(MainAreaDna::tfbs_progress_detail_label(progress)),
+                );
+            }
+        });
+    }
+
     fn promoter_design_track_peak_summary(
         track: &crate::engine::TfbsScoreTrackRow,
     ) -> Option<String> {
@@ -1936,8 +2042,10 @@ impl MainAreaDna {
                 ui.small("Peak offset");
                 ui.end_row();
                 for row in rows {
-                    let left_label =
-                        Self::promoter_design_track_label(&row.left_tf_id, row.left_tf_name.as_deref());
+                    let left_label = Self::promoter_design_track_label(
+                        &row.left_tf_id,
+                        row.left_tf_name.as_deref(),
+                    );
                     let right_label = Self::promoter_design_track_label(
                         &row.right_tf_id,
                         row.right_tf_name.as_deref(),
@@ -2133,43 +2241,49 @@ impl MainAreaDna {
             for track in &report.tracks {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.set_min_width(150.0);
-                    ui.vertical(|ui| {
-                        let label = Self::promoter_design_track_label(
-                            &track.tf_id,
-                            track.tf_name.as_deref(),
-                        );
-                        ui.label(egui::RichText::new(label).strong());
-                        ui.small(format!(
-                            "{} windows | max {:.2}{}",
-                            track.scored_window_count,
-                            track.max_score,
-                            track
-                                .max_position_0based
-                                .map(|pos| format!(" @ {}", pos))
-                                .unwrap_or_default()
-                        ));
-                        if let Some(normalization) = track.normalization_reference.as_ref() {
-                            ui.small(
-                                egui::RichText::new(
-                                    Self::promoter_design_track_normalization_summary(
-                                        report.score_kind,
-                                        normalization,
-                                    ),
-                                )
-                                .color(egui::Color32::from_rgb(100, 116, 139)),
+                    ui.set_min_width(238.0);
+                    ui.horizontal(|ui| {
+                        Self::render_compact_tfbs_track_logo(ui, track);
+                        ui.vertical(|ui| {
+                            let label = Self::promoter_design_track_label(
+                                &track.tf_id,
+                                track.tf_name.as_deref(),
                             );
-                        }
-                        if let Some(peaks_text) = Self::promoter_design_track_peak_summary(track) {
+                            ui.label(egui::RichText::new(label).strong());
+                            ui.small(format!(
+                                "{} bp motif | {} windows | max {:.2}{}",
+                                track.motif_length_bp,
+                                track.scored_window_count,
+                                track.max_score,
+                                track
+                                    .max_position_0based
+                                    .map(|pos| format!(" @ {}", pos))
+                                    .unwrap_or_default()
+                            ));
+                            if let Some(normalization) = track.normalization_reference.as_ref() {
+                                ui.small(
+                                    egui::RichText::new(
+                                        Self::promoter_design_track_normalization_summary(
+                                            report.score_kind,
+                                            normalization,
+                                        ),
+                                    )
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                                );
+                            }
+                            if let Some(peaks_text) =
+                                Self::promoter_design_track_peak_summary(track)
+                            {
+                                ui.small(
+                                    egui::RichText::new(peaks_text)
+                                        .color(egui::Color32::from_rgb(71, 85, 105)),
+                                );
+                            }
                             ui.small(
-                                egui::RichText::new(peaks_text)
+                                egui::RichText::new("forward / reverse")
                                     .color(egui::Color32::from_rgb(71, 85, 105)),
                             );
-                        }
-                        ui.small(
-                            egui::RichText::new("forward / reverse")
-                                .color(egui::Color32::from_rgb(71, 85, 105)),
-                        );
+                        });
                     });
                     ui.vertical(|ui| {
                         Self::paint_promoter_design_track_plot(ui, report, track, &markers);
@@ -2187,6 +2301,14 @@ impl MainAreaDna {
     fn render_variant_followup_score_track_summary(&mut self, ui: &mut egui::Ui) {
         let markers = self.promoter_design_plot_markers();
         let mut correlation_metric = self.variant_followup_ui.score_track_correlation_metric;
+        if let Some(task) = self
+            .tfbs_task
+            .as_ref()
+            .filter(|task| matches!(task.task_kind, TfbsTaskKind::VariantFollowupScoreTracks))
+        {
+            Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref());
+            ui.add_space(6.0);
+        }
         Self::render_tfbs_score_track_summary_panel(
             ui,
             "Promoter TF score tracks",
@@ -2492,7 +2614,7 @@ impl MainAreaDna {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(
-                    engine_available && !source_missing,
+                    engine_available && !source_missing && self.tfbs_task.is_none(),
                     egui::Button::new("Show TF score tracks"),
                 )
                 .on_hover_text(

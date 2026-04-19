@@ -12555,11 +12555,12 @@ impl GentleEngine {
                 clip_negative,
                 path,
             } => {
-                let mut report = self.summarize_tfbs_score_tracks(
+                let mut report = self.summarize_tfbs_score_tracks_with_progress(
                     target.clone(),
                     &motifs,
                     score_kind,
                     clip_negative,
+                    &mut |progress| on_progress(progress),
                 )?;
                 report.op_id = Some(result.op_id.clone());
                 report.run_id = Some(run_id.to_string());
@@ -14533,6 +14534,10 @@ impl GentleEngine {
                                 total_steps,
                                 motif_percent: motif_fraction * 100.0,
                                 total_percent: total_fraction * 100.0,
+                                task_kind: Some("annotation".to_string()),
+                                stage_label: Some("scan".to_string()),
+                                detail: None,
+                                stage_percent: Some(motif_fraction * 100.0),
                             }));
                         },
                     );
@@ -14586,6 +14591,10 @@ impl GentleEngine {
                         total_steps: 1,
                         motif_percent: 100.0,
                         total_percent: (motif_index as f64 / motif_count.max(1) as f64) * 100.0,
+                        task_kind: Some("annotation".to_string()),
+                        stage_label: Some("scan".to_string()),
+                        detail: None,
+                        stage_percent: Some(100.0),
                     }));
                     if cap_reached {
                         if let Some(limit) = max_hits {

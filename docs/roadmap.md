@@ -1153,6 +1153,14 @@ order. Durable architecture constraints and decisions remain in
         - the same TSS marker is now presentation-hardened a bit more too:
           the dashed shared line and kinked top arrow keep the genomic anchor,
           and the small label box survives README/downsampled figure use better
+        - the shared score-track report now also carries one compact
+          per-position motif-logo payload (`motif_logo_columns`) and the GUI +
+          SVG renderers both use it in the left label lane, which makes motif
+          length/composition visible directly beside the calibration summary
+        - `SummarizeTfbsScoreTracks` now also emits TFBS progress events for
+          `background calibration` and `target scan`, and both the DNA-window
+          TFBS panel and the Promoter design window now show those progress
+          bars while score tracks are recomputing
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is

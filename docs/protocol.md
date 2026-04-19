@@ -246,6 +246,11 @@ Behavior notes:
     fallback anchor
   - each peak records start/end, strand, score, empirical quantile, and
     `delta_from_p99`
+- each returned track now also carries a compact `motif_logo_columns` payload
+  with the same per-position base counts/fractions/information-content fields
+  used by the JASPAR expert, so GUI and SVG score-track views can show a small
+  sequence-logo reminder beside the trace without doing adapter-only motif
+  lookups
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
 - `RenderTfbsScoreTrackCorrelationSvg` reuses that exact same report and writes
@@ -268,6 +273,11 @@ Behavior notes:
   arrows so strand direction survives figure-oriented exports; the TSS label
   now also carries a small outline box so it survives README/downsampled
   figure use better.
+- `SummarizeTfbsScoreTracks`, `RenderTfbsScoreTracksSvg`, and
+  `RenderTfbsScoreTrackCorrelationSvg` now also emit `OperationProgress::Tfbs`
+  events with `task_kind=score_tracks`, `stage_label`, and `stage_percent` so
+  GUI/agent callers can show progress while deterministic background
+  calibration and target scanning are still running.
 - `clip_negative=true` is the default presentation mode for promoter-design
   inspection on the bit-based score kinds because it suppresses negative-only
   windows and leaves only positive support.

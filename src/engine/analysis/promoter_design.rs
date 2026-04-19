@@ -11,6 +11,55 @@ impl GentleEngine {
     const TFBS_BACKGROUND_TAIL_SHOW_QUANTILE: f64 = 0.95;
     const TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP: usize = 25;
 
+    fn emit_tfbs_score_track_progress(
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        seq_id: &str,
+        motif_id: &str,
+        motif_index: usize,
+        motif_count: usize,
+        stage_index: usize,
+        stage_count: usize,
+        stage_label: &str,
+        detail: &str,
+        scanned_steps: usize,
+        total_steps: usize,
+    ) {
+        let stage_fraction = if total_steps == 0 {
+            1.0
+        } else {
+            (scanned_steps as f64 / total_steps as f64).clamp(0.0, 1.0)
+        };
+        let motif_fraction = if stage_count == 0 {
+            1.0
+        } else {
+            ((stage_index as f64 - 1.0) + stage_fraction) / stage_count as f64
+        }
+        .clamp(0.0, 1.0);
+        let total_fraction = if motif_count == 0 || stage_count == 0 {
+            1.0
+        } else {
+            (((motif_index.saturating_sub(1) * stage_count) as f64)
+                + (stage_index as f64 - 1.0)
+                + stage_fraction)
+                / (motif_count * stage_count) as f64
+        }
+        .clamp(0.0, 1.0);
+        let _ = on_progress(OperationProgress::Tfbs(TfbsProgress {
+            seq_id: seq_id.to_string(),
+            motif_id: motif_id.to_string(),
+            motif_index,
+            motif_count,
+            scanned_steps,
+            total_steps,
+            motif_percent: motif_fraction * 100.0,
+            total_percent: total_fraction * 100.0,
+            task_kind: Some("score_tracks".to_string()),
+            stage_label: Some(stage_label.to_string()),
+            detail: (!detail.trim().is_empty()).then(|| detail.to_string()),
+            stage_percent: Some(stage_fraction * 100.0),
+        }));
+    }
+
     fn tfbs_background_tail_log10(tail_probability: f64, modeled_quantile: f64) -> f64 {
         if modeled_quantile < Self::TFBS_BACKGROUND_TAIL_SHOW_QUANTILE {
             return 0.0;
@@ -296,11 +345,7 @@ impl GentleEngine {
         if signal.is_empty() {
             return vec![];
         }
-        let mut indexed = signal
-            .iter()
-            .copied()
-            .enumerate()
-            .collect::<Vec<_>>();
+        let mut indexed = signal.iter().copied().enumerate().collect::<Vec<_>>();
         indexed.sort_by(|left, right| left.1.total_cmp(&right.1).then(left.0.cmp(&right.0)));
         let mut ranks = vec![0.0; signal.len()];
         let mut idx = 0usize;
@@ -429,12 +474,13 @@ impl GentleEngine {
         clip_negative: bool,
         llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
+        mut on_progress: impl FnMut(usize, usize),
     ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
         let hits = Self::scan_tf_scores(
             random_background,
             llr_matrix,
             true_log_odds_matrix,
-            |_, _| {},
+            |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
         );
         let mut llr_background_scores = hits.iter().map(|row| row.2).collect::<Vec<_>>();
         let mut true_log_odds_background_scores = hits.iter().map(|row| row.4).collect::<Vec<_>>();
@@ -649,6 +695,23 @@ impl GentleEngine {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
     ) -> Result<TfbsScoreTrackReport, EngineError> {
+        self.summarize_tfbs_score_tracks_with_progress(
+            target,
+            motifs,
+            score_kind,
+            clip_negative,
+            &mut |_| true,
+        )
+    }
+
+    pub(crate) fn summarize_tfbs_score_tracks_with_progress(
+        &self,
+        target: SequenceScanTarget,
+        motifs: &[String],
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<TfbsScoreTrackReport, EngineError> {
         if motifs.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -678,7 +741,9 @@ impl GentleEngine {
 
         let mut tracks = vec![];
         let mut global_max_score = 0.0_f64;
-        for motif in motifs {
+        let motif_count = motifs.len();
+        const SCORE_TRACK_STAGE_COUNT: usize = 2;
+        for (motif_idx, motif) in motifs.iter().enumerate() {
             let (tf_id, tf_name, _consensus, matrix_counts) =
                 Self::resolve_tf_motif_for_scoring(motif)?;
             let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
@@ -686,6 +751,7 @@ impl GentleEngine {
             let true_log_odds_modeled_distribution =
                 Self::modeled_tfbs_score_distribution(&true_log_odds_matrix);
             let motif_length_bp = llr_matrix.len();
+            let motif_logo_columns = Self::jaspar_expert_columns(&matrix_counts);
             let scored_window_count = if motif_length_bp == 0 || view.len() < motif_length_bp {
                 0
             } else if matches!(scan_topology, InlineSequenceTopology::Circular) {
@@ -711,6 +777,24 @@ impl GentleEngine {
                 clip_negative,
                 llr_modeled_distribution.as_ref(),
                 true_log_odds_modeled_distribution.as_ref(),
+                |scanned_steps, total_steps| {
+                    Self::emit_tfbs_score_track_progress(
+                        on_progress,
+                        &target_label,
+                        &tf_id,
+                        motif_idx + 1,
+                        motif_count,
+                        1,
+                        SCORE_TRACK_STAGE_COUNT,
+                        "background calibration",
+                        &format!(
+                            "{} bp deterministic random DNA",
+                            DEFAULT_TFBS_SCORE_TRACK_RANDOM_SEQUENCE_LENGTH_BP
+                        ),
+                        scanned_steps,
+                        total_steps,
+                    );
+                },
             );
 
             if scored_window_count > 0 {
@@ -719,7 +803,26 @@ impl GentleEngine {
                     &llr_matrix,
                     &true_log_odds_matrix,
                     scan_topology,
-                    |_, _| {},
+                    |scanned_steps, total_steps| {
+                        Self::emit_tfbs_score_track_progress(
+                            on_progress,
+                            &target_label,
+                            &tf_id,
+                            motif_idx + 1,
+                            motif_count,
+                            2,
+                            SCORE_TRACK_STAGE_COUNT,
+                            "target scan",
+                            &format!(
+                                "{}..{} ({})",
+                                scan_start_0based,
+                                scan_end_0based_exclusive,
+                                score_kind.as_str()
+                            ),
+                            scanned_steps,
+                            total_steps,
+                        );
+                    },
                 );
                 forward_scores.resize(scored_window_count, 0.0);
                 reverse_scores.resize(scored_window_count, 0.0);
@@ -762,6 +865,25 @@ impl GentleEngine {
                         max_underlying_score = underlying_score;
                     }
                 }
+            } else {
+                Self::emit_tfbs_score_track_progress(
+                    on_progress,
+                    &target_label,
+                    &tf_id,
+                    motif_idx + 1,
+                    motif_count,
+                    2,
+                    SCORE_TRACK_STAGE_COUNT,
+                    "target scan",
+                    &format!(
+                        "{}..{} ({})",
+                        scan_start_0based,
+                        scan_end_0based_exclusive,
+                        score_kind.as_str()
+                    ),
+                    1,
+                    1,
+                );
             }
             if !max_underlying_score.is_finite() {
                 max_underlying_score = 0.0;
@@ -787,6 +909,7 @@ impl GentleEngine {
                 tf_id,
                 tf_name: tf_name.or_else(|| Some(motif.clone())),
                 motif_length_bp,
+                motif_logo_columns,
                 track_start_0based: scan_start_0based,
                 scored_window_count,
                 max_score,
