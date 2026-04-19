@@ -79,13 +79,14 @@ use crate::{
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
-        RestrictionEnzymeDisplayMode, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadExonSupportFrequency,
-        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
+        RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
@@ -99,8 +100,8 @@ use crate::{
         TfbsScoreTrackCorrelationMetric,
         SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
-        VariantAlleleChoice, VariantPromoterContextReport, Workflow,
+        TfThresholdOverride, TfbsHitScanReport, TfbsProgress, TfbsScoreTrackReport,
+        TfbsScoreTrackValueKind, VariantAlleleChoice, VariantPromoterContextReport, Workflow,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -2895,6 +2896,50 @@ mod tests {
         assert!(area.op_status.contains("TFBS scan for whole sequence"));
         assert!(area.op_status.contains("matched"));
         assert!(area.op_status.contains("TATAAA@3+"));
+        let report = area
+            .cached_tfbs_hit_scan
+            .as_ref()
+            .expect("cached TFBS hit scan");
+        assert_eq!(report.scan_start_0based, 0);
+        assert_eq!(report.scan_end_0based_exclusive, 21);
+        assert_eq!(report.motifs_requested, vec!["TATAAA".to_string()]);
+        assert!(!report.rows.is_empty());
+        assert!(
+            report
+                .rows
+                .iter()
+                .any(|row| row.source_match_start_0based == 3 && row.forward_strand)
+        );
+    }
+
+    #[test]
+    fn whole_sequence_restriction_site_scan_caches_shared_engine_report() {
+        let dna = DNAsequence::from_sequence("GAATTCCCGGGATCC").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        area.scan_whole_sequence_for_restriction_sites();
+
+        assert!(
+            area.op_status
+                .contains("Restriction-site scan for whole sequence")
+        );
+        let report = area
+            .cached_restriction_site_scan
+            .as_ref()
+            .expect("cached restriction-site scan");
+        assert_eq!(report.scan_start_0based, 0);
+        assert_eq!(report.scan_end_0based_exclusive, 15);
+        assert!(
+            report.rows.iter().any(|row| row.enzyme_name == "EcoRI"),
+            "EcoRI should be present in the cached scan report"
+        );
+        assert!(
+            report.rows.iter().any(|row| row.enzyme_name == "SmaI"),
+            "SmaI should be present in the cached scan report"
+        );
     }
 
     #[test]
@@ -11035,6 +11080,8 @@ pub struct MainAreaDna {
     tfbs_clear_existing: bool,
     tfbs_score_track_value_kind: TfbsScoreTrackValueKind,
     tfbs_score_track_clip_negative: bool,
+    cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
+    cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
@@ -11627,6 +11674,8 @@ impl MainAreaDna {
             tfbs_clear_existing: true,
             tfbs_score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             tfbs_score_track_clip_negative: true,
+            cached_restriction_site_scan: None,
+            cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
             tfbs_task: None,
             tfbs_progress: None,
@@ -12054,6 +12103,9 @@ impl MainAreaDna {
         self.description_cache_initialized = false;
         self.invalidate_dotplot_cache();
         self.invalidate_feature_tree_cache();
+        self.cached_restriction_site_scan = None;
+        self.cached_tfbs_hit_scan = None;
+        self.cached_tfbs_score_tracks = None;
         self.mark_dna_layout_dirty();
         self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
@@ -15858,6 +15910,7 @@ impl MainAreaDna {
                     .default_open(true)
                     .show(ui, |ui| {
                 let mut tfbs_panel_state_changed = false;
+                let mut tfbs_hit_scan_settings_changed = false;
                 let mut tfbs_score_track_settings_changed = false;
                 ui.horizontal(|ui| {
                     if ui
@@ -15865,6 +15918,7 @@ impl MainAreaDna {
                         .changed()
                     {
                         tfbs_panel_state_changed = true;
+                        tfbs_hit_scan_settings_changed = true;
                         tfbs_score_track_settings_changed = true;
                     }
                     if self.tfbs_use_all_motifs {
@@ -15877,6 +15931,7 @@ impl MainAreaDna {
                         ui.label("Selected motifs (IDs/names/IUPAC)");
                         if ui.text_edit_singleline(&mut self.tfbs_motifs).changed() {
                             tfbs_panel_state_changed = true;
+                            tfbs_hit_scan_settings_changed = true;
                             tfbs_score_track_settings_changed = true;
                         }
                     });
@@ -15892,6 +15947,7 @@ impl MainAreaDna {
                         {
                             self.tfbs_motifs.clear();
                             tfbs_panel_state_changed = true;
+                            tfbs_hit_scan_settings_changed = true;
                             tfbs_score_track_settings_changed = true;
                         }
                     });
@@ -15929,6 +15985,7 @@ impl MainAreaDna {
                                     {
                                         self.add_tfbs_motif_selection(&motif.id);
                                         tfbs_panel_state_changed = true;
+                                        tfbs_hit_scan_settings_changed = true;
                                         tfbs_score_track_settings_changed = true;
                                     }
                                     if let Some(name) = &motif.name {
@@ -15948,6 +16005,7 @@ impl MainAreaDna {
                     ui.label("min llr_bits");
                     if ui.text_edit_singleline(&mut self.tfbs_min_llr_bits).changed() {
                         tfbs_panel_state_changed = true;
+                        tfbs_hit_scan_settings_changed = true;
                     }
                     ui.label("min llr_quantile")
                         .on_hover_text(llr_quantile_help);
@@ -15956,6 +16014,7 @@ impl MainAreaDna {
                         .changed()
                     {
                         tfbs_panel_state_changed = true;
+                        tfbs_hit_scan_settings_changed = true;
                     }
                     if ui
                         .checkbox(&mut self.tfbs_clear_existing, "Clear previous TFBS")
@@ -15971,6 +16030,7 @@ impl MainAreaDna {
                         .changed()
                     {
                         tfbs_panel_state_changed = true;
+                        tfbs_hit_scan_settings_changed = true;
                     }
                 });
                 ui.horizontal(|ui| {
@@ -15981,6 +16041,7 @@ impl MainAreaDna {
                         .changed()
                     {
                         tfbs_panel_state_changed = true;
+                        tfbs_hit_scan_settings_changed = true;
                     }
                 });
                 ui.separator();
@@ -16147,6 +16208,9 @@ impl MainAreaDna {
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
+                if tfbs_hit_scan_settings_changed {
+                    self.cached_tfbs_hit_scan = None;
+                }
                 if tfbs_score_track_settings_changed {
                     self.cached_tfbs_score_tracks = None;
                 }
@@ -16185,6 +16249,55 @@ impl MainAreaDna {
                     self.save_engine_ops_state();
                 }
             });
+
+                egui::CollapsingHeader::new("Direct scan inspectors")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.small(
+                            egui::RichText::new(
+                                "Toolbar actions `RE scan`, `TFBS scan`, and `TFBS score tracks` cache their shared engine reports here so you can inspect the same portable records before exporting them.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if ui
+                                .add_enabled(
+                                    self.cached_restriction_site_scan.is_some(),
+                                    egui::Button::new(
+                                        "Export cached restriction-site scan JSON...",
+                                    ),
+                                )
+                                .on_hover_text(
+                                    "Write the currently cached restriction-site scan through the shared FindRestrictionSites engine route.",
+                                )
+                                .clicked()
+                            {
+                                self.export_cached_restriction_site_scan_json();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.cached_tfbs_hit_scan.is_some(),
+                                    egui::Button::new("Export cached TFBS hit scan JSON..."),
+                                )
+                                .on_hover_text(
+                                    "Write the currently cached TFBS hit scan through the shared ScanTfbsHits engine route.",
+                                )
+                                .clicked()
+                            {
+                                self.export_cached_tfbs_hit_scan_json();
+                            }
+                        });
+                        Self::render_restriction_site_scan_summary_panel(
+                            ui,
+                            self.cached_restriction_site_scan.as_ref(),
+                        );
+                        ui.add_space(6.0);
+                        Self::render_tfbs_hit_scan_summary_panel(
+                            ui,
+                            self.cached_tfbs_hit_scan.as_ref(),
+                        );
+                    });
 
                 egui::CollapsingHeader::new("Isoform architecture panels")
                     .default_open(false)
@@ -17959,6 +18072,7 @@ impl MainAreaDna {
         let Some(report) = result.restriction_site_scan else {
             return;
         };
+        self.cached_restriction_site_scan = Some(report.clone());
         let hit_preview = report
             .rows
             .iter()
@@ -18052,6 +18166,7 @@ impl MainAreaDna {
         let Some(report) = result.tfbs_hit_scan else {
             return;
         };
+        self.cached_tfbs_hit_scan = Some(report.clone());
         let hit_preview = report
             .rows
             .iter()
@@ -18255,6 +18370,247 @@ impl MainAreaDna {
         let _ = self.run_tfbs_score_tracks_for_active_sequence(None, "whole sequence");
     }
 
+    fn scan_target_summary_line(
+        target_kind: &str,
+        target_label: &str,
+        source_sequence_length_bp: usize,
+        scan_topology: crate::engine::InlineSequenceTopology,
+    ) -> String {
+        let label = if target_label.trim().is_empty() {
+            "<unnamed>"
+        } else {
+            target_label.trim()
+        };
+        format!(
+            "target: {} '{}' | source length {} bp | topology {}",
+            target_kind,
+            label,
+            source_sequence_length_bp,
+            scan_topology.as_str()
+        )
+    }
+
+    fn render_restriction_site_scan_summary_panel(
+        ui: &mut egui::Ui,
+        report: Option<&RestrictionSiteScanReport>,
+    ) {
+        let Some(report) = report else {
+            ui.small(
+                egui::RichText::new(
+                    "No restriction-site scan cached yet. Use the toolbar menu `RE scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Restriction-site scan").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} matched site(s) across {}..{} | {} enzyme(s) scanned{}",
+                    report.matched_site_count,
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                    report.enzymes_scanned.len(),
+                    report
+                        .max_sites_per_enzyme
+                        .map(|cap| format!(" | per-enzyme cap {}", cap))
+                        .unwrap_or_default()
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(Self::scan_target_summary_line(
+                    &report.target_kind,
+                    &report.target_label,
+                    report.source_sequence_length_bp,
+                    report.scan_topology,
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "skipped due to per-enzyme cap: {}",
+                        report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
+            let preview_count = preview_rows.len();
+            if preview_rows.is_empty() {
+                ui.small(
+                    egui::RichText::new(
+                        "The cached scan finished successfully but found no matching restriction sites in the selected span.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            }
+            egui::Grid::new(("restriction_site_scan_summary_grid", report.target_label.as_str()))
+                .num_columns(4)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.small(egui::RichText::new("enzyme").strong());
+                    ui.small(egui::RichText::new("site").strong());
+                    ui.small(egui::RichText::new("cuts").strong());
+                    ui.small(egui::RichText::new("geometry").strong());
+                    ui.end_row();
+                    for row in &preview_rows {
+                        ui.small(row.enzyme_name.as_str());
+                        ui.small(format!(
+                            "{}..{}{}",
+                            row.source_recognition_start_0based,
+                            row.source_recognition_end_0based_exclusive,
+                            if row.forward_strand { " +" } else { " -" }
+                        ));
+                        ui.small(match (
+                            row.source_forward_cut_0based,
+                            row.source_reverse_cut_0based,
+                        ) {
+                            (Some(forward), Some(reverse)) => format!("{forward} / {reverse}"),
+                            (Some(forward), None) => format!("{forward} / -"),
+                            (None, Some(reverse)) => format!("- / {reverse}"),
+                            (None, None) => "-".to_string(),
+                        });
+                        ui.small(match (
+                            row.source_opening_start_0based,
+                            row.source_opening_end_0based_exclusive,
+                        ) {
+                            (Some(start), Some(end)) => {
+                                format!("{} [{}..{}]", row.end_geometry, start, end)
+                            }
+                            _ => row.end_geometry.clone(),
+                        });
+                        ui.end_row();
+                    }
+                });
+            if report.rows.len() > preview_count {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "showing first {} of {} matching sites",
+                        preview_count,
+                        report.rows.len()
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+    }
+
+    fn render_tfbs_hit_scan_summary_panel(ui: &mut egui::Ui, report: Option<&TfbsHitScanReport>) {
+        let Some(report) = report else {
+            ui.small(
+                egui::RichText::new(
+                    "No TFBS hit scan cached yet. Use the toolbar menu `TFBS scan` for current selection, visible span, or whole sequence, then inspect or export the cached report here.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("TFBS hit scan").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} matched hit(s) across {}..{} | {} motif(s) scanned{}",
+                    report.matched_hit_count,
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                    report.motifs_scanned.len(),
+                    if report.truncated_at_max_hits {
+                        format!(
+                            " | truncated at {} hit(s)",
+                            report.max_hits.unwrap_or_default()
+                        )
+                    } else {
+                        String::new()
+                    }
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(Self::scan_target_summary_line(
+                    &report.target_kind,
+                    &report.target_label,
+                    report.source_sequence_length_bp,
+                    report.scan_topology,
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            let mut threshold_bits = Vec::new();
+            if let Some(value) = report.default_min_llr_bits {
+                threshold_bits.push(format!("default llr_bits >= {:.2}", value));
+            }
+            if let Some(value) = report.default_min_llr_quantile {
+                threshold_bits.push(format!("default llr_quantile >= {:.3}", value));
+            }
+            if !report.per_tf_thresholds.is_empty() {
+                threshold_bits.push(format!(
+                    "{} per-TF override(s)",
+                    report.per_tf_thresholds.len()
+                ));
+            }
+            if !threshold_bits.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!("thresholds: {}", threshold_bits.join(" | ")))
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+            let preview_rows = report.rows.iter().take(12).collect::<Vec<_>>();
+            let preview_count = preview_rows.len();
+            if preview_rows.is_empty() {
+                ui.small(
+                    egui::RichText::new(
+                        "The cached hit scan finished successfully but found no TFBS matches in the selected span with the current motif/threshold settings.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            }
+            egui::Grid::new(("tfbs_hit_scan_summary_grid", report.target_label.as_str()))
+                .num_columns(5)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.small(egui::RichText::new("motif").strong());
+                    ui.small(egui::RichText::new("span").strong());
+                    ui.small(egui::RichText::new("strand").strong());
+                    ui.small(egui::RichText::new("llr bits").strong());
+                    ui.small(egui::RichText::new("match").strong());
+                    ui.end_row();
+                    for row in &preview_rows {
+                        let label = row.tf_name.as_deref().unwrap_or(&row.tf_id);
+                        ui.small(label);
+                        ui.small(format!(
+                            "{}..{}{}",
+                            row.source_match_start_0based,
+                            row.source_match_end_0based_exclusive,
+                            if row.wraps_origin { " wrap" } else { "" }
+                        ));
+                        ui.small(if row.forward_strand { "+" } else { "-" });
+                        ui.small(format!("{:.2}", row.llr_bits));
+                        let matched = if row.matched_sequence.len() > 18 {
+                            format!("{}...", &row.matched_sequence[..18])
+                        } else {
+                            row.matched_sequence.clone()
+                        };
+                        ui.small(matched);
+                        ui.end_row();
+                    }
+                });
+            if report.rows.len() > preview_count {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "showing first {} of {} matching hits",
+                        preview_count,
+                        report.rows.len()
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+    }
+
     fn default_cached_tfbs_score_tracks_svg_file_name(report: &TfbsScoreTrackReport) -> String {
         let target_label = if report.target_label.trim().is_empty() {
             report.seq_id.as_str()
@@ -18268,6 +18624,106 @@ impl MainAreaDna {
             report.view_end_0based_exclusive,
             report.score_kind.as_str()
         )
+    }
+
+    fn default_cached_restriction_site_scan_json_file_name(
+        report: &RestrictionSiteScanReport,
+    ) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            "restriction_scan"
+        } else {
+            report.target_label.trim()
+        };
+        format!(
+            "{}_restriction_scan_{}-{}.json",
+            Self::sanitize_export_name_component(target_label, "restriction_scan"),
+            report.scan_start_0based,
+            report.scan_end_0based_exclusive
+        )
+    }
+
+    fn export_cached_restriction_site_scan_json(&mut self) {
+        let Some(report) = self.cached_restriction_site_scan.clone() else {
+            self.op_status =
+                "No cached restriction-site scan available for JSON export".to_string();
+            return;
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        };
+        let default_name = Self::default_cached_restriction_site_scan_json_file_name(&report);
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Restriction-site scan export canceled".to_string();
+            return;
+        };
+        let result =
+            self.apply_operation_with_feedback_and_result(Operation::FindRestrictionSites {
+                target: SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based: Some(report.scan_start_0based),
+                    span_end_0based_exclusive: Some(report.scan_end_0based_exclusive),
+                },
+                enzymes: report.enzyme_filters.clone(),
+                max_sites_per_enzyme: report.max_sites_per_enzyme,
+                include_cut_geometry: report.include_cut_geometry,
+                path: Some(path.display().to_string()),
+            });
+        if let Some(updated_report) = result.and_then(|row| row.restriction_site_scan) {
+            self.cached_restriction_site_scan = Some(updated_report);
+        }
+    }
+
+    fn default_cached_tfbs_hit_scan_json_file_name(report: &TfbsHitScanReport) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            "tfbs_hits"
+        } else {
+            report.target_label.trim()
+        };
+        format!(
+            "{}_tfbs_hits_{}-{}.json",
+            Self::sanitize_export_name_component(target_label, "tfbs_hits"),
+            report.scan_start_0based,
+            report.scan_end_0based_exclusive
+        )
+    }
+
+    fn export_cached_tfbs_hit_scan_json(&mut self) {
+        let Some(report) = self.cached_tfbs_hit_scan.clone() else {
+            self.op_status = "No cached TFBS hit scan available for JSON export".to_string();
+            return;
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        };
+        let default_name = Self::default_cached_tfbs_hit_scan_json_file_name(&report);
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "TFBS hit scan export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(Operation::ScanTfbsHits {
+            target: SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based: Some(report.scan_start_0based),
+                span_end_0based_exclusive: Some(report.scan_end_0based_exclusive),
+            },
+            motifs: report.motifs_requested.clone(),
+            min_llr_bits: report.default_min_llr_bits,
+            min_llr_quantile: report.default_min_llr_quantile,
+            per_tf_thresholds: report.per_tf_thresholds.clone(),
+            max_hits: report.max_hits,
+            path: Some(path.display().to_string()),
+        });
+        if let Some(updated_report) = result.and_then(|row| row.tfbs_hit_scan) {
+            self.cached_tfbs_hit_scan = Some(updated_report);
+        }
     }
 
     fn export_cached_tfbs_score_tracks_svg(&mut self) {
@@ -43307,6 +43763,8 @@ impl MainAreaDna {
         self.tfbs_clear_existing = s.tfbs_clear_existing;
         self.tfbs_score_track_value_kind = s.tfbs_score_track_value_kind;
         self.tfbs_score_track_clip_negative = s.tfbs_score_track_clip_negative;
+        self.cached_restriction_site_scan = None;
+        self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;

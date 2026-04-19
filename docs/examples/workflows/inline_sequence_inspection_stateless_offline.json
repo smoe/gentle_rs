@@ -1,0 +1,97 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "inline_sequence_inspection_stateless_offline",
+  "title": "Stateless inline-sequence inspection (offline)",
+  "summary": "Runs direct restriction-site inspection, TFBS hit scanning, TFBS score-track summarization, and SVG export on one synthetic inline DNA sequence without first materializing project state.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": [
+    "tutorial",
+    "offline",
+    "inline-sequence",
+    "restriction",
+    "tfbs",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_inline_sequence_inspection_stateless_offline",
+    "ops": [
+      {
+        "FindRestrictionSites": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "inline_sequence_inspection_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 47
+          },
+          "enzymes": [
+            "EcoRI",
+            "SmaI",
+            "BamHI"
+          ],
+          "include_cut_geometry": true,
+          "path": "artifacts/inline_sequence_inspection.restriction_scan.json"
+        }
+      },
+      {
+        "ScanTfbsHits": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "inline_sequence_inspection_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 47
+          },
+          "motifs": [
+            "SP1",
+            "TP73"
+          ],
+          "min_llr_quantile": 0.95,
+          "max_hits": 50,
+          "path": "artifacts/inline_sequence_inspection.tfbs_hits.json"
+        }
+      },
+      {
+        "SummarizeTfbsScoreTracks": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "inline_sequence_inspection_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 47
+          },
+          "motifs": [
+            "SP1",
+            "TP73"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/inline_sequence_inspection.tfbs_score_tracks.json"
+        }
+      },
+      {
+        "RenderTfbsScoreTracksSvg": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "inline_sequence_inspection_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 47
+          },
+          "motifs": [
+            "SP1",
+            "TP73"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/inline_sequence_inspection.tfbs_score_tracks.svg"
+        }
+      }
+    ]
+  }
+}

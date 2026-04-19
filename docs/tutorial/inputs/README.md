@@ -73,3 +73,36 @@ Current intended use in GENtle:
 - Pair them with the bundled `3100.ab1` trace via either:
   - `seq-trace import` + `seq-confirm run --trace-id ...`, or
   - GUI `Patterns -> Sequencing Confirmation...` raw trace import.
+
+## Stateless Sequence-Inspection Demo
+
+File:
+
+- `inline_sequence_inspection_demo.fa`
+
+Purpose:
+
+- Minimal synthetic local sequence for the direct restriction-site / TFBS hit /
+  TFBS score-track tutorial.
+- Lets the GUI path use one tiny FASTA while the CLI/ClawBio parity route uses
+  the same bases through the shared `inline_sequence` operand.
+
+Provenance:
+
+- Hand-crafted synthetic tutorial input created directly in this repository.
+- Exact sequence:
+  `GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC`
+- The sequence intentionally contains:
+  - `EcoRI` (`GAATTC`)
+  - blunt `SmaI` (`CCCGGG`)
+  - `BamHI` (`GGATCC`)
+  - one GC-rich `SP1` teaching region plus one `TP73` teaching region
+
+Current intended use in GENtle:
+
+- Load in
+  [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](../stateless_sequence_inspection_gui_cli.md)
+  for the GUI toolbar path (`RE scan`, `TFBS scan`, `TFBS score tracks`).
+- Compare against the matching workflow example
+  [`docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`](../../examples/workflows/inline_sequence_inspection_stateless_offline.json),
+  which uses the same bases through state-optional inline-sequence operands.

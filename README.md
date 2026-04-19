@@ -477,6 +477,39 @@ peak, but which ones peak in the same neighborhoods. In the current slice,
 `SP1 (MA0079.5)` and `PATZ1 (MA1961.2)` form the strongest synchronized pair,
 with `KLF4 (MA0039.5)` also tracking the same neighborhood.
 
+### Stateless Sequence Inspection
+
+GENtle now also has a very small state-optional inspection slice for direct DNA
+questions: paste or embed one ASCII sequence, then ask for restriction sites,
+TFBS hits, or continuous TFBS score tracks without first creating a stored
+sequence record.
+
+Canonical offline workflow example:
+
+- [`docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`](docs/examples/workflows/inline_sequence_inspection_stateless_offline.json)
+
+Matching GUI/CLI tutorial:
+
+- [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](docs/tutorial/stateless_sequence_inspection_gui_cli.md)
+
+Matching ClawBio workflow request:
+
+- [`integrations/clawbio/skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json`](integrations/clawbio/skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json)
+
+Replay the canonical workflow from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  workflow @docs/examples/workflows/inline_sequence_inspection_stateless_offline.json
+```
+
+This writes four portable artifacts from one synthetic inline sequence:
+
+- restriction-site JSON
+- TFBS-hit JSON
+- TFBS score-track JSON
+- TFBS score-track SVG
+
 ### Ongoing Work With ClawBio
 
 ![GENtle VKORC1/rs9923231 luciferase hero figure](docs/figures/vkorc1_rs9923231_luciferase_hero.png)

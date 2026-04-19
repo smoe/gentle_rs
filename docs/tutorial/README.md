@@ -99,6 +99,12 @@ If you want to use GENtle with agents, MCP, or the command line:
 - Use the agent interfaces tutorial:
   [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 
+If you want one short direct-sequence inspection test across GUI, CLI, and
+ClawBio:
+
+- Use the stateless sequence-inspection tutorial:
+  [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](./stateless_sequence_inspection_gui_cli.md)
+
 If you want to validate a construct from imported ABI/AB1/SCF evidence in the
 GUI today:
 
@@ -169,6 +175,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
 | [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Physical rack export, README-grade isometric figure generation, carrier-label/OpenSCAD handoff | Hand-written walkthrough for taking the arrangement-ready Gibson starter into the linked rack layer and exporting one pseudo-3D/isometric hero SVG plus the other physical carrier projections. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
+| [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](./stateless_sequence_inspection_gui_cli.md) | GUI walkthrough + CLI/ClawBio parity | `manual/hybrid` | Direct restriction-site / TFBS / score-track inspection on one tiny synthetic sequence | Uses one local FASTA for the GUI and the matching state-optional workflow example plus ClawBio request for parity. |
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |

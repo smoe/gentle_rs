@@ -161,6 +161,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_blast_puc19_short.json --output /tmp/gentle_puc19_blast
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_find_restriction_sites_inline_sequence_ecori_smai.json --output /tmp/gentle_inline_restriction_scan
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json --output /tmp/gentle_inline_tfbs_scan
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json --output /tmp/gentle_inline_sequence_inspection
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_summary.json --output /tmp/gentle_tp73_tfbs_score_tracks_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json --output /tmp/gentle_tp73_tfbs_score_tracks_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json --output /tmp/gentle_jaspar_sp1_rest
@@ -238,6 +239,11 @@ Notes:
   `request_scan_tfbs_hits_inline_sequence_sp1_tp73.json` are stateless direct
   DNA examples; they inspect pasted DNA text through shared inline-sequence
   operands instead of requiring a pre-existing GENtle state record
+- `request_workflow_inline_sequence_inspection_stateless.json` is the matching
+  tiny bundled workflow route for that same idea:
+  one inline sequence, one restriction-site JSON report, one TFBS-hit JSON
+  report, one TFBS score-track JSON summary, and one TFBS score-track SVG,
+  all without a pre-created GENtle state file
 - `request_workflow_tp73_tfbs_score_tracks_summary.json` and
   `request_workflow_tp73_tfbs_score_tracks_svg.json` expose the newer TFBS
   presentation layer for ClawBio: one JSON score-track summary and one stacked

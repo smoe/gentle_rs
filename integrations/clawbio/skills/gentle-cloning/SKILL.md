@@ -559,6 +559,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json \
   --output /tmp/gentle_clawbio_inline_tfbs_scan
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json \
+  --output /tmp/gentle_clawbio_inline_sequence_inspection
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_summary.json \
   --output /tmp/gentle_clawbio_tp73_tfbs_score_tracks_summary
 python clawbio.py run gentle-cloning \
@@ -871,6 +874,10 @@ Apply the following methodology:
   - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
     - stateless direct-DNA example: scans one pasted fragment for SP1/TP73
       hits without creating TFBS features or a project-state record first
+  - `examples/request_workflow_inline_sequence_inspection_stateless.json`
+    - workflow-backed stateless direct-DNA example: reuses one inline sequence
+      to emit restriction-site JSON, TFBS-hit JSON, TFBS score-track JSON, and
+      one TFBS score-track SVG without requiring a saved GENtle state file
   - `examples/request_workflow_tp73_tfbs_score_tracks_summary.json`
     - workflow-backed TFBS presentation example: loads the bundled TP73 locus
       source and writes the shared continuous score-track JSON summary for one

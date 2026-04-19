@@ -2083,6 +2083,18 @@ order. Durable architecture constraints and decisions remain in
             `TfbsScoreTrackReport` directly in the DNA window, and exports that
             cached view through the same `RenderTfbsScoreTracksSvg` engine
             route used by shell/CLI
+          - GUI DNA-window `Direct scan inspectors` now give `RE scan` and
+            `TFBS scan` the same cached-report treatment as score tracks:
+            toolbar scans populate in-window portable tables and can be
+            re-exported as shared JSON through `FindRestrictionSites` and
+            `ScanTfbsHits`
+        - implemented small tutorial/demo follow-up:
+          - offline workflow example:
+            `docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`
+          - matching ClawBio workflow request:
+            `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json`
+          - matching follow-and-test tutorial:
+            `docs/tutorial/stateless_sequence_inspection_gui_cli.md`
   - `SetParameter` now also exposes the shared restriction-display state used
     by GUI + SVG export:
     - `show_restriction_enzymes`

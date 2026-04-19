@@ -1782,8 +1782,9 @@ Controls:
      - whole active sequence
    - Uses the shared `FindRestrictionSites` engine operation rather than a
      GUI-only quick scan, so CLI/shell/agent calls see the same report schema.
-   - Status feedback summarizes the top hits inline, while the full machine-
-     readable report remains available through the shared operation result.
+   - Status feedback summarizes the top hits inline.
+   - The same window now also caches the shared report in `Direct scan inspectors`,
+     where you can inspect the portable hit table and export it again as JSON.
 20. TFBS scan
    - Toolbar menu for direct non-mutating TFBS/JASPAR hit inspection on the
      current active DNA window.
@@ -1797,6 +1798,9 @@ Controls:
      quick scan, so CLI/shell/agent calls see the same report schema.
    - Status feedback summarizes the top hits inline; the quick GUI path caps
      the report at 200 hits to keep inspection responsive.
+   - The same window now also caches the shared hit report in `Direct scan
+     inspectors`, where you can inspect the portable hit table and export it
+     again as JSON.
 21. TFBS score tracks
    - Toolbar menu for direct non-mutating continuous TFBS/JASPAR score
      inspection on the current active DNA window.
@@ -3213,6 +3217,13 @@ Safety behavior:
 - The DNA-window toolbar `TFBS score tracks` menu reuses the same motif
   selection for non-mutating continuous score inspection of the current
   selection, visible span, or whole sequence.
+- The same DNA window now also exposes a `Direct scan inspectors` section:
+  - `RE scan` now populates a cached restriction-site table plus shared JSON
+    export button
+  - `TFBS scan` now populates a cached TFBS-hit table plus shared JSON export
+    button
+  - `TFBS score tracks` remains the cached score-track/SVG sibling in the same
+    window
 - The same `TFBS annotation` panel now also includes one cached score-track
   inspector:
   - choose the exported/displayed `value kind`
