@@ -1784,6 +1784,13 @@ Shared shell command:
           `rna-reads build-transcript-index /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna_plus_ncrna.rna_read_index.json --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
         - reuse the prepared index in later audits:
           `rna-reads inspect-concatemers REPORT_ID --transcript-index /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna_plus_ncrna.rna_read_index.json`
+      - current practical note:
+        for first real human transcriptome-scale runs, prefer passing the
+        Ensembl FASTAs directly with repeated `--transcript-fasta`. The new
+        reusable JSON transcript-catalog index is correct on focused test
+        cases, but the current whole-transcriptome JSON format is still heavy
+        enough that building a full human shared artifact may be slower and
+        larger than is pleasant in day-to-day use.
       - implementation note:
         `build-transcript-index` now prepares a reusable transcript catalog
         JSON with per-template k-mer positions so repeated concatemer audits do

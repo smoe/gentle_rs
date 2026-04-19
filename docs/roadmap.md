@@ -3311,6 +3311,11 @@ Status:
         `--transcript-index PATH` files
       - the prepared JSON stores transcript/gene identity plus precomputed
         per-template k-mer positions for repeated audits
+      - first real whole-human trial note:
+        the current JSON catalog format is still heavy enough that building one
+        shared `cdna + ncrna` artifact may be slower/larger than is pleasant
+        for day-to-day use, so the practical recommendation remains to use
+        repeated `--transcript-fasta` first and slim the prepared format later
     - still missing if performance pressure warrants it later:
       a heavier fully joined global inverted seed index across external
       catalogs rather than the current reusable per-template catalog index
