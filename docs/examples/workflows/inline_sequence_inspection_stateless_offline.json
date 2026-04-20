@@ -46,8 +46,8 @@
             "span_end_0based_exclusive": 46
           },
           "motifs": [
-            "SP1",
-            "TP73"
+            "GGGGCGGGG",
+            "ATGTGTAAC"
           ],
           "min_llr_quantile": 0.95,
           "max_hits": 50,
@@ -65,8 +65,8 @@
             "span_end_0based_exclusive": 46
           },
           "motifs": [
-            "SP1",
-            "TP73"
+            "GGGGCGGGG",
+            "ATGTGTAAC"
           ],
           "score_kind": "llr_background_tail_log10",
           "clip_negative": false,
@@ -84,8 +84,8 @@
             "span_end_0based_exclusive": 46
           },
           "motifs": [
-            "SP1",
-            "TP73"
+            "GGGGCGGGG",
+            "ATGTGTAAC"
           ],
           "score_kind": "llr_background_tail_log10",
           "clip_negative": false,

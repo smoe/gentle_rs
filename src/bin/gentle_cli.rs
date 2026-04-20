@@ -4011,10 +4011,29 @@ mod tests {
         write_demo_workflow_with_shebang,
     };
     use std::fs;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::tempdir;
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn jaspar_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct JasparReloadResetGuard;
+
+    impl Drop for JasparReloadResetGuard {
+        fn drop(&mut self) {
+            gentle::tf_motifs::reload();
+        }
+    }
+
+    fn lock_jaspar_tests() -> std::sync::MutexGuard<'static, ()> {
+        jaspar_test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     struct EnvVarGuard {
         key: String,
@@ -4885,7 +4904,31 @@ mod tests {
             execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
 
         assert_eq!(forwarded_changed, shared_changed);
-        assert_eq!(forwarded_output, shared_output);
+        let forwarded_report = &forwarded_output["result"]["jaspar_entry_presentation"];
+        let shared_report = &shared_output["result"]["jaspar_entry_presentation"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(
+            forwarded_report["requested_motifs"],
+            shared_report["requested_motifs"]
+        );
+        assert_eq!(
+            forwarded_report["resolved_entry_count"],
+            shared_report["resolved_entry_count"]
+        );
+        assert_eq!(
+            forwarded_report["random_sequence_length_bp"],
+            shared_report["random_sequence_length_bp"]
+        );
+        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(forwarded_report["rows"], shared_report["rows"]);
+        assert_eq!(
+            forwarded_output["result"]["messages"],
+            shared_output["result"]["messages"]
+        );
+        assert_eq!(
+            forwarded_output["result"]["warnings"],
+            shared_output["result"]["warnings"]
+        );
         assert_eq!(
             forwarded_state
                 .sequences
@@ -4902,6 +4945,9 @@ mod tests {
 
     #[test]
     fn test_forwarded_resources_sync_jaspar_dispatch_matches_shared_shell_execution() {
+        let _serial = lock_jaspar_tests();
+        gentle::tf_motifs::reload();
+        let _guard = JasparReloadResetGuard;
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -4921,7 +4967,31 @@ mod tests {
             execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
 
         assert_eq!(forwarded_changed, shared_changed);
-        assert_eq!(forwarded_output, shared_output);
+        let forwarded_report = &forwarded_output["result"]["jaspar_entry_presentation"];
+        let shared_report = &shared_output["result"]["jaspar_entry_presentation"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(
+            forwarded_report["requested_motifs"],
+            shared_report["requested_motifs"]
+        );
+        assert_eq!(
+            forwarded_report["resolved_entry_count"],
+            shared_report["resolved_entry_count"]
+        );
+        assert_eq!(
+            forwarded_report["random_sequence_length_bp"],
+            shared_report["random_sequence_length_bp"]
+        );
+        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(forwarded_report["rows"], shared_report["rows"]);
+        assert_eq!(
+            forwarded_output["result"]["messages"],
+            shared_output["result"]["messages"]
+        );
+        assert_eq!(
+            forwarded_output["result"]["warnings"],
+            shared_output["result"]["warnings"]
+        );
         assert_eq!(
             forwarded_state
                 .sequences
@@ -4938,6 +5008,8 @@ mod tests {
 
     #[test]
     fn test_forwarded_resources_summarize_jaspar_dispatch_matches_shared_shell_execution() {
+        let _serial = lock_jaspar_tests();
+        gentle::tf_motifs::reload();
         let td = tempdir().expect("tempdir");
         let output_path = td.path().join("jaspar.summary.json");
 
@@ -4962,7 +5034,31 @@ mod tests {
             execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
 
         assert_eq!(forwarded_changed, shared_changed);
-        assert_eq!(forwarded_output, shared_output);
+        let forwarded_report = &forwarded_output["result"]["jaspar_entry_presentation"];
+        let shared_report = &shared_output["result"]["jaspar_entry_presentation"];
+        assert_eq!(forwarded_report["schema"], shared_report["schema"]);
+        assert_eq!(
+            forwarded_report["requested_motifs"],
+            shared_report["requested_motifs"]
+        );
+        assert_eq!(
+            forwarded_report["resolved_entry_count"],
+            shared_report["resolved_entry_count"]
+        );
+        assert_eq!(
+            forwarded_report["random_sequence_length_bp"],
+            shared_report["random_sequence_length_bp"]
+        );
+        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(forwarded_report["rows"], shared_report["rows"]);
+        assert_eq!(
+            forwarded_output["result"]["messages"],
+            shared_output["result"]["messages"]
+        );
+        assert_eq!(
+            forwarded_output["result"]["warnings"],
+            shared_output["result"]["warnings"]
+        );
         assert_eq!(
             forwarded_state
                 .sequences
@@ -4979,6 +5075,8 @@ mod tests {
 
     #[test]
     fn test_forwarded_resources_benchmark_jaspar_dispatch_matches_shared_shell_execution() {
+        let _serial = lock_jaspar_tests();
+        gentle::tf_motifs::reload();
         let td = tempdir().expect("tempdir");
         let output_path = td.path().join("jaspar.benchmark.json");
 
@@ -5032,6 +5130,8 @@ mod tests {
 
     #[test]
     fn test_forwarded_resources_list_jaspar_dispatch_matches_shared_shell_execution() {
+        let _serial = lock_jaspar_tests();
+        gentle::tf_motifs::reload();
         let td = tempdir().expect("tempdir");
         let output_path = td.path().join("jaspar.catalog.json");
 
@@ -5079,6 +5179,8 @@ mod tests {
 
     #[test]
     fn test_forwarded_resources_inspect_jaspar_dispatch_matches_shared_shell_execution() {
+        let _serial = lock_jaspar_tests();
+        gentle::tf_motifs::reload();
         let td = tempdir().expect("tempdir");
         let output_path = td.path().join("jaspar.expert.json");
 

@@ -89,6 +89,20 @@ fn jaspar_test_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+struct JasparReloadResetGuard;
+
+impl Drop for JasparReloadResetGuard {
+    fn drop(&mut self) {
+        crate::tf_motifs::reload();
+    }
+}
+
+fn lock_jaspar_tests() -> std::sync::MutexGuard<'static, ()> {
+    jaspar_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn with_blast_async_test_overrides<R>(
     max_concurrent: usize,
     worker_delay_ms: u64,
@@ -11974,6 +11988,9 @@ fn execute_resources_sync_rebase_with_local_fixture() {
 
 #[test]
 fn execute_resources_sync_jaspar_with_local_fixture() {
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
+    let _guard = JasparReloadResetGuard;
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.sync.json");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -12009,7 +12026,8 @@ fn execute_resources_sync_jaspar_with_local_fixture() {
 
 #[test]
 fn execute_resources_summarize_jaspar_writes_report_and_returns_payload() {
-    let _serial = jaspar_test_lock().lock().expect("jaspar test lock");
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.summary.json");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -12050,7 +12068,8 @@ fn execute_resources_summarize_jaspar_writes_report_and_returns_payload() {
 
 #[test]
 fn execute_resources_benchmark_jaspar_writes_report_and_returns_payload() {
-    let _serial = jaspar_test_lock().lock().expect("jaspar test lock");
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.benchmark.json");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -12133,7 +12152,8 @@ fn execute_resources_sync_attract_with_local_fixture() {
 
 #[test]
 fn execute_resources_inspect_jaspar_writes_report_and_returns_payload() {
-    let _serial = jaspar_test_lock().lock().expect("jaspar test lock");
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.expert.json");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -12171,7 +12191,8 @@ fn execute_resources_inspect_jaspar_writes_report_and_returns_payload() {
 
 #[test]
 fn execute_resources_list_jaspar_writes_report_and_returns_payload() {
-    let _serial = jaspar_test_lock().lock().expect("jaspar test lock");
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.catalog.json");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -12405,14 +12426,9 @@ fn execute_services_status_reports_combined_readiness() {
 
 #[test]
 fn execute_resources_sync_jaspar_reloads_motif_registry_from_synced_output() {
-    let _serial = jaspar_test_lock().lock().expect("jaspar test lock");
-    struct ReloadResetGuard;
-    impl Drop for ReloadResetGuard {
-        fn drop(&mut self) {
-            crate::tf_motifs::reload();
-        }
-    }
-    let _guard = ReloadResetGuard;
+    let _serial = lock_jaspar_tests();
+    crate::tf_motifs::reload();
+    let _guard = JasparReloadResetGuard;
 
     let td = tempdir().expect("tempdir");
     let unique = JASPAR_RELOAD_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
