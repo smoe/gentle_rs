@@ -19,6 +19,8 @@ pub(super) struct RnaReadInterpretOpsUiState {
     pub(super) report_id: String,
     #[serde(default = "super::default_true")]
     pub(super) report_id_auto_sync: bool,
+    #[serde(default)]
+    pub(super) report_id_auto_sync_explicit: bool,
     pub(super) scope: SplicingScopePreset,
     pub(super) profile: RnaReadInterpretationProfile,
     pub(super) input_format: RnaReadInputFormat,
@@ -65,6 +67,7 @@ impl Default for RnaReadInterpretOpsUiState {
             input_path: String::new(),
             report_id: String::new(),
             report_id_auto_sync: true,
+            report_id_auto_sync_explicit: true,
             scope: SplicingScopePreset::AllOverlappingBothStrands,
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
@@ -92,6 +95,18 @@ impl Default for RnaReadInterpretOpsUiState {
             align_phase_selection: RnaReadHitSelection::SeedPassed,
             show_advanced: false,
         }
+    }
+}
+
+impl RnaReadInterpretOpsUiState {
+    pub(super) fn normalize_loaded_state(&mut self) {
+        // Legacy saved UI state predates the explicit auto/manual toggle. When
+        // that marker is absent, treat non-empty report IDs as manual overrides
+        // so reopening an older workspace does not silently rename reports.
+        if !self.report_id_auto_sync_explicit && !self.report_id.trim().is_empty() {
+            self.report_id_auto_sync = false;
+        }
+        self.report_id_auto_sync_explicit = true;
     }
 }
 

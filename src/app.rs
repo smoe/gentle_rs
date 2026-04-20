@@ -41382,6 +41382,7 @@ Error: `{err}`"
                 ui.separator();
                 ui.strong("Recent job events");
                 egui::ScrollArea::vertical()
+                    .id_salt("background_jobs_recent_job_events_scroll")
                     .max_height(180.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41586,6 +41587,7 @@ Error: `{err}`"
                         ui.columns(2, |columns| {
                             columns[0].small("Would be removed");
                             egui::ScrollArea::vertical()
+                                .id_salt("background_jobs_retry_snapshots_removed_preview_scroll")
                                 .max_height(120.0)
                                 .show(&mut columns[0], |ui| {
                                     if filtered_snapshots.is_empty() {
@@ -41604,6 +41606,7 @@ Error: `{err}`"
                                 });
                             columns[1].small("Would remain");
                             egui::ScrollArea::vertical()
+                                .id_salt("background_jobs_retry_snapshots_retained_preview_scroll")
                                 .max_height(120.0)
                                 .show(&mut columns[1], |ui| {
                                     if dry_run_diff.retained.is_empty() {
@@ -41703,6 +41706,7 @@ Error: `{err}`"
                     self.retry_argument_snapshots.len()
                 ));
                 egui::ScrollArea::vertical()
+                    .id_salt("background_jobs_retry_snapshots_scroll")
                     .max_height(160.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41877,6 +41881,7 @@ Error: `{err}`"
                     self.retry_snapshot_cleanup_audit.len()
                 ));
                 egui::ScrollArea::vertical()
+                    .id_salt("background_jobs_retry_cleanup_audit_scroll")
                     .max_height(120.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
