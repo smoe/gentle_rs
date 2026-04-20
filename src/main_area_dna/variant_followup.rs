@@ -5,7 +5,7 @@
 //! through shared engine operations.
 
 use super::*;
-use crate::engine::TfbsScoreTrackCorrelationMetric;
+use crate::engine::{TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource};
 
 #[derive(Clone, Debug)]
 pub(super) struct VariantFollowupBundleArtifacts {
@@ -200,6 +200,8 @@ impl MainAreaDna {
             score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             score_track_clip_negative: true,
             score_track_correlation_metric: TfbsScoreTrackCorrelationMetric::Pearson,
+            score_track_correlation_signal_source:
+                TfbsScoreTrackCorrelationSignalSource::MaxStrands,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
             tfbs_focus_half_window_bp: "100".to_string(),
@@ -591,6 +593,9 @@ impl MainAreaDna {
                 end_0based_exclusive,
                 score_kind,
                 correlation_metric: self.variant_followup_ui.score_track_correlation_metric,
+                correlation_signal_source: self
+                    .variant_followup_ui
+                    .score_track_correlation_signal_source,
                 clip_negative,
                 path: path.display().to_string(),
             },
@@ -1905,13 +1910,8 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         report: &TfbsScoreTrackReport,
         correlation_metric: Option<&mut TfbsScoreTrackCorrelationMetric>,
+        correlation_signal_source: Option<&mut TfbsScoreTrackCorrelationSignalSource>,
     ) {
-        let Some(correlation) = report.correlation_summary.as_ref() else {
-            return;
-        };
-        if correlation.rows.is_empty() {
-            return;
-        }
         ui.add_space(8.0);
         ui.group(|ui| {
             ui.label(egui::RichText::new("TFBS track correlation").strong());
@@ -1936,16 +1936,132 @@ impl MainAreaDna {
                 }
                 None => TfbsScoreTrackCorrelationMetric::Pearson,
             };
+            let signal_source = match correlation_signal_source {
+                Some(signal_source) => {
+                    ui.horizontal(|ui| {
+                        ui.small("signal");
+                        egui::ComboBox::from_id_salt(
+                            "promoter_design_score_track_correlation_signal_source",
+                        )
+                        .selected_text(signal_source.as_str())
+                        .show_ui(ui, |ui| {
+                            for choice in [
+                                TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+                                TfbsScoreTrackCorrelationSignalSource::ForwardOnly,
+                                TfbsScoreTrackCorrelationSignalSource::ReverseOnly,
+                            ] {
+                                ui.selectable_value(
+                                    signal_source,
+                                    choice,
+                                    choice.as_str(),
+                                );
+                            }
+                        });
+                    });
+                    *signal_source
+                }
+                None => TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            };
+            let correlation = report
+                .correlation_summaries
+                .iter()
+                .find(|summary| summary.signal_source == signal_source)
+                .or_else(|| {
+                    report.correlation_summary.as_ref().filter(|summary| {
+                        summary.signal_source == signal_source
+                            || signal_source == TfbsScoreTrackCorrelationSignalSource::MaxStrands
+                    })
+                });
+            let Some(correlation) = correlation else {
+                ui.small(
+                    egui::RichText::new(
+                        "No pairwise correlation summary is available for this signal source yet.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            };
+            if correlation.rows.is_empty() {
+                ui.small(
+                    egui::RichText::new(
+                        "No pairwise correlation rows are available for the selected signal source.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            }
             ui.small(
                 egui::RichText::new(format!(
                     "Signal source: {} | smoothed view: {} {} bp | raw and smoothed {} are shown.",
-                    correlation.signal_source,
+                    correlation.signal_source.summary_label(),
                     correlation.smoothing_method,
                     correlation.smoothing_window_bp,
                     metric.as_str()
                 ))
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
+            let directional_rows = report
+                .tracks
+                .iter()
+                .filter_map(|track| {
+                    track.directional_summary.as_ref().map(|summary| (track, summary))
+                })
+                .collect::<Vec<_>>();
+            if !directional_rows.is_empty() {
+                ui.add_space(4.0);
+                ui.small(
+                    egui::RichText::new(
+                        "Per-motif strand pairing shows how forward and reverse score tracks travel together inside the same motif row.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                egui::Grid::new((
+                    "variant_followup_tfbs_track_directional_grid",
+                    report.seq_id.as_str(),
+                    report.score_kind.as_str(),
+                ))
+                .num_columns(4)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    ui.small("Motif");
+                    ui.small(metric.display_label(true));
+                    ui.small(metric.display_label(false));
+                    ui.small("Rev-Fwd peak offset");
+                    ui.end_row();
+                    for (track, summary) in directional_rows {
+                        ui.small(Self::promoter_design_track_label(
+                            &track.tf_id,
+                            track.tf_name.as_deref(),
+                        ));
+                        ui.monospace(format!(
+                            "{:+.3}",
+                            match metric {
+                                TfbsScoreTrackCorrelationMetric::Pearson => {
+                                    summary.smoothed_pearson
+                                }
+                                TfbsScoreTrackCorrelationMetric::Spearman => {
+                                    summary.smoothed_spearman
+                                }
+                            }
+                        ));
+                        ui.monospace(format!(
+                            "{:+.3}",
+                            match metric {
+                                TfbsScoreTrackCorrelationMetric::Pearson => summary.raw_pearson,
+                                TfbsScoreTrackCorrelationMetric::Spearman => summary.raw_spearman,
+                            }
+                        ));
+                        ui.monospace(
+                            summary
+                                .signed_primary_peak_offset_bp
+                                .map(|value| format!("{value:+} bp"))
+                                .unwrap_or_else(|| "n/a".to_string()),
+                        );
+                        ui.end_row();
+                    }
+                });
+            }
+            ui.add_space(4.0);
             egui::Grid::new((
                 "variant_followup_tfbs_track_correlation_grid",
                 report.seq_id.as_str(),
@@ -2205,6 +2321,7 @@ impl MainAreaDna {
         report: Option<&TfbsScoreTrackReport>,
         markers: &[(usize, &'static str, egui::Color32)],
         correlation_metric: Option<&mut TfbsScoreTrackCorrelationMetric>,
+        correlation_signal_source: Option<&mut TfbsScoreTrackCorrelationSignalSource>,
     ) {
         let Some(report) = report else {
             ui.small(
@@ -2365,6 +2482,7 @@ impl MainAreaDna {
                 ui,
                 report,
                 correlation_metric,
+                correlation_signal_source,
             );
         });
     }
@@ -2372,6 +2490,9 @@ impl MainAreaDna {
     fn render_variant_followup_score_track_summary(&mut self, ui: &mut egui::Ui) {
         let markers = self.promoter_design_plot_markers();
         let mut correlation_metric = self.variant_followup_ui.score_track_correlation_metric;
+        let mut correlation_signal_source = self
+            .variant_followup_ui
+            .score_track_correlation_signal_source;
         if let Some(task) = self
             .tfbs_task
             .as_ref()
@@ -2390,8 +2511,11 @@ impl MainAreaDna {
             self.variant_followup_ui.cached_score_tracks.as_ref(),
             &markers,
             Some(&mut correlation_metric),
+            Some(&mut correlation_signal_source),
         );
         self.variant_followup_ui.score_track_correlation_metric = correlation_metric;
+        self.variant_followup_ui
+            .score_track_correlation_signal_source = correlation_signal_source;
     }
 
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {

@@ -64,8 +64,9 @@ use crate::{
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
-        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranslationSpeedMark,
-        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1483,6 +1484,7 @@ pub enum ShellCommand {
         end_0based_exclusive: usize,
         score_kind: TfbsScoreTrackValueKind,
         correlation_metric: TfbsScoreTrackCorrelationMetric,
+        correlation_signal_source: TfbsScoreTrackCorrelationSignalSource,
         clip_negative: bool,
         output: String,
     },
@@ -7160,10 +7162,11 @@ impl ShellCommand {
                 end_0based_exclusive,
                 score_kind,
                 correlation_metric,
+                correlation_signal_source,
                 clip_negative,
                 output,
             } => format!(
-                "render TFBS score-track correlation SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, correlation_metric={}, clip_negative={})",
+                "render TFBS score-track correlation SVG for '{}' to '{}' (motifs={}, span={}..{}, score_kind={}, correlation_metric={}, correlation_signal_source={}, clip_negative={})",
                 seq_id,
                 output,
                 motifs.join(","),
@@ -7171,6 +7174,7 @@ impl ShellCommand {
                 end_0based_exclusive,
                 score_kind.as_str(),
                 correlation_metric.as_str(),
+                correlation_signal_source.as_str(),
                 clip_negative
             ),
             Self::FeaturesTfbsScan {
@@ -21140,6 +21144,7 @@ fn execute_sequence_analysis_command(
             end_0based_exclusive,
             score_kind,
             correlation_metric,
+            correlation_signal_source,
             clip_negative,
             output,
         } => {
@@ -21151,6 +21156,7 @@ fn execute_sequence_analysis_command(
                     end_0based_exclusive: *end_0based_exclusive,
                     score_kind: *score_kind,
                     correlation_metric: *correlation_metric,
+                    correlation_signal_source: *correlation_signal_source,
                     clip_negative: *clip_negative,
                     path: output.clone(),
                 })

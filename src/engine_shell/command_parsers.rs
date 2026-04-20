@@ -13,7 +13,8 @@
 
 use super::*;
 use crate::engine::{
-    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -2485,6 +2486,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             let mut end_0based_exclusive: Option<usize> = None;
             let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
             let mut correlation_metric = TfbsScoreTrackCorrelationMetric::Pearson;
+            let mut correlation_signal_source = TfbsScoreTrackCorrelationSignalSource::MaxStrands;
             let mut clip_negative = true;
             let mut idx = 4usize;
             while idx < tokens.len() {
@@ -2603,6 +2605,24 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                             }
                         };
                     }
+                    "--signal-source" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--signal-source",
+                            "features tfbs-score-track-correlation-svg",
+                        )?;
+                        correlation_signal_source = match raw.trim() {
+                            "max_strands" => TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+                            "forward_only" => TfbsScoreTrackCorrelationSignalSource::ForwardOnly,
+                            "reverse_only" => TfbsScoreTrackCorrelationSignalSource::ReverseOnly,
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --signal-source value '{other}' (expected max_strands, forward_only, or reverse_only)"
+                                ));
+                            }
+                        };
+                    }
                     "--allow-negative" => {
                         clip_negative = false;
                         idx += 1;
@@ -2638,6 +2658,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 end_0based_exclusive,
                 score_kind,
                 correlation_metric,
+                correlation_signal_source,
                 clip_negative,
                 output,
             })

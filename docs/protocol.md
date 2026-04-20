@@ -169,7 +169,7 @@ gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN
 
 ```bash
 gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
-gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]'
+gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--signal-source max_strands|forward_only|reverse_only] [--allow-negative]'
 ```
 
 First-class operation routes:
@@ -183,7 +183,7 @@ First-class operation routes:
 ```
 
 ```json
-{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","correlation_metric":"spearman","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
+{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","correlation_metric":"spearman","correlation_signal_source":"forward_only","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
 ```
 
 Portable schema:
@@ -208,14 +208,31 @@ Behavior notes:
     optional `label`, optional numeric `score`, and optional `strand`
   These overlays reuse the same deterministic report/renderer path instead of
   forcing GUI-only evidence lanes.
-- the same shared report also carries a correlation sidecar:
+- the same shared report also carries correlation sidecars:
+  - `correlation_summary` remains the default `max_strands` summary for
+    compatibility
+  - `correlation_summaries[]` can carry:
+    - `max_strands`
+    - `forward_only`
+    - `reverse_only`
+  Each summary records:
   - `signal_source`
   - `smoothing_method`
   - `smoothing_window_bp`
   - `pair_count`
   - `rows[]` with `left_tf_id`, optional `left_tf_name`, `right_tf_id`,
     optional `right_tf_name`, `overlap_window_count`, `raw_pearson`,
-    `smoothed_pearson`, and optional `signed_primary_peak_offset_bp`
+    `smoothed_pearson`, `raw_spearman`, `smoothed_spearman`, and optional
+    `signed_primary_peak_offset_bp`
+- each returned track now also carries one `directional_summary` describing how
+  its own forward and reverse curves travel together over the selected span:
+  - optional `forward_primary_peak_position_0based`
+  - optional `reverse_primary_peak_position_0based`
+  - optional `signed_primary_peak_offset_bp`
+  - `raw_pearson`
+  - `smoothed_pearson`
+  - `raw_spearman`
+  - `smoothed_spearman`
 - `score_kind` selects which per-window value is exported:
   - `llr_bits`
   - `llr_quantile`
@@ -271,6 +288,10 @@ Behavior notes:
   - right panel: raw selected-metric heatmap
   - footer: top synchronized pairs with signed primary-peak offsets
   - `correlation_metric` accepts `pearson` or `spearman`
+  - `signal_source` accepts:
+    - `max_strands` for the current orientation-agnostic neighborhood view
+    - `forward_only`
+    - `reverse_only`
   - `spearman` is often the safer interpretation mode when promoter score
     tracks are clearly non-normal or contain many tied values from clipping
 - the SVG figure now prints score-family-aware normalization labels per motif:

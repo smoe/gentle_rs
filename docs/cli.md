@@ -1670,7 +1670,7 @@ Shared shell command:
         and TSS context uses one shared dashed line with a single top-level
         kinked arrow if feature-derived or promoter-provenance TSS metadata is
         available
-    - `features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]`
+    - `features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--signal-source max_strands|forward_only|reverse_only] [--allow-negative]`
       - renders the same shared synchrony sidecar as a dedicated dual heatmap:
         smoothed selected-metric correlation on the left, raw selected-metric
         correlation on the right

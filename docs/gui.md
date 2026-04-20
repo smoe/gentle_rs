@@ -3882,10 +3882,17 @@ Tutorial projects:
     one selectable correlation family over the displayed per-position signals:
     - `Pearson`
     - `Spearman`
+    and one selectable strand-handling view:
+    - `max_strands`
+    - `forward_only`
+    - `reverse_only`
     and shows each family as:
     - smoothed correlation is the main “do these maxima live in the same
       neighborhood?” cue
     - raw correlation stays visible as the unsmoothed sanity check
+    - a per-motif strand-pairing table above the pairwise grid reports how
+      each motif’s own forward and reverse curves travel together, including a
+      signed reverse-minus-forward primary-peak offset
   - when score tracks are being recomputed, the window now keeps a live TFBS
     progress widget visible so deterministic background calibration and
     target-span scanning do not look like a stall on longer/randomized runs
@@ -3900,6 +3907,7 @@ Tutorial projects:
     writes one dual heatmap view:
     - smoothed selected-metric correlation on the left
     - raw selected-metric correlation on the right
+    - selectable `max_strands` / `forward_only` / `reverse_only` signal source
     - ranked synchronized pairs with signed peak offsets in the footer
   - stacked SVG exports now render motif labels as `TF name (JASPAR id)` and
     carry one shared dashed TSS line with a single top-level kinked arrow when

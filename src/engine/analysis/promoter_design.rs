@@ -378,14 +378,68 @@ impl GentleEngine {
         tracks
     }
 
-    fn tfbs_track_display_signal(track: &TfbsScoreTrackRow) -> Vec<f64> {
-        track
-            .forward_scores
+    fn tfbs_track_display_signal(
+        track: &TfbsScoreTrackRow,
+        signal_source: TfbsScoreTrackCorrelationSignalSource,
+    ) -> Vec<f64> {
+        match signal_source {
+            TfbsScoreTrackCorrelationSignalSource::MaxStrands => track
+                .forward_scores
+                .iter()
+                .copied()
+                .zip(track.reverse_scores.iter().copied())
+                .map(|(forward, reverse)| forward.max(reverse))
+                .collect(),
+            TfbsScoreTrackCorrelationSignalSource::ForwardOnly => track.forward_scores.clone(),
+            TfbsScoreTrackCorrelationSignalSource::ReverseOnly => track.reverse_scores.clone(),
+        }
+    }
+
+    fn primary_signal_peak_position(signal: &[f64], track_start_0based: usize) -> Option<usize> {
+        signal
             .iter()
             .copied()
-            .zip(track.reverse_scores.iter().copied())
-            .map(|(forward, reverse)| forward.max(reverse))
-            .collect()
+            .enumerate()
+            .max_by(|left, right| left.1.total_cmp(&right.1).then(left.0.cmp(&right.0)))
+            .map(|(idx, _)| track_start_0based + idx)
+    }
+
+    fn summarize_tfbs_track_directional_summary(
+        track: &TfbsScoreTrackRow,
+    ) -> Option<TfbsScoreTrackDirectionalSummary> {
+        let overlap_window_count = track.forward_scores.len().min(track.reverse_scores.len());
+        if overlap_window_count < 2 {
+            return None;
+        }
+        let forward_signal = &track.forward_scores[..overlap_window_count];
+        let reverse_signal = &track.reverse_scores[..overlap_window_count];
+        let forward_smoothed = Self::smooth_tfbs_track_signal(
+            forward_signal,
+            Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+        );
+        let reverse_smoothed = Self::smooth_tfbs_track_signal(
+            reverse_signal,
+            Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+        );
+        let forward_primary_peak_position_0based =
+            Self::primary_signal_peak_position(forward_signal, track.track_start_0based);
+        let reverse_primary_peak_position_0based =
+            Self::primary_signal_peak_position(reverse_signal, track.track_start_0based);
+        Some(TfbsScoreTrackDirectionalSummary {
+            forward_primary_peak_position_0based,
+            reverse_primary_peak_position_0based,
+            signed_primary_peak_offset_bp: match (
+                forward_primary_peak_position_0based,
+                reverse_primary_peak_position_0based,
+            ) {
+                (Some(forward), Some(reverse)) => Some(reverse as i64 - forward as i64),
+                _ => None,
+            },
+            raw_pearson: Self::pearson_correlation(forward_signal, reverse_signal),
+            smoothed_pearson: Self::pearson_correlation(&forward_smoothed, &reverse_smoothed),
+            raw_spearman: Self::spearman_correlation(forward_signal, reverse_signal),
+            smoothed_spearman: Self::spearman_correlation(&forward_smoothed, &reverse_smoothed),
+        })
     }
 
     fn smooth_tfbs_track_signal(signal: &[f64], window_bp: usize) -> Vec<f64> {
@@ -484,8 +538,9 @@ impl GentleEngine {
         Some(right_peak as i64 - left_peak as i64)
     }
 
-    fn summarize_tfbs_score_track_correlation_summary(
+    fn summarize_tfbs_score_track_correlation_summary_for_source(
         tracks: &[TfbsScoreTrackRow],
+        signal_source: TfbsScoreTrackCorrelationSignalSource,
     ) -> Option<TfbsScoreTrackCorrelationSummary> {
         if tracks.len() < 2 {
             return None;
@@ -493,7 +548,7 @@ impl GentleEngine {
         let mut rows = vec![];
         for left_idx in 0..tracks.len() {
             let left = &tracks[left_idx];
-            let left_signal = Self::tfbs_track_display_signal(left);
+            let left_signal = Self::tfbs_track_display_signal(left, signal_source);
             if left_signal.len() < 2 {
                 continue;
             }
@@ -502,7 +557,7 @@ impl GentleEngine {
                 Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
             );
             for right in tracks.iter().skip(left_idx + 1) {
-                let right_signal = Self::tfbs_track_display_signal(right);
+                let right_signal = Self::tfbs_track_display_signal(right, signal_source);
                 let overlap_window_count = left_signal.len().min(right_signal.len());
                 if overlap_window_count < 2 {
                     continue;
@@ -551,12 +606,27 @@ impl GentleEngine {
                 .then(left.right_tf_id.cmp(&right.right_tf_id))
         });
         Some(TfbsScoreTrackCorrelationSummary {
-            signal_source: "max(forward_score, reverse_score)".to_string(),
+            signal_source,
             smoothing_method: "centered_boxcar".to_string(),
             smoothing_window_bp: Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
             pair_count: rows.len(),
             rows,
         })
+    }
+
+    fn summarize_tfbs_score_track_correlation_summaries(
+        tracks: &[TfbsScoreTrackRow],
+    ) -> Vec<TfbsScoreTrackCorrelationSummary> {
+        [
+            TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            TfbsScoreTrackCorrelationSignalSource::ForwardOnly,
+            TfbsScoreTrackCorrelationSignalSource::ReverseOnly,
+        ]
+        .into_iter()
+        .filter_map(|signal_source| {
+            Self::summarize_tfbs_score_track_correlation_summary_for_source(tracks, signal_source)
+        })
+        .collect()
     }
 
     fn collect_tfbs_score_track_background_scores(
@@ -1004,7 +1074,7 @@ impl GentleEngine {
                 &displayed_background_scores,
             );
             global_max_score = global_max_score.max(max_score);
-            tracks.push(TfbsScoreTrackRow {
+            let mut track = TfbsScoreTrackRow {
                 tf_id,
                 tf_name: tf_name.or_else(|| Some(motif.clone())),
                 motif_length_bp,
@@ -1014,10 +1084,13 @@ impl GentleEngine {
                 max_score,
                 max_position_0based,
                 normalization_reference,
+                directional_summary: None,
                 top_peaks,
                 forward_scores,
                 reverse_scores,
-            });
+            };
+            track.directional_summary = Self::summarize_tfbs_track_directional_summary(&track);
+            tracks.push(track);
         }
 
         let (tss_markers, overlay_tracks) = if let Some(seq_id) = tss_source_seq_id {
@@ -1044,6 +1117,11 @@ impl GentleEngine {
             (vec![], vec![])
         };
 
+        let correlation_summaries = if include_correlation_summary {
+            Self::summarize_tfbs_score_track_correlation_summaries(&tracks)
+        } else {
+            vec![]
+        };
         Ok(TfbsScoreTrackReport {
             schema: TFBS_SCORE_TRACK_REPORT_SCHEMA.to_string(),
             target_kind,
@@ -1063,11 +1141,13 @@ impl GentleEngine {
             global_max_score,
             tss_markers,
             overlay_tracks,
-            correlation_summary: if include_correlation_summary {
-                Self::summarize_tfbs_score_track_correlation_summary(&tracks)
-            } else {
-                None
-            },
+            correlation_summary: correlation_summaries
+                .iter()
+                .find(|summary| {
+                    summary.signal_source == TfbsScoreTrackCorrelationSignalSource::MaxStrands
+                })
+                .cloned(),
+            correlation_summaries,
             tracks,
         })
     }
@@ -1099,8 +1179,14 @@ impl GentleEngine {
         candidate: &TfbsScoreTrackRow,
         remote_summary: Option<JasparCatalogRemoteSummary>,
     ) -> Option<TfbsTrackSimilarityRow> {
-        let anchor_signal = Self::tfbs_track_display_signal(anchor);
-        let candidate_signal = Self::tfbs_track_display_signal(candidate);
+        let anchor_signal = Self::tfbs_track_display_signal(
+            anchor,
+            TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+        );
+        let candidate_signal = Self::tfbs_track_display_signal(
+            candidate,
+            TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+        );
         let overlap_window_count = anchor_signal.len().min(candidate_signal.len());
         if overlap_window_count < 2 {
             return None;

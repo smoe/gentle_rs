@@ -1149,6 +1149,11 @@ order. Durable architecture constraints and decisions remain in
           option too for non-normal/tied score landscapes; both families keep
           raw and smoothed (`25 bp`) centered-boxcar views plus a signed
           primary-peak offset
+        - that correlation sidecar now also keeps three selectable
+          strand-handling views (`max_strands`, `forward_only`,
+          `reverse_only`) plus one per-motif forward-vs-reverse directional
+          summary, so cases like TP73/tetramer-style reverse-flank questions
+          can ask whether orientation really changes the picture on one gene
         - the same shared score-track route now also has export parity for that
           synchrony view:
           `RenderTfbsScoreTrackCorrelationSvg` writes one dual heatmap

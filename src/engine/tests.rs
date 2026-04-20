@@ -27682,7 +27682,17 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
         .correlation_summary
         .as_ref()
         .expect("correlation summary");
-    assert_eq!(summary.signal_source, "max(forward_score, reverse_score)");
+    assert_eq!(
+        summary.signal_source,
+        TfbsScoreTrackCorrelationSignalSource::MaxStrands
+    );
+    assert_eq!(report.correlation_summaries.len(), 3);
+    assert!(report.correlation_summaries.iter().any(|candidate| {
+        candidate.signal_source == TfbsScoreTrackCorrelationSignalSource::ForwardOnly
+    }));
+    assert!(report.correlation_summaries.iter().any(|candidate| {
+        candidate.signal_source == TfbsScoreTrackCorrelationSignalSource::ReverseOnly
+    }));
     assert_eq!(summary.smoothing_method, "centered_boxcar");
     assert_eq!(summary.smoothing_window_bp, 25);
     assert_eq!(summary.pair_count, 1);
@@ -27705,6 +27715,12 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
             .scored_window_count
             .min(report.tracks[1].scored_window_count)
     );
+    let sp1_directional = report.tracks[0]
+        .directional_summary
+        .as_ref()
+        .expect("SP1 directional summary");
+    assert!(sp1_directional.raw_spearman.is_finite());
+    assert!(sp1_directional.smoothed_spearman.is_finite());
 }
 
 #[test]

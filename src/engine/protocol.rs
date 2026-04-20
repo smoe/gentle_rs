@@ -455,6 +455,42 @@ pub struct TfbsScoreTrackCorrelationRow {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Which strand-handling rule is used before comparing TFBS score tracks.
+pub enum TfbsScoreTrackCorrelationSignalSource {
+    #[default]
+    MaxStrands,
+    ForwardOnly,
+    ReverseOnly,
+}
+
+impl TfbsScoreTrackCorrelationSignalSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MaxStrands => "max_strands",
+            Self::ForwardOnly => "forward_only",
+            Self::ReverseOnly => "reverse_only",
+        }
+    }
+
+    pub fn display_label(self) -> &'static str {
+        match self {
+            Self::MaxStrands => "Max(forward, reverse)",
+            Self::ForwardOnly => "Forward strand only",
+            Self::ReverseOnly => "Reverse strand only",
+        }
+    }
+
+    pub fn summary_label(self) -> &'static str {
+        match self {
+            Self::MaxStrands => "max(forward_score, reverse_score)",
+            Self::ForwardOnly => "forward_score",
+            Self::ReverseOnly => "reverse_score",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Which pairwise statistic is used when presenting TFBS score-track
 /// synchrony.
 pub enum TfbsScoreTrackCorrelationMetric {
@@ -485,11 +521,29 @@ impl TfbsScoreTrackCorrelationMetric {
 #[serde(default)]
 /// Shared correlation-sidecar for one TFBS score-track report.
 pub struct TfbsScoreTrackCorrelationSummary {
-    pub signal_source: String,
+    #[serde(default)]
+    pub signal_source: TfbsScoreTrackCorrelationSignalSource,
     pub smoothing_method: String,
     pub smoothing_window_bp: usize,
     pub pair_count: usize,
     pub rows: Vec<TfbsScoreTrackCorrelationRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// How one motif's forward and reverse strand score tracks relate to each
+/// other over the selected span.
+pub struct TfbsScoreTrackDirectionalSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_primary_peak_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverse_primary_peak_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_primary_peak_offset_bp: Option<i64>,
+    pub raw_pearson: f64,
+    pub smoothed_pearson: f64,
+    pub raw_spearman: f64,
+    pub smoothed_spearman: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -600,6 +654,8 @@ pub struct TfbsScoreTrackRow {
     pub max_position_0based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalization_reference: Option<TfbsScoreTrackNormalizationReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directional_summary: Option<TfbsScoreTrackDirectionalSummary>,
     #[serde(default)]
     pub top_peaks: Vec<TfbsScoreTrackPeak>,
     #[serde(default)]
@@ -737,6 +793,8 @@ pub struct TfbsScoreTrackReport {
     pub overlay_tracks: Vec<TfbsScoreTrackOverlayTrack>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_summary: Option<TfbsScoreTrackCorrelationSummary>,
+    #[serde(default)]
+    pub correlation_summaries: Vec<TfbsScoreTrackCorrelationSummary>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
 }

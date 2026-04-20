@@ -20,7 +20,7 @@ use crate::engine::{
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
     RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsTrackSimilarityRankingMetric,
+    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -4428,7 +4428,7 @@ fn parse_features_tfbs_score_tracks_svg_for_inline_target() {
 #[test]
 fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_scores() {
     let cmd = parse_shell_line(
-        "features tfbs-score-track-correlation-svg seq_a /tmp/seq_a.tfbs_corr.svg --motif SP1 --motif MYC --range 2900..3100 --score-kind llr_background_tail_log10 --correlation-metric spearman --allow-negative",
+        "features tfbs-score-track-correlation-svg seq_a /tmp/seq_a.tfbs_corr.svg --motif SP1 --motif MYC --range 2900..3100 --score-kind llr_background_tail_log10 --correlation-metric spearman --signal-source reverse_only --allow-negative",
     )
     .expect("parse features tfbs-score-track-correlation-svg");
     match cmd {
@@ -4439,6 +4439,7 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             end_0based_exclusive,
             score_kind,
             correlation_metric,
+            correlation_signal_source,
             clip_negative,
             output,
         } => {
@@ -4450,6 +4451,10 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             assert_eq!(
                 correlation_metric,
                 TfbsScoreTrackCorrelationMetric::Spearman
+            );
+            assert_eq!(
+                correlation_signal_source,
+                TfbsScoreTrackCorrelationSignalSource::ReverseOnly
             );
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs_corr.svg");
@@ -9777,6 +9782,7 @@ fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_an
             end_0based_exclusive: 160,
             score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             correlation_metric: TfbsScoreTrackCorrelationMetric::Spearman,
+            correlation_signal_source: TfbsScoreTrackCorrelationSignalSource::MaxStrands,
             clip_negative: true,
             output: output.display().to_string(),
         },
@@ -12354,8 +12360,7 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
     assert_eq!(
         out.output["attract"]["support_status"].as_str(),
         Some(
-            if std::path::Path::new(crate::attract_motifs::DEFAULT_ATTRACT_RESOURCE_PATH).exists()
-            {
+            if std::path::Path::new(crate::attract_motifs::DEFAULT_ATTRACT_RESOURCE_PATH).exists() {
                 "runtime_snapshot"
             } else {
                 "known_external_only"
@@ -12377,7 +12382,10 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
                     .unwrap_or(0)
                     > 0
         );
-        assert_eq!(out.output["attract"]["active_source"].as_str(), Some("runtime"));
+        assert_eq!(
+            out.output["attract"]["active_source"].as_str(),
+            Some("runtime")
+        );
     } else {
         assert_eq!(
             out.output["attract"]["active_pwm_row_count"].as_u64(),

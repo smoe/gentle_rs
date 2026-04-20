@@ -2607,6 +2607,8 @@ pub enum Operation {
         score_kind: TfbsScoreTrackValueKind,
         #[serde(default)]
         correlation_metric: TfbsScoreTrackCorrelationMetric,
+        #[serde(default)]
+        correlation_signal_source: TfbsScoreTrackCorrelationSignalSource,
         clip_negative: bool,
         path: String,
     },

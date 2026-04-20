@@ -897,19 +897,32 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
 pub fn render_tfbs_score_track_correlation_svg(
     report: &TfbsScoreTrackReport,
     metric: crate::engine::TfbsScoreTrackCorrelationMetric,
+    signal_source: crate::engine::TfbsScoreTrackCorrelationSignalSource,
 ) -> String {
-    let Some(correlation) = report.correlation_summary.as_ref() else {
+    let correlation = report
+        .correlation_summaries
+        .iter()
+        .find(|summary| summary.signal_source == signal_source)
+        .or_else(|| {
+            report.correlation_summary.as_ref().filter(|summary| {
+                summary.signal_source == signal_source
+                    || signal_source
+                        == crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands
+            })
+        });
+    let Some(correlation) = correlation else {
         return format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
 <rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n\
 <text x=\"28\" y=\"34\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">TFBS track correlation</text>\n\
 <text x=\"28\" y=\"58\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">seq={} | score={} | span={}..{}</text>\n\
-<text x=\"28\" y=\"108\" font-family=\"monospace\" font-size=\"12\" fill=\"#64748b\">No pairwise correlation summary is available for this report.</text>\n\
+<text x=\"28\" y=\"108\" font-family=\"monospace\" font-size=\"12\" fill=\"#64748b\">No pairwise correlation summary is available for signal={} in this report.</text>\n\
 </svg>\n",
             escape_svg_text(&report.seq_id),
             escape_svg_text(report.score_kind.as_str()),
             report.view_start_0based,
-            report.view_end_0based_exclusive
+            report.view_end_0based_exclusive,
+            escape_svg_text(signal_source.as_str()),
         );
     };
     if report.tracks.is_empty() {
@@ -990,7 +1003,7 @@ pub fn render_tfbs_score_track_correlation_svg(
     svg.push_str(&format!(
         "<text x=\"{:.1}\" y=\"86\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">signal={} | smoothing={} {} bp | diagonal fixed at 1.000</text>\n",
         CORR_MARGIN_LEFT,
-        escape_svg_text(&correlation.signal_source),
+        escape_svg_text(correlation.signal_source.summary_label()),
         escape_svg_text(&correlation.smoothing_method),
         correlation.smoothing_window_bp
     ));
@@ -1229,6 +1242,7 @@ mod tests {
                 ],
             }],
             correlation_summary: None,
+            correlation_summaries: vec![],
             tracks: vec![
                 TfbsScoreTrackRow {
                     tf_id: "MA0828.2".to_string(),
@@ -1259,6 +1273,7 @@ mod tests {
                         theoretical_min_score: -4.2,
                         theoretical_max_score: 12.3,
                     }),
+                    directional_summary: None,
                     top_peaks: vec![],
                     forward_scores: vec![0.0, 3.0, 8.5, 2.0],
                     reverse_scores: vec![0.0, 1.0, 2.0, 0.5],
@@ -1292,6 +1307,7 @@ mod tests {
                         theoretical_min_score: -3.1,
                         theoretical_max_score: 8.4,
                     }),
+                    directional_summary: None,
                     top_peaks: vec![],
                     forward_scores: vec![0.5, 4.0, 1.0, 0.0],
                     reverse_scores: vec![0.0, 0.8, 2.0, 0.3],
@@ -1347,6 +1363,7 @@ mod tests {
             tss_markers: vec![],
             overlay_tracks: vec![],
             correlation_summary: None,
+            correlation_summaries: vec![],
             tracks: vec![TfbsScoreTrackRow {
                 tf_id: "REST".to_string(),
                 tf_name: Some("REST".to_string()),
@@ -1376,6 +1393,7 @@ mod tests {
                     theoretical_min_score: -5.0,
                     theoretical_max_score: 6.0,
                 }),
+                directional_summary: None,
                 top_peaks: vec![],
                 forward_scores: vec![-2.0, -1.0, 2.0, 4.0],
                 reverse_scores: vec![-1.5, 0.0, 1.5, 2.5],
@@ -1411,7 +1429,7 @@ mod tests {
             tss_markers: vec![],
             overlay_tracks: vec![],
             correlation_summary: Some(crate::engine::TfbsScoreTrackCorrelationSummary {
-                signal_source: "max(forward_score, reverse_score)".to_string(),
+                signal_source: crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands,
                 smoothing_method: "centered_boxcar".to_string(),
                 smoothing_window_bp: 25,
                 pair_count: 3,
@@ -1454,6 +1472,50 @@ mod tests {
                     },
                 ],
             }),
+            correlation_summaries: vec![crate::engine::TfbsScoreTrackCorrelationSummary {
+                signal_source: crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+                smoothing_method: "centered_boxcar".to_string(),
+                smoothing_window_bp: 25,
+                pair_count: 3,
+                rows: vec![
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0079.5".to_string(),
+                        left_tf_name: Some("SP1".to_string()),
+                        right_tf_id: "MA0147.4".to_string(),
+                        right_tf_name: Some("MYC".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.42,
+                        smoothed_pearson: 0.81,
+                        raw_spearman: 0.55,
+                        smoothed_spearman: 0.88,
+                        signed_primary_peak_offset_bp: Some(80),
+                    },
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0079.5".to_string(),
+                        left_tf_name: Some("SP1".to_string()),
+                        right_tf_id: "MA1961.2".to_string(),
+                        right_tf_name: Some("PATZ1".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.38,
+                        smoothed_pearson: 0.96,
+                        raw_spearman: 0.48,
+                        smoothed_spearman: 0.97,
+                        signed_primary_peak_offset_bp: Some(-152),
+                    },
+                    crate::engine::TfbsScoreTrackCorrelationRow {
+                        left_tf_id: "MA0147.4".to_string(),
+                        left_tf_name: Some("MYC".to_string()),
+                        right_tf_id: "MA1961.2".to_string(),
+                        right_tf_name: Some("PATZ1".to_string()),
+                        overlap_window_count: 100,
+                        raw_pearson: 0.21,
+                        smoothed_pearson: 0.44,
+                        raw_spearman: 0.27,
+                        smoothed_spearman: 0.52,
+                        signed_primary_peak_offset_bp: Some(-72),
+                    },
+                ],
+            }],
             tracks: vec![
                 TfbsScoreTrackRow {
                     tf_id: "MA0079.5".to_string(),
@@ -1465,6 +1527,7 @@ mod tests {
                     max_score: 4.0,
                     max_position_0based: Some(220),
                     normalization_reference: None,
+                    directional_summary: None,
                     top_peaks: vec![],
                     forward_scores: vec![0.0; 8],
                     reverse_scores: vec![0.0; 8],
@@ -1479,6 +1542,7 @@ mod tests {
                     max_score: 4.0,
                     max_position_0based: Some(300),
                     normalization_reference: None,
+                    directional_summary: None,
                     top_peaks: vec![],
                     forward_scores: vec![0.0; 8],
                     reverse_scores: vec![0.0; 8],
@@ -1493,6 +1557,7 @@ mod tests {
                     max_score: 4.0,
                     max_position_0based: Some(148),
                     normalization_reference: None,
+                    directional_summary: None,
                     top_peaks: vec![],
                     forward_scores: vec![0.0; 8],
                     reverse_scores: vec![0.0; 8],
@@ -1503,6 +1568,7 @@ mod tests {
         let svg = render_tfbs_score_track_correlation_svg(
             &report,
             crate::engine::TfbsScoreTrackCorrelationMetric::Spearman,
+            crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands,
         );
         assert!(svg.contains("TFBS track correlation"));
         assert!(svg.contains("Smoothed Spearman rho"));
