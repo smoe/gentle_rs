@@ -19163,7 +19163,7 @@ Error: `{err}`"
             "Optional override for fetch/import. Required for projection; if empty after fetch, query is used.",
         );
         ui.small(
-            "Protein sequence import into DNA windows is intentionally disabled in this release.",
+            "UniProt evidence in this window stays compare/projection-oriented; the Ensembl section below can also import one standalone protein sequence into the project.",
         );
         ui.separator();
         ui.label("Online fetch");
@@ -19210,7 +19210,7 @@ Error: `{err}`"
             }
         });
         ui.separator();
-        ui.label("Project entry to sequence");
+        ui.label("UniProt projection to sequence");
         if seq_ids.is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
