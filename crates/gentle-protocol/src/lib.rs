@@ -1695,6 +1695,124 @@ impl CutRunReadLayout {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum CutRunInputFormat {
+    #[default]
+    Fasta,
+    Fastq,
+}
+
+impl CutRunInputFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fasta => "fasta",
+            Self::Fastq => "fastq",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunCoverageKind {
+    #[default]
+    Coverage,
+    CutSites,
+    Fragments,
+}
+
+impl CutRunCoverageKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Coverage => "coverage",
+            Self::CutSites => "cut_sites",
+            Self::Fragments => "fragments",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunReadOrientation {
+    #[default]
+    Forward,
+    Reverse,
+}
+
+impl CutRunReadOrientation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::Reverse => "reverse",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunReadUnitStatus {
+    #[default]
+    SingleMapped,
+    SingleUnmapped,
+    ConcordantPair,
+    OrphanR1,
+    OrphanR2,
+    R1OnlyMapped,
+    R2OnlyMapped,
+    DiscordantPair,
+    PairUnmapped,
+}
+
+impl CutRunReadUnitStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleMapped => "single_mapped",
+            Self::SingleUnmapped => "single_unmapped",
+            Self::ConcordantPair => "concordant_pair",
+            Self::OrphanR1 => "orphan_r1",
+            Self::OrphanR2 => "orphan_r2",
+            Self::R1OnlyMapped => "r1_only_mapped",
+            Self::R2OnlyMapped => "r2_only_mapped",
+            Self::DiscordantPair => "discordant_pair",
+            Self::PairUnmapped => "pair_unmapped",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CutRunSeedFilterConfig {
+    pub kmer_len: usize,
+    pub min_seed_matches: usize,
+}
+
+impl Default for CutRunSeedFilterConfig {
+    fn default() -> Self {
+        Self {
+            kmer_len: 12,
+            min_seed_matches: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CutRunAlignConfig {
+    pub max_mismatches: usize,
+    pub min_identity_fraction: f64,
+    pub max_fragment_span_bp: usize,
+}
+
+impl Default for CutRunAlignConfig {
+    fn default() -> Self {
+        Self {
+            max_mismatches: 4,
+            min_identity_fraction: 0.9,
+            max_fragment_span_bp: 800,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum RnaReadScoreDensityScale {
     Linear,
     #[default]
@@ -3436,6 +3554,175 @@ pub struct CutRunDatasetProjectionReport {
     pub signal_track_name: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadPlacement {
+    pub orientation: CutRunReadOrientation,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub mismatches: usize,
+    pub identity_fraction: f64,
+    pub seed_matches: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadUnitRow {
+    pub unit_index: usize,
+    pub normalized_read_id: String,
+    pub status: CutRunReadUnitStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r1_record_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r1_header_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r1_read_length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r1_placement: Option<CutRunReadPlacement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r2_record_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r2_header_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r2_read_length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r2_placement: Option<CutRunReadPlacement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fragment_local_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fragment_local_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fragment_genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fragment_genomic_end_1based: Option<usize>,
+    #[serde(default)]
+    pub deduplicated: bool,
+    #[serde(default)]
+    pub duplicate_count: usize,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunFragmentSpan {
+    pub fragment_id: String,
+    pub normalized_read_id: String,
+    pub status: CutRunReadUnitStatus,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub length_bp: usize,
+    pub left_cut_site_local_1based: usize,
+    pub right_cut_site_local_1based: usize,
+    #[serde(default)]
+    pub duplicate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunSupportCluster {
+    pub cluster_index: usize,
+    pub local_start_1based: usize,
+    pub local_end_1based: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub peak_coverage: u32,
+    pub total_cut_sites: u32,
+    pub fragment_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadReportSummary {
+    pub report_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub input_format: CutRunInputFormat,
+    pub read_layout: CutRunReadLayout,
+    pub roi_flank_bp: usize,
+    pub reference_window_length_bp: usize,
+    pub total_units: usize,
+    pub mapped_units: usize,
+    pub fragment_count: usize,
+    pub concordant_pair_count: usize,
+    pub orphan_unit_count: usize,
+    pub mean_read_length_bp: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadReport {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub input_r1_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_r2_path: Option<String>,
+    pub input_format: CutRunInputFormat,
+    pub read_layout: CutRunReadLayout,
+    pub roi_flank_bp: usize,
+    pub deduplicate_fragments: bool,
+    pub seed_filter: CutRunSeedFilterConfig,
+    pub align_config: CutRunAlignConfig,
+    pub genome_id: String,
+    pub chromosome: String,
+    pub reference_window_start_1based: usize,
+    pub reference_window_end_1based: usize,
+    pub reference_window_orientation: String,
+    pub roi_local_start_1based: usize,
+    pub roi_local_end_1based: usize,
+    pub reference_window_length_bp: usize,
+    pub total_units: usize,
+    pub mapped_units: usize,
+    pub fragment_count: usize,
+    pub concordant_pair_count: usize,
+    pub orphan_r1_count: usize,
+    pub orphan_r2_count: usize,
+    pub unmatched_pair_count: usize,
+    pub mean_read_length_bp: f64,
+    pub mean_mapped_read_length_bp: f64,
+    #[serde(default)]
+    pub coverage: Vec<u32>,
+    #[serde(default)]
+    pub cut_site_counts: Vec<u32>,
+    #[serde(default)]
+    pub units: Vec<CutRunReadUnitRow>,
+    #[serde(default)]
+    pub fragments: Vec<CutRunFragmentSpan>,
+    #[serde(default)]
+    pub support_clusters: Vec<CutRunSupportCluster>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadReportStore {
+    pub schema: String,
+    pub updated_at_unix_ms: u128,
+    #[serde(default)]
+    pub reports: HashMap<String, CutRunReadReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunReadCoverageExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub kind: CutRunCoverageKind,
+    pub row_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

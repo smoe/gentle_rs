@@ -704,7 +704,11 @@ fn usage() {
   gentle_cli cutrun list [--catalog PATH] [--filter TEXT]\n  \
   gentle_cli cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun list-read-reports [SEQ_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun show-read-report REPORT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
@@ -4921,6 +4925,95 @@ mod tests {
                     && clear_existing
                     && catalog_path.as_deref() == Some("assets/cutrun.json")
                     && cache_dir.as_deref() == Some("data/cutrun")
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cutrun_interpret() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cutrun".to_string(),
+            "interpret".to_string(),
+            "toy_slice".to_string(),
+            "reads_r1.fastq.gz".to_string(),
+            "reads_r2.fastq.gz".to_string(),
+            "--format".to_string(),
+            "fastq".to_string(),
+            "--layout".to_string(),
+            "paired_end".to_string(),
+            "--flank-bp".to_string(),
+            "0".to_string(),
+            "--report-id".to_string(),
+            "toy_cutrun_reads".to_string(),
+            "--seed-kmer-len".to_string(),
+            "3".to_string(),
+            "--min-seed-matches".to_string(),
+            "1".to_string(),
+            "--max-mismatches".to_string(),
+            "0".to_string(),
+            "--min-identity".to_string(),
+            "1.0".to_string(),
+            "--max-fragment-span-bp".to_string(),
+            "64".to_string(),
+            "--no-deduplicate-fragments".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::CutRunInterpret {
+                seq_id,
+                input_r1_path,
+                input_r2_path,
+                input_format,
+                read_layout,
+                roi_flank_bp,
+                seed_filter,
+                align_config,
+                deduplicate_fragments,
+                report_id,
+                checkpoint_path,
+                checkpoint_every_reads,
+            })
+                if seq_id == "toy_slice"
+                    && input_r1_path == "reads_r1.fastq.gz"
+                    && input_r2_path.as_deref() == Some("reads_r2.fastq.gz")
+                    && input_format == gentle::engine::CutRunInputFormat::Fastq
+                    && read_layout == gentle::engine::CutRunReadLayout::PairedEnd
+                    && roi_flank_bp == 0
+                    && seed_filter.kmer_len == 3
+                    && seed_filter.min_seed_matches == 1
+                    && align_config.max_mismatches == 0
+                    && (align_config.min_identity_fraction - 1.0).abs() < f64::EPSILON
+                    && align_config.max_fragment_span_bp == 64
+                    && !deduplicate_fragments
+                    && report_id.as_deref() == Some("toy_cutrun_reads")
+                    && checkpoint_path.is_none()
+                    && checkpoint_every_reads == 500
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cutrun_export_coverage() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cutrun".to_string(),
+            "export-coverage".to_string(),
+            "toy_cutrun_reads".to_string(),
+            "coverage.tsv".to_string(),
+            "--kind".to_string(),
+            "cut_sites".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::CutRunExportCoverage {
+                report_id,
+                path,
+                kind,
+            })
+                if report_id == "toy_cutrun_reads"
+                    && path == "coverage.tsv"
+                    && kind == gentle::engine::CutRunCoverageKind::CutSites
         ));
     }
 

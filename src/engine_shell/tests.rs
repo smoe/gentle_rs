@@ -15,10 +15,11 @@ use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
     BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
-    EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot, RestrictionCloningPcrHandoffMode, RnaReadAlignConfig,
+    CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
+    CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
+    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
+    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, RnaReadAlignConfig,
     RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass,
     SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
     TfbsTrackSimilarityRankingMetric,
@@ -187,19 +188,33 @@ fn shell_file_url(path: &Path) -> String {
 }
 
 fn write_cutrun_shell_reference_catalog(root: &Path, genome_id: &str) -> String {
+    write_cutrun_shell_reference_catalog_with_sequence(root, genome_id, "ACGTACGTACGT")
+}
+
+fn write_cutrun_shell_reference_catalog_with_sequence(
+    root: &Path,
+    genome_id: &str,
+    sequence: &str,
+) -> String {
     let fasta_gz = root.join("toy.fa.gz");
     let ann_gz = root.join("toy.gtf.gz");
     let file = std::fs::File::create(&fasta_gz).expect("create fasta");
     let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     use std::io::Write as _;
     encoder
-        .write_all(b">chr1\nACGT\nACGT\nACGT\n")
+        .write_all(format!(">chr1\n{sequence}\n").as_bytes())
         .expect("write fasta");
     encoder.finish().expect("finish fasta");
     let file = std::fs::File::create(&ann_gz).expect("create gtf");
     let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     encoder
-        .write_all(b"chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n")
+        .write_all(
+            format!(
+                "chr1\tsrc\tgene\t1\t{}\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                sequence.len()
+            )
+            .as_bytes(),
+        )
         .expect("write gtf");
     encoder.finish().expect("finish gtf");
     let cache_dir = root.join("reference_cache");
@@ -230,6 +245,17 @@ fn prepare_cutrun_shell_anchor(
     catalog_path: &str,
     seq_id: &str,
 ) {
+    prepare_cutrun_shell_anchor_range(engine, genome_id, catalog_path, seq_id, 3, 10);
+}
+
+fn prepare_cutrun_shell_anchor_range(
+    engine: &mut GentleEngine,
+    genome_id: &str,
+    catalog_path: &str,
+    seq_id: &str,
+    start_1based: usize,
+    end_1based: usize,
+) {
     engine
         .apply(Operation::PrepareGenome {
             genome_id: genome_id.to_string(),
@@ -242,8 +268,8 @@ fn prepare_cutrun_shell_anchor(
         .apply(Operation::ExtractGenomeRegion {
             genome_id: genome_id.to_string(),
             chromosome: "chr1".to_string(),
-            start_1based: 3,
-            end_1based: 10,
+            start_1based,
+            end_1based,
             output_id: Some(seq_id.to_string()),
             annotation_scope: None,
             max_annotation_features: None,
@@ -4897,6 +4923,78 @@ fn parse_cutrun_project() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_cutrun_interpret() {
+    let cmd = parse_shell_line(
+        "cutrun interpret toy_slice reads_r1.fastq.gz reads_r2.fastq.gz --format fastq --layout paired_end --flank-bp 0 --report-id toy_cutrun_reads --seed-kmer-len 3 --min-seed-matches 1 --max-mismatches 0 --min-identity 1.0 --max-fragment-span-bp 64 --no-deduplicate-fragments",
+    )
+    .expect("parse CUT&RUN interpret");
+    match cmd {
+        ShellCommand::CutRunInterpret {
+            seq_id,
+            input_r1_path,
+            input_r2_path,
+            input_format,
+            read_layout,
+            roi_flank_bp,
+            seed_filter,
+            align_config,
+            deduplicate_fragments,
+            report_id,
+            checkpoint_path,
+            checkpoint_every_reads,
+        } => {
+            assert_eq!(seq_id, "toy_slice");
+            assert_eq!(input_r1_path, "reads_r1.fastq.gz");
+            assert_eq!(input_r2_path.as_deref(), Some("reads_r2.fastq.gz"));
+            assert_eq!(input_format, CutRunInputFormat::Fastq);
+            assert_eq!(read_layout, CutRunReadLayout::PairedEnd);
+            assert_eq!(roi_flank_bp, 0);
+            assert_eq!(seed_filter.kmer_len, 3);
+            assert_eq!(seed_filter.min_seed_matches, 1);
+            assert_eq!(align_config.max_mismatches, 0);
+            assert!((align_config.min_identity_fraction - 1.0).abs() < f64::EPSILON);
+            assert_eq!(align_config.max_fragment_span_bp, 64);
+            assert!(!deduplicate_fragments);
+            assert_eq!(report_id.as_deref(), Some("toy_cutrun_reads"));
+            assert!(checkpoint_path.is_none());
+            assert_eq!(checkpoint_every_reads, 500);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cutrun_list_show_and_export_read_reports() {
+    let list_cmd = parse_shell_line("cutrun list-read-reports toy_slice")
+        .expect("parse CUT&RUN list-read-reports");
+    assert!(matches!(
+        list_cmd,
+        ShellCommand::CutRunListReadReports { seq_id } if seq_id.as_deref() == Some("toy_slice")
+    ));
+
+    let show_cmd = parse_shell_line("cutrun show-read-report toy_cutrun_reads")
+        .expect("parse CUT&RUN show-read-report");
+    assert!(matches!(
+        show_cmd,
+        ShellCommand::CutRunShowReadReport { report_id } if report_id == "toy_cutrun_reads"
+    ));
+
+    let export_cmd =
+        parse_shell_line("cutrun export-coverage toy_cutrun_reads coverage.tsv --kind fragments")
+            .expect("parse CUT&RUN export-coverage");
+    assert!(matches!(
+        export_cmd,
+        ShellCommand::CutRunExportCoverage {
+            report_id,
+            path,
+            kind
+        } if report_id == "toy_cutrun_reads"
+            && path == "coverage.tsv"
+            && kind == CutRunCoverageKind::Fragments
+    ));
 }
 
 #[test]
@@ -13767,6 +13865,131 @@ fn execute_cutrun_prepare_and_project_return_shared_payloads() {
             .unwrap_or(0)
             > 0
     );
+}
+
+#[test]
+fn execute_cutrun_interpret_list_show_and_export_coverage() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_shell_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let input_r1 = root.join("reads_r1.fastq");
+    let input_r2 = root.join("reads_r2.fastq");
+    fs::write(
+        &input_r1,
+        "@pair1/1\nGCCG\n+\nIIII\n@orphan_r1/1\nTAGC\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN shell R1 FASTQ");
+    fs::write(
+        &input_r2,
+        "@pair1/2\nGTAA\n+\nIIII\n@orphan_r2/2\nACGG\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN shell R2 FASTQ");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_shell_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+
+    let interpret = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunInterpret {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fastq,
+            read_layout: CutRunReadLayout::PairedEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 2,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        },
+    )
+    .expect("execute CUT&RUN interpret");
+    assert!(interpret.state_changed);
+    assert_eq!(
+        interpret.output["report"]["report_id"].as_str(),
+        Some("toy_cutrun_reads")
+    );
+    assert_eq!(interpret.output["report"]["fragment_count"].as_u64(), Some(3));
+    assert_eq!(
+        interpret.output["report"]["concordant_pair_count"].as_u64(),
+        Some(1)
+    );
+
+    let listed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunListReadReports {
+            seq_id: Some("toy_cutrun_roi".to_string()),
+        },
+    )
+    .expect("execute CUT&RUN list-read-reports");
+    assert!(!listed.state_changed);
+    assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+    assert_eq!(
+        listed.output["reports"][0]["report_id"].as_str(),
+        Some("toy_cutrun_reads")
+    );
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunShowReadReport {
+            report_id: "toy_cutrun_reads".to_string(),
+        },
+    )
+    .expect("execute CUT&RUN show-read-report");
+    assert!(!shown.state_changed);
+    assert_eq!(shown.output["report"]["seq_id"].as_str(), Some("toy_cutrun_roi"));
+    assert_eq!(shown.output["report"]["mapped_units"].as_u64(), Some(3));
+    assert_eq!(shown.output["report"]["orphan_r1_count"].as_u64(), Some(1));
+    assert_eq!(shown.output["report"]["orphan_r2_count"].as_u64(), Some(1));
+
+    let export_path = root.join("coverage.tsv");
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunExportCoverage {
+            report_id: "toy_cutrun_reads".to_string(),
+            path: export_path.to_string_lossy().to_string(),
+            kind: CutRunCoverageKind::Coverage,
+        },
+    )
+    .expect("execute CUT&RUN export-coverage");
+    assert!(!exported.state_changed);
+    assert_eq!(exported.output["report_id"].as_str(), Some("toy_cutrun_reads"));
+    assert_eq!(exported.output["row_count"].as_u64(), Some(12));
+    let coverage_text = fs::read_to_string(&export_path).expect("read coverage export");
+    assert_eq!(
+        coverage_text.lines().next(),
+        Some("local_pos_1based\tgenomic_pos_1based\tcoverage")
+    );
+    assert!(coverage_text.contains("1\t4\t1"));
+    assert!(coverage_text.contains("5\t8\t3"));
+    assert!(coverage_text.contains("12\t15\t1"));
 }
 
 #[test]

@@ -1096,12 +1096,23 @@ fn cutrun_test_env_lock() -> &'static std::sync::Mutex<()> {
 }
 
 fn write_cutrun_test_reference_catalog(root: &Path, genome_id: &str) -> String {
+    write_cutrun_test_reference_catalog_with_sequence(root, genome_id, "ACGTACGTACGT")
+}
+
+fn write_cutrun_test_reference_catalog_with_sequence(
+    root: &Path,
+    genome_id: &str,
+    sequence: &str,
+) -> String {
     let fasta_gz = root.join("toy.fa.gz");
     let ann_gz = root.join("toy.gtf.gz");
-    write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+    write_gzip(&fasta_gz, &format!(">chr1\n{sequence}\n"));
     write_gzip(
         &ann_gz,
-        "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        &format!(
+            "chr1\tsrc\tgene\t1\t{}\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+            sequence.len()
+        ),
     );
     let cache_dir = root.join("reference_cache");
     let catalog_path = root.join("reference_catalog.json");
@@ -1128,6 +1139,17 @@ fn prepare_cutrun_test_anchor(
     catalog_path: &str,
     seq_id: &str,
 ) {
+    prepare_cutrun_test_anchor_range(engine, genome_id, catalog_path, seq_id, 3, 10);
+}
+
+fn prepare_cutrun_test_anchor_range(
+    engine: &mut GentleEngine,
+    genome_id: &str,
+    catalog_path: &str,
+    seq_id: &str,
+    start_1based: usize,
+    end_1based: usize,
+) {
     engine
         .apply(Operation::PrepareGenome {
             genome_id: genome_id.to_string(),
@@ -1140,8 +1162,8 @@ fn prepare_cutrun_test_anchor(
         .apply(Operation::ExtractGenomeRegion {
             genome_id: genome_id.to_string(),
             chromosome: "chr1".to_string(),
-            start_1based: 3,
-            end_1based: 10,
+            start_1based,
+            end_1based,
             output_id: Some(seq_id.to_string()),
             annotation_scope: None,
             max_annotation_features: None,
@@ -16087,6 +16109,199 @@ fn test_project_cutrun_dataset_rejects_incompatible_reference_genome() {
         "unexpected error: {}",
         err.message
     );
+}
+
+#[test]
+fn test_interpret_cutrun_reads_builds_paired_end_roi_report_with_orphans() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_test_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let input_r1 = root.join("reads_r1.fastq");
+    let input_r2 = root.join("reads_r2.fastq");
+    fs::write(
+        &input_r1,
+        "@pair1/1\nGCCG\n+\nIIII\n@orphan_r1/1\nTAGC\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN R1 FASTQ");
+    fs::write(
+        &input_r2,
+        "@pair1/2\nGTAA\n+\nIIII\n@orphan_r2/2\nACGG\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN R2 FASTQ");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+    let result = engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fastq,
+            read_layout: CutRunReadLayout::PairedEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 2,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret CUT&RUN reads");
+    let report = result
+        .cutrun_read_report
+        .expect("CUT&RUN read report payload");
+    assert_eq!(report.report_id, "toy_cutrun_reads");
+    assert_eq!(report.seq_id, "toy_cutrun_roi");
+    assert_eq!(report.reference_window_length_bp, 12);
+    assert_eq!(report.total_units, 3);
+    assert_eq!(report.mapped_units, 3);
+    assert_eq!(report.fragment_count, 3);
+    assert_eq!(report.concordant_pair_count, 1);
+    assert_eq!(report.orphan_r1_count, 1);
+    assert_eq!(report.orphan_r2_count, 1);
+    assert_eq!(report.unmatched_pair_count, 0);
+    assert_eq!(
+        report.coverage,
+        vec![1, 2, 2, 2, 3, 2, 2, 2, 1, 1, 1, 1]
+    );
+    assert_eq!(report.cut_site_counts, vec![1, 1, 0, 0, 2, 0, 0, 1, 0, 0, 0, 1]);
+    assert_eq!(report.support_clusters.len(), 1);
+    assert_eq!(report.support_clusters[0].local_start_1based, 1);
+    assert_eq!(report.support_clusters[0].local_end_1based, 12);
+    assert_eq!(report.support_clusters[0].peak_coverage, 3);
+    assert_eq!(report.support_clusters[0].total_cut_sites, 6);
+    assert_eq!(report.support_clusters[0].fragment_count, 3);
+
+    let statuses = report
+        .units
+        .iter()
+        .map(|row| (row.normalized_read_id.as_str(), row.status))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(
+        statuses.get("pair1").copied(),
+        Some(CutRunReadUnitStatus::ConcordantPair)
+    );
+    assert_eq!(
+        statuses.get("orphan_r1").copied(),
+        Some(CutRunReadUnitStatus::OrphanR1)
+    );
+    assert_eq!(
+        statuses.get("orphan_r2").copied(),
+        Some(CutRunReadUnitStatus::OrphanR2)
+    );
+
+    let stored = engine
+        .get_cutrun_read_report("toy_cutrun_reads")
+        .expect("stored CUT&RUN report");
+    assert_eq!(stored.fragment_count, 3);
+}
+
+#[test]
+fn test_export_cutrun_read_coverage_writes_cut_sites_summary() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_test_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let input_r1 = root.join("reads_r1.fastq");
+    let input_r2 = root.join("reads_r2.fastq");
+    fs::write(
+        &input_r1,
+        "@pair1/1\nGCCG\n+\nIIII\n@orphan_r1/1\nTAGC\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN R1 FASTQ");
+    fs::write(
+        &input_r2,
+        "@pair1/2\nGTAA\n+\nIIII\n@orphan_r2/2\nACGG\n+\nIIII\n",
+    )
+    .expect("write CUT&RUN R2 FASTQ");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fastq,
+            read_layout: CutRunReadLayout::PairedEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 2,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret CUT&RUN reads");
+
+    let export_path = root.join("cut_sites.tsv");
+    let export = engine
+        .export_cutrun_read_coverage(
+            "toy_cutrun_reads",
+            export_path.to_string_lossy().as_ref(),
+            CutRunCoverageKind::CutSites,
+        )
+        .expect("export CUT&RUN cut sites");
+    assert_eq!(export.report_id, "toy_cutrun_reads");
+    assert_eq!(export.kind, CutRunCoverageKind::CutSites);
+    assert_eq!(export.row_count, 12);
+    let text = fs::read_to_string(&export_path).expect("read cut-site export");
+    assert_eq!(
+        text.lines().next(),
+        Some("local_pos_1based\tgenomic_pos_1based\tcut_sites")
+    );
+    assert!(text.contains("1\t4\t1"));
+    assert!(text.contains("5\t8\t2"));
+    assert!(text.contains("12\t15\t1"));
 }
 
 #[test]

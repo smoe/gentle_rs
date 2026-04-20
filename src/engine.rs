@@ -397,6 +397,7 @@ const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v3";
 const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
 const SEQUENCE_ALIGNMENT_REPORT_SCHEMA: &str = "gentle.sequence_alignment_report.v1";
 pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
+pub const CUTRUN_READ_REPORTS_METADATA_KEY: &str = "cutrun_read_reports";
 const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
 const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
 const RNA_READ_CHECKPOINT_SCHEMA: &str = "gentle.rna_read_interpret_checkpoint.v1";
@@ -417,6 +418,9 @@ const CUTRUN_DATASET_LIST_SCHEMA: &str = "gentle.cutrun_dataset_list.v1";
 const CUTRUN_PREPARED_MANIFEST_SCHEMA: &str = "gentle.cutrun_prepared_manifest.v1";
 const CUTRUN_DATASET_STATUS_SCHEMA: &str = "gentle.cutrun_dataset_status.v1";
 const CUTRUN_DATASET_PROJECTION_SCHEMA: &str = "gentle.cutrun_dataset_projection.v1";
+const CUTRUN_READ_REPORTS_SCHEMA: &str = "gentle.cutrun_read_reports.v1";
+const CUTRUN_READ_REPORT_SCHEMA: &str = "gentle.cutrun_read_report.v1";
+const CUTRUN_READ_COVERAGE_EXPORT_SCHEMA: &str = "gentle.cutrun_read_coverage_export.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
@@ -611,6 +615,14 @@ fn default_true() -> bool {
 
 fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
+}
+
+fn default_cutrun_roi_flank_bp() -> usize {
+    150
+}
+
+fn default_cutrun_checkpoint_every_reads() -> usize {
+    500
 }
 
 fn default_rna_read_alignment_dotplot_max_points() -> usize {
@@ -2940,6 +2952,43 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_dir: Option<String>,
     },
+    InterpretCutRunReads {
+        seq_id: SeqId,
+        input_r1_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_r2_path: Option<String>,
+        #[serde(default)]
+        input_format: CutRunInputFormat,
+        #[serde(default)]
+        read_layout: CutRunReadLayout,
+        #[serde(default = "default_cutrun_roi_flank_bp")]
+        roi_flank_bp: usize,
+        #[serde(default)]
+        seed_filter: CutRunSeedFilterConfig,
+        #[serde(default)]
+        align_config: CutRunAlignConfig,
+        #[serde(default = "default_true")]
+        deduplicate_fragments: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        checkpoint_path: Option<String>,
+        #[serde(default = "default_cutrun_checkpoint_every_reads")]
+        checkpoint_every_reads: usize,
+    },
+    ListCutRunReadReports {
+        #[serde(default)]
+        seq_id: Option<SeqId>,
+    },
+    ShowCutRunReadReport {
+        report_id: String,
+    },
+    ExportCutRunReadCoverage {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        kind: CutRunCoverageKind,
+    },
     ImportIsoformPanel {
         seq_id: SeqId,
         panel_path: String,
@@ -4819,6 +4868,10 @@ impl GentleEngine {
                 "ShowCutRunDatasetStatus".to_string(),
                 "PrepareCutRunDataset".to_string(),
                 "ProjectCutRunDataset".to_string(),
+                "InterpretCutRunReads".to_string(),
+                "ListCutRunReadReports".to_string(),
+                "ShowCutRunReadReport".to_string(),
+                "ExportCutRunReadCoverage".to_string(),
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),

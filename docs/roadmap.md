@@ -3515,7 +3515,7 @@ Track boundaries:
    - preserve existing cDNA filtering/mapping behavior unchanged; this deferred
      track should not trigger premature refactors in the current RNA/cDNA path.
 
-### CUT&RUN support track (V1 baseline implemented; V2/V3 planned)
+### CUT&RUN support track (V1/V2 baseline implemented; V3 planned)
 
 Goal: support promoter/ROI-centric CUT&RUN evidence through one shared
 catalog/cache/report family without introducing GUI-only or workflow-specific
@@ -3546,9 +3546,29 @@ Status:
      - anchored peaks+signal projection,
      - incompatible-genome rejection.
 
-2. Planned V2:
+2. Implemented baseline V2:
    - direct ROI-first FASTA/FASTQ read interpretation with paired-end-aware
-     fragment/cut-site support and saved ROI evidence reports.
+     fragment/cut-site support and saved ROI evidence reports is now in place
+     through:
+     - `InterpretCutRunReads`
+     - `ListCutRunReadReports`
+     - `ShowCutRunReadReport`
+     - `ExportCutRunReadCoverage`
+   - V2 currently stores engine-owned ROI evidence including:
+     - read-unit classifications (`concordant_pair`, `orphan_r1`, `orphan_r2`,
+       `single_mapped`, and related unmatched states)
+     - derived fragment spans
+     - per-base coverage
+     - cut-site counts
+     - compact support clusters inside the anchored ROI window
+   - deterministic regression coverage now exists for:
+     - paired-end fragment reconstruction,
+     - orphan handling,
+     - saved report list/show access,
+     - coverage/cut-site TSV export.
+   - remaining V2 follow-up:
+     - allow catalog-linked raw-read assets to flow directly into the same V2
+       report path instead of only ad hoc file paths.
 
 3. Planned V3:
    - regulatory reasoning over promoter-boundary candidates, TFBS support, and

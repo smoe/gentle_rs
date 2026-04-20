@@ -13,6 +13,8 @@
 
 use super::*;
 use crate::engine::{
+    CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
+    CutRunSeedFilterConfig,
     TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
@@ -5737,8 +5739,257 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 cache_dir,
             })
         }
+        "interpret" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "cutrun interpret requires SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            let input_r1_path = tokens[3].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("cutrun interpret requires a non-empty SEQ_ID".to_string());
+            }
+            if input_r1_path.is_empty() {
+                return Err("cutrun interpret requires a non-empty INPUT_R1".to_string());
+            }
+            let mut idx = 4usize;
+            let mut input_r2_path: Option<String> = None;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let raw = tokens[idx].trim();
+                if raw.is_empty() {
+                    return Err("cutrun interpret INPUT_R2 must not be empty".to_string());
+                }
+                input_r2_path = Some(raw.to_string());
+                idx += 1;
+            }
+            let mut input_format = CutRunInputFormat::Fasta;
+            let mut read_layout = CutRunReadLayout::SingleEnd;
+            let mut roi_flank_bp = 150usize;
+            let mut report_id: Option<String> = None;
+            let mut checkpoint_path: Option<String> = None;
+            let mut checkpoint_every_reads = 500usize;
+            let mut seed_filter = CutRunSeedFilterConfig::default();
+            let mut align_config = CutRunAlignConfig::default();
+            let mut deduplicate_fragments = true;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--format" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--format", "cutrun interpret")?;
+                        input_format = match raw.trim().to_ascii_lowercase().as_str() {
+                            "fasta" => CutRunInputFormat::Fasta,
+                            "fastq" => CutRunInputFormat::Fastq,
+                            other => {
+                                return Err(format!(
+                                    "Unknown CUT&RUN input format '{other}' (expected fasta or fastq)"
+                                ))
+                            }
+                        };
+                    }
+                    "--layout" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--layout", "cutrun interpret")?;
+                        read_layout = match raw.trim().to_ascii_lowercase().as_str() {
+                            "single_end" | "single-end" | "single" => CutRunReadLayout::SingleEnd,
+                            "paired_end" | "paired-end" | "paired" => CutRunReadLayout::PairedEnd,
+                            other => {
+                                return Err(format!(
+                                    "Unknown CUT&RUN read layout '{other}' (expected single_end or paired_end)"
+                                ))
+                            }
+                        };
+                    }
+                    "--flank-bp" | "--roi-flank-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "cutrun interpret")?;
+                        roi_flank_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "cutrun interpret",
+                        )?);
+                    }
+                    "--checkpoint-path" => {
+                        checkpoint_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-path",
+                            "cutrun interpret",
+                        )?);
+                    }
+                    "--checkpoint-every-reads" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-every-reads",
+                            "cutrun interpret",
+                        )?;
+                        checkpoint_every_reads = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --checkpoint-every-reads value '{raw}' for cutrun interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--seed-kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seed-kmer-len",
+                            "cutrun interpret",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --seed-kmer-len value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--min-seed-matches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-matches",
+                            "cutrun interpret",
+                        )?;
+                        seed_filter.min_seed_matches = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --min-seed-matches value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "cutrun interpret",
+                        )?;
+                        align_config.max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-mismatches value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-identity",
+                            "cutrun interpret",
+                        )?;
+                        align_config.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!("Invalid --min-identity value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--max-fragment-span-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-fragment-span-bp",
+                            "cutrun interpret",
+                        )?;
+                        align_config.max_fragment_span_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-fragment-span-bp value '{raw}' for cutrun interpret: {e}")
+                        })?;
+                    }
+                    "--deduplicate-fragments" => {
+                        deduplicate_fragments = true;
+                        idx += 1;
+                    }
+                    "--no-deduplicate-fragments" => {
+                        deduplicate_fragments = false;
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun interpret")),
+                }
+            }
+            Ok(ShellCommand::CutRunInterpret {
+                seq_id,
+                input_r1_path,
+                input_r2_path,
+                input_format,
+                read_layout,
+                roi_flank_bp,
+                seed_filter,
+                align_config,
+                deduplicate_fragments,
+                report_id,
+                checkpoint_path,
+                checkpoint_every_reads,
+            })
+        }
+        "list-read-reports" => {
+            if tokens.len() > 3 {
+                return Err("cutrun list-read-reports expects at most one optional SEQ_ID".to_string());
+            }
+            let seq_id = if tokens.len() == 3 {
+                let raw = tokens[2].trim();
+                if raw.is_empty() {
+                    None
+                } else {
+                    Some(raw.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::CutRunListReadReports { seq_id })
+        }
+        "show-read-report" => {
+            if tokens.len() != 3 {
+                return Err("cutrun show-read-report requires REPORT_ID".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("cutrun show-read-report REPORT_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::CutRunShowReadReport { report_id })
+        }
+        "export-coverage" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "cutrun export-coverage requires REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            let path = tokens[3].trim().to_string();
+            if report_id.is_empty() {
+                return Err("cutrun export-coverage REPORT_ID must not be empty".to_string());
+            }
+            if path.is_empty() {
+                return Err("cutrun export-coverage OUTPUT.tsv must not be empty".to_string());
+            }
+            let mut kind = CutRunCoverageKind::Coverage;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kind",
+                            "cutrun export-coverage",
+                        )?;
+                        kind = match raw.trim().to_ascii_lowercase().as_str() {
+                            "coverage" => CutRunCoverageKind::Coverage,
+                            "cut_sites" | "cut-sites" => CutRunCoverageKind::CutSites,
+                            "fragments" => CutRunCoverageKind::Fragments,
+                            other => {
+                                return Err(format!(
+                                    "Unknown CUT&RUN coverage kind '{other}' (expected coverage, cut_sites, or fragments)"
+                                ))
+                            }
+                        };
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun export-coverage")),
+                }
+            }
+            Ok(ShellCommand::CutRunExportCoverage {
+                report_id,
+                path,
+                kind,
+            })
+        }
         other => Err(format!(
-            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, or project)"
+            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, or export-coverage)"
         )),
     }
 }

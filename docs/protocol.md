@@ -1578,8 +1578,19 @@ Current draft operations:
 - `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
 - `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
 - `ProjectCutRunDataset { seq_id, dataset_id, include_peaks?, include_signal?, clear_existing?, catalog_path?, cache_dir? }`
+- `InterpretCutRunReads { seq_id, input_r1_path, input_r2_path?, input_format?, read_layout?, roi_flank_bp?, seed_filter?, align_config?, deduplicate_fragments?, report_id?, checkpoint_path?, checkpoint_every_reads? }`
+- `ListCutRunReadReports { seq_id? }`
+- `ShowCutRunReadReport { report_id }`
+- `ExportCutRunReadCoverage { report_id, path, kind? }`
   - V1 is processed-evidence-first and currently reuses the shared anchored
     `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
+  - V2 is ROI-first and currently interprets ad hoc `FASTA`/`FASTQ` inputs only
+    against one selected genome-anchored region plus deterministic flanks.
+  - paired-end interpretation is first-class: mates are paired by normalized
+    read id, concordant pairs emit fragment spans, and orphan/single-ended
+    observations are retained as explicit report rows instead of being dropped.
+  - `ExportCutRunReadCoverage` writes TSV summaries for one saved read report:
+    `coverage`, `cut_sites`, or `fragments`.
   - default catalog: `assets/cutrun.json`; default prepared-cache root:
     `data/cutrun`; environment override: `GENTLE_CUTRUN_CACHE_DIR`.
   - `ProjectCutRunDataset` requires a genome-anchored sequence and rejects
@@ -1588,7 +1599,10 @@ Current draft operations:
     `gentle.cutrun_dataset_list.v1`,
     `gentle.cutrun_prepared_manifest.v1`,
     `gentle.cutrun_dataset_status.v1`,
-    `gentle.cutrun_dataset_projection.v1`.
+    `gentle.cutrun_dataset_projection.v1`,
+    `gentle.cutrun_read_report.v1`,
+    `gentle.cutrun_read_reports.v1`,
+    `gentle.cutrun_read_coverage_export.v1`.
 
 Catalog-backed reference/helper discovery notes:
 

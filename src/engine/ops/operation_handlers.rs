@@ -5776,6 +5776,9 @@ impl GentleEngine {
             sequencing_trace_summaries: None,
             cutrun_dataset_list: None,
             cutrun_dataset_status: None,
+            cutrun_read_report: None,
+            cutrun_read_report_summaries: None,
+            cutrun_read_coverage_export: None,
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -8661,6 +8664,87 @@ impl GentleEngine {
                     report.projected_signal_features
                 ));
                 result.cutrun_dataset_projection = Some(report);
+            }
+            Operation::InterpretCutRunReads {
+                seq_id,
+                input_r1_path,
+                input_r2_path,
+                input_format,
+                read_layout,
+                roi_flank_bp,
+                seed_filter,
+                align_config,
+                deduplicate_fragments,
+                report_id,
+                checkpoint_path,
+                checkpoint_every_reads,
+            } => {
+                let mut report = self.interpret_cutrun_reads(
+                    &seq_id,
+                    &input_r1_path,
+                    input_r2_path.as_deref(),
+                    input_format,
+                    read_layout,
+                    roi_flank_bp,
+                    &seed_filter,
+                    &align_config,
+                    deduplicate_fragments,
+                    report_id.as_deref(),
+                    checkpoint_path.as_deref(),
+                    checkpoint_every_reads,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                self.upsert_cutrun_read_report(report.clone())?;
+                result.messages.push(format!(
+                    "Interpreted CUT&RUN reads into report '{}' (units={}, mapped={}, fragments={}, concordant_pairs={})",
+                    report.report_id,
+                    report.total_units,
+                    report.mapped_units,
+                    report.fragment_count,
+                    report.concordant_pair_count
+                ));
+                result.warnings.extend(report.warnings.clone());
+                result.cutrun_read_report = Some(report);
+            }
+            Operation::ListCutRunReadReports { seq_id } => {
+                let rows = self.list_cutrun_read_reports(seq_id.as_deref());
+                result.messages.push(format!(
+                    "CUT&RUN read reports: {} row(s){}",
+                    rows.len(),
+                    seq_id
+                        .as_deref()
+                        .map(|value| format!(" (seq_id='{}')", value))
+                        .unwrap_or_default()
+                ));
+                result.cutrun_read_report_summaries = Some(rows);
+            }
+            Operation::ShowCutRunReadReport { report_id } => {
+                let report = self.get_cutrun_read_report(&report_id)?;
+                result.messages.push(format!(
+                    "CUT&RUN read report '{}' for '{}' (units={}, mapped={}, fragments={})",
+                    report.report_id,
+                    report.seq_id,
+                    report.total_units,
+                    report.mapped_units,
+                    report.fragment_count
+                ));
+                result.warnings.extend(report.warnings.clone());
+                result.cutrun_read_report = Some(report);
+            }
+            Operation::ExportCutRunReadCoverage {
+                report_id,
+                path,
+                kind,
+            } => {
+                let export = self.export_cutrun_read_coverage(&report_id, &path, kind)?;
+                result.messages.push(format!(
+                    "Exported CUT&RUN {} rows for '{}' to '{}'",
+                    export.kind.as_str(),
+                    export.report_id,
+                    export.path
+                ));
+                result.cutrun_read_coverage_export = Some(export);
             }
             Operation::ImportIsoformPanel {
                 seq_id,

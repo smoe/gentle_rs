@@ -24,9 +24,13 @@ pub use gentle_protocol::{
     AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
     CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, CutRunCatalogEntry, CutRunCatalogListEntry, CutRunDatasetListReport,
-    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunPreparedAssetManifest,
-    CutRunPreparedAssetStatus, CutRunPreparedManifest, CutRunReadLayout,
+    ConstructRole, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat, CutRunPreparedAssetManifest,
+    CutRunPreparedAssetStatus, CutRunPreparedManifest, CutRunReadCoverageExport,
+    CutRunReadLayout, CutRunReadOrientation, CutRunReadPlacement, CutRunReadReport,
+    CutRunReadReportStore, CutRunReadReportSummary, CutRunReadUnitRow, CutRunReadUnitStatus,
+    CutRunSeedFilterConfig, CutRunSupportCluster,
     DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
     DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint,
     DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
@@ -2398,6 +2402,12 @@ pub struct OpResult {
     pub cutrun_dataset_status: Option<CutRunDatasetStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cutrun_dataset_projection: Option<CutRunDatasetProjectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_read_report: Option<CutRunReadReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_read_report_summaries: Option<Vec<CutRunReadReportSummary>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_read_coverage_export: Option<CutRunReadCoverageExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

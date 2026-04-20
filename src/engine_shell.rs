@@ -32,7 +32,9 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, DEFAULT_HOST_PROFILE_CATALOG_PATH,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, CutRunAlignConfig,
+        CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
@@ -1260,6 +1262,31 @@ pub enum ShellCommand {
         clear_existing: bool,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+    },
+    CutRunInterpret {
+        seq_id: String,
+        input_r1_path: String,
+        input_r2_path: Option<String>,
+        input_format: CutRunInputFormat,
+        read_layout: CutRunReadLayout,
+        roi_flank_bp: usize,
+        seed_filter: CutRunSeedFilterConfig,
+        align_config: CutRunAlignConfig,
+        deduplicate_fragments: bool,
+        report_id: Option<String>,
+        checkpoint_path: Option<String>,
+        checkpoint_every_reads: usize,
+    },
+    CutRunListReadReports {
+        seq_id: Option<String>,
+    },
+    CutRunShowReadReport {
+        report_id: String,
+    },
+    CutRunExportCoverage {
+        report_id: String,
+        path: String,
+        kind: CutRunCoverageKind,
     },
     TracksImportVcf {
         seq_id: String,
@@ -6537,6 +6564,58 @@ impl ShellCommand {
                 catalog_path.as_deref().unwrap_or("assets/cutrun.json"),
                 cache_dir.as_deref().unwrap_or("data/cutrun")
             ),
+            Self::CutRunInterpret {
+                seq_id,
+                input_r1_path,
+                input_r2_path,
+                input_format,
+                read_layout,
+                roi_flank_bp,
+                seed_filter,
+                align_config,
+                deduplicate_fragments,
+                report_id,
+                checkpoint_path,
+                checkpoint_every_reads,
+            } => format!(
+                "interpret CUT&RUN reads for '{}' (r1='{}', r2='{}', format={}, layout={}, flank_bp={}, seed_kmer_len={}, min_seed_matches={}, max_mismatches={}, min_identity={:.3}, max_fragment_span_bp={}, deduplicate_fragments={}, report_id='{}', checkpoint='{}', checkpoint_every_reads={})",
+                seq_id,
+                input_r1_path,
+                input_r2_path.as_deref().unwrap_or("-"),
+                input_format.as_str(),
+                read_layout.as_str(),
+                roi_flank_bp,
+                seed_filter.kmer_len,
+                seed_filter.min_seed_matches,
+                align_config.max_mismatches,
+                align_config.min_identity_fraction,
+                align_config.max_fragment_span_bp,
+                deduplicate_fragments,
+                report_id.as_deref().unwrap_or("-"),
+                checkpoint_path.as_deref().unwrap_or("-"),
+                checkpoint_every_reads
+            ),
+            Self::CutRunListReadReports { seq_id } => format!(
+                "list CUT&RUN read reports{}",
+                seq_id
+                    .as_deref()
+                    .map(|value| format!(" for '{}'", value))
+                    .unwrap_or_default()
+            ),
+            Self::CutRunShowReadReport { report_id } => format!(
+                "show CUT&RUN read report '{}'",
+                report_id
+            ),
+            Self::CutRunExportCoverage {
+                report_id,
+                path,
+                kind,
+            } => format!(
+                "export CUT&RUN {} for '{}' to '{}'",
+                kind.as_str(),
+                report_id,
+                path
+            ),
             Self::TracksImportVcf {
                 seq_id,
                 path,
@@ -8524,6 +8603,7 @@ impl ShellCommand {
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
                 | Self::CutRunProject { .. }
+                | Self::CutRunInterpret { .. }
                 | Self::TracksImportVcf { .. }
                 | Self::TracksTrackedAdd { .. }
                 | Self::TracksTrackedRemove { .. }
@@ -19273,6 +19353,100 @@ fn execute_reference_and_track_command(
                     .map_err(|e| format!("Could not serialize CUT&RUN projection report: {e}"))?,
             })
         }
+        ShellCommand::CutRunInterpret {
+            seq_id,
+            input_r1_path,
+            input_r2_path,
+            input_format,
+            read_layout,
+            roi_flank_bp,
+            seed_filter,
+            align_config,
+            deduplicate_fragments,
+            report_id,
+            checkpoint_path,
+            checkpoint_every_reads,
+        } => {
+            let op_result = engine
+                .apply(Operation::InterpretCutRunReads {
+                    seq_id: seq_id.clone(),
+                    input_r1_path: input_r1_path.clone(),
+                    input_r2_path: input_r2_path.clone(),
+                    input_format: *input_format,
+                    read_layout: *read_layout,
+                    roi_flank_bp: *roi_flank_bp,
+                    seed_filter: seed_filter.clone(),
+                    align_config: align_config.clone(),
+                    deduplicate_fragments: *deduplicate_fragments,
+                    report_id: report_id.clone(),
+                    checkpoint_path: checkpoint_path.clone(),
+                    checkpoint_every_reads: *checkpoint_every_reads,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_cutrun_read_report(id).ok()
+            } else {
+                engine
+                    .list_cutrun_read_reports(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_cutrun_read_report(row.report_id.as_str()).ok())
+            };
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::CutRunListReadReports { seq_id } => {
+            let reports = engine.list_cutrun_read_reports(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.cutrun_read_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::CutRunShowReadReport { report_id } => {
+            let report = engine
+                .get_cutrun_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::CutRunExportCoverage {
+            report_id,
+            path,
+            kind,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportCutRunReadCoverage {
+                    report_id: report_id.clone(),
+                    path: path.clone(),
+                    kind: *kind,
+                })
+                .map_err(|e| e.to_string())?;
+            let export = op_result.cutrun_read_coverage_export.ok_or_else(|| {
+                "ExportCutRunReadCoverage did not return an export payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&export)
+                    .map_err(|e| format!("Could not serialize CUT&RUN coverage export: {e}"))?,
+            })
+        }
         ShellCommand::TracksImportBed {
             seq_id,
             path,
@@ -24203,6 +24377,10 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::CutRunStatus { .. }
             | ShellCommand::CutRunPrepare { .. }
             | ShellCommand::CutRunProject { .. }
+            | ShellCommand::CutRunInterpret { .. }
+            | ShellCommand::CutRunListReadReports { .. }
+            | ShellCommand::CutRunShowReadReport { .. }
+            | ShellCommand::CutRunExportCoverage { .. }
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -25247,6 +25425,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::CutRunStatus { .. }
         | ShellCommand::CutRunPrepare { .. }
         | ShellCommand::CutRunProject { .. }
+        | ShellCommand::CutRunInterpret { .. }
+        | ShellCommand::CutRunListReadReports { .. }
+        | ShellCommand::CutRunShowReadReport { .. }
+        | ShellCommand::CutRunExportCoverage { .. }
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

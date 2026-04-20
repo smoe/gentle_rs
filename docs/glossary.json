@@ -1,5 +1,5 @@
 {
-   "command_count": 342,
+   "command_count": 346,
    "commands": [
       {
          "aliases": [
@@ -1862,6 +1862,62 @@
          "path": "cutrun project",
          "summary": "Project one prepared CUT&RUN dataset onto a genome-anchored sequence.",
          "usage": "cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InterpretCutRunReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun interpret",
+         "summary": "Interpret CUT&RUN FASTA/FASTQ reads against one anchored ROI and save a read report.",
+         "usage": "cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListCutRunReadReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun list-read-reports",
+         "summary": "List saved CUT&RUN ROI read reports, optionally filtered to one anchored sequence.",
+         "usage": "cutrun list-read-reports [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ShowCutRunReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun show-read-report",
+         "summary": "Inspect one saved CUT&RUN ROI read report in full JSON form.",
+         "usage": "cutrun show-read-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportCutRunReadCoverage"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun export-coverage",
+         "summary": "Export per-base coverage, cut-site counts, or fragment spans from one saved CUT&RUN read report.",
+         "usage": "cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]"
       },
       {
          "aliases": [],

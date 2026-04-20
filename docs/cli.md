@@ -78,13 +78,19 @@ Catalog path note:
 - Helper catalogs may now carry richer metadata (`summary`, `aliases`, `tags`,
   `search_terms`, `helper_kind`, `host_system`, `procurement`, `semantics`)
   while still using the same preparation/indexing pipeline as before.
-- CUT&RUN V1 now uses the same discovery pattern:
+- CUT&RUN V1/V2 now use the same discovery pattern:
   - built-in starter catalog: `assets/cutrun.json`
   - project/system overlays under `.gentle/catalogs/` and `/etc/gentle/catalogs/`
   - prepared-cache root defaults to `data/cutrun`
   - override cache root with `GENTLE_CUTRUN_CACHE_DIR`
   - `cutrun project` only accepts genome-anchored sequences and reuses the
     shared anchored BED/BigWig track import behavior
+  - `cutrun interpret` maps ad hoc `FASTA`/`FASTQ` reads only against one
+    selected genome-anchored ROI plus deterministic flanks and stores a shared
+    engine-owned read report for later inspection/export
+  - `cutrun export-coverage` writes TSV summaries for per-base coverage,
+    cut-site density, or derived fragment spans from one saved CUT&RUN read
+    report
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -1451,6 +1457,12 @@ cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter 
 cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun project grch38_tp53 toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun --clear-existing
+cargo run --bin gentle_cli -- cutrun interpret grch38_tp53 reads_r1.fastq.gz reads_r2.fastq.gz --format fastq --layout paired_end --flank-bp 150 --report-id tp53_cutrun_reads --seed-kmer-len 9 --min-seed-matches 2 --max-mismatches 4 --min-identity 0.9 --max-fragment-span-bp 800
+cargo run --bin gentle_cli -- cutrun list-read-reports grch38_tp53
+cargo run --bin gentle_cli -- cutrun show-read-report tp53_cutrun_reads
+cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.coverage.tsv --kind coverage
+cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.cuts.tsv --kind cut_sites
+cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.fragments.tsv --kind fragments
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json

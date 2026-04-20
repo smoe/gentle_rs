@@ -11,7 +11,9 @@
 //! as other projected signal data.
 
 use super::*;
-use crate::genomes::{BUILTIN_ASSET_ROOT_ENV, PROJECT_ROOT_ENV, SYSTEM_CONFIG_ROOT_ENV};
+use crate::genomes::{
+    BUILTIN_ASSET_ROOT_ENV, GenomeChromosomeRecord, PROJECT_ROOT_ENV, SYSTEM_CONFIG_ROOT_ENV,
+};
 use reqwest::blocking::Client;
 use sha1::{Digest, Sha1};
 use std::fs;
@@ -1085,6 +1087,1264 @@ impl GentleEngine {
             file_name,
             file_size_bytes: file_size_bytes(&destination)?,
             checksum_sha1: checksum_sha1(&destination)?,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ParsedCutRunInputRecord {
+    record_index: usize,
+    header_id: String,
+    normalized_read_id: String,
+    sequence: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+struct CutRunInputUnit {
+    normalized_read_id: String,
+    r1: Option<ParsedCutRunInputRecord>,
+    r2: Option<ParsedCutRunInputRecord>,
+}
+
+#[derive(Clone, Debug)]
+struct CutRunReferenceWindow {
+    genome_id: String,
+    chromosome: String,
+    window_start_1based: usize,
+    window_end_1based: usize,
+    roi_local_start_1based: usize,
+    roi_local_end_1based: usize,
+    orientation: CutRunReadOrientation,
+    sequence: Vec<u8>,
+    warnings: Vec<String>,
+}
+
+impl GentleEngine {
+    pub(super) fn normalize_cutrun_report_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CUT&RUN report_id cannot be empty".to_string(),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CUT&RUN report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                    .to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    pub(super) fn read_cutrun_read_report_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> CutRunReadReportStore {
+        let mut store = value
+            .cloned()
+            .and_then(|raw| serde_json::from_value::<CutRunReadReportStore>(raw).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = CUTRUN_READ_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    pub(super) fn read_cutrun_read_report_store(&self) -> CutRunReadReportStore {
+        Self::read_cutrun_read_report_store_from_metadata(
+            self.state.metadata.get(CUTRUN_READ_REPORTS_METADATA_KEY),
+        )
+    }
+
+    pub(super) fn write_cutrun_read_report_store(
+        &mut self,
+        mut store: CutRunReadReportStore,
+    ) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state.metadata.remove(CUTRUN_READ_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = CUTRUN_READ_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize CUT&RUN read-report metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(CUTRUN_READ_REPORTS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub(super) fn upsert_cutrun_read_report(
+        &mut self,
+        report: CutRunReadReport,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_cutrun_read_report_store();
+        store.reports.insert(report.report_id.clone(), report);
+        self.write_cutrun_read_report_store(store)
+    }
+
+    fn cutrun_read_report_summary(report: &CutRunReadReport) -> CutRunReadReportSummary {
+        CutRunReadReportSummary {
+            report_id: report.report_id.clone(),
+            seq_id: report.seq_id.clone(),
+            generated_at_unix_ms: report.generated_at_unix_ms,
+            input_format: report.input_format,
+            read_layout: report.read_layout,
+            roi_flank_bp: report.roi_flank_bp,
+            reference_window_length_bp: report.reference_window_length_bp,
+            total_units: report.total_units,
+            mapped_units: report.mapped_units,
+            fragment_count: report.fragment_count,
+            concordant_pair_count: report.concordant_pair_count,
+            orphan_unit_count: report.orphan_r1_count.saturating_add(report.orphan_r2_count),
+            mean_read_length_bp: report.mean_read_length_bp,
+        }
+    }
+
+    pub fn list_cutrun_read_reports(&self, seq_id: Option<&str>) -> Vec<CutRunReadReportSummary> {
+        let seq_filter = seq_id.map(str::trim).filter(|value| !value.is_empty());
+        let mut rows = self
+            .read_cutrun_read_report_store()
+            .reports
+            .values()
+            .filter(|report| {
+                seq_filter
+                    .map(|needle| report.seq_id == needle)
+                    .unwrap_or(true)
+            })
+            .map(Self::cutrun_read_report_summary)
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .generated_at_unix_ms
+                .cmp(&left.generated_at_unix_ms)
+                .then_with(|| left.report_id.cmp(&right.report_id))
+        });
+        rows
+    }
+
+    pub fn get_cutrun_read_report(&self, report_id: &str) -> Result<CutRunReadReport, EngineError> {
+        let report_id = Self::normalize_cutrun_report_id(report_id)?;
+        self.read_cutrun_read_report_store()
+            .reports
+            .get(report_id.as_str())
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("CUT&RUN read report '{}' not found", report_id),
+            })
+    }
+
+    fn normalize_cutrun_input_sequence(sequence: &[u8]) -> Vec<u8> {
+        sequence
+            .iter()
+            .map(|base| match Self::normalize_nucleotide_base(*base) {
+                b'A' | b'C' | b'G' | b'T' | b'N' => Self::normalize_nucleotide_base(*base),
+                _ => b'N',
+            })
+            .collect()
+    }
+
+    fn normalize_cutrun_header_id(raw: &str, record_index: usize) -> String {
+        raw.trim()
+            .split_ascii_whitespace()
+            .next()
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("record_{}", record_index + 1))
+    }
+
+    fn normalize_cutrun_read_id(header_id: &str) -> String {
+        let first = header_id
+            .trim()
+            .split_ascii_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_start_matches('@')
+            .trim_start_matches('>');
+        if let Some(stripped) = first
+            .strip_suffix("/1")
+            .or_else(|| first.strip_suffix("/2"))
+        {
+            if !stripped.is_empty() {
+                return stripped.to_string();
+            }
+        }
+        if first.is_empty() {
+            "unnamed_read".to_string()
+        } else {
+            first.to_string()
+        }
+    }
+
+    fn parse_cutrun_fastq_records(path: &str) -> Result<Vec<ParsedCutRunInputRecord>, EngineError> {
+        let file = File::open(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not open CUT&RUN FASTQ input '{}': {e}", path),
+        })?;
+        let lower = path.to_ascii_lowercase();
+        let mut reader: Box<dyn BufRead> = if lower.ends_with(".gz") {
+            Box::new(BufReader::new(MultiGzDecoder::new(BufReader::new(file))))
+        } else {
+            Box::new(BufReader::new(file))
+        };
+        let mut out = Vec::<ParsedCutRunInputRecord>::new();
+        let mut header = String::new();
+        let mut sequence = String::new();
+        let mut plus = String::new();
+        let mut qualities = String::new();
+        loop {
+            header.clear();
+            if reader.read_line(&mut header).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read CUT&RUN FASTQ input '{}': {e}", path),
+            })? == 0
+            {
+                break;
+            }
+            sequence.clear();
+            plus.clear();
+            qualities.clear();
+            if reader.read_line(&mut sequence).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read CUT&RUN FASTQ sequence line '{}': {e}", path),
+            })? == 0
+                || reader.read_line(&mut plus).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read CUT&RUN FASTQ separator line '{}': {e}", path),
+                })? == 0
+                || reader.read_line(&mut qualities).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read CUT&RUN FASTQ quality line '{}': {e}", path),
+                })? == 0
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("CUT&RUN FASTQ input '{}' ended mid-record", path),
+                });
+            }
+            if !header.starts_with('@') {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "CUT&RUN FASTQ input '{}' has a record without '@' header",
+                        path
+                    ),
+                });
+            }
+            if !plus.starts_with('+') {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "CUT&RUN FASTQ input '{}' has a record without '+' separator",
+                        path
+                    ),
+                });
+            }
+            let record_index = out.len();
+            let header_text = header[1..].trim();
+            let header_id = Self::normalize_cutrun_header_id(header_text, record_index);
+            out.push(ParsedCutRunInputRecord {
+                record_index,
+                header_id: header_id.clone(),
+                normalized_read_id: Self::normalize_cutrun_read_id(&header_id),
+                sequence: Self::normalize_cutrun_input_sequence(sequence.trim().as_bytes()),
+            });
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("No FASTQ records found in '{}'", path),
+            });
+        }
+        Ok(out)
+    }
+
+    fn parse_cutrun_input_records(
+        path: &str,
+        input_format: CutRunInputFormat,
+    ) -> Result<Vec<ParsedCutRunInputRecord>, EngineError> {
+        match input_format {
+            CutRunInputFormat::Fasta => {
+                let mut out = Vec::<ParsedCutRunInputRecord>::new();
+                Self::visit_fasta_records_with_offsets(path, &mut |record, _progress| {
+                    out.push(ParsedCutRunInputRecord {
+                        record_index: record.record_index,
+                        header_id: record.header_id.clone(),
+                        normalized_read_id: Self::normalize_cutrun_read_id(&record.header_id),
+                        sequence: Self::normalize_cutrun_input_sequence(&record.sequence),
+                    });
+                    Ok(())
+                })?;
+                Ok(out)
+            }
+            CutRunInputFormat::Fastq => Self::parse_cutrun_fastq_records(path),
+        }
+    }
+
+    fn build_cutrun_input_units(
+        input_r1: Vec<ParsedCutRunInputRecord>,
+        input_r2: Vec<ParsedCutRunInputRecord>,
+        read_layout: CutRunReadLayout,
+    ) -> Vec<CutRunInputUnit> {
+        match read_layout {
+            CutRunReadLayout::SingleEnd => input_r1
+                .into_iter()
+                .map(|r1| CutRunInputUnit {
+                    normalized_read_id: r1.normalized_read_id.clone(),
+                    r1: Some(r1),
+                    r2: None,
+                })
+                .collect(),
+            CutRunReadLayout::PairedEnd => {
+                let mut by_r1 = BTreeMap::<String, Vec<ParsedCutRunInputRecord>>::new();
+                let mut by_r2 = BTreeMap::<String, Vec<ParsedCutRunInputRecord>>::new();
+                for record in input_r1 {
+                    by_r1
+                        .entry(record.normalized_read_id.clone())
+                        .or_default()
+                        .push(record);
+                }
+                for record in input_r2 {
+                    by_r2
+                        .entry(record.normalized_read_id.clone())
+                        .or_default()
+                        .push(record);
+                }
+                let all_ids = by_r1
+                    .keys()
+                    .chain(by_r2.keys())
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                let mut units = Vec::<CutRunInputUnit>::new();
+                for normalized_read_id in all_ids {
+                    let left = by_r1.remove(&normalized_read_id).unwrap_or_default();
+                    let right = by_r2.remove(&normalized_read_id).unwrap_or_default();
+                    let pair_count = left.len().max(right.len());
+                    for pair_index in 0..pair_count {
+                        units.push(CutRunInputUnit {
+                            normalized_read_id: normalized_read_id.clone(),
+                            r1: left.get(pair_index).cloned(),
+                            r2: right.get(pair_index).cloned(),
+                        });
+                    }
+                }
+                units
+            }
+        }
+    }
+
+    fn cutrun_match_fraction(left: &[u8], right: &[u8]) -> f64 {
+        if left.is_empty() || left.len() != right.len() {
+            return 0.0;
+        }
+        let matches = left
+            .iter()
+            .zip(right.iter())
+            .filter(|(a, b)| a == b)
+            .count();
+        matches as f64 / left.len() as f64
+    }
+
+    fn cutrun_find_chromosome_length(
+        catalog: &GenomeCatalog,
+        genome_id: &str,
+        chromosome: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<usize, EngineError> {
+        let records = catalog
+            .list_chromosome_lengths(genome_id, cache_dir)
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not list chromosome lengths for genome '{}' while preparing CUT&RUN ROI window: {}",
+                    genome_id, e
+                ),
+            })?;
+        let normalized = Self::normalize_chromosome_alias(chromosome);
+        records
+            .into_iter()
+            .find(|row: &GenomeChromosomeRecord| {
+                row.chromosome.eq_ignore_ascii_case(chromosome)
+                    || Self::normalize_chromosome_alias(&row.chromosome) == normalized
+            })
+            .map(|row| row.length_bp)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Chromosome '{}' is not available in prepared genome '{}'",
+                    chromosome, genome_id
+                ),
+            })
+    }
+
+    fn build_cutrun_reference_window(
+        &self,
+        seq_id: &str,
+        roi_flank_bp: usize,
+    ) -> Result<CutRunReferenceWindow, EngineError> {
+        let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let roi_sequence = Self::normalize_cutrun_input_sequence(dna.forward_bytes());
+        let (catalog, _) = Self::open_reference_genome_catalog(anchor.catalog_path.as_deref())?;
+        let chromosome_length = Self::cutrun_find_chromosome_length(
+            &catalog,
+            &anchor.genome_id,
+            &anchor.chromosome,
+            anchor.cache_dir.as_deref(),
+        )?;
+        let window_start_1based = anchor.start_1based.saturating_sub(roi_flank_bp).max(1);
+        let window_end_1based = anchor
+            .end_1based
+            .saturating_add(roi_flank_bp)
+            .min(chromosome_length);
+        let forward_window = catalog
+            .get_sequence_region_with_cache(
+                &anchor.genome_id,
+                &anchor.chromosome,
+                window_start_1based,
+                window_end_1based,
+                anchor.cache_dir.as_deref(),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not load CUT&RUN ROI window for '{}': {}",
+                    seq_id, e
+                ),
+            })?;
+        let forward_window_bytes = Self::normalize_cutrun_input_sequence(forward_window.as_bytes());
+        let anchor_offset_start = anchor.start_1based.saturating_sub(window_start_1based);
+        let anchor_offset_end = anchor_offset_start.saturating_add(roi_sequence.len());
+        if anchor_offset_end > forward_window_bytes.len() {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "CUT&RUN ROI window for '{}' does not cover the anchored sequence span",
+                    seq_id
+                ),
+            });
+        }
+        let forward_anchor = &forward_window_bytes[anchor_offset_start..anchor_offset_end];
+        let reverse_anchor = Self::reverse_complement_bytes(forward_anchor);
+        let forward_match = Self::cutrun_match_fraction(&roi_sequence, forward_anchor);
+        let reverse_match = Self::cutrun_match_fraction(&roi_sequence, &reverse_anchor);
+        let reverse_orientation = reverse_match > forward_match;
+        let window_len = forward_window_bytes.len();
+        let mut warnings = Vec::<String>::new();
+        let (sequence, orientation, roi_local_start_1based, roi_local_end_1based) =
+            if reverse_orientation {
+                if reverse_match < 0.95 {
+                    warnings.push(format!(
+                        "CUT&RUN ROI window for '{}' matched the reverse-complement anchor weakly (identity={:.3})",
+                        seq_id, reverse_match
+                    ));
+                }
+                (
+                    Self::reverse_complement_bytes(&forward_window_bytes),
+                    CutRunReadOrientation::Reverse,
+                    window_len.saturating_sub(anchor_offset_end).saturating_add(1),
+                    window_len.saturating_sub(anchor_offset_start),
+                )
+            } else {
+                if forward_match < 0.95 {
+                    warnings.push(format!(
+                        "CUT&RUN ROI window for '{}' matched the forward anchor weakly (identity={:.3})",
+                        seq_id, forward_match
+                    ));
+                }
+                (
+                    forward_window_bytes,
+                    CutRunReadOrientation::Forward,
+                    anchor_offset_start.saturating_add(1),
+                    anchor_offset_end,
+                )
+            };
+        Ok(CutRunReferenceWindow {
+            genome_id: anchor.genome_id,
+            chromosome: anchor.chromosome,
+            window_start_1based,
+            window_end_1based,
+            roi_local_start_1based,
+            roi_local_end_1based,
+            orientation,
+            sequence,
+            warnings,
+        })
+    }
+
+    fn cutrun_local_pos_to_genomic(window: &CutRunReferenceWindow, local_pos_1based: usize) -> usize {
+        match window.orientation {
+            CutRunReadOrientation::Forward => {
+                window
+                    .window_start_1based
+                    .saturating_add(local_pos_1based.saturating_sub(1))
+            }
+            CutRunReadOrientation::Reverse => window
+                .window_end_1based
+                .saturating_sub(local_pos_1based.saturating_sub(1)),
+        }
+    }
+
+    fn cutrun_local_span_to_genomic(
+        window: &CutRunReferenceWindow,
+        local_start_1based: usize,
+        local_end_1based: usize,
+    ) -> (usize, usize) {
+        let a = Self::cutrun_local_pos_to_genomic(window, local_start_1based);
+        let b = Self::cutrun_local_pos_to_genomic(window, local_end_1based);
+        (a.min(b), a.max(b))
+    }
+
+    fn build_cutrun_seed_index(reference: &[u8], kmer_len: usize) -> HashMap<Vec<u8>, Vec<usize>> {
+        if kmer_len == 0 || reference.len() < kmer_len {
+            return HashMap::new();
+        }
+        let mut index = HashMap::<Vec<u8>, Vec<usize>>::new();
+        for start in 0..=reference.len() - kmer_len {
+            index
+                .entry(reference[start..start + kmer_len].to_vec())
+                .or_default()
+                .push(start);
+        }
+        index
+    }
+
+    fn cutrun_candidate_starts(
+        read: &[u8],
+        seed_filter: &CutRunSeedFilterConfig,
+        seed_index: &HashMap<Vec<u8>, Vec<usize>>,
+        reference_len: usize,
+    ) -> Vec<(usize, usize)> {
+        if read.is_empty() || read.len() > reference_len || seed_filter.kmer_len == 0 {
+            return vec![];
+        }
+        if read.len() < seed_filter.kmer_len {
+            return vec![];
+        }
+        let mut counts = HashMap::<usize, usize>::new();
+        for offset in 0..=read.len() - seed_filter.kmer_len {
+            let key = read[offset..offset + seed_filter.kmer_len].to_vec();
+            let Some(reference_positions) = seed_index.get(&key) else {
+                continue;
+            };
+            for reference_position in reference_positions {
+                if *reference_position < offset {
+                    continue;
+                }
+                let start = reference_position - offset;
+                if start + read.len() > reference_len {
+                    continue;
+                }
+                *counts.entry(start).or_insert(0) += 1;
+            }
+        }
+        let mut out = counts
+            .into_iter()
+            .filter(|(_, seed_matches)| *seed_matches >= seed_filter.min_seed_matches.max(1))
+            .collect::<Vec<_>>();
+        out.sort_by(|left, right| {
+            right
+                .1
+                .cmp(&left.1)
+                .then_with(|| left.0.cmp(&right.0))
+        });
+        out
+    }
+
+    fn place_cutrun_read_against_window(
+        read: &[u8],
+        window: &CutRunReferenceWindow,
+        seed_filter: &CutRunSeedFilterConfig,
+        align_config: &CutRunAlignConfig,
+    ) -> Option<CutRunReadPlacement> {
+        if read.is_empty() || read.len() > window.sequence.len() {
+            return None;
+        }
+        let normalized = Self::normalize_cutrun_input_sequence(read);
+        let reverse = Self::reverse_complement_bytes(&normalized);
+        let seed_index = Self::build_cutrun_seed_index(&window.sequence, seed_filter.kmer_len);
+        let candidates = [
+            (CutRunReadOrientation::Forward, normalized),
+            (CutRunReadOrientation::Reverse, reverse),
+        ];
+        let mut best: Option<CutRunReadPlacement> = None;
+        for (orientation, oriented_read) in candidates {
+            let mut candidate_starts =
+                Self::cutrun_candidate_starts(&oriented_read, seed_filter, &seed_index, window.sequence.len());
+            if candidate_starts.is_empty() {
+                candidate_starts = (0..=window.sequence.len() - oriented_read.len())
+                    .map(|start| (start, 0usize))
+                    .collect();
+            }
+            for (start_0based, seed_matches) in candidate_starts {
+                let end_0based_exclusive = start_0based + oriented_read.len();
+                let target = &window.sequence[start_0based..end_0based_exclusive];
+                let mismatches = oriented_read
+                    .iter()
+                    .zip(target.iter())
+                    .filter(|(a, b)| a != b)
+                    .count();
+                if mismatches > align_config.max_mismatches {
+                    continue;
+                }
+                let identity_fraction =
+                    1.0 - mismatches as f64 / oriented_read.len().max(1) as f64;
+                if identity_fraction + f64::EPSILON < align_config.min_identity_fraction {
+                    continue;
+                }
+                let local_start_1based = start_0based + 1;
+                let local_end_1based = end_0based_exclusive;
+                let (genomic_start_1based, genomic_end_1based) =
+                    Self::cutrun_local_span_to_genomic(
+                        window,
+                        local_start_1based,
+                        local_end_1based,
+                    );
+                let placement = CutRunReadPlacement {
+                    orientation,
+                    local_start_1based,
+                    local_end_1based,
+                    genomic_start_1based,
+                    genomic_end_1based,
+                    mismatches,
+                    identity_fraction,
+                    seed_matches,
+                };
+                let replace = best.as_ref().map_or(true, |current| {
+                    placement
+                        .identity_fraction
+                        .partial_cmp(&current.identity_fraction)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .is_gt()
+                        || (placement.identity_fraction - current.identity_fraction).abs()
+                            < f64::EPSILON
+                            && (placement.mismatches < current.mismatches
+                                || (placement.mismatches == current.mismatches
+                                    && (placement.seed_matches > current.seed_matches
+                                        || (placement.seed_matches == current.seed_matches
+                                            && (placement.local_start_1based
+                                                < current.local_start_1based
+                                                || (placement.local_start_1based
+                                                    == current.local_start_1based
+                                                    && placement.orientation.as_str()
+                                                        < current.orientation.as_str()))))))
+                });
+                if replace {
+                    best = Some(placement);
+                }
+            }
+        }
+        best
+    }
+
+    fn cutrun_fragment_from_row(row: &CutRunReadUnitRow) -> Option<CutRunFragmentSpan> {
+        let local_start_1based = row.fragment_local_start_1based?;
+        let local_end_1based = row.fragment_local_end_1based?;
+        let genomic_start_1based = row.fragment_genomic_start_1based?;
+        let genomic_end_1based = row.fragment_genomic_end_1based?;
+        Some(CutRunFragmentSpan {
+            fragment_id: format!("fragment_{}", row.unit_index + 1),
+            normalized_read_id: row.normalized_read_id.clone(),
+            status: row.status,
+            local_start_1based,
+            local_end_1based,
+            genomic_start_1based,
+            genomic_end_1based,
+            length_bp: local_end_1based.saturating_sub(local_start_1based).saturating_add(1),
+            left_cut_site_local_1based: local_start_1based,
+            right_cut_site_local_1based: local_end_1based,
+            duplicate_count: row.duplicate_count.max(1),
+        })
+    }
+
+    fn summarize_cutrun_support_clusters(
+        coverage: &[u32],
+        cut_site_counts: &[u32],
+        fragments: &[CutRunFragmentSpan],
+        window: &CutRunReferenceWindow,
+    ) -> Vec<CutRunSupportCluster> {
+        let mut clusters = Vec::<CutRunSupportCluster>::new();
+        let mut idx = 0usize;
+        while idx < coverage.len() {
+            if coverage[idx] == 0 && cut_site_counts.get(idx).copied().unwrap_or(0) == 0 {
+                idx += 1;
+                continue;
+            }
+            let start = idx;
+            let mut peak_coverage = 0u32;
+            let mut total_cut_sites = 0u32;
+            while idx < coverage.len()
+                && (coverage[idx] > 0 || cut_site_counts.get(idx).copied().unwrap_or(0) > 0)
+            {
+                peak_coverage = peak_coverage.max(coverage[idx]);
+                total_cut_sites =
+                    total_cut_sites.saturating_add(cut_site_counts.get(idx).copied().unwrap_or(0));
+                idx += 1;
+            }
+            let end = idx.saturating_sub(1);
+            let local_start_1based = start + 1;
+            let local_end_1based = end + 1;
+            let (genomic_start_1based, genomic_end_1based) =
+                Self::cutrun_local_span_to_genomic(window, local_start_1based, local_end_1based);
+            let fragment_count = fragments
+                .iter()
+                .filter(|fragment| {
+                    fragment.local_start_1based <= local_end_1based
+                        && fragment.local_end_1based >= local_start_1based
+                })
+                .count();
+            clusters.push(CutRunSupportCluster {
+                cluster_index: clusters.len(),
+                local_start_1based,
+                local_end_1based,
+                genomic_start_1based,
+                genomic_end_1based,
+                peak_coverage,
+                total_cut_sites,
+                fragment_count,
+            });
+        }
+        clusters
+    }
+
+    fn build_cutrun_report_from_units(
+        report_id: &str,
+        seq_id: &str,
+        input_r1_path: &str,
+        input_r2_path: Option<String>,
+        input_format: CutRunInputFormat,
+        read_layout: CutRunReadLayout,
+        roi_flank_bp: usize,
+        deduplicate_fragments: bool,
+        seed_filter: CutRunSeedFilterConfig,
+        align_config: CutRunAlignConfig,
+        window: &CutRunReferenceWindow,
+        units: &[CutRunReadUnitRow],
+        mean_read_length_bp: f64,
+        mean_mapped_read_length_bp: f64,
+        base_warnings: &[String],
+    ) -> CutRunReadReport {
+        let mut fragments = units
+            .iter()
+            .filter_map(Self::cutrun_fragment_from_row)
+            .collect::<Vec<_>>();
+        let mut unit_rows = units.to_vec();
+        if deduplicate_fragments {
+            let mut counts = BTreeMap::<(usize, usize, CutRunReadUnitStatus), usize>::new();
+            for fragment in &fragments {
+                *counts
+                    .entry((
+                        fragment.local_start_1based,
+                        fragment.local_end_1based,
+                        fragment.status,
+                    ))
+                    .or_insert(0) += 1;
+            }
+            let mut seen = BTreeSet::<(usize, usize, CutRunReadUnitStatus)>::new();
+            fragments.retain_mut(|fragment| {
+                let key = (
+                    fragment.local_start_1based,
+                    fragment.local_end_1based,
+                    fragment.status,
+                );
+                fragment.duplicate_count = counts.get(&key).copied().unwrap_or(1);
+                seen.insert(key)
+            });
+            let mut first_seen = BTreeSet::<(usize, usize, CutRunReadUnitStatus)>::new();
+            for row in &mut unit_rows {
+                let Some(start) = row.fragment_local_start_1based else {
+                    continue;
+                };
+                let Some(end) = row.fragment_local_end_1based else {
+                    continue;
+                };
+                let key = (start, end, row.status);
+                row.duplicate_count = counts.get(&key).copied().unwrap_or(1);
+                let first = first_seen.insert(key);
+                row.deduplicated = !first && row.duplicate_count > 1;
+            }
+        } else {
+            for row in &mut unit_rows {
+                row.duplicate_count = row.duplicate_count.max(1);
+            }
+        }
+        let mut coverage = vec![0u32; window.sequence.len()];
+        let mut cut_site_counts = vec![0u32; window.sequence.len()];
+        for fragment in &fragments {
+            let start = fragment.local_start_1based.saturating_sub(1);
+            let end = fragment.local_end_1based.min(coverage.len());
+            for position in start..end {
+                coverage[position] = coverage[position].saturating_add(1);
+            }
+            if fragment.left_cut_site_local_1based > 0
+                && fragment.left_cut_site_local_1based <= cut_site_counts.len()
+            {
+                cut_site_counts[fragment.left_cut_site_local_1based - 1] =
+                    cut_site_counts[fragment.left_cut_site_local_1based - 1].saturating_add(1);
+            }
+            if fragment.right_cut_site_local_1based > 0
+                && fragment.right_cut_site_local_1based <= cut_site_counts.len()
+            {
+                cut_site_counts[fragment.right_cut_site_local_1based - 1] =
+                    cut_site_counts[fragment.right_cut_site_local_1based - 1].saturating_add(1);
+            }
+        }
+        let total_units = unit_rows.len();
+        let mapped_units = unit_rows
+            .iter()
+            .filter(|row| row.fragment_local_start_1based.is_some())
+            .count();
+        let concordant_pair_count = unit_rows
+            .iter()
+            .filter(|row| matches!(row.status, CutRunReadUnitStatus::ConcordantPair))
+            .count();
+        let orphan_r1_count = unit_rows
+            .iter()
+            .filter(|row| matches!(row.status, CutRunReadUnitStatus::OrphanR1))
+            .count();
+        let orphan_r2_count = unit_rows
+            .iter()
+            .filter(|row| matches!(row.status, CutRunReadUnitStatus::OrphanR2))
+            .count();
+        let unmatched_pair_count = unit_rows
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.status,
+                    CutRunReadUnitStatus::R1OnlyMapped
+                        | CutRunReadUnitStatus::R2OnlyMapped
+                        | CutRunReadUnitStatus::DiscordantPair
+                        | CutRunReadUnitStatus::PairUnmapped
+                )
+            })
+            .count();
+        let support_clusters =
+            Self::summarize_cutrun_support_clusters(&coverage, &cut_site_counts, &fragments, window);
+        CutRunReadReport {
+            schema: CUTRUN_READ_REPORT_SCHEMA.to_string(),
+            report_id: report_id.to_string(),
+            seq_id: seq_id.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            input_r1_path: input_r1_path.to_string(),
+            input_r2_path,
+            input_format,
+            read_layout,
+            roi_flank_bp,
+            deduplicate_fragments,
+            seed_filter,
+            align_config,
+            genome_id: window.genome_id.clone(),
+            chromosome: window.chromosome.clone(),
+            reference_window_start_1based: window.window_start_1based,
+            reference_window_end_1based: window.window_end_1based,
+            reference_window_orientation: window.orientation.as_str().to_string(),
+            roi_local_start_1based: window.roi_local_start_1based,
+            roi_local_end_1based: window.roi_local_end_1based,
+            reference_window_length_bp: window.sequence.len(),
+            total_units,
+            mapped_units,
+            fragment_count: fragments.len(),
+            concordant_pair_count,
+            orphan_r1_count,
+            orphan_r2_count,
+            unmatched_pair_count,
+            mean_read_length_bp,
+            mean_mapped_read_length_bp,
+            coverage,
+            cut_site_counts,
+            units: unit_rows,
+            fragments,
+            support_clusters,
+            warnings: base_warnings.to_vec(),
+        }
+    }
+
+    fn write_cutrun_report_snapshot(
+        report: &CutRunReadReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize CUT&RUN report snapshot '{}': {e}", path),
+        })?;
+        fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write CUT&RUN report snapshot '{}': {e}", path),
+        })
+    }
+
+    pub fn interpret_cutrun_reads(
+        &mut self,
+        seq_id: &str,
+        input_r1_path: &str,
+        input_r2_path: Option<&str>,
+        input_format: CutRunInputFormat,
+        read_layout: CutRunReadLayout,
+        roi_flank_bp: usize,
+        seed_filter: &CutRunSeedFilterConfig,
+        align_config: &CutRunAlignConfig,
+        deduplicate_fragments: bool,
+        report_id: Option<&str>,
+        checkpoint_path: Option<&str>,
+        checkpoint_every_reads: usize,
+    ) -> Result<CutRunReadReport, EngineError> {
+        match read_layout {
+            CutRunReadLayout::SingleEnd => {
+                if input_r2_path.is_some() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "CUT&RUN single-end interpretation does not accept input_r2_path"
+                            .to_string(),
+                    });
+                }
+            }
+            CutRunReadLayout::PairedEnd => {
+                if input_r2_path
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "CUT&RUN paired-end interpretation requires input_r2_path"
+                            .to_string(),
+                    });
+                }
+            }
+        }
+        if seed_filter.kmer_len == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CUT&RUN seed_filter.kmer_len must be >= 1".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CUT&RUN min_identity_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
+        let report_id = match report_id {
+            Some(raw) => Self::normalize_cutrun_report_id(raw)?,
+            None => Self::normalize_cutrun_report_id(&format!(
+                "cutrun_reads_{}_{}",
+                seq_id,
+                Self::now_unix_ms()
+            ))?,
+        };
+        let checkpoint_every_reads = checkpoint_every_reads.max(1);
+        let mut warnings = Vec::<String>::new();
+        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+            warnings.push(format!(
+                "checkpoint snapshots enabled every {} unit(s) at '{}'",
+                checkpoint_every_reads, path
+            ));
+        }
+        let window = self.build_cutrun_reference_window(seq_id, roi_flank_bp)?;
+        warnings.extend(window.warnings.clone());
+        let input_r1_records = Self::parse_cutrun_input_records(input_r1_path, input_format)?;
+        let input_r2_records = match input_r2_path.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(path) => Self::parse_cutrun_input_records(path, input_format)?,
+            None => vec![],
+        };
+        let total_record_count =
+            input_r1_records.len().saturating_add(input_r2_records.len()).max(1) as f64;
+        let total_read_bases = input_r1_records
+            .iter()
+            .chain(input_r2_records.iter())
+            .map(|record| record.sequence.len())
+            .sum::<usize>();
+        let mean_read_length_bp = total_read_bases as f64 / total_record_count;
+        let units = Self::build_cutrun_input_units(input_r1_records, input_r2_records, read_layout);
+        let mut mapped_read_bases = 0usize;
+        let mut mapped_read_count = 0usize;
+        let mut rows = Vec::<CutRunReadUnitRow>::new();
+        for unit in units {
+            let r1_placement = unit.r1.as_ref().and_then(|record| {
+                Self::place_cutrun_read_against_window(
+                    &record.sequence,
+                    &window,
+                    seed_filter,
+                    align_config,
+                )
+            });
+            let r2_placement = unit.r2.as_ref().and_then(|record| {
+                Self::place_cutrun_read_against_window(
+                    &record.sequence,
+                    &window,
+                    seed_filter,
+                    align_config,
+                )
+            });
+            if let Some(record) = unit.r1.as_ref().filter(|_| r1_placement.is_some()) {
+                mapped_read_bases = mapped_read_bases.saturating_add(record.sequence.len());
+                mapped_read_count = mapped_read_count.saturating_add(1);
+            }
+            if let Some(record) = unit.r2.as_ref().filter(|_| r2_placement.is_some()) {
+                mapped_read_bases = mapped_read_bases.saturating_add(record.sequence.len());
+                mapped_read_count = mapped_read_count.saturating_add(1);
+            }
+            let mut row = CutRunReadUnitRow {
+                unit_index: rows.len(),
+                normalized_read_id: unit.normalized_read_id.clone(),
+                status: CutRunReadUnitStatus::PairUnmapped,
+                r1_record_index: unit.r1.as_ref().map(|record| record.record_index),
+                r1_header_id: unit.r1.as_ref().map(|record| record.header_id.clone()),
+                r1_read_length_bp: unit.r1.as_ref().map(|record| record.sequence.len()),
+                r1_placement,
+                r2_record_index: unit.r2.as_ref().map(|record| record.record_index),
+                r2_header_id: unit.r2.as_ref().map(|record| record.header_id.clone()),
+                r2_read_length_bp: unit.r2.as_ref().map(|record| record.sequence.len()),
+                r2_placement,
+                fragment_local_start_1based: None,
+                fragment_local_end_1based: None,
+                fragment_genomic_start_1based: None,
+                fragment_genomic_end_1based: None,
+                deduplicated: false,
+                duplicate_count: 1,
+                notes: vec![],
+            };
+            match read_layout {
+                CutRunReadLayout::SingleEnd => {
+                    if let Some(placement) = row.r1_placement.clone() {
+                        row.status = CutRunReadUnitStatus::SingleMapped;
+                        row.fragment_local_start_1based = Some(placement.local_start_1based);
+                        row.fragment_local_end_1based = Some(placement.local_end_1based);
+                        row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                        row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
+                    } else {
+                        row.status = CutRunReadUnitStatus::SingleUnmapped;
+                    }
+                }
+                CutRunReadLayout::PairedEnd => {
+                    match (
+                        row.r1_placement.clone(),
+                        row.r2_placement.clone(),
+                        row.r1_record_index.is_some(),
+                        row.r2_record_index.is_some(),
+                    ) {
+                        (Some(left), Some(right), true, true) => {
+                            let fragment_start = left.local_start_1based.min(right.local_start_1based);
+                            let fragment_end = left.local_end_1based.max(right.local_end_1based);
+                            let fragment_span_bp =
+                                fragment_end.saturating_sub(fragment_start).saturating_add(1);
+                            let opposite_orientation = left.orientation != right.orientation;
+                            if opposite_orientation
+                                && fragment_span_bp <= align_config.max_fragment_span_bp
+                            {
+                                row.status = CutRunReadUnitStatus::ConcordantPair;
+                                row.fragment_local_start_1based = Some(fragment_start);
+                                row.fragment_local_end_1based = Some(fragment_end);
+                                let (genomic_start_1based, genomic_end_1based) =
+                                    Self::cutrun_local_span_to_genomic(
+                                        &window,
+                                        fragment_start,
+                                        fragment_end,
+                                    );
+                                row.fragment_genomic_start_1based = Some(genomic_start_1based);
+                                row.fragment_genomic_end_1based = Some(genomic_end_1based);
+                            } else {
+                                row.status = CutRunReadUnitStatus::DiscordantPair;
+                                row.notes.push(format!(
+                                    "pair placements were not concordant (opposite_orientation={}, fragment_span_bp={})",
+                                    opposite_orientation, fragment_span_bp
+                                ));
+                            }
+                        }
+                        (Some(placement), None, true, true) => {
+                            row.status = CutRunReadUnitStatus::R1OnlyMapped;
+                            row.fragment_local_start_1based = Some(placement.local_start_1based);
+                            row.fragment_local_end_1based = Some(placement.local_end_1based);
+                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
+                        }
+                        (None, Some(placement), true, true) => {
+                            row.status = CutRunReadUnitStatus::R2OnlyMapped;
+                            row.fragment_local_start_1based = Some(placement.local_start_1based);
+                            row.fragment_local_end_1based = Some(placement.local_end_1based);
+                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
+                        }
+                        (None, None, true, true) => {
+                            row.status = CutRunReadUnitStatus::PairUnmapped;
+                        }
+                        (Some(placement), _, true, false) => {
+                            row.status = CutRunReadUnitStatus::OrphanR1;
+                            row.fragment_local_start_1based = Some(placement.local_start_1based);
+                            row.fragment_local_end_1based = Some(placement.local_end_1based);
+                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
+                        }
+                        (None, _, true, false) => {
+                            row.status = CutRunReadUnitStatus::OrphanR1;
+                            row.notes.push("orphan R1 did not map inside the ROI window".to_string());
+                        }
+                        (_, Some(placement), false, true) => {
+                            row.status = CutRunReadUnitStatus::OrphanR2;
+                            row.fragment_local_start_1based = Some(placement.local_start_1based);
+                            row.fragment_local_end_1based = Some(placement.local_end_1based);
+                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
+                        }
+                        (_, None, false, true) => {
+                            row.status = CutRunReadUnitStatus::OrphanR2;
+                            row.notes.push("orphan R2 did not map inside the ROI window".to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            rows.push(row);
+            if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+                if rows.len() % checkpoint_every_reads == 0 {
+                    let snapshot = Self::build_cutrun_report_from_units(
+                        &report_id,
+                        seq_id,
+                        input_r1_path,
+                        input_r2_path.map(|value| value.to_string()),
+                        input_format,
+                        read_layout,
+                        roi_flank_bp,
+                        deduplicate_fragments,
+                        seed_filter.clone(),
+                        align_config.clone(),
+                        &window,
+                        &rows,
+                        mean_read_length_bp,
+                        if mapped_read_count == 0 {
+                            0.0
+                        } else {
+                            mapped_read_bases as f64 / mapped_read_count as f64
+                        },
+                        &warnings,
+                    );
+                    Self::write_cutrun_report_snapshot(&snapshot, path)?;
+                }
+            }
+        }
+        let mean_mapped_read_length_bp = if mapped_read_count == 0 {
+            0.0
+        } else {
+            mapped_read_bases as f64 / mapped_read_count as f64
+        };
+        let report = Self::build_cutrun_report_from_units(
+            &report_id,
+            seq_id,
+            input_r1_path,
+            input_r2_path.map(|value| value.to_string()),
+            input_format,
+            read_layout,
+            roi_flank_bp,
+            deduplicate_fragments,
+            seed_filter.clone(),
+            align_config.clone(),
+            &window,
+            &rows,
+            mean_read_length_bp,
+            mean_mapped_read_length_bp,
+            &warnings,
+        );
+        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+            Self::write_cutrun_report_snapshot(&report, path)?;
+        }
+        self.upsert_cutrun_read_report(report.clone())?;
+        Ok(report)
+    }
+
+    pub fn export_cutrun_read_coverage(
+        &self,
+        report_id: &str,
+        path: &str,
+        kind: CutRunCoverageKind,
+    ) -> Result<CutRunReadCoverageExport, EngineError> {
+        let report = self.get_cutrun_read_report(report_id)?;
+        let mut lines = Vec::<String>::new();
+        match kind {
+            CutRunCoverageKind::Coverage => {
+                lines.push("local_pos_1based\tgenomic_pos_1based\tcoverage".to_string());
+                for (idx, value) in report.coverage.iter().copied().enumerate() {
+                    let local_pos_1based = idx + 1;
+                    let genomic_pos_1based = if report.reference_window_orientation == "reverse" {
+                        report
+                            .reference_window_end_1based
+                            .saturating_sub(local_pos_1based.saturating_sub(1))
+                    } else {
+                        report
+                            .reference_window_start_1based
+                            .saturating_add(local_pos_1based.saturating_sub(1))
+                    };
+                    lines.push(format!(
+                        "{local_pos_1based}\t{genomic_pos_1based}\t{value}"
+                    ));
+                }
+            }
+            CutRunCoverageKind::CutSites => {
+                lines.push("local_pos_1based\tgenomic_pos_1based\tcut_sites".to_string());
+                for (idx, value) in report.cut_site_counts.iter().copied().enumerate() {
+                    let local_pos_1based = idx + 1;
+                    let genomic_pos_1based = if report.reference_window_orientation == "reverse" {
+                        report
+                            .reference_window_end_1based
+                            .saturating_sub(local_pos_1based.saturating_sub(1))
+                    } else {
+                        report
+                            .reference_window_start_1based
+                            .saturating_add(local_pos_1based.saturating_sub(1))
+                    };
+                    lines.push(format!(
+                        "{local_pos_1based}\t{genomic_pos_1based}\t{value}"
+                    ));
+                }
+            }
+            CutRunCoverageKind::Fragments => {
+                lines.push("fragment_id\tnormalized_read_id\tstatus\tlocal_start_1based\tlocal_end_1based\tgenomic_start_1based\tgenomic_end_1based\tlength_bp\tduplicate_count".to_string());
+                for fragment in &report.fragments {
+                    lines.push(format!(
+                        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                        fragment.fragment_id,
+                        fragment.normalized_read_id,
+                        fragment.status.as_str(),
+                        fragment.local_start_1based,
+                        fragment.local_end_1based,
+                        fragment.genomic_start_1based,
+                        fragment.genomic_end_1based,
+                        fragment.length_bp,
+                        fragment.duplicate_count
+                    ));
+                }
+            }
+        }
+        fs::write(path, lines.join("\n")).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write CUT&RUN coverage export to '{}': {e}", path),
+        })?;
+        Ok(CutRunReadCoverageExport {
+            schema: CUTRUN_READ_COVERAGE_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            kind,
+            row_count: lines.len().saturating_sub(1),
         })
     }
 }
