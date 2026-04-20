@@ -16081,15 +16081,16 @@ fn parse_rna_reads_commands() {
     ));
 
     let inspect_concatemers = parse_shell_line(
-        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10 --adapter-fasta data/resources/nanopore_direct_cdna_kit14_adapters.fasta --adapter-min-match-bp 18 --fragment-min-bp 75 --fragment-max-parts 3 --fragment-min-identity 0.88 --fragment-min-query-cov 0.45 --transcript-fasta data/transcriptome_cdna.fa.gz --transcript-fasta data/transcriptome_ncrna.fa.gz --transcript-index data/transcriptome_joined.index.json",
+        "rna-reads inspect-concatemers tp73_reads --selection seed_passed --limit 15 --record-indices 2,7,9 --internal-homopolymer-min-bp 21 --end-margin-bp 40 --max-primary-query-cov 0.80 --min-secondary-identity 0.90 --max-secondary-query-overlap 0.10 --adapter-fasta data/resources/nanopore_direct_cdna_kit14_adapters.fasta --adapter-min-match-bp 18 --fragment-min-bp 75 --fragment-max-parts 3 --fragment-min-identity 0.88 --fragment-min-query-cov 0.45 --transcript-fasta data/transcriptome_cdna.fa.gz --transcript-fasta data/transcriptome_ncrna.fa.gz --transcript-index data/transcriptome_joined.index.json",
     )
     .expect("parse rna-reads inspect-concatemers");
     assert!(matches!(
         inspect_concatemers,
-        ShellCommand::RnaReadsInspectConcatemers { report_id, selection, limit, settings }
+        ShellCommand::RnaReadsInspectConcatemers { report_id, selection, limit, selected_record_indices, settings }
             if report_id == "tp73_reads"
                 && selection == RnaReadHitSelection::SeedPassed
                 && limit == 15
+                && selected_record_indices == vec![2, 7, 9]
                 && settings.internal_homopolymer_min_bp == 21
                 && settings.end_margin_bp == 40
                 && (settings.max_primary_query_coverage_fraction - 0.80).abs() < 1e-9
@@ -16881,6 +16882,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             report_id: "rna_reads_concatemers_shell".to_string(),
             selection: RnaReadHitSelection::All,
             limit: 10,
+            selected_record_indices: vec![],
             settings: RnaReadConcatemerInspectionSettings::default(),
         },
     )
@@ -16899,6 +16901,12 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     );
     assert_eq!(
         concatemer_inspection.output["inspection"]["partner_gene_summaries"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(0)
+    );
+    assert_eq!(
+        concatemer_inspection.output["inspection"]["selected_record_indices"]
             .as_array()
             .map(|values| values.len()),
         Some(0)

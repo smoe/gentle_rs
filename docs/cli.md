@@ -1770,6 +1770,10 @@ Shared shell command:
         top-level payload also
         summarizes repeated non-primary partner genes/transcripts across the
         suspicious cohort so recurring associations can be reviewed directly
+      - optional `--record-indices i,j,k` narrows the audit to an exact saved
+        aligned-read subset and the returned payload now echoes both
+        `selected_record_indices` and `subset_match_count` so transcriptome
+        reruns stay reproducible
       - fragment decomposition is BLAST-like but engine-local: the best
         transcript-template fragment is found, masked, and the remaining
         unmasked sequence is queried again until no sufficiently good fragment
@@ -1788,6 +1792,14 @@ Shared shell command:
           `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz`
         - coding + noncoding transcripts in one run:
           `rna-reads inspect-concatemers REPORT_ID --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
+      - practical TP73-style two-pass cohort review:
+          1. run a cheap local suspicion pass first:
+             `rna-reads inspect-concatemers REPORT_ID --selection aligned --limit 200 --fragment-max-parts 0`
+          2. collect the suspicious `record_index` values from that first
+             payload
+          3. rerun only those exact rows with the external transcript
+             catalogs:
+             `rna-reads inspect-concatemers REPORT_ID --selection aligned --record-indices i,j,k --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
         - reusable prepared transcript catalog for repeated runs:
           `rna-reads build-transcript-index /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna_plus_ncrna.rna_read_index.json --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.cdna.all.fa.gz --transcript-fasta /Users/u005069/GitHub/gentle_rs/data/transcriptomes/ensembl/release-116/Homo_sapiens.GRCh38.ncrna.fa.gz`
         - reuse the prepared index in later audits:
@@ -1799,6 +1811,12 @@ Shared shell command:
         cases, but the current whole-transcriptome JSON format is still heavy
         enough that building a full human shared artifact may be slower and
         larger than is pleasant in day-to-day use.
+      - practical memory note:
+        when transcriptome-wide reruns are too heavy for a whole saved cohort,
+        first use the local audit to collect suspicious `record_index` values,
+        then rerun only that narrowed subset with `--record-indices`; using
+        `--fragment-max-parts 0` on the first pass disables fragment
+        decomposition completely and keeps that initial triage much cheaper
       - implementation note:
         `build-transcript-index` now prepares a reusable transcript catalog
         JSON with per-template k-mer positions so repeated concatemer audits do

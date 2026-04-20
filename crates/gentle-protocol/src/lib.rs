@@ -3689,6 +3689,9 @@ pub struct RnaReadConcatemerInspection {
     pub report_id: String,
     pub seq_id: String,
     pub selection: RnaReadHitSelection,
+    #[serde(default)]
+    pub selected_record_indices: Vec<usize>,
+    pub subset_match_count: usize,
     pub inspected_count: usize,
     pub suspicious_count: usize,
     pub strong_count: usize,

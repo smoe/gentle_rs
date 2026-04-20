@@ -140,7 +140,7 @@ use crate::{
         DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH,
         DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
         load_tutorial_catalog, load_tutorial_manifest, load_workflow_examples,
-        run_example_workflow_for_project_state, validate_example_required_files,
+        run_example_workflow_for_project_state_with_progress, validate_example_required_files,
         validate_tutorial_manifest_against_examples,
     },
 };
@@ -822,6 +822,10 @@ pub struct GENtleApp {
     genome_prepare_eta_baseline: Option<PrepareGenomeEtaBaseline>,
     genome_prepare_failure_recovery: Option<PrepareGenomeFailureRecovery>,
     genome_prepare_status: String,
+    tutorial_project_task: Option<TutorialProjectTask>,
+    tutorial_project_progress_fraction: Option<f32>,
+    tutorial_project_progress_label: String,
+    tutorial_project_status: String,
     cache_cleanup_scope: CacheCleanupScope,
     cache_cleanup_reference_cache_dir: String,
     cache_cleanup_helper_cache_dir: String,
@@ -1195,6 +1199,7 @@ enum BackgroundJobKind {
     PrepareGenome,
     BlastGenome,
     TrackImport,
+    OpenTutorialProject,
     AgentAssist,
 }
 
@@ -1204,6 +1209,7 @@ impl BackgroundJobKind {
             Self::PrepareGenome => "PrepareGenome",
             Self::BlastGenome => "BlastGenome",
             Self::TrackImport => "TrackImport",
+            Self::OpenTutorialProject => "OpenTutorialProject",
             Self::AgentAssist => "AgentAssist",
         }
     }
@@ -1215,6 +1221,7 @@ enum RetrySnapshotKindFilter {
     PrepareGenome,
     BlastGenome,
     TrackImport,
+    OpenTutorialProject,
     AgentAssist,
 }
 
@@ -1225,6 +1232,7 @@ impl RetrySnapshotKindFilter {
             Self::PrepareGenome => "PrepareGenome",
             Self::BlastGenome => "BlastGenome",
             Self::TrackImport => "TrackImport",
+            Self::OpenTutorialProject => "OpenTutorialProject",
             Self::AgentAssist => "AgentAssist",
         }
     }
@@ -1235,6 +1243,7 @@ impl RetrySnapshotKindFilter {
             Self::PrepareGenome => "prepare_genome",
             Self::BlastGenome => "blast_genome",
             Self::TrackImport => "track_import",
+            Self::OpenTutorialProject => "open_tutorial_project",
             Self::AgentAssist => "agent_assist",
         }
     }
@@ -1245,6 +1254,7 @@ impl RetrySnapshotKindFilter {
             Self::PrepareGenome => kind == BackgroundJobKind::PrepareGenome,
             Self::BlastGenome => kind == BackgroundJobKind::BlastGenome,
             Self::TrackImport => kind == BackgroundJobKind::TrackImport,
+            Self::OpenTutorialProject => kind == BackgroundJobKind::OpenTutorialProject,
             Self::AgentAssist => kind == BackgroundJobKind::AgentAssist,
         }
     }
@@ -1521,6 +1531,44 @@ struct GenomePrepareTask {
     catalog_path: String,
     cache_dir: String,
     receiver: mpsc::Receiver<GenomePrepareTaskMessage>,
+}
+
+struct TutorialProjectTask {
+    job_id: u64,
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    chapter_id: String,
+    chapter_title: String,
+    receiver: mpsc::Receiver<TutorialProjectTaskMessage>,
+}
+
+#[derive(Debug, Clone)]
+struct TutorialProjectTaskProgress {
+    chapter_id: String,
+    chapter_title: String,
+    phase: String,
+    item: String,
+    percent: Option<f32>,
+}
+
+#[derive(Debug, Clone)]
+struct TutorialProjectOpenOutcome {
+    chapter_id: String,
+    chapter_title: String,
+    project_path: String,
+    guide_path: String,
+    guide_summary: String,
+}
+
+enum TutorialProjectTaskMessage {
+    Progress {
+        job_id: u64,
+        progress: TutorialProjectTaskProgress,
+    },
+    Done {
+        job_id: u64,
+        result: Result<TutorialProjectOpenOutcome, String>,
+    },
 }
 
 enum GenomePrepareTaskMessage {
@@ -2428,6 +2476,10 @@ impl Default for GENtleApp {
             genome_prepare_eta_baseline: None,
             genome_prepare_failure_recovery: None,
             genome_prepare_status: String::new(),
+            tutorial_project_task: None,
+            tutorial_project_progress_fraction: None,
+            tutorial_project_progress_label: String::new(),
+            tutorial_project_status: String::new(),
             cache_cleanup_scope: CacheCleanupScope::References,
             cache_cleanup_reference_cache_dir: configured_reference_genome_cache_dir(),
             cache_cleanup_helper_cache_dir: configured_helper_genome_cache_dir(),
@@ -4282,6 +4334,7 @@ Error: `{err}`"
         let mut prepare = 0usize;
         let mut blast = 0usize;
         let mut track_import = 0usize;
+        let mut tutorial = 0usize;
         let mut agent = 0usize;
         let mut origin_counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut min_snapshot_id = u64::MAX;
@@ -4293,6 +4346,7 @@ Error: `{err}`"
                 BackgroundJobKind::PrepareGenome => prepare += 1,
                 BackgroundJobKind::BlastGenome => blast += 1,
                 BackgroundJobKind::TrackImport => track_import += 1,
+                BackgroundJobKind::OpenTutorialProject => tutorial += 1,
                 BackgroundJobKind::AgentAssist => agent += 1,
             }
             let origin = if snapshot.origin.trim().is_empty() {
@@ -4326,11 +4380,12 @@ Error: `{err}`"
             }
         }
         format!(
-            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
+            "{} match(es) · kinds: PrepareGenome={} BlastGenome={} TrackImport={} OpenTutorialProject={} AgentAssist={} · origins: {} · ids #{}..#{} · captured_at {}..{}",
             snapshots.len(),
             prepare,
             blast,
             track_import,
+            tutorial,
             agent,
             if origin_preview.is_empty() {
                 "-".to_string()
@@ -4640,6 +4695,40 @@ Error: `{err}`"
         );
     }
 
+    fn request_tutorial_project_task_cancel(&mut self, origin: &str) {
+        let Some((job_id, chapter_title, already_requested)) =
+            self.tutorial_project_task.as_ref().map(|task| {
+                (
+                    task.job_id,
+                    task.chapter_title.clone(),
+                    task.cancel_requested.swap(true, Ordering::Relaxed),
+                )
+            })
+        else {
+            self.tutorial_project_status =
+                "No running tutorial project build to cancel".to_string();
+            self.app_status = self.tutorial_project_status.clone();
+            return;
+        };
+
+        if already_requested {
+            self.tutorial_project_status =
+                format!("Cancellation was already requested for tutorial '{chapter_title}'");
+            self.app_status = self.tutorial_project_status.clone();
+            return;
+        }
+
+        self.tutorial_project_status =
+            format!("Cancellation requested for tutorial '{chapter_title}'");
+        self.app_status = self.tutorial_project_status.clone();
+        self.push_job_event(
+            BackgroundJobKind::OpenTutorialProject,
+            BackgroundJobEventPhase::CancelRequested,
+            Some(job_id),
+            format!("Cancellation requested from {origin}"),
+        );
+    }
+
     fn request_blast_task_cancel(&mut self, origin: &str) {
         let Some((job_id, already_requested)) = self.genome_blast_task.as_ref().map(|task| {
             (
@@ -4669,6 +4758,7 @@ Error: `{err}`"
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
+            || self.tutorial_project_task.is_some()
             || self.agent_task.is_some()
     }
 
@@ -4721,9 +4811,7 @@ Error: `{err}`"
 
     fn undo_last_operation(&mut self) {
         if self.has_active_background_jobs() {
-            self.app_status =
-                "Undo is disabled while background jobs are active (prepare/blast/import)."
-                    .to_string();
+            self.app_status = "Undo is disabled while background jobs are active.".to_string();
             return;
         }
         let outcome = self
@@ -4747,9 +4835,7 @@ Error: `{err}`"
 
     fn redo_last_operation(&mut self) {
         if self.has_active_background_jobs() {
-            self.app_status =
-                "Redo is disabled while background jobs are active (prepare/blast/import)."
-                    .to_string();
+            self.app_status = "Redo is disabled while background jobs are active.".to_string();
             return;
         }
         let outcome = self
@@ -6460,6 +6546,10 @@ Error: `{err}`"
         self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_op_count = None;
+        self.tutorial_project_task = None;
+        self.tutorial_project_progress_fraction = None;
+        self.tutorial_project_progress_label.clear();
+        self.tutorial_project_status.clear();
         self.agent_task = None;
         self.agent_model_discovery_task = None;
         self.agent_status.clear();
@@ -6615,97 +6705,341 @@ Error: `{err}`"
         )
     }
 
+    fn tutorial_project_progress_message(
+        chapter_id: &str,
+        chapter_title: &str,
+        phase: &str,
+        item: &str,
+        percent: Option<f32>,
+    ) -> TutorialProjectTaskProgress {
+        TutorialProjectTaskProgress {
+            chapter_id: chapter_id.to_string(),
+            chapter_title: chapter_title.to_string(),
+            phase: phase.to_string(),
+            item: item.to_string(),
+            percent,
+        }
+    }
+
+    fn tutorial_project_progress_from_operation(
+        chapter_id: &str,
+        chapter_title: &str,
+        progress: &OperationProgress,
+    ) -> TutorialProjectTaskProgress {
+        match progress {
+            OperationProgress::PrimerDesign(p) => {
+                let percent = match (p.pair_evaluated, p.pair_evaluation_limit) {
+                    (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
+                    _ if p.done => Some(1.0),
+                    _ => None,
+                };
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!(
+                        "Primer design ({}) via {}: {} ({})",
+                        p.design_kind, p.backend_used, p.stage, p.detail
+                    ),
+                    percent,
+                )
+            }
+            OperationProgress::Tfbs(p) => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "execute_workflow",
+                &format!(
+                    "TFBS motif {} ({}/{})",
+                    p.motif_id, p.motif_index, p.motif_count
+                ),
+                Some((p.total_percent as f32 / 100.0).clamp(0.0, 1.0)),
+            ),
+            OperationProgress::GenomePrepare(p) => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "execute_workflow",
+                &format!("Prepare genome: {} ({})", p.phase, p.item),
+                p.percent
+                    .map(|value| (value as f32 / 100.0).clamp(0.0, 1.0)),
+            ),
+            OperationProgress::GenomeTrackImport(p) => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "execute_workflow",
+                &format!(
+                    "Track import '{}' parsed={} imported={} skipped={}",
+                    p.source, p.parsed_records, p.imported_features, p.skipped_records
+                ),
+                if p.done { Some(1.0) } else { None },
+            ),
+            OperationProgress::DbSnpFetch(p) => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "execute_workflow",
+                &format!("dbSNP {}: {}", p.stage.as_str(), p.detail),
+                None,
+            ),
+            OperationProgress::RnaReadInterpret(p) => {
+                let percent = if p.reads_total > 0 {
+                    Some((p.reads_processed as f32 / p.reads_total as f32).clamp(0.0, 1.0))
+                } else {
+                    None
+                };
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!(
+                        "RNA-read mapping: reads {} / {}, aligned {}",
+                        p.reads_processed, p.reads_total, p.aligned
+                    ),
+                    percent,
+                )
+            }
+        }
+    }
+
+    fn tutorial_project_cancelled_message(context: &str) -> String {
+        format!("Tutorial project opening cancelled by caller ({context})")
+    }
+
+    fn tutorial_project_status_from_progress(progress: &TutorialProjectTaskProgress) -> String {
+        format!(
+            "Opening tutorial project '{}' ({}): {} ({})",
+            progress.chapter_title, progress.chapter_id, progress.phase, progress.item
+        )
+    }
+
     fn open_tutorial_project_chapter(&mut self, chapter_id: &str) {
-        let entries = match Self::load_tutorial_project_entries() {
-            Ok(entries) => entries,
-            Err(err) => {
-                self.app_status = format!("Tutorial catalog unavailable: {err}");
-                return;
-            }
-        };
-        let entry = match entries
-            .into_iter()
-            .find(|entry| entry.chapter_id == chapter_id)
-        {
-            Some(entry) => entry,
-            None => {
-                self.app_status = format!("Unknown tutorial chapter id '{chapter_id}'");
-                return;
-            }
-        };
-        if let Err(err) = validate_example_required_files(&entry.example, &entry.repo_root) {
-            self.app_status = format!(
-                "Tutorial '{}' missing required files: {err}",
-                entry.chapter_id
-            );
+        if self.tutorial_project_task.is_some() {
+            self.tutorial_project_status =
+                "A tutorial project is already opening in the background".to_string();
+            self.app_status = self.tutorial_project_status.clone();
+            self.show_jobs_panel = true;
             return;
         }
-        let slug = format!(
-            "{:02}_{}",
-            entry.chapter_order,
-            Self::sanitize_file_stem(&entry.chapter_id, "tutorial")
+
+        let job_id = self.alloc_background_job_id();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel::<TutorialProjectTaskMessage>();
+        let chapter_id_owned = chapter_id.trim().to_string();
+        self.tutorial_project_progress_fraction = Some(0.0);
+        self.tutorial_project_progress_label = "Queued tutorial build".to_string();
+        self.tutorial_project_status = format!(
+            "Opening tutorial project '{}' in background. You can keep using the UI.",
+            chapter_id_owned
         );
-        let cache_root = Self::tutorial_cache_root_dir();
-        let run_dir = cache_root.join(&slug).join("run");
-        if run_dir.exists() {
-            let _ = fs::remove_dir_all(&run_dir);
-        }
-        if let Err(err) = fs::create_dir_all(&run_dir) {
-            self.app_status = format!(
-                "Could not create tutorial run directory '{}': {err}",
-                run_dir.display()
+        self.app_status = self.tutorial_project_status.clone();
+        self.show_jobs_panel = true;
+        self.push_job_event(
+            BackgroundJobKind::OpenTutorialProject,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!(
+                "Opening tutorial chapter '{}' in background",
+                chapter_id_owned
+            ),
+        );
+        self.tutorial_project_task = Some(TutorialProjectTask {
+            job_id,
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            chapter_id: chapter_id_owned.clone(),
+            chapter_title: chapter_id_owned.clone(),
+            receiver: rx,
+        });
+
+        std::thread::spawn(move || {
+            let send_progress = |progress: TutorialProjectTaskProgress| {
+                let _ = tx.send(TutorialProjectTaskMessage::Progress { job_id, progress });
+            };
+            send_progress(Self::tutorial_project_progress_message(
+                &chapter_id_owned,
+                &chapter_id_owned,
+                "load_catalog",
+                "Loading tutorial catalog and chapter metadata",
+                Some(0.0),
+            ));
+            let entries = match Self::load_tutorial_project_entries() {
+                Ok(entries) => entries,
+                Err(err) => {
+                    let _ = tx.send(TutorialProjectTaskMessage::Done {
+                        job_id,
+                        result: Err(format!("Tutorial catalog unavailable: {err}")),
+                    });
+                    return;
+                }
+            };
+            let entry = match entries
+                .into_iter()
+                .find(|entry| entry.chapter_id == chapter_id_owned)
+            {
+                Some(entry) => entry,
+                None => {
+                    let _ = tx.send(TutorialProjectTaskMessage::Done {
+                        job_id,
+                        result: Err(format!(
+                            "Unknown tutorial chapter id '{}'",
+                            chapter_id_owned
+                        )),
+                    });
+                    return;
+                }
+            };
+            if cancel_requested.load(Ordering::Relaxed) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(Self::tutorial_project_cancelled_message(
+                        "before validation",
+                    )),
+                });
+                return;
+            }
+            send_progress(Self::tutorial_project_progress_message(
+                &entry.chapter_id,
+                &entry.chapter_title,
+                "validate_inputs",
+                "Checking required local files for the tutorial workflow",
+                Some(0.05),
+            ));
+            if let Err(err) = validate_example_required_files(&entry.example, &entry.repo_root) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(format!(
+                        "Tutorial '{}' missing required files: {err}",
+                        entry.chapter_id
+                    )),
+                });
+                return;
+            }
+            if cancel_requested.load(Ordering::Relaxed) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(Self::tutorial_project_cancelled_message("after validation")),
+                });
+                return;
+            }
+            let slug = format!(
+                "{:02}_{}",
+                entry.chapter_order,
+                Self::sanitize_file_stem(&entry.chapter_id, "tutorial")
             );
-            return;
-        }
-        let state = match run_example_workflow_for_project_state(
-            &entry.example,
-            &entry.repo_root,
-            &run_dir,
-        ) {
-            Ok(state) => state,
-            Err(err) => {
-                self.app_status = format!(
-                    "Could not build tutorial project '{}': {err}",
-                    entry.chapter_id
+            let cache_root = Self::tutorial_cache_root_dir();
+            let run_dir = cache_root.join(&slug).join("run");
+            send_progress(Self::tutorial_project_progress_message(
+                &entry.chapter_id,
+                &entry.chapter_title,
+                "prepare_workspace",
+                &format!("Preparing temporary run directory '{}'", run_dir.display()),
+                Some(0.1),
+            ));
+            if run_dir.exists() {
+                let _ = fs::remove_dir_all(&run_dir);
+            }
+            if let Err(err) = fs::create_dir_all(&run_dir) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(format!(
+                        "Could not create tutorial run directory '{}': {err}",
+                        run_dir.display()
+                    )),
+                });
+                return;
+            }
+            if cancel_requested.load(Ordering::Relaxed) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(Self::tutorial_project_cancelled_message(
+                        "before workflow execution",
+                    )),
+                });
+                return;
+            }
+            send_progress(Self::tutorial_project_progress_message(
+                &entry.chapter_id,
+                &entry.chapter_title,
+                "execute_workflow",
+                "Running canonical tutorial workflow example",
+                Some(0.15),
+            ));
+            let mut on_progress = |progress: OperationProgress| -> bool {
+                if cancel_requested.load(Ordering::Relaxed) {
+                    return false;
+                }
+                let progress = Self::tutorial_project_progress_from_operation(
+                    &entry.chapter_id,
+                    &entry.chapter_title,
+                    &progress,
                 );
+                let _ = tx.send(TutorialProjectTaskMessage::Progress { job_id, progress });
+                true
+            };
+            let state = match run_example_workflow_for_project_state_with_progress(
+                &entry.example,
+                &entry.repo_root,
+                &run_dir,
+                &mut on_progress,
+            ) {
+                Ok(state) => state,
+                Err(err) => {
+                    let _ = tx.send(TutorialProjectTaskMessage::Done {
+                        job_id,
+                        result: Err(format!(
+                            "Could not build tutorial project '{}': {err}",
+                            entry.chapter_id
+                        )),
+                    });
+                    return;
+                }
+            };
+            let project_path = cache_root.join(format!("{slug}.project.gentle.json"));
+            send_progress(Self::tutorial_project_progress_message(
+                &entry.chapter_id,
+                &entry.chapter_title,
+                "persist_project",
+                &format!(
+                    "Writing temporary tutorial project '{}'",
+                    project_path.display()
+                ),
+                Some(0.95),
+            ));
+            if let Err(err) = state.save_to_path(project_path.to_string_lossy().as_ref()) {
+                let _ = tx.send(TutorialProjectTaskMessage::Done {
+                    job_id,
+                    result: Err(format!(
+                        "Could not persist tutorial project '{}': {err}",
+                        project_path.display()
+                    )),
+                });
                 return;
             }
-        };
-        let project_path = cache_root.join(format!("{slug}.project.gentle.json"));
-        if let Err(err) = state.save_to_path(project_path.to_string_lossy().as_ref()) {
-            self.app_status = format!(
-                "Could not persist tutorial project '{}': {err}",
-                project_path.display()
-            );
-            return;
-        }
-        let project_path_str = project_path.to_string_lossy().to_string();
-        if let Err(err) = self.load_project_from_file_with_recent(&project_path_str, false) {
-            self.app_status = format!(
-                "Could not open tutorial project '{}': {err}",
-                project_path.display()
-            );
-            return;
-        }
-        self.app_status = format!(
-            "Opened tutorial project: {} ({})",
-            entry.chapter_title, entry.chapter_id
-        );
-        let guide_path = entry
-            .chapter_guide_path
-            .clone()
-            .unwrap_or_else(|| Self::tutorial_project_generated_chapter_path(&entry));
-        let guide_summary = if entry.chapter_guide_path.is_some() {
-            format!("tutorial project guide: {}", entry.chapter_title)
-        } else {
-            format!("generated tutorial chapter: {}", entry.chapter_title)
-        };
-        if let Err(err) =
-            self.open_help_tutorial_path(&guide_path, &entry.chapter_title, &guide_summary)
-        {
-            self.app_status
-                .push_str(&format!(" | guide unavailable: {err}"));
-        }
+            let guide_path = entry
+                .chapter_guide_path
+                .clone()
+                .unwrap_or_else(|| Self::tutorial_project_generated_chapter_path(&entry));
+            let guide_summary = if entry.chapter_guide_path.is_some() {
+                format!("tutorial project guide: {}", entry.chapter_title)
+            } else {
+                format!("generated tutorial chapter: {}", entry.chapter_title)
+            };
+            send_progress(Self::tutorial_project_progress_message(
+                &entry.chapter_id,
+                &entry.chapter_title,
+                "ready",
+                "Tutorial project built and ready to open",
+                Some(1.0),
+            ));
+            let _ = tx.send(TutorialProjectTaskMessage::Done {
+                job_id,
+                result: Ok(TutorialProjectOpenOutcome {
+                    chapter_id: entry.chapter_id,
+                    chapter_title: entry.chapter_title,
+                    project_path: project_path.to_string_lossy().to_string(),
+                    guide_path,
+                    guide_summary,
+                }),
+            });
+        });
     }
 
     fn prompt_open_project(&mut self) {
@@ -15151,6 +15485,206 @@ Error: `{err}`"
                             elapsed,
                             e.message
                         ),
+                    );
+                }
+            }
+        }
+    }
+
+    fn poll_tutorial_project_task(&mut self, ctx: &egui::Context) {
+        if self.tutorial_project_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<(u64, Result<TutorialProjectOpenOutcome, String>)> = None;
+        let mut stale_job_ids: Vec<u64> = vec![];
+        let mut progress_messages: Vec<(u64, TutorialProjectTaskProgress, bool)> = vec![];
+        if let Some(task) = &self.tutorial_project_task {
+            let active_job_id = task.job_id;
+            let cancel_requested = task.cancel_requested.clone();
+            const MAX_MESSAGES_PER_TICK: usize = 128;
+            for _ in 0..MAX_MESSAGES_PER_TICK {
+                match task.receiver.try_recv() {
+                    Ok(TutorialProjectTaskMessage::Progress { job_id, progress }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        progress_messages.push((
+                            job_id,
+                            progress,
+                            cancel_requested.load(Ordering::Relaxed),
+                        ));
+                    }
+                    Ok(TutorialProjectTaskMessage::Done { job_id, result }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        done = Some((job_id, result));
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        done = Some((
+                            active_job_id,
+                            Err("Tutorial project worker disconnected".to_string()),
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (_job_id, progress, canceling) in progress_messages {
+            self.tutorial_project_progress_fraction = progress.percent;
+            self.tutorial_project_progress_label = progress.item.clone();
+            self.tutorial_project_status = Self::tutorial_project_status_from_progress(&progress);
+            if canceling {
+                self.tutorial_project_status
+                    .push_str(" (cancellation requested)");
+            }
+            self.app_status = self.tutorial_project_status.clone();
+            if let Some(task) = self.tutorial_project_task.as_mut() {
+                task.chapter_id = progress.chapter_id.clone();
+                task.chapter_title = progress.chapter_title.clone();
+            }
+        }
+        for stale_job_id in stale_job_ids {
+            self.push_job_event(
+                BackgroundJobKind::OpenTutorialProject,
+                BackgroundJobEventPhase::IgnoredStale,
+                Some(stale_job_id),
+                "Ignored stale tutorial-project worker message",
+            );
+        }
+
+        if let Some((job_id, outcome)) = done {
+            let (elapsed, cancellation_requested, chapter_id, chapter_title) = self
+                .tutorial_project_task
+                .as_ref()
+                .map(|task| {
+                    (
+                        task.started.elapsed().as_secs_f64(),
+                        task.cancel_requested.load(Ordering::Relaxed),
+                        task.chapter_id.clone(),
+                        task.chapter_title.clone(),
+                    )
+                })
+                .unwrap_or((0.0, false, String::new(), String::new()));
+            self.tutorial_project_task = None;
+            match outcome {
+                Ok(result) => {
+                    if cancellation_requested {
+                        self.tutorial_project_progress_fraction = None;
+                        self.tutorial_project_progress_label.clear();
+                        self.tutorial_project_status = format!(
+                            "Tutorial opening cancelled after {:.1}s. Temporary project kept at '{}'.",
+                            elapsed, result.project_path
+                        );
+                        self.app_status = self.tutorial_project_status.clone();
+                        self.push_job_event(
+                            BackgroundJobKind::OpenTutorialProject,
+                            BackgroundJobEventPhase::Completed,
+                            Some(job_id),
+                            format!(
+                                "Tutorial '{}' cancelled after {:.1}s",
+                                result.chapter_id, elapsed
+                            ),
+                        );
+                        return;
+                    }
+                    if let Err(err) =
+                        self.load_project_from_file_with_recent(&result.project_path, false)
+                    {
+                        self.tutorial_project_progress_fraction = None;
+                        self.tutorial_project_progress_label.clear();
+                        self.tutorial_project_status = format!(
+                            "Could not open tutorial project '{}': {err}",
+                            result.project_path
+                        );
+                        self.app_status = self.tutorial_project_status.clone();
+                        self.push_job_event(
+                            BackgroundJobKind::OpenTutorialProject,
+                            BackgroundJobEventPhase::Failed,
+                            Some(job_id),
+                            format!(
+                                "Tutorial '{}' build finished in {:.1}s but project open failed: {}",
+                                result.chapter_id, elapsed, err
+                            ),
+                        );
+                        return;
+                    }
+                    self.tutorial_project_progress_fraction = None;
+                    self.tutorial_project_progress_label.clear();
+                    self.tutorial_project_status = format!(
+                        "Opened tutorial project: {} ({})",
+                        result.chapter_title, result.chapter_id
+                    );
+                    if let Err(err) = self.open_help_tutorial_path(
+                        &result.guide_path,
+                        &result.chapter_title,
+                        &result.guide_summary,
+                    ) {
+                        self.tutorial_project_status
+                            .push_str(&format!(" | guide unavailable: {err}"));
+                    }
+                    self.app_status = self.tutorial_project_status.clone();
+                    self.push_job_event(
+                        BackgroundJobKind::OpenTutorialProject,
+                        BackgroundJobEventPhase::Completed,
+                        Some(job_id),
+                        format!("Opened tutorial '{}' in {:.1}s", result.chapter_id, elapsed),
+                    );
+                }
+                Err(err) => {
+                    self.tutorial_project_progress_fraction = None;
+                    self.tutorial_project_progress_label.clear();
+                    let lower = err.to_ascii_lowercase();
+                    let cancelled = cancellation_requested
+                        || lower.contains("cancelled")
+                        || lower.contains("canceled");
+                    self.tutorial_project_status = if cancelled {
+                        format!("Tutorial opening cancelled after {:.1}s: {}", elapsed, err)
+                    } else if chapter_title.trim().is_empty() {
+                        format!("Could not build tutorial project: {err}")
+                    } else {
+                        format!(
+                            "Could not build tutorial project '{}' after {:.1}s: {}",
+                            chapter_title, elapsed, err
+                        )
+                    };
+                    self.app_status = self.tutorial_project_status.clone();
+                    self.push_job_event(
+                        BackgroundJobKind::OpenTutorialProject,
+                        BackgroundJobEventPhase::Failed,
+                        Some(job_id),
+                        if cancelled {
+                            format!(
+                                "Tutorial '{}' cancelled after {:.1}s",
+                                if chapter_id.trim().is_empty() {
+                                    "-"
+                                } else {
+                                    chapter_id.as_str()
+                                },
+                                elapsed
+                            )
+                        } else {
+                            format!(
+                                "Tutorial '{}' failed after {:.1}s: {}",
+                                if chapter_id.trim().is_empty() {
+                                    "-"
+                                } else {
+                                    chapter_id.as_str()
+                                },
+                                elapsed,
+                                err
+                            )
+                        },
                     );
                 }
             }
@@ -30201,6 +30735,10 @@ Error: `{err}`"
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
         self.tracked_autosync_last_op_count = None;
+        self.tutorial_project_task = None;
+        self.tutorial_project_progress_fraction = None;
+        self.tutorial_project_progress_label.clear();
+        self.tutorial_project_status.clear();
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -30682,6 +31220,52 @@ Error: `{err}`"
                     }
                 });
                 ui.menu_button("Open Tutorial Project...", |ui| {
+                    if let Some(task) = &self.tutorial_project_task {
+                        let mut cancel_tutorial_clicked = false;
+                        let mut show_jobs_clicked = false;
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Spinner::new());
+                            ui.label(format!(
+                                "Opening '{}' ({:.1}s)",
+                                task.chapter_title,
+                                task.started.elapsed().as_secs_f32()
+                            ));
+                            if task.cancel_requested.load(Ordering::Relaxed) {
+                                ui.small("Cancellation requested...");
+                            } else if ui
+                                .button("Cancel")
+                                .on_hover_text(
+                                    "Request cancellation of the running tutorial-project build",
+                                )
+                                .clicked()
+                            {
+                                cancel_tutorial_clicked = true;
+                            }
+                            if ui
+                                .button("Jobs")
+                                .on_hover_text(
+                                    "Open the background-jobs panel to inspect tutorial build progress",
+                                )
+                                .clicked()
+                            {
+                                show_jobs_clicked = true;
+                            }
+                        });
+                        if !self.tutorial_project_progress_label.trim().is_empty() {
+                            ui.small(self.tutorial_project_progress_label.clone());
+                        }
+                        if !self.tutorial_project_status.trim().is_empty() {
+                            ui.small(self.tutorial_project_status.clone());
+                        }
+                        if cancel_tutorial_clicked {
+                            self.request_tutorial_project_task_cancel("tutorial menu");
+                        }
+                        if show_jobs_clicked {
+                            self.show_jobs_panel = true;
+                        }
+                        return;
+                    }
+
                     let entries = match Self::load_tutorial_project_entries() {
                         Ok(entries) => entries,
                         Err(err) => {
@@ -40669,6 +41253,48 @@ Error: `{err}`"
                 }
 
                 ui.separator();
+                ui.strong("Tutorial Project");
+                let mut cancel_tutorial_clicked = false;
+                if let Some(task) = &self.tutorial_project_task {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        ui.label(format!(
+                            "Opening '{}' ({:.1}s)",
+                            task.chapter_title,
+                            task.started.elapsed().as_secs_f32()
+                        ));
+                        if task.cancel_requested.load(Ordering::Relaxed) {
+                            ui.small("Cancellation requested...");
+                        } else if ui
+                            .button("Cancel")
+                            .on_hover_text(
+                                "Request cancellation of the running tutorial-project build",
+                            )
+                            .clicked()
+                        {
+                            cancel_tutorial_clicked = true;
+                        }
+                    });
+                    if let Some(fraction) = self.tutorial_project_progress_fraction {
+                        ui.add(
+                            egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                                .show_percentage()
+                                .text(self.tutorial_project_progress_label.clone()),
+                        );
+                    } else if !self.tutorial_project_progress_label.trim().is_empty() {
+                        ui.small(self.tutorial_project_progress_label.clone());
+                    }
+                } else {
+                    ui.small("Idle");
+                }
+                if cancel_tutorial_clicked {
+                    self.request_tutorial_project_task_cancel("background jobs panel");
+                }
+                if !self.tutorial_project_status.trim().is_empty() {
+                    ui.small(self.tutorial_project_status.clone());
+                }
+
+                ui.separator();
                 ui.strong("Agent Assistant");
                 if let Some(task) = &self.agent_task {
                     ui.horizontal(|ui| {
@@ -40814,6 +41440,11 @@ Error: `{err}`"
                                 &mut self.retry_snapshot_kind_filter,
                                 RetrySnapshotKindFilter::TrackImport,
                                 RetrySnapshotKindFilter::TrackImport.label(),
+                            );
+                            ui.selectable_value(
+                                &mut self.retry_snapshot_kind_filter,
+                                RetrySnapshotKindFilter::OpenTutorialProject,
+                                RetrySnapshotKindFilter::OpenTutorialProject.label(),
                             );
                             ui.selectable_value(
                                 &mut self.retry_snapshot_kind_filter,
@@ -42849,6 +43480,7 @@ impl GENtleApp {
             }
 
             self.poll_prepare_reference_genome_task(ctx);
+            self.poll_tutorial_project_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
             self.poll_dbsnp_fetch_task(ctx);
@@ -42985,6 +43617,8 @@ mod tests {
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
         ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
+        TutorialProjectTaskProgress,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -43248,6 +43882,20 @@ mod tests {
             );
         }
         app
+    }
+
+    fn wait_for_tutorial_project_task(app: &mut GENtleApp) {
+        let ctx = egui::Context::default();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while app.tutorial_project_task.is_some() && Instant::now() < deadline {
+            app.poll_tutorial_project_task(&ctx);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            app.tutorial_project_task.is_none(),
+            "tutorial task did not finish in time: {}",
+            app.tutorial_project_status
+        );
     }
 
     fn make_test_gibson_routine_row() -> CloningRoutineCatalogRow {
@@ -44451,6 +45099,7 @@ mod tests {
         assert!(summary.contains("PrepareGenome=1"));
         assert!(summary.contains("BlastGenome=1"));
         assert!(summary.contains("TrackImport=1"));
+        assert!(summary.contains("OpenTutorialProject=0"));
         assert!(summary.contains("AgentAssist=0"));
         assert!(summary.contains("background jobs panel=2"));
         assert!(summary.contains("dialog retry button=1"));
@@ -49167,6 +49816,7 @@ mod tests {
         let mut app = GENtleApp::default();
 
         app.open_tutorial_project_chapter("gibson_specialist_testing_baseline");
+        wait_for_tutorial_project_task(&mut app);
 
         assert!(app.app_status.contains("Opened tutorial project"));
         assert!(app.show_help_dialog);
@@ -49183,6 +49833,7 @@ mod tests {
         let mut app = GENtleApp::default();
 
         app.open_tutorial_project_chapter("gibson_arrangements_baseline");
+        wait_for_tutorial_project_task(&mut app);
 
         assert!(app.app_status.contains("Opened tutorial project"));
         assert!(app.show_help_dialog);
@@ -49200,6 +49851,121 @@ mod tests {
                 .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
         );
         assert_eq!(engine.state().container_state.arrangements.len(), 1);
+    }
+
+    #[test]
+    fn tutorial_project_progress_updates_status_and_task_title() {
+        let (tx, rx2) = mpsc::channel::<TutorialProjectTaskMessage>();
+        let mut app = GENtleApp::default();
+        app.tutorial_project_task = Some(TutorialProjectTask {
+            job_id: 7,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            chapter_id: "tp73_old".to_string(),
+            chapter_title: "tp73_old".to_string(),
+            receiver: rx2,
+        });
+        tx.send(TutorialProjectTaskMessage::Progress {
+            job_id: 7,
+            progress: TutorialProjectTaskProgress {
+                chapter_id: "tp73_audit".to_string(),
+                chapter_title: "TP73 Audit Tutorial".to_string(),
+                phase: "execute_workflow".to_string(),
+                item: "Waiting for network response".to_string(),
+                percent: Some(0.42),
+            },
+        })
+        .expect("send progress");
+
+        app.poll_tutorial_project_task(&egui::Context::default());
+
+        assert_eq!(app.tutorial_project_progress_fraction, Some(0.42));
+        assert_eq!(
+            app.tutorial_project_progress_label,
+            "Waiting for network response"
+        );
+        assert!(app.tutorial_project_status.contains("TP73 Audit Tutorial"));
+        let task = app
+            .tutorial_project_task
+            .as_ref()
+            .expect("tutorial task remains active");
+        assert_eq!(task.chapter_id, "tp73_audit");
+        assert_eq!(task.chapter_title, "TP73 Audit Tutorial");
+    }
+
+    #[test]
+    fn request_tutorial_project_task_cancel_is_idempotent() {
+        let (_tx, rx) = mpsc::channel::<TutorialProjectTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        let mut app = GENtleApp::default();
+        app.tutorial_project_task = Some(TutorialProjectTask {
+            job_id: 19,
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            chapter_id: "tp73_audit".to_string(),
+            chapter_title: "TP73 Audit Tutorial".to_string(),
+            receiver: rx,
+        });
+
+        app.request_tutorial_project_task_cancel("test");
+        assert!(cancel_requested.load(Ordering::Relaxed));
+        assert!(
+            app.tutorial_project_status
+                .contains("Cancellation requested")
+        );
+        let events_after_first = app.job_event_log.len();
+
+        app.request_tutorial_project_task_cancel("test");
+        assert_eq!(app.job_event_log.len(), events_after_first);
+        assert!(
+            app.tutorial_project_status
+                .contains("already requested for tutorial")
+        );
+    }
+
+    #[test]
+    fn tutorial_project_completion_honors_cancel_without_opening_project() {
+        let temp = tempdir().expect("tempdir");
+        let project_path = temp.path().join("tutorial.project.gentle.json");
+        let guide_path = temp.path().join("tutorial.md");
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq1".to_string(),
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+        );
+        state
+            .save_to_path(project_path.to_string_lossy().as_ref())
+            .expect("save project");
+        fs::write(&guide_path, "# Tutorial\n\nBody.\n").expect("write guide");
+
+        let (tx, rx) = mpsc::channel::<TutorialProjectTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(true));
+        let mut app = GENtleApp::default();
+        app.tutorial_project_task = Some(TutorialProjectTask {
+            job_id: 31,
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            chapter_id: "tp73_audit".to_string(),
+            chapter_title: "TP73 Audit Tutorial".to_string(),
+            receiver: rx,
+        });
+        tx.send(TutorialProjectTaskMessage::Done {
+            job_id: 31,
+            result: Ok(TutorialProjectOpenOutcome {
+                chapter_id: "tp73_audit".to_string(),
+                chapter_title: "TP73 Audit Tutorial".to_string(),
+                project_path: project_path.to_string_lossy().to_string(),
+                guide_path: guide_path.to_string_lossy().to_string(),
+                guide_summary: "tutorial guide".to_string(),
+            }),
+        })
+        .expect("send completion");
+
+        app.poll_tutorial_project_task(&egui::Context::default());
+
+        assert!(app.current_project_path.is_none());
+        assert!(!app.show_help_dialog);
+        assert!(app.tutorial_project_status.contains("cancelled"));
     }
 
     #[test]

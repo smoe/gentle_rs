@@ -5259,12 +5259,19 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       machine-readable signal counts, the normalized thresholds used for the
       audit, ranked suspicious rows, per-read adapter hits and fragment-origin
       explanations, repeated non-primary partner-gene/transcript summaries
-      across the suspicious cohort, and warning text when secondary-mapping
-      evidence was unavailable
+      across the suspicious cohort, explicit `selected_record_indices` /
+      `subset_match_count` provenance for exact subset reruns, and warning
+      text when secondary-mapping evidence was unavailable
     - repeated `--transcript-fasta` arguments append multiple transcript
       catalogs to one audit run; the serialized settings now preserve those as
       `transcript_fasta_paths[]`, while legacy single-path payloads still
       deserialize via `transcript_fasta_path`
+    - `fragment_max_parts = 0` is now a supported "signals only" mode for the
+      concatemer audit:
+      - it disables fragment decomposition entirely
+      - adapter/homopolymer/disjoint-secondary/phase-1 signals still run
+      - intended use: first-pass triage before a narrower transcriptome-backed
+        rerun on selected `record_index` values
     - `rna-reads build-transcript-index` returns the full
       `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
       writes the same JSON to the requested output path

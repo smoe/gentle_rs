@@ -1,6 +1,6 @@
 //! Curated workflow example payloads and templates.
 
-use crate::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
+use crate::engine::{Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::{
@@ -541,10 +541,25 @@ pub fn run_example_workflow_for_project_state(
     repo_root: &Path,
     run_dir: &Path,
 ) -> Result<ProjectState, String> {
+    let mut noop = |_p: OperationProgress| true;
+    run_example_workflow_for_project_state_with_progress(example, repo_root, run_dir, &mut noop)
+}
+
+/// Executes one workflow example with path rewriting, streams shared engine
+/// progress callbacks, and returns the resulting project state.
+pub fn run_example_workflow_for_project_state_with_progress<F>(
+    example: &WorkflowExample,
+    repo_root: &Path,
+    run_dir: &Path,
+    mut on_progress: F,
+) -> Result<ProjectState, String>
+where
+    F: FnMut(OperationProgress) -> bool,
+{
     let rewritten = rewrite_example_paths_for_execution(example, repo_root, run_dir)?;
     let mut engine = GentleEngine::from_state(ProjectState::default());
     engine
-        .apply_workflow(rewritten.workflow)
+        .apply_workflow_with_progress(rewritten.workflow, |progress| on_progress(progress))
         .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))?;
     Ok(engine.state().clone())
 }

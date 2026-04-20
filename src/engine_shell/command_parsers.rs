@@ -6301,7 +6301,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "inspect-concatemers" => {
             if tokens.len() < 3 {
                 return Err(
-                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+                    "rna-reads inspect-concatemers requires REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]..."
                         .to_string(),
                 );
             }
@@ -6311,6 +6311,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             let mut selection = RnaReadHitSelection::All;
             let mut limit = 50usize;
+            let mut selected_record_indices: Vec<usize> = vec![];
             let mut settings = RnaReadConcatemerInspectionSettings::default();
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -6336,6 +6337,15 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                                 "Invalid --limit value '{raw}' for rna-reads inspect-concatemers: {e}"
                             )
                         })?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads inspect-concatemers",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
                     }
                     "--internal-homopolymer-min-bp" => {
                         let raw = parse_option_path(
@@ -6511,6 +6521,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 report_id,
                 selection,
                 limit,
+                selected_record_indices,
                 settings,
             })
         }

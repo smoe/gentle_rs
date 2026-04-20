@@ -2741,6 +2741,7 @@ impl GentleEngine {
         report_id: &str,
         selection: RnaReadHitSelection,
         limit: usize,
+        selected_record_indices: Vec<usize>,
         settings: RnaReadConcatemerInspectionSettings,
     ) -> Result<RnaReadConcatemerInspection, EngineError> {
         if limit == 0 {
@@ -2754,7 +2755,6 @@ impl GentleEngine {
         settings.end_margin_bp = settings.end_margin_bp.max(1);
         settings.adapter_min_match_bp = settings.adapter_min_match_bp.max(1);
         settings.fragment_min_bp = settings.fragment_min_bp.max(1);
-        settings.fragment_max_parts = settings.fragment_max_parts.max(1);
         settings.max_primary_query_coverage_fraction =
             settings.max_primary_query_coverage_fraction.clamp(0.0, 1.0);
         settings.min_secondary_identity_fraction =
@@ -2769,6 +2769,13 @@ impl GentleEngine {
             .clamp(0.0, 1.0);
 
         let report = self.get_rna_read_report(report_id)?;
+        let mut selected_record_indices = selected_record_indices;
+        selected_record_indices.sort_unstable();
+        selected_record_indices.dedup();
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let mut warnings = Vec::<String>::new();
         if report.align_config.max_secondary_mappings == 0 {
             warnings.push(
@@ -2781,8 +2788,11 @@ impl GentleEngine {
             .as_deref()
             .map(Self::load_rna_read_adapter_signatures)
             .transpose()?;
-        let fragment_context =
-            self.build_rna_read_concatemer_fragment_context(&report, &mut warnings, &settings)?;
+        let fragment_context = if settings.fragment_max_parts == 0 {
+            None
+        } else {
+            self.build_rna_read_concatemer_fragment_context(&report, &mut warnings, &settings)?
+        };
 
         let mut inspected_count = 0usize;
         let mut suspicious_count = 0usize;
@@ -2796,11 +2806,13 @@ impl GentleEngine {
         let mut multi_gene_fragment_count = 0usize;
         let mut rows = Vec::<RnaReadConcatemerSuspicionRow>::new();
 
-        for hit in report
-            .hits
-            .iter()
-            .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
-        {
+        for hit in report.hits.iter().filter(|hit| {
+            Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            )
+        }) {
             inspected_count = inspected_count.saturating_add(1);
             let best_mapping = hit.best_mapping.as_ref();
             let low_query_coverage = best_mapping.is_some_and(|mapping| {
@@ -3106,6 +3118,8 @@ impl GentleEngine {
             report_id: report.report_id,
             seq_id: report.seq_id,
             selection,
+            selected_record_indices,
+            subset_match_count: inspected_count,
             inspected_count,
             suspicious_count,
             strong_count,

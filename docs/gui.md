@@ -3803,7 +3803,8 @@ Genome operations are available from the dedicated `Genome` menu:
 Tutorial projects:
 
 - `Open Tutorial Project...` builds a project from canonical tutorial workflow
-  examples (`docs/examples/workflows`) and opens it immediately for inspection.
+  examples (`docs/examples/workflows`) in the background and opens the finished
+  project for inspection when the build completes.
 - When a tutorial chapter declares a matching guide, the Help window opens that
   tutorial page automatically so the next GUI steps are visible right away.
 - tutorial project discovery now consults `docs/tutorial/catalog.json` first and
@@ -3815,6 +3816,16 @@ Tutorial projects:
 - Generated tutorial project files are written under the system temp directory
   (`.../gentle_tutorial_projects`) and opened without adding those temp files
   to the `Open Recent Project...` list.
+- While a tutorial project is being built, GENtle keeps the GUI responsive and
+  shows live status in the `Background Jobs` panel.
+- Online tutorials can therefore be cancelled explicitly:
+  - from the `Open Tutorial Project...` menu while the build is running
+  - or from the `Background Jobs` panel
+- Progress is best-effort:
+  - GENtle always reports coarse setup/build/persist phases
+  - shared engine operations inside the tutorial workflow contribute their own
+    progress when they support it
+  - some remote/network waits still only expose the coarse phase label
 - Additional GUI-first manual tutorial:
   - `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
   - includes a stepwise GUI workflow for `VKORC1` / `rs9923231`

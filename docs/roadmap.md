@@ -167,6 +167,13 @@ order. Durable architecture constraints and decisions remain in
     public-API docs on the remaining GUI-facing state records where warranted
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
+- GUI tutorial-project opening is now backgrounded instead of blocking the main
+  event loop:
+  - `File -> Open Tutorial Project...` now launches a cancellable background
+    job, auto-opens the `Background Jobs` panel, and keeps the app responsive
+    even for slow `online` chapters
+  - the same jobs surface now shows tutorial-build status plus best-effort
+    progress labels from shared workflow operation progress when available
 - GUI module decomposition is now underway:
   - `src/app/help_docs.rs` (help/tutorial markdown loading and rewrite helpers extracted from `src/app.rs`)
   - `src/app/window_registry.rs` (open-window listing/focus helpers plus deferred child-window placement extracted from `src/app.rs`)
@@ -3348,6 +3355,15 @@ Status:
     - external transcript catalogs can now be appended one by one with
       repeated `--transcript-fasta` arguments (for example Ensembl `cdna` plus
       `ncrna`) instead of forcing users to pre-merge one giant reference FASTA
+    - `inspect-concatemers` now also accepts exact `--record-indices i,j,k`
+      subset reruns, so a cheap local suspicion pass can be followed by a
+      transcriptome-backed partner census only for the suspicious rows instead
+      of reparsing the full external transcript catalogs across the whole
+      saved cohort every time
+    - `fragment_max_parts=0` is now the supported first-pass triage mode for
+      that workflow, because it disables fragment decomposition entirely while
+      leaving the lighter adapter/homopolymer/disjoint-secondary signals
+      available for shortlist generation
     - the payload warns explicitly when the source report was aligned with
       `max_secondary_mappings=0`, because that removes the strongest current
       fragment-fusion evidence branch

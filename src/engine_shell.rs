@@ -1843,6 +1843,7 @@ pub enum ShellCommand {
         report_id: String,
         selection: RnaReadHitSelection,
         limit: usize,
+        selected_record_indices: Vec<usize>,
         settings: RnaReadConcatemerInspectionSettings,
     },
     RnaReadsBuildTranscriptIndex {
@@ -8198,12 +8199,14 @@ impl ShellCommand {
                 report_id,
                 selection,
                 limit,
+                selected_record_indices,
                 settings,
             } => format!(
-                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2}, transcript_fastas={}, transcript_indexes={})",
+                "inspect fragment/concatemer suspicion for '{}' (selection={}, limit={}, selected_record_indices={}, internal_homopolymer_min_bp={}, end_margin_bp={}, max_primary_query_cov={:.2}, min_secondary_identity={:.2}, max_secondary_query_overlap={:.2}, adapter_fasta={}, adapter_min_match_bp={}, fragment_min_bp={}, fragment_max_parts={}, fragment_min_identity={:.2}, fragment_min_query_cov={:.2}, transcript_fastas={}, transcript_indexes={})",
                 report_id,
                 selection.as_str(),
                 limit,
+                selected_record_indices.len(),
                 settings.internal_homopolymer_min_bp,
                 settings.end_margin_bp,
                 settings.max_primary_query_coverage_fraction,
@@ -23117,10 +23120,17 @@ fn execute_rna_reads_command(
             report_id,
             selection,
             limit,
+            selected_record_indices,
             settings,
         } => {
             let inspection = engine
-                .inspect_rna_read_concatemers(report_id, *selection, *limit, settings.clone())
+                .inspect_rna_read_concatemers(
+                    report_id,
+                    *selection,
+                    *limit,
+                    selected_record_indices.clone(),
+                    settings.clone(),
+                )
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,

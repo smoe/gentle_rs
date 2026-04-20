@@ -24425,6 +24425,7 @@ fn test_inspect_rna_read_concatemers_ranks_fragment_fusion_signals() {
             "rna_reads_concatemers",
             RnaReadHitSelection::All,
             10,
+            vec![],
             RnaReadConcatemerInspectionSettings::default(),
         )
         .expect("inspect concatemer rows");
@@ -24601,6 +24602,7 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
             "rna_reads_concatemers_decompose",
             RnaReadHitSelection::All,
             10,
+            vec![],
             RnaReadConcatemerInspectionSettings {
                 adapter_fasta_path: Some(adapter_file.path().display().to_string()),
                 adapter_min_match_bp: 18,
@@ -24644,6 +24646,141 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
             .any(|hit| hit.label == "ssp" || hit.label == "pr2")
     );
     assert_eq!(row.fragment_origins.len(), 2);
+}
+
+#[test]
+fn test_inspect_rna_read_concatemers_can_disable_fragment_decomposition() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), splicing_multi_gene_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let gene1_feature_id = dna
+        .features()
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE1")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE1 feature id");
+    let gene2_feature_id = dna
+        .features()
+        .iter()
+        .enumerate()
+        .find(|(idx, feature)| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && GentleEngine::splicing_group_label(feature, *idx).eq_ignore_ascii_case("GENE2")
+        })
+        .map(|(idx, _)| idx)
+        .expect("GENE2 feature id");
+    let splicing_gene1 = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            gene1_feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("GENE1 splicing view");
+    let splicing_gene2 = engine
+        .build_splicing_expert_view(
+            "seq_a",
+            gene2_feature_id,
+            SplicingScopePreset::AllOverlappingBothStrands,
+        )
+        .expect("GENE2 splicing view");
+    let lane_gene1 = splicing_gene1
+        .transcripts
+        .iter()
+        .find(|lane| lane.transcript_id == "NM_GENE1_1")
+        .expect("GENE1 lane");
+    let lane_gene2 = splicing_gene2
+        .transcripts
+        .iter()
+        .find(|lane| lane.transcript_id == "NM_GENE2_1")
+        .expect("GENE2 lane");
+    let template_gene1 = GentleEngine::make_transcript_template(dna, lane_gene1, 3);
+    let template_gene2 = GentleEngine::make_transcript_template(dna, lane_gene2, 3);
+    let adapter = "TTTCTGTTGGTGCTGATATTGC";
+    let fused_sequence = format!(
+        "{}{}{}",
+        String::from_utf8_lossy(&template_gene1.sequence),
+        adapter,
+        String::from_utf8_lossy(&template_gene2.sequence)
+    );
+
+    engine
+        .upsert_rna_read_report(RnaReadInterpretationReport {
+            schema: "gentle.rna_read_report.v1".to_string(),
+            report_id: "rna_reads_concatemers_no_fragments".to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: gene1_feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            origin_mode: RnaReadOriginMode::MultiGeneSparse,
+            target_gene_ids: vec!["GENE2".to_string()],
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "adapter_bridge".to_string(),
+                sequence: fused_sequence.clone(),
+                read_length_bp: fused_sequence.len(),
+                seed_chain_transcript_id: lane_gene1.transcript_id.clone(),
+                exon_path_transcript_id: lane_gene1.transcript_id.clone(),
+                origin_class: RnaReadOriginClass::TargetPartialLocalBlock,
+                best_mapping: Some(RnaReadMappingHit {
+                    transcript_feature_id: lane_gene1.transcript_feature_id,
+                    transcript_id: lane_gene1.transcript_id.clone(),
+                    transcript_label: lane_gene1.label.clone(),
+                    strand: lane_gene1.strand.clone(),
+                    query_start_0based: 0,
+                    query_end_0based_exclusive: template_gene1.sequence.len(),
+                    query_coverage_fraction: template_gene1.sequence.len() as f64
+                        / fused_sequence.len() as f64,
+                    identity_fraction: 0.97,
+                    score: 160,
+                    ..RnaReadMappingHit::default()
+                }),
+                secondary_mappings: vec![RnaReadMappingHit {
+                    transcript_feature_id: lane_gene2.transcript_feature_id,
+                    transcript_id: lane_gene2.transcript_id.clone(),
+                    transcript_label: lane_gene2.label.clone(),
+                    strand: lane_gene2.strand.clone(),
+                    query_start_0based: template_gene1.sequence.len() + adapter.len(),
+                    query_end_0based_exclusive: fused_sequence.len(),
+                    query_coverage_fraction: template_gene2.sequence.len() as f64
+                        / fused_sequence.len() as f64,
+                    identity_fraction: 0.95,
+                    score: 150,
+                    ..RnaReadMappingHit::default()
+                }],
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        })
+        .expect("upsert concatemer no-fragment report");
+
+    let inspection = engine
+        .inspect_rna_read_concatemers(
+            "rna_reads_concatemers_no_fragments",
+            RnaReadHitSelection::All,
+            10,
+            vec![],
+            RnaReadConcatemerInspectionSettings {
+                fragment_max_parts: 0,
+                ..RnaReadConcatemerInspectionSettings::default()
+            },
+        )
+        .expect("inspect concatemer rows without fragment decomposition");
+    assert_eq!(inspection.settings.fragment_max_parts, 0);
+    assert_eq!(inspection.multi_gene_fragment_count, 0);
+    let row = inspection.rows.first().expect("concatemer row");
+    assert!(row.fragment_origins.is_empty());
+    assert_eq!(row.fragment_origin_gene_count, 0);
+    assert!(row.partner_gene_ids.is_empty());
 }
 
 #[test]
@@ -24798,6 +24935,7 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_mult
             "rna_reads_concatemers_partner_summary",
             RnaReadHitSelection::All,
             10,
+            vec![],
             RnaReadConcatemerInspectionSettings {
                 adapter_fasta_path: Some(adapter_file.path().display().to_string()),
                 adapter_min_match_bp: 18,
@@ -24848,6 +24986,39 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_mult
                 .any(|gene_id| gene_id == "GENE3"))
             .count()
             >= 2
+    );
+
+    let filtered = engine
+        .inspect_rna_read_concatemers(
+            "rna_reads_concatemers_partner_summary",
+            RnaReadHitSelection::All,
+            10,
+            vec![2, 2],
+            RnaReadConcatemerInspectionSettings {
+                adapter_fasta_path: Some(adapter_file.path().display().to_string()),
+                adapter_min_match_bp: 18,
+                fragment_min_bp: 10,
+                fragment_max_parts: 4,
+                fragment_min_identity_fraction: 0.60,
+                fragment_min_query_coverage_fraction: 0.20,
+                transcript_fasta_paths: vec![
+                    transcript_file_gene3.path().display().to_string(),
+                    transcript_file_gene4.path().display().to_string(),
+                ],
+                ..RnaReadConcatemerInspectionSettings::default()
+            },
+        )
+        .expect("inspect filtered concatemer partner-summary rows");
+    assert_eq!(filtered.selected_record_indices, vec![2]);
+    assert_eq!(filtered.subset_match_count, 1);
+    assert_eq!(filtered.inspected_count, 1);
+    assert_eq!(filtered.suspicious_count, 1);
+    assert_eq!(filtered.partner_gene_summaries.len(), 1);
+    assert_eq!(filtered.partner_gene_summaries[0].gene_id, "GENE4");
+    assert_eq!(filtered.partner_transcript_summaries.len(), 1);
+    assert_eq!(
+        filtered.partner_transcript_summaries[0].transcript_id,
+        "NM_GENE4_1"
     );
 }
 
@@ -24994,6 +25165,7 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
             "rna_reads_concatemers_index_roundtrip",
             RnaReadHitSelection::All,
             10,
+            vec![],
             RnaReadConcatemerInspectionSettings {
                 adapter_fasta_path: Some(adapter_file.path().display().to_string()),
                 adapter_min_match_bp: 18,
