@@ -189,6 +189,8 @@ static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_PCR_DESIGN_SEQ_ID_REQUESTED: Mutex<Option<String>> = Mutex::new(None);
+static NATIVE_JASPAR_EXPERT_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_JASPAR_EXPERT_MOTIF_ID_REQUESTED: Mutex<Option<String>> = Mutex::new(None);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
@@ -444,6 +446,18 @@ pub fn request_open_pcr_design_for_sequence_from_native_menu(seq_id: &str) {
         };
     }
     NATIVE_PCR_DESIGN_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_jaspar_expert_for_motif_from_native_menu(motif_id: &str) {
+    if let Ok(mut requested_motif_id) = NATIVE_JASPAR_EXPERT_MOTIF_ID_REQUESTED.lock() {
+        let trimmed = motif_id.trim();
+        *requested_motif_id = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+    }
+    NATIVE_JASPAR_EXPERT_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn request_open_windows_from_native_menu() {
@@ -3441,6 +3455,22 @@ Error: `{err}`"
                 }
             } else {
                 self.open_pcr_design_dialog();
+            }
+        }
+    }
+
+    fn consume_native_jaspar_expert_request(&mut self) {
+        if NATIVE_JASPAR_EXPERT_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            let requested_motif_id = NATIVE_JASPAR_EXPERT_MOTIF_ID_REQUESTED
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take());
+            if let Some(motif_id) =
+                requested_motif_id.filter(|motif_id| !motif_id.trim().is_empty())
+            {
+                self.open_jaspar_expert_dialog_for_motif(&motif_id);
+            } else {
+                self.open_jaspar_expert_dialog();
             }
         }
     }
@@ -10882,6 +10912,18 @@ Error: `{err}`"
                 .unwrap_or_default();
         }
         self.show_jaspar_expert_dialog = true;
+    }
+
+    fn open_jaspar_expert_dialog_for_motif(&mut self, motif_id: &str) {
+        let trimmed = motif_id.trim();
+        if !trimmed.is_empty() {
+            self.jaspar_expert_selected_motif_id = trimmed.to_string();
+            self.jaspar_expert_view = None;
+        }
+        self.open_jaspar_expert_dialog();
+        if !trimmed.is_empty() {
+            self.refresh_jaspar_expert_view();
+        }
     }
 
     fn open_uniprot_dialog(&mut self) {
@@ -43371,6 +43413,7 @@ impl GENtleApp {
             self.consume_native_help_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();
+            self.consume_native_jaspar_expert_request();
             self.consume_native_windows_request();
             self.consume_active_viewport_report();
             if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {

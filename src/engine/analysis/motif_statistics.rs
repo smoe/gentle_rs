@@ -80,6 +80,13 @@ impl ModeledTfbsScoreDistribution {
 }
 
 impl GentleEngine {
+    pub(super) fn tfbs_cancelled_error(context: &str) -> EngineError {
+        EngineError {
+            code: ErrorCode::Internal,
+            message: format!("TFBS scoring cancelled during {context}"),
+        }
+    }
+
     pub(super) const TFBS_MODELED_SCORE_QUANTUM_BITS: f64 = 1e-3;
 
     pub(super) fn smooth_probability_matrix(matrix_counts: &[[f64; 4]]) -> Vec<[f64; 4]> {
@@ -250,13 +257,17 @@ impl GentleEngine {
         true_log_odds_matrix: &[[f64; 4]],
         mut on_progress: impl FnMut(usize, usize),
     ) -> Vec<(usize, bool, f64, f64, f64, f64)> {
-        Self::scan_tf_scores_with_topology(
+        Self::scan_tf_scores_with_topology_and_cancel(
             sequence,
             llr_matrix,
             true_log_odds_matrix,
             InlineSequenceTopology::Linear,
-            |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
+            |scanned_steps, total_steps| {
+                on_progress(scanned_steps, total_steps);
+                true
+            },
         )
+        .unwrap_or_default()
     }
 
     pub(super) fn scan_tf_scores_with_topology(
@@ -266,11 +277,31 @@ impl GentleEngine {
         topology: InlineSequenceTopology,
         mut on_progress: impl FnMut(usize, usize),
     ) -> Vec<(usize, bool, f64, f64, f64, f64)> {
+        Self::scan_tf_scores_with_topology_and_cancel(
+            sequence,
+            llr_matrix,
+            true_log_odds_matrix,
+            topology,
+            |scanned_steps, total_steps| {
+                on_progress(scanned_steps, total_steps);
+                true
+            },
+        )
+        .unwrap_or_default()
+    }
+
+    pub(super) fn scan_tf_scores_with_topology_and_cancel(
+        sequence: &[u8],
+        llr_matrix: &[[f64; 4]],
+        true_log_odds_matrix: &[[f64; 4]],
+        topology: InlineSequenceTopology,
+        mut on_progress: impl FnMut(usize, usize) -> bool,
+    ) -> Result<Vec<(usize, bool, f64, f64, f64, f64)>, EngineError> {
         if llr_matrix.is_empty()
             || sequence.len() < llr_matrix.len()
             || llr_matrix.len() != true_log_odds_matrix.len()
         {
-            return vec![];
+            return Ok(vec![]);
         }
         let mut raw_hits = Vec::new();
         let mut all_llr_scores = Vec::new();
@@ -285,7 +316,9 @@ impl GentleEngine {
         let total_steps = windows.saturating_mul(2);
         let progress_stride = (total_steps / 200).max(1);
         let mut scanned_steps = 0usize;
-        on_progress(scanned_steps, total_steps);
+        if !on_progress(scanned_steps, total_steps) {
+            return Err(Self::tfbs_cancelled_error("scan setup"));
+        }
         let circular_sequence = if circular_windows && len > 1 {
             let mut bytes = Vec::with_capacity(sequence.len() + len - 1);
             bytes.extend_from_slice(sequence);
@@ -307,7 +340,9 @@ impl GentleEngine {
             }
             scanned_steps = scanned_steps.saturating_add(1);
             if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
-                on_progress(scanned_steps, total_steps);
+                if !on_progress(scanned_steps, total_steps) {
+                    return Err(Self::tfbs_cancelled_error("forward-strand scan"));
+                }
             }
             let rc_window = Self::reverse_complement_bytes(window);
             if let (Some(llr), Some(true_log_odds)) = (
@@ -320,15 +355,17 @@ impl GentleEngine {
             }
             scanned_steps = scanned_steps.saturating_add(1);
             if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
-                on_progress(scanned_steps, total_steps);
+                if !on_progress(scanned_steps, total_steps) {
+                    return Err(Self::tfbs_cancelled_error("reverse-strand scan"));
+                }
             }
         }
-        if scanned_steps != total_steps {
-            on_progress(total_steps, total_steps);
+        if scanned_steps != total_steps && !on_progress(total_steps, total_steps) {
+            return Err(Self::tfbs_cancelled_error("scan completion"));
         }
         all_llr_scores.sort_by(|a, b| a.total_cmp(b));
         all_true_log_odds_scores.sort_by(|a, b| a.total_cmp(b));
-        raw_hits
+        Ok(raw_hits
             .into_iter()
             .map(|(start, reverse, llr_bits, true_log_odds_bits)| {
                 (
@@ -340,7 +377,7 @@ impl GentleEngine {
                     Self::empirical_quantile(&all_true_log_odds_scores, true_log_odds_bits),
                 )
             })
-            .collect()
+            .collect())
     }
 }
 

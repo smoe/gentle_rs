@@ -3231,9 +3231,9 @@ Safety behavior:
   - choose the exported/displayed `value kind`
   - optionally `clip negatives` for raw bit-score families
   - inspect the shared `TfbsScoreTrackReport` immediately in the DNA window
-  - each motif row now includes a compact sequence logo beside the label, so
-    short/high-degeneracy motifs are easier to read against the displayed
-    random-background calibration
+  - each motif row now includes a `PSSM…` action that opens the shared
+    `JASPAR Expert...` window focused on that motif, which is a better home
+    for matrix/logo interpretation than the cramped score-track side rail
   - export the cached view through the shared `RenderTfbsScoreTracksSvg`
     engine route instead of a GUI-only painter
 - Threshold fields remain relevant for hit annotation and `TFBS scan`; the
@@ -3252,6 +3252,8 @@ progress for:
 - deterministic background calibration
 - target-span scanning
 - overall motif completion across the requested track set
+- the progress panel now also exposes `Cancel ...` so long-running
+  background-calibrated score-track jobs can be stopped cooperatively
 
 TFBS display reduction (no recomputation needed):
 
@@ -3858,10 +3860,9 @@ Tutorial projects:
     - raw bit views show `p99`, `Δp99`, and `bg+`
     - background-normalized views show `theory max`, `peak q`, and
       `-log10 tail`
-  - each motif row now also carries a compact sequence logo in the left label
-    lane, so motif length/composition and random-hit susceptibility can be
-    read next to the normalization summary instead of only from a separate
-    JASPAR lookup
+  - each motif row now also exposes `PSSM…`, which opens the shared
+    `JASPAR Expert...` window on that motif instead of squeezing the full
+    matrix/logo interpretation into the score-track side rail
   - the background-normalized percentile and tail views intentionally suppress
     everything below the `0.95` deterministic random-background quantile, which
     keeps the plot focused on unusual windows rather than random low-level

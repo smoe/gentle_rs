@@ -248,9 +248,8 @@ Behavior notes:
     `delta_from_p99`
 - each returned track now also carries a compact `motif_logo_columns` payload
   with the same per-position base counts/fractions/information-content fields
-  used by the JASPAR expert, so GUI and SVG score-track views can show a small
-  sequence-logo reminder beside the trace without doing adapter-only motif
-  lookups
+  used by the JASPAR expert, so static renderers and specialist surfaces can
+  reuse one shared motif/logo payload without doing adapter-only motif lookups
 - `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
   deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
 - `RenderTfbsScoreTrackCorrelationSvg` reuses that exact same report and writes
@@ -278,6 +277,9 @@ Behavior notes:
   events with `task_kind=score_tracks`, `stage_label`, and `stage_percent` so
   GUI/agent callers can show progress while deterministic background
   calibration and target scanning are still running.
+  Those progress callbacks are now also honored cooperatively for
+  `SummarizeTfbsScoreTracks`, so returning `false` can cancel a long-running
+  score-track job during background calibration or target scanning.
 - `clip_negative=true` is the default presentation mode for promoter-design
   inspection on the bit-based score kinds because it suppresses negative-only
   windows and leaves only positive support.

@@ -23,7 +23,7 @@ impl GentleEngine {
         detail: &str,
         scanned_steps: usize,
         total_steps: usize,
-    ) {
+    ) -> bool {
         let stage_fraction = if total_steps == 0 {
             1.0
         } else {
@@ -44,7 +44,7 @@ impl GentleEngine {
                 / (motif_count * stage_count) as f64
         }
         .clamp(0.0, 1.0);
-        let _ = on_progress(OperationProgress::Tfbs(TfbsProgress {
+        on_progress(OperationProgress::Tfbs(TfbsProgress {
             seq_id: seq_id.to_string(),
             motif_id: motif_id.to_string(),
             motif_index,
@@ -57,7 +57,7 @@ impl GentleEngine {
             stage_label: Some(stage_label.to_string()),
             detail: (!detail.trim().is_empty()).then(|| detail.to_string()),
             stage_percent: Some(stage_fraction * 100.0),
-        }));
+        }))
     }
 
     fn tfbs_background_tail_log10(tail_probability: f64, modeled_quantile: f64) -> f64 {
@@ -474,14 +474,15 @@ impl GentleEngine {
         clip_negative: bool,
         llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
-        mut on_progress: impl FnMut(usize, usize),
-    ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-        let hits = Self::scan_tf_scores(
+        mut on_progress: impl FnMut(usize, usize) -> bool,
+    ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), EngineError> {
+        let hits = Self::scan_tf_scores_with_topology_and_cancel(
             random_background,
             llr_matrix,
             true_log_odds_matrix,
+            InlineSequenceTopology::Linear,
             |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
-        );
+        )?;
         let mut llr_background_scores = hits.iter().map(|row| row.2).collect::<Vec<_>>();
         let mut true_log_odds_background_scores = hits.iter().map(|row| row.4).collect::<Vec<_>>();
         llr_background_scores.sort_by(|left, right| left.total_cmp(right));
@@ -510,12 +511,12 @@ impl GentleEngine {
         } else {
             true_log_odds_background_scores.clone()
         };
-        (
+        Ok((
             displayed_scores,
             underlying_background_scores,
             llr_background_scores,
             true_log_odds_background_scores,
-        )
+        ))
     }
 
     fn summarize_tfbs_score_track_normalization_reference(
@@ -796,12 +797,12 @@ impl GentleEngine {
                         ),
                         scanned_steps,
                         total_steps,
-                    );
+                    )
                 },
-            );
+            )?;
 
             if scored_window_count > 0 {
-                let hits = Self::scan_tf_scores_with_topology(
+                let hits = Self::scan_tf_scores_with_topology_and_cancel(
                     view,
                     &llr_matrix,
                     &true_log_odds_matrix,
@@ -824,9 +825,9 @@ impl GentleEngine {
                             ),
                             scanned_steps,
                             total_steps,
-                        );
+                        )
                     },
-                );
+                )?;
                 forward_scores.resize(scored_window_count, 0.0);
                 reverse_scores.resize(scored_window_count, 0.0);
                 for (
@@ -869,7 +870,7 @@ impl GentleEngine {
                     }
                 }
             } else {
-                Self::emit_tfbs_score_track_progress(
+                if !Self::emit_tfbs_score_track_progress(
                     on_progress,
                     &target_label,
                     &tf_id,
@@ -886,7 +887,9 @@ impl GentleEngine {
                     ),
                     1,
                     1,
-                );
+                ) {
+                    return Err(Self::tfbs_cancelled_error("target scan"));
+                }
             }
             if !max_underlying_score.is_finite() {
                 max_underlying_score = 0.0;

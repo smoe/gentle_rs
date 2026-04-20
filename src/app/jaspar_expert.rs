@@ -203,7 +203,7 @@ impl GENtleApp {
         }
     }
 
-    fn refresh_jaspar_expert_view(&mut self) {
+    pub(super) fn refresh_jaspar_expert_view(&mut self) {
         let motif = self.jaspar_expert_selected_motif_id.trim().to_string();
         if motif.is_empty() {
             self.jaspar_expert_status = "Choose one JASPAR entry first.".to_string();
@@ -905,6 +905,15 @@ mod tests {
                 .and_then(|view| view.motif_name.as_deref()),
             Some("SP1")
         );
+    }
+
+    #[test]
+    fn native_request_opens_jaspar_expert_for_requested_motif() {
+        let mut app = GENtleApp::default();
+        crate::app::request_open_jaspar_expert_for_motif_from_native_menu("MA0079.5");
+        app.consume_native_jaspar_expert_request();
+        assert!(app.show_jaspar_expert_dialog);
+        assert_eq!(app.jaspar_expert_selected_motif_id, "MA0079.5");
     }
 
     #[test]

@@ -2980,6 +2980,36 @@ mod tests {
     }
 
     #[test]
+    fn whole_sequence_tfbs_score_tracks_can_be_cancelled() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.tfbs_motifs = "TATAAA".to_string();
+
+        area.show_whole_sequence_tfbs_score_tracks();
+        let task = area.tfbs_task.as_ref().expect("tfbs task started");
+        task.cancel_requested
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let ctx = eframe::egui::Context::default();
+        for _ in 0..300 {
+            area.poll_tfbs_task(&ctx);
+            if area.tfbs_task.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            area.tfbs_task.is_none(),
+            "cancelled tfbs score-track task should stop"
+        );
+        assert!(area.cached_tfbs_score_tracks.is_none());
+        assert!(area.op_status.to_ascii_lowercase().contains("cancelled"));
+    }
+
+    #[test]
     fn parse_positive_usize_text_rejects_zero_and_non_integer() {
         assert!(
             MainAreaDna::parse_positive_usize_text("0", "extension length")
@@ -10893,6 +10923,7 @@ struct TfbsTask {
     task_kind: TfbsTaskKind,
     operation_label: String,
     motif_count: usize,
+    cancel_requested: Arc<AtomicBool>,
     receiver: Arc<Mutex<Receiver<TfbsTaskMessage>>>,
 }
 
@@ -16171,7 +16202,12 @@ impl MainAreaDna {
                     .as_ref()
                     .filter(|task| matches!(task.task_kind, TfbsTaskKind::Annotation))
                 {
-                    Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref());
+                    let _ = Self::render_tfbs_task_progress_panel(
+                        ui,
+                        task,
+                        self.tfbs_progress.as_ref(),
+                        false,
+                    );
                 }
                 if ui
                     .add_enabled(self.tfbs_task.is_none(), egui::Button::new("Annotate TFBS"))
@@ -16246,7 +16282,15 @@ impl MainAreaDna {
                 if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
                     matches!(task.task_kind, TfbsTaskKind::ActiveSequenceScoreTracks { .. })
                 }) {
-                    Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref());
+                    if Self::render_tfbs_task_progress_panel(
+                        ui,
+                        task,
+                        self.tfbs_progress.as_ref(),
+                        true,
+                    ) {
+                        task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                        self.op_status = format!("Cancel requested for {}", task.operation_label);
+                    }
                 }
                 ui.horizontal_wrapped(|ui| {
                     if ui
@@ -31777,23 +31821,30 @@ impl MainAreaDna {
 
     fn summarize_tfbs_task_status(task: &TfbsTask, progress: Option<&TfbsProgress>) -> String {
         let activity = task.operation_label.as_str();
+        let cancel_suffix = if task.cancel_requested.load(AtomicOrdering::Relaxed) {
+            " | cancellation requested"
+        } else {
+            ""
+        };
         match progress {
             Some(progress) => {
                 let stage_percent = progress.stage_percent.unwrap_or(progress.motif_percent);
                 format!(
-                    "{activity} running: motif {}/{} ({}) {:.1}% | total {:.1}% | {:.1}s elapsed",
+                    "{activity} running: motif {}/{} ({}) {:.1}% | total {:.1}% | {:.1}s elapsed{}",
                     progress.motif_index,
                     progress.motif_count,
                     Self::tfbs_progress_detail_label(progress),
                     stage_percent,
                     progress.total_percent,
-                    task.started.elapsed().as_secs_f32()
+                    task.started.elapsed().as_secs_f32(),
+                    cancel_suffix
                 )
             }
             None => format!(
-                "{activity} running... {} motif(s), {:.1}s elapsed",
+                "{activity} running... {} motif(s), {:.1}s elapsed{}",
                 task.motif_count,
-                task.started.elapsed().as_secs_f32()
+                task.started.elapsed().as_secs_f32(),
+                cancel_suffix
             ),
         }
     }
@@ -31828,6 +31879,7 @@ impl MainAreaDna {
         };
         let (tx, rx) = mpsc::channel::<TfbsTaskMessage>();
         let started = Instant::now();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
         self.tfbs_progress = None;
         self.op_status = format!("{operation_label} started for {motif_count} motif(s)");
         self.tfbs_task = Some(TfbsTask {
@@ -31835,15 +31887,20 @@ impl MainAreaDna {
             task_kind,
             operation_label: operation_label.to_string(),
             motif_count,
+            cancel_requested: cancel_requested.clone(),
             receiver: Arc::new(Mutex::new(rx)),
         });
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
+            let cancel_for_worker = cancel_requested.clone();
             let outcome = match engine.write() {
                 Ok(mut guard) => {
                     let mut last_motif_index: Option<usize> = None;
                     let mut last_total_tenths: Option<i64> = None;
                     guard.apply_with_progress(op, move |progress| {
+                        if cancel_for_worker.load(AtomicOrdering::Relaxed) {
+                            return false;
+                        }
                         let OperationProgress::Tfbs(p) = progress else {
                             return true;
                         };
@@ -31858,7 +31915,7 @@ impl MainAreaDna {
                             last_total_tenths = Some(total_tenths);
                             let _ = tx_progress.send(TfbsTaskMessage::Progress(p));
                         }
-                        true
+                        !cancel_for_worker.load(AtomicOrdering::Relaxed)
                     })
                 }
                 Err(_) => Err(EngineError {
@@ -31976,6 +32033,16 @@ impl MainAreaDna {
                 .as_ref()
                 .map(|t| t.started)
                 .unwrap_or_else(Instant::now);
+            let cancellation_requested = self
+                .tfbs_task
+                .as_ref()
+                .map(|t| t.cancel_requested.load(AtomicOrdering::Relaxed))
+                .unwrap_or(false);
+            let operation_label = self
+                .tfbs_task
+                .as_ref()
+                .map(|t| t.operation_label.clone())
+                .unwrap_or_else(|| "TFBS task".to_string());
             let task_kind = self
                 .tfbs_task
                 .as_ref()
@@ -31984,8 +32051,30 @@ impl MainAreaDna {
             self.tfbs_task = None;
             self.tfbs_progress = None;
             match done {
-                Ok(result) => self.handle_completed_tfbs_task_result(task_kind, result, started),
-                Err(e) => self.handle_operation_error(e, started),
+                Ok(result) => {
+                    self.handle_completed_tfbs_task_result(task_kind, result, started);
+                    if cancellation_requested {
+                        self.op_status = format!(
+                            "{} finished after cancellation request in {:.1}s",
+                            operation_label,
+                            started.elapsed().as_secs_f32()
+                        );
+                    }
+                }
+                Err(e) => {
+                    let cancelled =
+                        cancellation_requested && e.message.to_ascii_lowercase().contains("cancel");
+                    if cancelled {
+                        self.op_status = format!(
+                            "{} cancelled after {:.1}s",
+                            operation_label,
+                            started.elapsed().as_secs_f32()
+                        );
+                        self.op_error_popup = None;
+                    } else {
+                        self.handle_operation_error(e, started);
+                    }
+                }
             }
         }
     }

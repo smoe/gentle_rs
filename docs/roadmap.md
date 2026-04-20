@@ -1177,13 +1177,18 @@ order. Durable architecture constraints and decisions remain in
           the dashed shared line and kinked top arrow keep the genomic anchor,
           and the small label box survives README/downsampled figure use better
         - the shared score-track report now also carries one compact
-          per-position motif-logo payload (`motif_logo_columns`) and the GUI +
-          SVG renderers both use it in the left label lane, which makes motif
-          length/composition visible directly beside the calibration summary
+          per-position motif-logo payload (`motif_logo_columns`) for static
+          renderers and specialist reuse, while the GUI score-track rows now
+          prefer a direct `PSSM…` jump into the JASPAR expert instead of
+          squeezing the full matrix/logo explanation into the left label lane
         - `SummarizeTfbsScoreTracks` now also emits TFBS progress events for
           `background calibration` and `target scan`, and both the DNA-window
           TFBS panel and the Promoter design window now show those progress
           bars while score tracks are recomputing
+        - those GUI score-track progress panels are now also cancelable, and
+          the shared `SummarizeTfbsScoreTracks` progress callback is honored
+          cooperatively so cancellation can stop deterministic background
+          calibration and target scanning instead of only hiding the spinner
         - internal-first case-study derivation is now an explicit expectation:
           when a prepared reference exists, promoter figures/tutorials should be
           derived through shared GENtle extraction routes first because that is
