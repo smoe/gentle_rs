@@ -1185,7 +1185,7 @@ struct EngineOpsUiState {
 mod tests {
     use super::{
         DnaPresentationMode, MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
-        RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
+        RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
         SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
         SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
     };
@@ -8033,6 +8033,39 @@ mod tests {
     }
 
     #[test]
+    fn default_rna_read_report_id_tracks_scope_origin_and_target_genes() {
+        let view = SplicingExpertView {
+            seq_id: "TP73.ncbi".to_string(),
+            target_feature_id: 42,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let mut ui_state = RnaReadInterpretOpsUiState::default();
+        ui_state.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
+        ui_state.scope = SplicingScopePreset::TargetGroupTargetStrand;
+        ui_state.origin_mode = RnaReadOriginMode::MultiGeneSparse;
+        ui_state.target_gene_ids = "TP53 TP63".to_string();
+
+        assert_eq!(
+            MainAreaDna::default_rna_read_report_id(&view, &ui_state),
+            "rna_tp73_srr32957124_ncdna_tgts_mgs_tg_tp53_tp63"
+        );
+    }
+
+    #[test]
     fn build_splicing_rna_read_workflow_uses_interpret_payload_and_autorunid() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("TP73.ncbi".to_string()), None);
@@ -8065,7 +8098,7 @@ mod tests {
             .expect("workflow");
         assert_eq!(
             workflow.run_id,
-            "workflow_rna_reads_tp73_ncbi_cdna_srr32957124"
+            "workflow_rna_reads_tp73_ncbi_rna_tp73_srr32957124_ncdna_aobs_sg"
         );
         assert_eq!(workflow.ops.len(), 1);
         match &workflow.ops[0] {
@@ -8081,11 +8114,61 @@ mod tests {
                 assert_eq!(*seed_feature_id, 42);
                 assert_eq!(input_path, "/tmp/SRR32957124.fasta.gz");
                 assert_eq!(seed_filter.seed_stride_bp, 3);
-                assert_eq!(report_id.as_deref(), Some("cdna_srr32957124"));
+                assert_eq!(
+                    report_id.as_deref(),
+                    Some("rna_tp73_srr32957124_ncdna_aobs_sg")
+                );
             }
             other => panic!("unexpected workflow op: {other:?}"),
         }
-        assert_eq!(area.rna_reads_ui.report_id, "cdna_srr32957124");
+        assert_eq!(
+            area.rna_reads_ui.report_id,
+            "rna_tp73_srr32957124_ncdna_aobs_sg"
+        );
+    }
+
+    #[test]
+    fn build_splicing_rna_read_workflow_keeps_manual_report_id_override() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("TP73.ncbi".to_string()), None);
+        area.rna_reads_ui.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
+        area.rna_reads_ui.report_id = "tp73_manual_review".to_string();
+        area.rna_reads_ui.report_id_auto_sync = false;
+        area.workflow_run_id.clear();
+        let view = SplicingExpertView {
+            seq_id: "TP73.ncbi".to_string(),
+            target_feature_id: 42,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let workflow = area
+            .build_splicing_rna_read_workflow(&view)
+            .expect("workflow");
+        assert_eq!(
+            workflow.run_id,
+            "workflow_rna_reads_tp73_ncbi_tp73_manual_review"
+        );
+        match &workflow.ops[0] {
+            Operation::InterpretRnaReads { report_id, .. } => {
+                assert_eq!(report_id.as_deref(), Some("tp73_manual_review"));
+            }
+            other => panic!("unexpected workflow op: {other:?}"),
+        }
+        assert_eq!(area.rna_reads_ui.report_id, "tp73_manual_review");
     }
 
     #[test]
@@ -22991,6 +23074,9 @@ impl MainAreaDna {
         .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
         let controls_enabled = self.rna_read_task.is_none();
         ui.add_enabled_ui(controls_enabled, |ui| {
+            let mut refresh_auto_report_id = self.rna_reads_ui.report_id_auto_sync
+                && self.rna_reads_ui.report_id.trim().is_empty()
+                && !self.rna_reads_ui.input_path.trim().is_empty();
             ui.horizontal(|ui| {
                 ui.label("Input FASTA").on_hover_text(
                     "Path to phase-1 input reads in FASTA format (.fa/.fasta, optional .gz). Reads are streamed sequentially from this file; .sra must be converted externally first.",
@@ -23003,27 +23089,22 @@ impl MainAreaDna {
                     .changed()
                 {
                     persist_ui_state = true;
+                    refresh_auto_report_id = true;
                 }
                 if ui
                     .button("Browse...")
                     .on_hover_text(
-                        "Open a file chooser for FASTA/FASTA.gz input. If Report ID is empty, it is auto-derived from the filename.",
+                        "Open a file chooser for FASTA/FASTA.gz input. In Auto mode, Report ID is refreshed from the current locus + input + scope/origin settings.",
                     )
                     .clicked()
                 {
-                    let report_id_was_empty = self.rna_reads_ui.report_id.trim().is_empty();
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("FASTA", &["fa", "fasta", "gz"])
                         .pick_file()
                     {
                         self.rna_reads_ui.input_path = path.display().to_string();
-                        if report_id_was_empty {
-                            self.rna_reads_ui.report_id =
-                                Self::default_cdna_report_id_from_input_path(
-                                    &self.rna_reads_ui.input_path,
-                                );
-                        }
                         persist_ui_state = true;
+                        refresh_auto_report_id = true;
                     }
                 }
             });
@@ -23031,13 +23112,42 @@ impl MainAreaDna {
                 ui.label("Report ID").on_hover_text(
                     "Identifier used to store and retrieve the retained top-hit report produced by phase 1. The same ID is reused by phase-2 alignment, inspection, and TSV/SVG export actions.",
                 );
-                if ui
+                let report_id_changed = ui
                     .text_edit_singleline(&mut self.rna_reads_ui.report_id)
                     .on_hover_text(
-                        "Leave empty to auto-derive from the input filename. This becomes the stable handle for report lookup across GUI, CLI, JS, and Lua.",
+                        "Auto mode keeps this ID synchronized with the current locus, input file, scope, and origin settings. Typing a custom value switches to manual mode until you re-enable Auto or press Refresh ID.",
                     )
-                    .changed()
+                    .changed();
+                if report_id_changed {
+                    if self.rna_reads_ui.report_id.trim().is_empty() {
+                        self.rna_reads_ui.report_id_auto_sync = true;
+                        refresh_auto_report_id = true;
+                    } else {
+                        self.rna_reads_ui.report_id_auto_sync = false;
+                    }
+                    persist_ui_state = true;
+                }
+                let auto_toggled = ui
+                    .checkbox(&mut self.rna_reads_ui.report_id_auto_sync, "Auto")
+                    .on_hover_text(
+                        "Keep Report ID synchronized with the current locus, input, and run settings instead of treating it as a manual override.",
+                    )
+                    .changed();
+                if auto_toggled {
+                    persist_ui_state = true;
+                    if self.rna_reads_ui.report_id_auto_sync {
+                        refresh_auto_report_id = true;
+                    }
+                }
+                if ui
+                    .button("Refresh ID")
+                    .on_hover_text(
+                        "Regenerate the suggested Report ID from the current locus, input, scope, and origin settings without changing any other mapping controls.",
+                    )
+                    .clicked()
                 {
+                    self.rna_reads_ui.report_id =
+                        Self::default_rna_read_report_id(view, &self.rna_reads_ui);
                     persist_ui_state = true;
                 }
             });
@@ -23045,6 +23155,7 @@ impl MainAreaDna {
                 ui.label("Region / gene scope").on_hover_text(
                     "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes keep the run focused on the current target gene or strand context.",
                 );
+                let mut scope_changed = false;
                 egui::ComboBox::from_id_salt(format!(
                     "rna_read_scope_{}_{}",
                     view.seq_id, view.target_feature_id
@@ -23054,7 +23165,7 @@ impl MainAreaDna {
                     self.rna_reads_ui.scope,
                 ))
                 .show_ui(ui, |ui| {
-                    persist_ui_state |= ui
+                    scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::AllOverlappingBothStrands,
@@ -23064,7 +23175,7 @@ impl MainAreaDna {
                             "Broadest mode: include all overlapping transcripts on both strands.",
                         )
                         .changed();
-                    persist_ui_state |= ui
+                    scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::TargetGroupAnyStrand,
@@ -23074,7 +23185,7 @@ impl MainAreaDna {
                             "Restrict to the current target gene/group, but allow both strands inside that group.",
                         )
                         .changed();
-                    persist_ui_state |= ui
+                    scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::AllOverlappingTargetStrand,
@@ -23084,7 +23195,7 @@ impl MainAreaDna {
                             "Include all overlapping transcripts only on the target strand.",
                         )
                         .changed();
-                    persist_ui_state |= ui
+                    scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::TargetGroupTargetStrand,
@@ -23095,6 +23206,8 @@ impl MainAreaDna {
                         )
                         .changed();
                 });
+                persist_ui_state |= scope_changed;
+                refresh_auto_report_id |= scope_changed;
                 persist_ui_state |= ui
                     .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
                     .on_hover_text(
@@ -23107,6 +23220,7 @@ impl MainAreaDna {
                     ui.label("Gene expansion mode").on_hover_text(
                         "Controls how transcript templates are gathered before hashing. This is still one run, not multiple invocations: `single_gene` uses only the current target gene/group; `multi_gene_sparse` adds transcript templates from the explicit Target genes list. This remains local annotation-driven, not a genome-wide search.",
                     );
+                    let mut origin_changed = false;
                     egui::ComboBox::from_id_salt(format!(
                         "rna_read_origin_mode_{}_{}",
                         view.seq_id, view.target_feature_id
@@ -23116,31 +23230,33 @@ impl MainAreaDna {
                         self.rna_reads_ui.origin_mode,
                     ))
                     .show_ui(ui, |ui| {
-                        persist_ui_state |= ui
+                        origin_changed |= ui
                             .selectable_value(
                                 &mut self.rna_reads_ui.origin_mode,
                                 RnaReadOriginMode::SingleGene,
                                 "single_gene (baseline)",
-                            )
-                            .on_hover_text(
-                                "Current deterministic baseline: use current seed feature/scope only.",
-                            )
-                            .changed();
-                        persist_ui_state |= ui
+                        )
+                        .on_hover_text(
+                            "Current deterministic baseline: use current seed feature/scope only.",
+                        )
+                        .changed();
+                        origin_changed |= ui
                             .selectable_value(
                                 &mut self.rna_reads_ui.origin_mode,
                                 RnaReadOriginMode::MultiGeneSparse,
                                 "multi_gene_sparse",
-                            )
-                            .on_hover_text(
-                                "Expand transcript templates from target_gene_ids (local annotation, deterministic). ROI seed-capture remains a planned follow-up.",
-                            )
-                            .changed();
+                        )
+                        .on_hover_text(
+                            "Expand transcript templates from target_gene_ids (local annotation, deterministic). ROI seed-capture remains a planned follow-up.",
+                        )
+                        .changed();
                     });
+                    persist_ui_state |= origin_changed;
+                    refresh_auto_report_id |= origin_changed;
                     ui.label("Target genes").on_hover_text(
                         "Optional gene IDs for multi-gene sparse mode. Comma/space/semicolon separated.",
                     );
-                    persist_ui_state |= ui
+                    let target_genes_changed = ui
                         .add(
                             egui::TextEdit::singleline(&mut self.rna_reads_ui.target_gene_ids)
                                 .desired_width(280.0)
@@ -23150,6 +23266,8 @@ impl MainAreaDna {
                             "Example: TP73, TP53. Applied when origin mode is multi_gene_sparse and persisted in the report payload.",
                         )
                         .changed();
+                    persist_ui_state |= target_genes_changed;
+                    refresh_auto_report_id |= target_genes_changed;
                     persist_ui_state |= ui
                         .checkbox(
                             &mut self.rna_reads_ui.roi_seed_capture_enabled,
@@ -23262,6 +23380,7 @@ impl MainAreaDna {
                 {
                     self.apply_rna_reads_tp73_specificity_preset();
                     persist_ui_state = true;
+                    refresh_auto_report_id = true;
                 }
                 ui.small(
                     egui::RichText::new(
@@ -23656,6 +23775,27 @@ impl MainAreaDna {
                         .color(egui::Color32::from_rgb(100, 116, 139)),
                     );
                 }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .small_button("Prep concatemer review")
+                        .on_hover_text(
+                            "Set a pragmatic phase-2 review preset for concatemer/fragment audits: full report mode, all retained rows, and up to 5 secondary mappings per read.",
+                        )
+                        .clicked()
+                    {
+                        self.apply_rna_read_concatemer_review_preset();
+                        persist_ui_state = true;
+                    }
+                    ui.small(
+                        egui::RichText::new(
+                            "For `nanopore_cdna_v1`, phase 1 intentionally stores `max_secondary_mappings=0`; use phase 2 with retained secondaries before treating concatemer audits as decisive.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
+            }
+            if refresh_auto_report_id {
+                persist_ui_state |= self.refresh_auto_rna_read_report_id(view);
             }
         });
         if !controls_enabled {
@@ -24422,12 +24562,7 @@ impl MainAreaDna {
                         row.report_id
                             .eq_ignore_ascii_case(self.rna_read_evidence_ui.selected_report_id.trim())
                     })
-                    .map(|row| {
-                        format!(
-                            "{} | reads={} aligned={}",
-                            row.report_id, row.read_count_total, row.read_count_aligned
-                        )
-                    })
+                    .map(Self::format_rna_read_report_summary_picker_label)
                     .unwrap_or_else(|| "<none>".to_string()),
             )
             .show_ui(ui, |ui| {
@@ -24436,13 +24571,7 @@ impl MainAreaDna {
                         .selectable_value(
                             &mut self.rna_read_evidence_ui.selected_report_id,
                             row.report_id.clone(),
-                            format!(
-                                "{} | reads={} aligned={} scope={}",
-                                row.report_id,
-                                row.read_count_total,
-                                row.read_count_aligned,
-                                Self::splicing_scope_label(row.scope)
-                            ),
+                            Self::format_rna_read_report_summary_picker_label(row),
                         )
                         .changed();
                 }
@@ -25185,15 +25314,6 @@ impl MainAreaDna {
         });
     }
 
-    fn splicing_scope_label(scope: SplicingScopePreset) -> &'static str {
-        match scope {
-            SplicingScopePreset::AllOverlappingBothStrands => "all-overlap / both-strands",
-            SplicingScopePreset::TargetGroupAnyStrand => "target-group / any-strand",
-            SplicingScopePreset::AllOverlappingTargetStrand => "all-overlap / target-strand",
-            SplicingScopePreset::TargetGroupTargetStrand => "target-group / target-strand",
-        }
-    }
-
     fn parse_rna_target_gene_ids(raw: &str) -> Vec<String> {
         let mut out = Vec::<String>::new();
         let mut seen = HashSet::<String>::new();
@@ -25220,6 +25340,143 @@ impl MainAreaDna {
             }
         }
         out.trim_matches('_').to_string()
+    }
+
+    fn rna_read_report_group_token(view: &SplicingExpertView) -> String {
+        let group = Self::sanitize_workflow_run_id_component(&view.group_label);
+        if group.is_empty() {
+            let seq = Self::sanitize_workflow_run_id_component(&view.seq_id);
+            if seq.is_empty() {
+                "seq".to_string()
+            } else {
+                seq
+            }
+        } else {
+            group
+        }
+    }
+
+    fn rna_read_report_source_token(input_path: &str) -> String {
+        Path::new(input_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| {
+                let mut stem = name.to_string();
+                for suffix in [
+                    ".fasta.gz",
+                    ".fa.gz",
+                    ".fasta",
+                    ".fa",
+                    ".fastq.gz",
+                    ".fq.gz",
+                    ".fastq",
+                    ".fq",
+                    ".gz",
+                ] {
+                    if let Some(stripped) = stem.strip_suffix(suffix) {
+                        stem = stripped.to_string();
+                        break;
+                    }
+                }
+                Self::sanitize_workflow_run_id_component(&stem)
+            })
+            .filter(|token| !token.is_empty())
+            .unwrap_or_else(|| "reads".to_string())
+    }
+
+    fn rna_read_profile_report_token(profile: RnaReadInterpretationProfile) -> &'static str {
+        match profile {
+            RnaReadInterpretationProfile::NanoporeCdnaV1 => "ncdna",
+            RnaReadInterpretationProfile::ShortReadV1 => "short",
+            RnaReadInterpretationProfile::TransposonV1 => "transposon",
+        }
+    }
+
+    fn rna_read_scope_report_token(scope: SplicingScopePreset) -> &'static str {
+        match scope {
+            SplicingScopePreset::AllOverlappingBothStrands => "aobs",
+            SplicingScopePreset::TargetGroupAnyStrand => "tgas",
+            SplicingScopePreset::AllOverlappingTargetStrand => "aots",
+            SplicingScopePreset::TargetGroupTargetStrand => "tgts",
+        }
+    }
+
+    fn rna_read_origin_report_token(origin_mode: RnaReadOriginMode) -> &'static str {
+        match origin_mode {
+            RnaReadOriginMode::SingleGene => "sg",
+            RnaReadOriginMode::MultiGeneSparse => "mgs",
+        }
+    }
+
+    fn rna_read_target_gene_report_suffix(raw: &str) -> Option<String> {
+        let genes = Self::parse_rna_target_gene_ids(raw);
+        if genes.is_empty() {
+            return None;
+        }
+        if genes.len() <= 2 {
+            let compact = genes
+                .iter()
+                .map(|gene| Self::sanitize_workflow_run_id_component(gene))
+                .filter(|token| !token.is_empty())
+                .collect::<Vec<_>>();
+            if !compact.is_empty() {
+                return Some(format!("tg_{}", compact.join("_")));
+            }
+        }
+        Some(format!("tg{}", genes.len()))
+    }
+
+    fn default_rna_read_report_id(
+        view: &SplicingExpertView,
+        ui_state: &RnaReadInterpretOpsUiState,
+    ) -> String {
+        let mut parts = vec![
+            "rna".to_string(),
+            Self::rna_read_report_group_token(view),
+            Self::rna_read_report_source_token(&ui_state.input_path),
+            Self::rna_read_profile_report_token(ui_state.profile).to_string(),
+            Self::rna_read_scope_report_token(ui_state.scope).to_string(),
+            Self::rna_read_origin_report_token(ui_state.origin_mode).to_string(),
+        ];
+        if matches!(ui_state.origin_mode, RnaReadOriginMode::MultiGeneSparse)
+            && let Some(target_suffix) =
+                Self::rna_read_target_gene_report_suffix(&ui_state.target_gene_ids)
+        {
+            parts.push(target_suffix);
+        }
+        parts.join("_")
+    }
+
+    fn refresh_auto_rna_read_report_id(&mut self, view: &SplicingExpertView) -> bool {
+        if !self.rna_reads_ui.report_id_auto_sync {
+            return false;
+        }
+        let suggested = Self::default_rna_read_report_id(view, &self.rna_reads_ui);
+        if self.rna_reads_ui.report_id != suggested {
+            self.rna_reads_ui.report_id = suggested;
+            return true;
+        }
+        false
+    }
+
+    fn format_rna_read_report_summary_picker_label(
+        row: &RnaReadInterpretationReportSummary,
+    ) -> String {
+        let target_suffix = if row.target_gene_count == 0 {
+            "tg=0".to_string()
+        } else {
+            format!("tg={}", row.target_gene_count)
+        };
+        format!(
+            "{} | {} | {} | reads={} aligned={} | {} | {}",
+            row.report_id,
+            Self::rna_read_profile_report_token(row.profile),
+            row.origin_mode.as_str(),
+            row.read_count_total,
+            row.read_count_aligned,
+            Self::rna_read_scope_report_token(row.scope),
+            target_suffix
+        )
     }
 
     fn default_rna_read_workflow_run_id(seq_id: &str, report_id: &str) -> String {
@@ -25264,6 +25521,14 @@ impl MainAreaDna {
         self.rna_reads_ui.show_advanced = true;
         self.op_status =
             "Applied dense exact 9-mer preset for RNA-read hashing and dotplots".to_string();
+    }
+
+    fn apply_rna_read_concatemer_review_preset(&mut self) {
+        self.rna_reads_ui.align_max_secondary_mappings = "5".to_string();
+        self.rna_reads_ui.align_phase_selection = RnaReadHitSelection::All;
+        self.rna_reads_ui.report_mode = RnaReadReportMode::Full;
+        self.rna_reads_ui.show_advanced = true;
+        self.op_status = "Prepared RNA-read alignment settings for concatemer review (all retained, max secondary=5, full report mode).".to_string();
     }
 
     fn reset_rna_read_dotplot_parameters_to_defaults(&mut self) {
@@ -25523,35 +25788,6 @@ impl MainAreaDna {
             RnaReadHitSelection::All => "all retained",
             RnaReadHitSelection::Aligned => "already_aligned",
         }
-    }
-
-    fn default_cdna_report_id_from_input_path(input_path: &str) -> String {
-        let path = Path::new(input_path);
-        let file_name = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("input");
-        let stem = file_name
-            .strip_suffix(".fasta.gz")
-            .or_else(|| file_name.strip_suffix(".fa.gz"))
-            .or_else(|| file_name.strip_suffix(".fasta"))
-            .or_else(|| file_name.strip_suffix(".fa"))
-            .unwrap_or(file_name);
-        let mut normalized = stem
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-                    ch.to_ascii_lowercase()
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
-        normalized = normalized.trim_matches('_').to_string();
-        if normalized.is_empty() {
-            normalized = "input".to_string();
-        }
-        format!("cdna_{normalized}")
     }
 
     fn rna_seed_base_to_bits(base: u8) -> Option<u32> {
@@ -26593,8 +26829,8 @@ impl MainAreaDna {
         };
         let report_id = {
             let raw = self.rna_reads_ui.report_id.trim();
-            if raw.is_empty() {
-                let default_id = Self::default_cdna_report_id_from_input_path(&input_path);
+            if self.rna_reads_ui.report_id_auto_sync || raw.is_empty() {
+                let default_id = Self::default_rna_read_report_id(view, &self.rna_reads_ui);
                 self.rna_reads_ui.report_id = default_id.clone();
                 Some(default_id)
             } else {

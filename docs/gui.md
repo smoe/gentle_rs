@@ -709,8 +709,18 @@ Feature tree grouping:
       aligned-read count, and target-gene count
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
-  - if `Report ID` is left empty, a default ID is derived from the input file
-    name (`cdna_<filename_stem>`)
+  - `Report ID` now defaults to a settings-aware stem derived from:
+    - current splicing group / locus
+    - input file name
+    - active profile
+    - active scope
+    - active origin mode
+    - explicit target genes when `multi_gene_sparse` is selected
+  - `Report ID` now has:
+    - `Auto` mode to keep that ID synchronized with the current settings
+    - `Refresh ID` to regenerate the suggested value once without forcing
+      future auto-sync
+    - manual typing automatically switches the field into manual-override mode
   - field tooltips now explain how `Report ID`, `Scope`, `Origin mode`,
     `Report mode`, cDNA normalization, and alignment reuse affect retained
     reports and later inspection/export
@@ -801,6 +811,13 @@ Feature tree grouping:
     - `min identity`
     - `max secondary`
     - `align selection` (`seed_passed|all|aligned`)
+    - `Prep concatemer review` sets a pragmatic audit preset:
+      - `report_mode=full`
+      - `align selection=all retained`
+      - `max secondary=5`
+    - the panel now also reminds you that the built-in `nanopore_cdna_v1`
+      phase-1 run stores `max_secondary_mappings=0`, so concatemer review
+      should rely on a phase-2 rerun with retained secondaries
     - the panel now explains the current phase-2 working set explicitly:
       `all` means all retained report rows, not only the rows above raw
       `min hit`; it also shows how many retained rows currently pass the
@@ -823,6 +840,9 @@ Feature tree grouping:
     `AlignRnaReadReport` asynchronously for the current `Report ID`
     - tooltip explicitly notes that phase 2 reuses the saved report and does
       not reread the FASTA input unless phase 1 is run again
+  - saved-report selectors now show a denser one-line summary per report:
+    `report_id`, profile, origin mode, read/aligned counts, scope token, and
+    target-gene count
   - phase-2 alignment updates persisted report counters and support tables:
     - `aligned`
     - `msa-eligible(retained)`

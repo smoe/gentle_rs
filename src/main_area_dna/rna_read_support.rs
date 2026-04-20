@@ -17,6 +17,8 @@ use super::*;
 pub(super) struct RnaReadInterpretOpsUiState {
     pub(super) input_path: String,
     pub(super) report_id: String,
+    #[serde(default = "super::default_true")]
+    pub(super) report_id_auto_sync: bool,
     pub(super) scope: SplicingScopePreset,
     pub(super) profile: RnaReadInterpretationProfile,
     pub(super) input_format: RnaReadInputFormat,
@@ -62,6 +64,7 @@ impl Default for RnaReadInterpretOpsUiState {
         Self {
             input_path: String::new(),
             report_id: String::new(),
+            report_id_auto_sync: true,
             scope: SplicingScopePreset::AllOverlappingBothStrands,
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,

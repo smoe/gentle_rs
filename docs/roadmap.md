@@ -3397,6 +3397,19 @@ Status:
     - still missing if performance pressure warrants it later:
       a heavier fully joined global inverted seed index across external
       catalogs rather than the current reusable per-template catalog index
+  - GUI RNA-read mapping now keeps `Report ID` in a clearer state:
+    - auto-generated IDs are now derived from locus + input + profile +
+      scope + origin mode instead of only the input filename
+    - the panel now exposes explicit `Auto` and `Refresh ID` controls so
+      users can keep deterministic naming without losing manual override
+    - saved-report selectors now show denser one-line summaries
+      (profile/origin/read counts/scope/target-gene count) to reduce confusion
+      between near-duplicate TP73 runs
+  - GUI RNA-read mapping now exposes a small `Prep concatemer review` helper
+    that switches phase-2 review onto a more audit-friendly preset
+    (`report_mode=full`, `align selection=all retained`, `max secondary=5`)
+    and explicitly reminds users that the phase-1 `nanopore_cdna_v1` baseline
+    stores `max_secondary_mappings=0`.
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.

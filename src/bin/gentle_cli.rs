@@ -4919,7 +4919,10 @@ mod tests {
             forwarded_report["random_sequence_length_bp"],
             shared_report["random_sequence_length_bp"]
         );
-        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(
+            forwarded_report["random_seed"],
+            shared_report["random_seed"]
+        );
         assert_eq!(forwarded_report["rows"], shared_report["rows"]);
         assert_eq!(
             forwarded_output["result"]["messages"],
@@ -4982,7 +4985,10 @@ mod tests {
             forwarded_report["random_sequence_length_bp"],
             shared_report["random_sequence_length_bp"]
         );
-        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(
+            forwarded_report["random_seed"],
+            shared_report["random_seed"]
+        );
         assert_eq!(forwarded_report["rows"], shared_report["rows"]);
         assert_eq!(
             forwarded_output["result"]["messages"],
@@ -5049,7 +5055,10 @@ mod tests {
             forwarded_report["random_sequence_length_bp"],
             shared_report["random_sequence_length_bp"]
         );
-        assert_eq!(forwarded_report["random_seed"], shared_report["random_seed"]);
+        assert_eq!(
+            forwarded_report["random_seed"],
+            shared_report["random_seed"]
+        );
         assert_eq!(forwarded_report["rows"], shared_report["rows"]);
         assert_eq!(
             forwarded_output["result"]["messages"],
