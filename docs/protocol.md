@@ -1574,6 +1574,21 @@ Current draft operations:
     when feature projection was intentionally disabled.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
+- `ListCutRunDatasets { filter?, catalog_path? }`
+- `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
+- `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
+- `ProjectCutRunDataset { seq_id, dataset_id, include_peaks?, include_signal?, clear_existing?, catalog_path?, cache_dir? }`
+  - V1 is processed-evidence-first and currently reuses the shared anchored
+    `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
+  - default catalog: `assets/cutrun.json`; default prepared-cache root:
+    `data/cutrun`; environment override: `GENTLE_CUTRUN_CACHE_DIR`.
+  - `ProjectCutRunDataset` requires a genome-anchored sequence and rejects
+    incompatible `supported_reference_genome_ids`.
+  - status/projection payload schemas:
+    `gentle.cutrun_dataset_list.v1`,
+    `gentle.cutrun_prepared_manifest.v1`,
+    `gentle.cutrun_dataset_status.v1`,
+    `gentle.cutrun_dataset_projection.v1`.
 
 Catalog-backed reference/helper discovery notes:
 

@@ -97,6 +97,8 @@ pub use gentle_protocol::{
 };
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
+pub const DEFAULT_CUTRUN_CATALOG_PATH: &str = "assets/cutrun.json";
+pub const DEFAULT_CUTRUN_CACHE_DIR: &str = "data/cutrun";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {
@@ -411,6 +413,10 @@ const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
 const RNA_READ_CONCATEMER_INSPECTION_SCHEMA: &str = "gentle.rna_read_concatemer_inspection.v1";
 const RNA_READ_ALIGNMENT_DETAIL_SCHEMA: &str = "gentle.rna_read_alignment_detail.v1";
+const CUTRUN_DATASET_LIST_SCHEMA: &str = "gentle.cutrun_dataset_list.v1";
+const CUTRUN_PREPARED_MANIFEST_SCHEMA: &str = "gentle.cutrun_prepared_manifest.v1";
+const CUTRUN_DATASET_STATUS_SCHEMA: &str = "gentle.cutrun_dataset_status.v1";
+const CUTRUN_DATASET_PROJECTION_SCHEMA: &str = "gentle.cutrun_dataset_projection.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
@@ -551,6 +557,8 @@ fn default_promoter_reporter_max_candidates() -> usize {
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]
 mod candidate_metrics;
+#[path = "engine/cutrun.rs"]
+mod cutrun;
 #[path = "engine/state/feature_coordinate_formulas.rs"]
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
@@ -2898,6 +2906,40 @@ pub enum Operation {
         max_score: Option<f64>,
         clear_existing: Option<bool>,
     },
+    ListCutRunDatasets {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+    },
+    ShowCutRunDatasetStatus {
+        dataset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+    },
+    PrepareCutRunDataset {
+        dataset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+    },
+    ProjectCutRunDataset {
+        seq_id: SeqId,
+        dataset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_peaks: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_signal: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+    },
     ImportIsoformPanel {
         seq_id: SeqId,
         panel_path: String,
@@ -4773,6 +4815,10 @@ impl GentleEngine {
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
+                "ListCutRunDatasets".to_string(),
+                "ShowCutRunDatasetStatus".to_string(),
+                "PrepareCutRunDataset".to_string(),
+                "ProjectCutRunDataset".to_string(),
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),

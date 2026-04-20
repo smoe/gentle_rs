@@ -5550,6 +5550,199 @@ pub(super) fn parse_seq_primer_command(tokens: &[String]) -> Result<ShellCommand
     }
 }
 
+pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("cutrun requires a subcommand: list, status, prepare, or project".to_string());
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut filter: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--filter" => {
+                        filter = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--filter",
+                            "cutrun list",
+                        )?);
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun list",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun list")),
+                }
+            }
+            Ok(ShellCommand::CutRunList {
+                filter,
+                catalog_path,
+            })
+        }
+        "status" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "cutrun status requires DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+                        .to_string(),
+                );
+            }
+            let dataset_id = tokens[2].trim().to_string();
+            if dataset_id.is_empty() {
+                return Err("cutrun status requires a non-empty DATASET_ID".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun status",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cutrun status",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun status")),
+                }
+            }
+            Ok(ShellCommand::CutRunStatus {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "prepare" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "cutrun prepare requires DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+                        .to_string(),
+                );
+            }
+            let dataset_id = tokens[2].trim().to_string();
+            if dataset_id.is_empty() {
+                return Err("cutrun prepare requires a non-empty DATASET_ID".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun prepare",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cutrun prepare",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun prepare")),
+                }
+            }
+            Ok(ShellCommand::CutRunPrepare {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "project" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "cutrun project requires SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            let dataset_id = tokens[3].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("cutrun project requires a non-empty SEQ_ID".to_string());
+            }
+            if dataset_id.is_empty() {
+                return Err("cutrun project requires a non-empty DATASET_ID".to_string());
+            }
+            let mut include_peaks = true;
+            let mut include_signal = true;
+            let mut clear_existing = false;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--no-peaks" => {
+                        include_peaks = false;
+                        idx += 1;
+                    }
+                    "--no-signal" => {
+                        include_signal = false;
+                        idx += 1;
+                    }
+                    "--clear-existing" => {
+                        clear_existing = true;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun project",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cutrun project",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for cutrun project")),
+                }
+            }
+            if !include_peaks && !include_signal {
+                return Err(
+                    "cutrun project requires at least one of peaks or signal to remain enabled"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CutRunProject {
+                seq_id,
+                dataset_id,
+                include_peaks,
+                include_signal,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        other => Err(format!(
+            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, or project)"
+        )),
+    }
+}
+
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(

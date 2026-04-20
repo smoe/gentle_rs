@@ -3515,6 +3515,46 @@ Track boundaries:
    - preserve existing cDNA filtering/mapping behavior unchanged; this deferred
      track should not trigger premature refactors in the current RNA/cDNA path.
 
+### CUT&RUN support track (V1 baseline implemented; V2/V3 planned)
+
+Goal: support promoter/ROI-centric CUT&RUN evidence through one shared
+catalog/cache/report family without introducing GUI-only or workflow-specific
+logic.
+
+Status:
+
+1. Implemented baseline V1:
+   - new shared catalog family:
+     - built-in starter catalog: `assets/cutrun.json`
+     - overlay discovery under `.gentle/catalogs/`
+     - prepared-cache root default: `data/cutrun`
+     - environment override: `GENTLE_CUTRUN_CACHE_DIR`
+   - new engine operations:
+     - `ListCutRunDatasets`
+     - `ShowCutRunDatasetStatus`
+     - `PrepareCutRunDataset`
+     - `ProjectCutRunDataset`
+   - `ProjectCutRunDataset` reuses existing genome-anchored BED/BigWig import
+     paths instead of duplicating parser/projection logic.
+   - projection rejects incompatible anchored genomes and only operates on
+     genome-anchored sequences.
+   - shared shell/CLI direct routes are now in place under `cutrun ...`.
+   - deterministic regression coverage now exists for:
+     - discovery/overlay merging,
+     - cache-env resolution,
+     - prepare/status manifest handling,
+     - anchored peaks+signal projection,
+     - incompatible-genome rejection.
+
+2. Planned V2:
+   - direct ROI-first FASTA/FASTQ read interpretation with paired-end-aware
+     fragment/cut-site support and saved ROI evidence reports.
+
+3. Planned V3:
+   - regulatory reasoning over promoter-boundary candidates, TFBS support, and
+     motif-context interpretation, including motif-absent but strongly
+     supported windows.
+
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 
 Goal: support deterministic transcript/protein architecture rendering for curated

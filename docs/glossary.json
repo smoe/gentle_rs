@@ -1,5 +1,5 @@
 {
-   "command_count": 338,
+   "command_count": 342,
    "commands": [
       {
          "aliases": [
@@ -1806,6 +1806,62 @@
          "path": "helpers verify-anchor",
          "summary": "Re-check one anchored sequence against its prepared helper coordinates.",
          "usage": "helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListCutRunDatasets"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun list",
+         "summary": "List CUT&RUN datasets from the shared catalog family.",
+         "usage": "cutrun list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ShowCutRunDatasetStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun status",
+         "summary": "Inspect prepared/local status for one CUT&RUN dataset.",
+         "usage": "cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareCutRunDataset"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun prepare",
+         "summary": "Materialize one CUT&RUN dataset's processed assets into the prepared cache.",
+         "usage": "cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectCutRunDataset"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun project",
+         "summary": "Project one prepared CUT&RUN dataset onto a genome-anchored sequence.",
+         "usage": "cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],

@@ -78,6 +78,13 @@ Catalog path note:
 - Helper catalogs may now carry richer metadata (`summary`, `aliases`, `tags`,
   `search_terms`, `helper_kind`, `host_system`, `procurement`, `semantics`)
   while still using the same preparation/indexing pipeline as before.
+- CUT&RUN V1 now uses the same discovery pattern:
+  - built-in starter catalog: `assets/cutrun.json`
+  - project/system overlays under `.gentle/catalogs/` and `/etc/gentle/catalogs/`
+  - prepared-cache root defaults to `data/cutrun`
+  - override cache root with `GENTLE_CUTRUN_CACHE_DIR`
+  - `cutrun project` only accepts genome-anchored sequences and reuses the
+    shared anchored BED/BigWig track import behavior
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -1440,6 +1447,10 @@ cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
+cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter CTCF
+cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
+cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
+cargo run --bin gentle_cli -- cutrun project grch38_tp53 toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json

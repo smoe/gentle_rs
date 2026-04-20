@@ -13,14 +13,15 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings, ConstructObjective,
-    ConstructRole, Container, ContainerKind, EditableStatus, PrimerDesignProgress,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsTrackSimilarityRankingMetric,
+    ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
+    BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
+    EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, RestrictionCloningPcrHandoffMode, RnaReadAlignConfig,
+    RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass,
+    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -75,6 +76,11 @@ impl Drop for EnvVarGuard {
 }
 
 fn cache_dir_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn cutrun_test_env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
@@ -174,6 +180,94 @@ fn sequencing_confirmation_fixture_path(name: &str) -> String {
         "{}/test_files/fixtures/sequencing_confirmation/{name}",
         env!("CARGO_MANIFEST_DIR")
     )
+}
+
+fn shell_file_url(path: &Path) -> String {
+    format!("file://{}", path.display())
+}
+
+fn write_cutrun_shell_reference_catalog(root: &Path, genome_id: &str) -> String {
+    let fasta_gz = root.join("toy.fa.gz");
+    let ann_gz = root.join("toy.gtf.gz");
+    let file = std::fs::File::create(&fasta_gz).expect("create fasta");
+    let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    use std::io::Write as _;
+    encoder
+        .write_all(b">chr1\nACGT\nACGT\nACGT\n")
+        .expect("write fasta");
+    encoder.finish().expect("finish fasta");
+    let file = std::fs::File::create(&ann_gz).expect("create gtf");
+    let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    encoder
+        .write_all(b"chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n")
+        .expect("write gtf");
+    encoder.finish().expect("finish gtf");
+    let cache_dir = root.join("reference_cache");
+    let catalog_path = root.join("reference_catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "{genome_id}": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            shell_file_url(&fasta_gz),
+            shell_file_url(&ann_gz),
+            cache_dir.display()
+        ),
+    )
+    .expect("write reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_cutrun_shell_anchor(
+    engine: &mut GentleEngine,
+    genome_id: &str,
+    catalog_path: &str,
+    seq_id: &str,
+) {
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: genome_id.to_string(),
+            catalog_path: Some(catalog_path.to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare CUT&RUN shell genome");
+    engine
+        .apply(Operation::ExtractGenomeRegion {
+            genome_id: genome_id.to_string(),
+            chromosome: "chr1".to_string(),
+            start_1based: 3,
+            end_1based: 10,
+            output_id: Some(seq_id.to_string()),
+            annotation_scope: None,
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.to_string()),
+            cache_dir: None,
+        })
+        .expect("extract CUT&RUN shell anchor");
+}
+
+#[cfg(unix)]
+fn install_fake_bigwig_to_bedgraph(path: &Path, bedgraph_source: &Path) -> String {
+    let script_path = path.join("fake_bigwig_to_bedgraph.sh");
+    let script = format!(
+        "#!/bin/sh\nif [ \"$#\" -ne 2 ]; then\n  echo \"expected INPUT.bw OUTPUT.bedGraph\" >&2\n  exit 2\nfi\ncp \"{}\" \"$2\"\n",
+        bedgraph_source.display()
+    );
+    fs::write(&script_path, script).expect("write fake bigwig converter");
+    let mut perms = fs::metadata(&script_path)
+        .expect("metadata fake bigwig converter")
+        .permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&script_path, perms).expect("chmod fake bigwig converter");
+    script_path.display().to_string()
 }
 
 fn synthetic_scf_bytes(called_bases: &[u8]) -> Vec<u8> {
@@ -4756,6 +4850,50 @@ fn parse_tracks_import_bigwig() {
             assert_eq!(min_score, Some(0.5));
             assert_eq!(max_score, Some(2.5));
             assert!(clear_existing);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cutrun_list() {
+    let cmd = parse_shell_line("cutrun list --catalog assets/cutrun.json --filter ctcf")
+        .expect("parse CUT&RUN list");
+    match cmd {
+        ShellCommand::CutRunList {
+            filter,
+            catalog_path,
+        } => {
+            assert_eq!(filter.as_deref(), Some("ctcf"));
+            assert_eq!(catalog_path.as_deref(), Some("assets/cutrun.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cutrun_project() {
+    let cmd = parse_shell_line(
+        "cutrun project toy_slice toy_ctcf --no-signal --clear-existing --catalog assets/cutrun.json --cache-dir data/cutrun",
+    )
+    .expect("parse CUT&RUN project");
+    match cmd {
+        ShellCommand::CutRunProject {
+            seq_id,
+            dataset_id,
+            include_peaks,
+            include_signal,
+            clear_existing,
+            catalog_path,
+            cache_dir,
+        } => {
+            assert_eq!(seq_id, "toy_slice");
+            assert_eq!(dataset_id, "toy_ctcf");
+            assert!(include_peaks);
+            assert!(!include_signal);
+            assert!(clear_existing);
+            assert_eq!(catalog_path.as_deref(), Some("assets/cutrun.json"));
+            assert_eq!(cache_dir.as_deref(), Some("data/cutrun"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -13498,6 +13636,137 @@ fn execute_genomes_validate_catalog_reports_valid() {
     assert!(!out.state_changed);
     assert_eq!(out.output["valid"].as_bool(), Some(true));
     assert_eq!(out.output["genome_count"].as_u64(), Some(1));
+}
+
+#[test]
+fn execute_cutrun_list_reads_catalog_rows() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let catalog = td.path().join("cutrun.catalog.json");
+    fs::write(
+        &catalog,
+        r#"{
+  "toy_ctcf": {
+    "summary": "Toy CTCF CUT&RUN",
+    "target_factor": "CTCF",
+    "tissue_or_cell_type": "K562"
+  },
+  "toy_gata3": {
+    "summary": "Toy GATA3 CUT&RUN",
+    "target_factor": "GATA3",
+    "tissue_or_cell_type": "Jurkat"
+  }
+}"#,
+    )
+    .expect("write CUT&RUN catalog");
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunList {
+            filter: Some("k562".to_string()),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN list");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["dataset_count"].as_u64(), Some(1));
+    assert_eq!(
+        out.output["datasets"][0]["dataset_id"].as_str(),
+        Some("toy_ctcf")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn execute_cutrun_prepare_and_project_return_shared_payloads() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_shell_reference_catalog(root, "ToyGenome");
+    let peaks_path = root.join("toy_peaks.bed");
+    let signal_path = root.join("toy_signal.bw");
+    let converted_bedgraph = root.join("toy_signal.bedgraph");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    fs::write(&converted_bedgraph, "chr1\t1\t4\t0.5\nchr1\t5\t12\t2.0\n").expect("write bedgraph");
+    fs::write(&signal_path, "placeholder").expect("write signal");
+    let cutrun_catalog = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog,
+        format!(
+            r#"{{
+  "toy_ctcf": {{
+    "summary": "Toy CUT&RUN",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "peaks_local": "{}",
+    "signal_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+            signal_path.display()
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let cutrun_cache = root.join("cutrun_cache");
+    let fake_converter = install_fake_bigwig_to_bedgraph(root, &converted_bedgraph);
+    let _converter_guard = EnvVarGuard::set(BIGWIG_TO_BEDGRAPH_ENV_BIN, &fake_converter);
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_shell_anchor(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_slice",
+    );
+
+    let prepare = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunPrepare {
+            dataset_id: "toy_ctcf".to_string(),
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN prepare");
+    assert!(!prepare.state_changed);
+    assert_eq!(prepare.output["dataset_id"].as_str(), Some("toy_ctcf"));
+    assert_eq!(prepare.output["prepared"].as_bool(), Some(true));
+
+    let project = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunProject {
+            seq_id: "toy_slice".to_string(),
+            dataset_id: "toy_ctcf".to_string(),
+            include_peaks: true,
+            include_signal: true,
+            clear_existing: true,
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN project");
+    assert!(project.state_changed);
+    assert_eq!(project.output["seq_id"].as_str(), Some("toy_slice"));
+    assert_eq!(project.output["dataset_id"].as_str(), Some("toy_ctcf"));
+    assert!(
+        project.output["projected_peak_features"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
+    assert!(
+        project.output["projected_signal_features"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
 }
 
 #[test]

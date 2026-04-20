@@ -1089,6 +1089,69 @@ fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
+fn cutrun_test_env_lock() -> &'static std::sync::Mutex<()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn write_cutrun_test_reference_catalog(root: &Path, genome_id: &str) -> String {
+    let fasta_gz = root.join("toy.fa.gz");
+    let ann_gz = root.join("toy.gtf.gz");
+    write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+    write_gzip(
+        &ann_gz,
+        "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+    );
+    let cache_dir = root.join("reference_cache");
+    let catalog_path = root.join("reference_catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "{genome_id}": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        file_url(&fasta_gz),
+        file_url(&ann_gz),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).expect("write CUT&RUN reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_cutrun_test_anchor(
+    engine: &mut GentleEngine,
+    genome_id: &str,
+    catalog_path: &str,
+    seq_id: &str,
+) {
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: genome_id.to_string(),
+            catalog_path: Some(catalog_path.to_string()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare CUT&RUN test genome");
+    engine
+        .apply(Operation::ExtractGenomeRegion {
+            genome_id: genome_id.to_string(),
+            chromosome: "chr1".to_string(),
+            start_1based: 3,
+            end_1based: 10,
+            output_id: Some(seq_id.to_string()),
+            annotation_scope: None,
+            max_annotation_features: None,
+            include_genomic_annotation: None,
+            catalog_path: Some(catalog_path.to_string()),
+            cache_dir: None,
+        })
+        .expect("extract CUT&RUN test anchor");
+}
+
 struct EnvVarGuard {
     key: &'static str,
     previous: Option<String>,
@@ -15741,6 +15804,288 @@ fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
             .next()
             .unwrap_or_default(),
         "2.000000"
+    );
+}
+
+#[test]
+fn test_list_cutrun_datasets_discovers_overlay_catalogs() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let builtin_root = root.join("builtin_root");
+    let project_root = root.join("project_root");
+    let system_root = root.join("system_root");
+    fs::create_dir_all(builtin_root.join("assets")).expect("create builtin assets");
+    fs::create_dir_all(project_root.join(".gentle/catalogs/cutrun.d"))
+        .expect("create project overlay");
+    fs::create_dir_all(&system_root).expect("create system root");
+    fs::write(
+        builtin_root.join("assets/cutrun.json"),
+        r#"{
+  "builtin_ctcf": {
+    "summary": "Built-in CUT&RUN entry",
+    "target_factor": "CTCF",
+    "species": "Homo sapiens"
+  }
+}"#,
+    )
+    .expect("write builtin CUT&RUN catalog");
+    fs::write(
+        project_root.join(".gentle/catalogs/cutrun.d/project_overlay.json"),
+        r#"{
+  "project_gata3": {
+    "summary": "Project overlay entry",
+    "target_factor": "GATA3",
+    "tissue_or_cell_type": "Jurkat"
+  }
+}"#,
+    )
+    .expect("write overlay CUT&RUN catalog");
+    let _builtin_guard = EnvVarGuard::set(
+        crate::genomes::BUILTIN_ASSET_ROOT_ENV,
+        builtin_root.to_string_lossy().as_ref(),
+    );
+    let _project_guard = EnvVarGuard::set(
+        crate::genomes::PROJECT_ROOT_ENV,
+        project_root.to_string_lossy().as_ref(),
+    );
+    let _system_guard = EnvVarGuard::set(
+        crate::genomes::SYSTEM_CONFIG_ROOT_ENV,
+        system_root.to_string_lossy().as_ref(),
+    );
+
+    let report =
+        GentleEngine::list_cutrun_datasets(None, None).expect("list discovered CUT&RUN datasets");
+    let dataset_ids = report
+        .datasets
+        .iter()
+        .map(|row| row.dataset_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(report.dataset_count, 2);
+    assert!(dataset_ids.contains(&"builtin_ctcf"));
+    assert!(dataset_ids.contains(&"project_gata3"));
+}
+
+#[test]
+fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let peaks_path = root.join("toy_peaks.bed");
+    let signal_path = root.join("toy_signal.bw");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    fs::write(&signal_path, "placeholder").expect("write signal");
+    let catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun": {{
+    "summary": "Toy CUT&RUN",
+    "target_factor": "CTCF",
+    "peaks_local": "{}",
+    "signal_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+            signal_path.display()
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let env_cache = root.join("env_cutrun_cache");
+    let _cache_guard = EnvVarGuard::set(
+        "GENTLE_CUTRUN_CACHE_DIR",
+        env_cache.to_string_lossy().as_ref(),
+    );
+
+    let engine = GentleEngine::new();
+    let status = engine
+        .prepare_cutrun_dataset(
+            "toy_cutrun",
+            Some(catalog_path.to_string_lossy().as_ref()),
+            None,
+        )
+        .expect("prepare CUT&RUN dataset");
+    assert!(status.prepared);
+    assert!(status.peaks.prepared);
+    assert!(status.signal.prepared);
+    assert!(
+        status
+            .install_dir
+            .starts_with(env_cache.to_string_lossy().as_ref()),
+        "install_dir was {}",
+        status.install_dir
+    );
+    let status_check = engine
+        .show_cutrun_dataset_status(
+            "toy_cutrun",
+            Some(catalog_path.to_string_lossy().as_ref()),
+            None,
+        )
+        .expect("show CUT&RUN status");
+    assert!(status_check.manifest_path.is_some());
+    assert!(status_check.manifest.is_some());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_project_cutrun_dataset_imports_peaks_and_signal_on_anchored_sequence() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_test_reference_catalog(root, "ToyGenome");
+    let peaks_path = root.join("toy_peaks.bed");
+    let signal_path = root.join("toy_signal.bw");
+    let converted_bedgraph = root.join("toy_signal.bedgraph");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    fs::write(&converted_bedgraph, "chr1\t1\t4\t0.5\nchr1\t5\t12\t2.0\n")
+        .expect("write converted bedgraph");
+    fs::write(&signal_path, "placeholder").expect("write signal");
+    let cutrun_catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun": {{
+    "summary": "Toy CUT&RUN",
+    "target_factor": "CTCF",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "peaks_local": "{}",
+    "signal_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+            signal_path.display()
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let fake_converter = install_fake_bigwig_to_bedgraph(root, &converted_bedgraph);
+    let _converter_guard = EnvVarGuard::set(BIGWIG_TO_BEDGRAPH_ENV_BIN, &fake_converter);
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_slice",
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_cutrun".to_string(),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare CUT&RUN dataset");
+
+    let result = engine
+        .apply(Operation::ProjectCutRunDataset {
+            seq_id: "toy_slice".to_string(),
+            dataset_id: "toy_cutrun".to_string(),
+            include_peaks: Some(true),
+            include_signal: Some(true),
+            clear_existing: Some(true),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("project CUT&RUN dataset");
+    let projection = result
+        .cutrun_dataset_projection
+        .expect("CUT&RUN projection payload");
+    assert_eq!(projection.seq_id, "toy_slice");
+    assert_eq!(projection.dataset_id, "toy_cutrun");
+    assert!(projection.projected_peak_features > 0);
+    assert!(projection.projected_signal_features > 0);
+    assert!(result.changed_seq_ids.contains(&"toy_slice".to_string()));
+
+    let dna = engine
+        .state()
+        .sequences
+        .get("toy_slice")
+        .expect("anchored slice");
+    assert!(dna.features().iter().any(|feature| {
+        feature
+            .qualifier_values("gentle_generated")
+            .any(|value| value.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+    }));
+    assert!(
+        dna.features()
+            .iter()
+            .any(GentleEngine::is_generated_genome_bigwig_feature)
+    );
+}
+
+#[test]
+fn test_project_cutrun_dataset_rejects_incompatible_reference_genome() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_test_reference_catalog(root, "ToyGenome");
+    let peaks_path = root.join("toy_peaks.bed");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    let cutrun_catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun": {{
+    "summary": "Toy CUT&RUN",
+    "supported_reference_genome_ids": ["OtherGenome"],
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display()
+        ),
+    )
+    .expect("write incompatible CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_slice",
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_cutrun".to_string(),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare incompatible CUT&RUN dataset");
+
+    let err = engine
+        .apply(Operation::ProjectCutRunDataset {
+            seq_id: "toy_slice".to_string(),
+            dataset_id: "toy_cutrun".to_string(),
+            include_peaks: Some(true),
+            include_signal: Some(false),
+            clear_existing: Some(true),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect_err("expected incompatible reference genome error");
+    assert!(
+        err.message.contains("anchored to 'ToyGenome'"),
+        "unexpected error: {}",
+        err.message
     );
 }
 

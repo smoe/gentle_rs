@@ -5774,6 +5774,9 @@ impl GentleEngine {
             sequencing_trace_import_report: None,
             sequencing_trace_record: None,
             sequencing_trace_summaries: None,
+            cutrun_dataset_list: None,
+            cutrun_dataset_status: None,
+            cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
@@ -8571,6 +8574,93 @@ impl GentleEngine {
                         report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
                     ));
                 }
+            }
+            Operation::ListCutRunDatasets {
+                filter,
+                catalog_path,
+            } => {
+                let report =
+                    Self::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())?;
+                result.messages.push(format!(
+                    "Listed {} CUT&RUN dataset(s)",
+                    report.dataset_count
+                ));
+                result.cutrun_dataset_list = Some(report);
+            }
+            Operation::ShowCutRunDatasetStatus {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let status = self.show_cutrun_dataset_status(
+                    &dataset_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                result.messages.push(format!(
+                    "Inspected CUT&RUN dataset '{}' status",
+                    status.dataset_id
+                ));
+                result.warnings.extend(status.warnings.clone());
+                result.cutrun_dataset_status = Some(status);
+            }
+            Operation::PrepareCutRunDataset {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let status = self.prepare_cutrun_dataset(
+                    &dataset_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                let prepared_assets = [
+                    status.peaks.prepared.then_some("peaks"),
+                    status.signal.prepared.then_some("signal"),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                let prepared_label = if prepared_assets.is_empty() {
+                    "no processed assets".to_string()
+                } else {
+                    prepared_assets.join("+")
+                };
+                result.messages.push(format!(
+                    "Prepared CUT&RUN dataset '{}' ({prepared_label})",
+                    status.dataset_id
+                ));
+                result.warnings.extend(status.warnings.clone());
+                result.cutrun_dataset_status = Some(status);
+            }
+            Operation::ProjectCutRunDataset {
+                seq_id,
+                dataset_id,
+                include_peaks,
+                include_signal,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            } => {
+                let report = self.project_cutrun_dataset(
+                    &seq_id,
+                    &dataset_id,
+                    include_peaks.unwrap_or(true),
+                    include_signal.unwrap_or(true),
+                    clear_existing.unwrap_or(false),
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                result.changed_seq_ids.push(seq_id.clone());
+                result.warnings.extend(report.warnings.clone());
+                result.messages.push(format!(
+                    "Projected CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={})",
+                    report.dataset_id,
+                    report.seq_id,
+                    report.projected_peak_features,
+                    report.projected_signal_features
+                ));
+                result.cutrun_dataset_projection = Some(report);
             }
             Operation::ImportIsoformPanel {
                 seq_id,

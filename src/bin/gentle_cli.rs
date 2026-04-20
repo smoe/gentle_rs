@@ -701,6 +701,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] reverse-translate list-reports [PROTEIN_SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] reverse-translate show-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] reverse-translate export-report REPORT_ID OUTPUT.json\n\n  \
+  gentle_cli cutrun list [--catalog PATH] [--filter TEXT]\n  \
+  gentle_cli cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
@@ -761,6 +765,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "align",
     "reverse-translate",
     "rna-reads",
+    "cutrun",
     "tracks",
     "genbank",
     "dbsnp",
@@ -4879,6 +4884,43 @@ mod tests {
                     && gene_ids == vec!["TP53".to_string(), "TP73".to_string()]
                     && complete_rule == gentle::engine::RnaReadGeneSupportCompleteRule::Strict
                     && append
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cutrun_project() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cutrun".to_string(),
+            "project".to_string(),
+            "toy_slice".to_string(),
+            "toy_ctcf".to_string(),
+            "--no-signal".to_string(),
+            "--clear-existing".to_string(),
+            "--catalog".to_string(),
+            "assets/cutrun.json".to_string(),
+            "--cache-dir".to_string(),
+            "data/cutrun".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::CutRunProject {
+                seq_id,
+                dataset_id,
+                include_peaks,
+                include_signal,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            })
+                if seq_id == "toy_slice"
+                    && dataset_id == "toy_ctcf"
+                    && include_peaks
+                    && !include_signal
+                    && clear_existing
+                    && catalog_path.as_deref() == Some("assets/cutrun.json")
+                    && cache_dir.as_deref() == Some("data/cutrun")
         ));
     }
 

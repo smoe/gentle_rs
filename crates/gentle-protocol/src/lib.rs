@@ -1678,6 +1678,23 @@ impl RnaReadGeneSupportAuditCohortFilter {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum CutRunReadLayout {
+    #[default]
+    SingleEnd,
+    PairedEnd,
+}
+
+impl CutRunReadLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleEnd => "single_end",
+            Self::PairedEnd => "paired_end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum RnaReadScoreDensityScale {
     Linear,
     #[default]
@@ -3239,6 +3256,186 @@ pub struct RnaReadGeneSupportAudit {
     pub complete_strict_record_indices: Vec<usize>,
     pub complete_exact_record_indices: Vec<usize>,
     pub rows: Vec<RnaReadGeneSupportAuditRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunCatalogEntry {
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub search_terms: Vec<String>,
+    pub species: Option<String>,
+    pub assembly_label: Option<String>,
+    pub target_factor: Option<String>,
+    pub sample_label: Option<String>,
+    pub tissue_or_cell_type: Option<String>,
+    pub condition: Option<String>,
+    pub replicate: Option<String>,
+    pub assay_kind: Option<String>,
+    #[serde(default)]
+    pub supported_reference_genome_ids: Vec<String>,
+    pub provider: Option<String>,
+    pub source_accession: Option<String>,
+    pub reference_url: Option<String>,
+    pub peaks_remote: Option<String>,
+    pub peaks_local: Option<String>,
+    pub signal_remote: Option<String>,
+    pub signal_local: Option<String>,
+    pub reads_r1_remote: Option<String>,
+    pub reads_r1_local: Option<String>,
+    pub reads_r2_remote: Option<String>,
+    pub reads_r2_local: Option<String>,
+    #[serde(default)]
+    pub read_layout: CutRunReadLayout,
+    pub cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunCatalogListEntry {
+    pub dataset_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub search_terms: Vec<String>,
+    pub species: Option<String>,
+    pub assembly_label: Option<String>,
+    pub target_factor: Option<String>,
+    pub sample_label: Option<String>,
+    pub tissue_or_cell_type: Option<String>,
+    pub condition: Option<String>,
+    pub replicate: Option<String>,
+    pub assay_kind: Option<String>,
+    #[serde(default)]
+    pub supported_reference_genome_ids: Vec<String>,
+    pub provider: Option<String>,
+    pub source_accession: Option<String>,
+    pub reference_url: Option<String>,
+    pub has_peaks_asset: bool,
+    pub has_signal_asset: bool,
+    pub has_raw_reads: bool,
+    #[serde(default)]
+    pub read_layout: CutRunReadLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunDatasetListReport {
+    pub schema: String,
+    pub catalog_origin_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    pub dataset_count: usize,
+    pub datasets: Vec<CutRunCatalogListEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunPreparedAssetManifest {
+    pub source: String,
+    pub local_path: String,
+    pub file_name: String,
+    pub file_size_bytes: u64,
+    pub checksum_sha1: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunPreparedManifest {
+    pub schema: String,
+    pub dataset_id: String,
+    pub prepared_at_unix_ms: u128,
+    pub catalog_origin_label: String,
+    pub install_dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peaks: Option<CutRunPreparedAssetManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal: Option<CutRunPreparedAssetManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunPreparedAssetStatus {
+    pub configured: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub prepared: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_sha1: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunDatasetStatus {
+    pub schema: String,
+    pub dataset_id: String,
+    pub catalog_origin_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_catalog_path: Option<String>,
+    pub effective_cache_dir: String,
+    pub install_dir: String,
+    pub prepared: bool,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    pub species: Option<String>,
+    pub assembly_label: Option<String>,
+    pub target_factor: Option<String>,
+    pub sample_label: Option<String>,
+    pub tissue_or_cell_type: Option<String>,
+    pub condition: Option<String>,
+    pub replicate: Option<String>,
+    pub assay_kind: Option<String>,
+    #[serde(default)]
+    pub supported_reference_genome_ids: Vec<String>,
+    pub provider: Option<String>,
+    pub source_accession: Option<String>,
+    pub reference_url: Option<String>,
+    #[serde(default)]
+    pub read_layout: CutRunReadLayout,
+    pub peaks: CutRunPreparedAssetStatus,
+    pub signal: CutRunPreparedAssetStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<CutRunPreparedManifest>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunDatasetProjectionReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub dataset_id: String,
+    pub include_peaks: bool,
+    pub include_signal: bool,
+    pub clear_existing: bool,
+    pub projected_peak_features: usize,
+    pub projected_signal_features: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_track_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_track_name: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

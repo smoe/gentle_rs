@@ -10,6 +10,7 @@ dna_ladders.json:: Collection of DNA ladders, i.e. fragments of DNA of well-defi
 enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
 genomes.json::
 helper_genomes.json::
+cutrun.json:: Starter CUT&RUN dataset catalog for processed evidence (BED/BigWig) and future raw-read reuse.
 host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
@@ -32,6 +33,10 @@ Data notes:
   Entries can use explicit local/remote URLs or `genbank_accession` for
   NCBI EFetch-derived FASTA + GenBank annotation during prepare/index.
   The shipped defaults avoid absolute lab-specific paths.
+- `cutrun.json` is the default CUT&RUN catalog for V1 processed datasets.
+  Entries can point at prepared/local or remote peaks/signal assets and are
+  discoverable through the same built-in/system/project overlay chain as other
+  shared catalogs.
 - `host_profiles.json` is the starter host-profile catalog used by construct
   reasoning and the Planning-window host browser. It is intentionally
   human-editable and source-noted rather than hidden inside compiled logic.

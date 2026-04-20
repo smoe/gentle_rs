@@ -1238,6 +1238,29 @@ pub enum ShellCommand {
         max_score: Option<f64>,
         clear_existing: bool,
     },
+    CutRunList {
+        filter: Option<String>,
+        catalog_path: Option<String>,
+    },
+    CutRunStatus {
+        dataset_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    CutRunPrepare {
+        dataset_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    CutRunProject {
+        seq_id: String,
+        dataset_id: String,
+        include_peaks: bool,
+        include_signal: bool,
+        clear_existing: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     TracksImportVcf {
         seq_id: String,
         path: String,
@@ -6468,6 +6491,52 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
             ),
+            Self::CutRunList {
+                filter,
+                catalog_path,
+            } => format!(
+                "list CUT&RUN datasets (filter='{}', catalog='{}')",
+                filter.as_deref().unwrap_or("-"),
+                catalog_path.as_deref().unwrap_or("assets/cutrun.json")
+            ),
+            Self::CutRunStatus {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "inspect CUT&RUN dataset '{}' status (catalog='{}', cache='{}')",
+                dataset_id,
+                catalog_path.as_deref().unwrap_or("assets/cutrun.json"),
+                cache_dir.as_deref().unwrap_or("data/cutrun")
+            ),
+            Self::CutRunPrepare {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "prepare CUT&RUN dataset '{}' (catalog='{}', cache='{}')",
+                dataset_id,
+                catalog_path.as_deref().unwrap_or("assets/cutrun.json"),
+                cache_dir.as_deref().unwrap_or("data/cutrun")
+            ),
+            Self::CutRunProject {
+                seq_id,
+                dataset_id,
+                include_peaks,
+                include_signal,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "project CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={}, clear_existing={}, catalog='{}', cache='{}')",
+                dataset_id,
+                seq_id,
+                include_peaks,
+                include_signal,
+                clear_existing,
+                catalog_path.as_deref().unwrap_or("assets/cutrun.json"),
+                cache_dir.as_deref().unwrap_or("data/cutrun")
+            ),
             Self::TracksImportVcf {
                 seq_id,
                 path,
@@ -8454,6 +8523,7 @@ impl ShellCommand {
                 | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
+                | Self::CutRunProject { .. }
                 | Self::TracksImportVcf { .. }
                 | Self::TracksTrackedAdd { .. }
                 | Self::TracksTrackedRemove { .. }
@@ -14759,6 +14829,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             parse_construct_reasoning_command(tokens)
         }
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
+        "cutrun" => parse_cutrun_command(tokens),
         "attract" => parse_attract_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
@@ -19119,6 +19190,87 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::CutRunList {
+            filter,
+            catalog_path,
+        } => {
+            let report =
+                GentleEngine::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())
+                    .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize CUT&RUN dataset list: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunStatus {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let status = engine
+                .show_cutrun_dataset_status(
+                    dataset_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&status)
+                    .map_err(|e| format!("Could not serialize CUT&RUN dataset status: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunPrepare {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::PrepareCutRunDataset {
+                    dataset_id: dataset_id.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let status = op_result.cutrun_dataset_status.ok_or_else(|| {
+                "PrepareCutRunDataset did not return a dataset-status payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&status)
+                    .map_err(|e| format!("Could not serialize prepared CUT&RUN status: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunProject {
+            seq_id,
+            dataset_id,
+            include_peaks,
+            include_signal,
+            clear_existing,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectCutRunDataset {
+                    seq_id: seq_id.clone(),
+                    dataset_id: dataset_id.clone(),
+                    include_peaks: Some(*include_peaks),
+                    include_signal: Some(*include_signal),
+                    clear_existing: Some(*clear_existing),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.cutrun_dataset_projection.ok_or_else(|| {
+                "ProjectCutRunDataset did not return a projection payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize CUT&RUN projection report: {e}"))?,
             })
         }
         ShellCommand::TracksImportBed {
@@ -24047,6 +24199,10 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ReferenceVerifyAnchor { .. }
             | ShellCommand::TracksImportBed { .. }
             | ShellCommand::TracksImportBigWig { .. }
+            | ShellCommand::CutRunList { .. }
+            | ShellCommand::CutRunStatus { .. }
+            | ShellCommand::CutRunPrepare { .. }
+            | ShellCommand::CutRunProject { .. }
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -25087,6 +25243,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceVerifyAnchor { .. }
         | ShellCommand::TracksImportBed { .. }
         | ShellCommand::TracksImportBigWig { .. }
+        | ShellCommand::CutRunList { .. }
+        | ShellCommand::CutRunStatus { .. }
+        | ShellCommand::CutRunPrepare { .. }
+        | ShellCommand::CutRunProject { .. }
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }
