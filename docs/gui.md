@@ -834,6 +834,14 @@ Feature tree grouping:
       and states the algorithm in plain language: banded semiglobal/local
       pairwise alignment against transcript templates with deterministic dense
       fallback if the banded pass yields no hit
+  - saved-report evidence review now includes a `Concatemer review / partner
+    census` panel:
+    - runs the shared `InspectRnaReadConcatemers` engine path from the GUI
+    - supports `selection`, `subset`, `limit`, adapter/barcode FASTA, one-path-
+      per-line transcript FASTA catalogs, and prepared transcript indexes
+    - shows recurring partner genes/transcripts plus ranked suspicious rows
+    - can jump directly into `Mapped cDNA -> Read effects` for all suspicious
+      rows or only the strongest rows
   - `Run RNA-read interpretation` executes phase-1 `InterpretRnaReads`
     with the currently visible mapping parameters
   - `Run alignment phase (retained report)` executes

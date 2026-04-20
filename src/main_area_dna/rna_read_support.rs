@@ -115,6 +115,76 @@ impl Default for RnaReadEvidenceUiState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum RnaReadConcatemerSubsetMode {
+    #[default]
+    AllMatchingRows,
+    SelectedRowsOnly,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub(super) struct RnaReadConcatemerUiState {
+    pub(super) selection: RnaReadHitSelection,
+    pub(super) subset_mode: RnaReadConcatemerSubsetMode,
+    pub(super) limit: String,
+    pub(super) adapter_fasta_path: String,
+    pub(super) transcript_fasta_paths_text: String,
+    pub(super) transcript_index_paths_text: String,
+    pub(super) show_advanced: bool,
+    pub(super) internal_homopolymer_min_bp: String,
+    pub(super) end_margin_bp: String,
+    pub(super) max_primary_query_coverage_fraction: String,
+    pub(super) min_secondary_identity_fraction: String,
+    pub(super) max_secondary_query_overlap_fraction: String,
+    pub(super) adapter_min_match_bp: String,
+    pub(super) fragment_min_bp: String,
+    pub(super) fragment_max_parts: String,
+    pub(super) fragment_min_identity_fraction: String,
+    pub(super) fragment_min_query_coverage_fraction: String,
+}
+
+impl Default for RnaReadConcatemerUiState {
+    fn default() -> Self {
+        let defaults = RnaReadConcatemerInspectionSettings::default();
+        Self {
+            selection: RnaReadHitSelection::Aligned,
+            subset_mode: RnaReadConcatemerSubsetMode::AllMatchingRows,
+            limit: "50".to_string(),
+            adapter_fasta_path: String::new(),
+            transcript_fasta_paths_text: String::new(),
+            transcript_index_paths_text: String::new(),
+            show_advanced: false,
+            internal_homopolymer_min_bp: defaults.internal_homopolymer_min_bp.to_string(),
+            end_margin_bp: defaults.end_margin_bp.to_string(),
+            max_primary_query_coverage_fraction: format!(
+                "{:.2}",
+                defaults.max_primary_query_coverage_fraction
+            ),
+            min_secondary_identity_fraction: format!(
+                "{:.2}",
+                defaults.min_secondary_identity_fraction
+            ),
+            max_secondary_query_overlap_fraction: format!(
+                "{:.2}",
+                defaults.max_secondary_query_overlap_fraction
+            ),
+            adapter_min_match_bp: defaults.adapter_min_match_bp.to_string(),
+            fragment_min_bp: defaults.fragment_min_bp.to_string(),
+            fragment_max_parts: defaults.fragment_max_parts.to_string(),
+            fragment_min_identity_fraction: format!(
+                "{:.2}",
+                defaults.fragment_min_identity_fraction
+            ),
+            fragment_min_query_coverage_fraction: format!(
+                "{:.2}",
+                defaults.fragment_min_query_coverage_fraction
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RnaReadEvidenceSourceTab {
     ReportedTranscript,
@@ -286,6 +356,12 @@ pub(super) struct CachedRnaReadAlignmentDetail {
     pub(super) result: Result<Arc<RnaReadPairwiseAlignmentDetail>, String>,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct CachedRnaReadConcatemerInspection {
+    pub(super) cache_key: String,
+    pub(super) result: Result<Arc<RnaReadConcatemerInspection>, String>,
+}
+
 impl MainAreaDna {
     pub(super) fn selected_rna_read_evidence_report_id(&self) -> Option<String> {
         let report_id = self.rna_read_evidence_ui.selected_report_id.trim();
@@ -324,6 +400,7 @@ impl MainAreaDna {
         self.cached_saved_rna_read_progress = None;
         self.cached_rna_read_alignment_inspections.clear();
         self.cached_rna_read_alignment_detail = None;
+        self.cached_rna_read_concatemer_inspection = None;
         self.rna_read_alignment_detail_visible_key = None;
     }
 
@@ -337,6 +414,23 @@ impl MainAreaDna {
             .unwrap_or_else(|| "null".to_string());
         format!(
             "report={report_id}|limit={}|subset={subset_spec_json}",
+            limit.max(1)
+        )
+    }
+
+    pub(super) fn rna_read_concatemer_inspection_cache_key(
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        limit: usize,
+        selected_record_indices: &[usize],
+        settings: &RnaReadConcatemerInspectionSettings,
+    ) -> String {
+        let settings_json = serde_json::to_string(settings).unwrap_or_else(|_| "null".to_string());
+        let selected_record_indices_json =
+            serde_json::to_string(selected_record_indices).unwrap_or_else(|_| "[]".to_string());
+        format!(
+            "report={report_id}|selection={}|limit={}|selected={selected_record_indices_json}|settings={settings_json}",
+            selection.as_str(),
             limit.max(1)
         )
     }
@@ -445,6 +539,58 @@ impl MainAreaDna {
     ) -> Option<Arc<RnaReadInterpretationReport>> {
         self.selected_rna_read_evidence_report_id()
             .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+    }
+
+    pub(super) fn saved_rna_read_concatemer_inspection_for_report_id(
+        &mut self,
+        report_id: &str,
+        selection: RnaReadHitSelection,
+        limit: usize,
+        selected_record_indices: Vec<usize>,
+        settings: RnaReadConcatemerInspectionSettings,
+    ) -> Result<Arc<RnaReadConcatemerInspection>, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Select a Report first before inspecting concatemer suspicion".to_string());
+        }
+        let cache_key = Self::rna_read_concatemer_inspection_cache_key(
+            report_id,
+            selection,
+            limit,
+            &selected_record_indices,
+            &settings,
+        );
+        if let Some(cached) = self.cached_rna_read_concatemer_inspection.as_ref()
+            && cached.cache_key == cache_key
+        {
+            return cached.result.as_ref().map(Arc::clone).map_err(Clone::clone);
+        }
+        let result = {
+            let Some(engine) = &self.engine else {
+                return Err("No engine attached".to_string());
+            };
+            match engine.read() {
+                Ok(guard) => guard
+                    .inspect_rna_read_concatemers(
+                        report_id,
+                        selection,
+                        limit,
+                        selected_record_indices,
+                        settings,
+                    )
+                    .map(Arc::new)
+                    .map_err(|e| e.message),
+                Err(_) => Err(
+                    "Engine lock poisoned while inspecting RNA-read concatemer suspicion"
+                        .to_string(),
+                ),
+            }
+        };
+        self.cached_rna_read_concatemer_inspection = Some(CachedRnaReadConcatemerInspection {
+            cache_key,
+            result: result.clone(),
+        });
+        result
     }
 
     pub(super) fn saved_rna_read_alignment_inspection_for_report_id(

@@ -3410,6 +3410,14 @@ Status:
     (`report_mode=full`, `align selection=all retained`, `max secondary=5`)
     and explicitly reminds users that the phase-1 `nanopore_cdna_v1` baseline
     stores `max_secondary_mappings=0`.
+  - GUI RNA-read evidence review now reaches parity with the shared shell
+    concatemer audit path:
+    - `Concatemer review / partner census` runs the shared engine inspection
+      directly from the saved-report panel
+    - it accepts adapter/barcode FASTA paths, multi-line transcript FASTA
+      catalogs, and prepared transcript indexes
+    - it surfaces recurring partner gene/transcript summaries plus ranked
+      suspicious rows with direct focus jumps into `Mapped cDNA -> Read effects`
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.

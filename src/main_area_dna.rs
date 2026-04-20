@@ -83,6 +83,7 @@ use crate::{
         RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
         RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
         RnaReadInterpretationProfile, RnaReadInterpretationReport,
@@ -849,6 +850,8 @@ struct EngineOpsUiState {
     #[serde(default)]
     rna_read_evidence_ui: RnaReadEvidenceUiState,
     #[serde(default)]
+    rna_read_concatemer_ui: RnaReadConcatemerUiState,
+    #[serde(default)]
     shell_command_text: String,
     digest_enzymes_text: String,
     digest_prefix_text: String,
@@ -1185,9 +1188,10 @@ struct EngineOpsUiState {
 mod tests {
     use super::{
         DnaPresentationMode, MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
-        RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
-        SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
-        SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
+        RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
+        RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
+        SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
+        ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -7310,6 +7314,69 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_concatemer_ui_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("rna_read_concatemer_ui");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            decoded.rna_read_concatemer_ui.selection,
+            RnaReadHitSelection::Aligned
+        );
+        assert_eq!(
+            decoded.rna_read_concatemer_ui.subset_mode,
+            RnaReadConcatemerSubsetMode::AllMatchingRows
+        );
+        assert_eq!(decoded.rna_read_concatemer_ui.limit, "50");
+    }
+
+    #[test]
+    fn current_rna_read_concatemer_request_uses_selected_rows_and_multiline_paths() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.rna_read_concatemer_ui.selection = RnaReadHitSelection::Aligned;
+        area.rna_read_concatemer_ui.subset_mode = RnaReadConcatemerSubsetMode::SelectedRowsOnly;
+        area.rna_read_concatemer_ui.limit = "25".to_string();
+        area.rna_read_concatemer_ui.adapter_fasta_path = "/tmp/adapters.fa".to_string();
+        area.rna_read_concatemer_ui.transcript_fasta_paths_text =
+            "/tmp/cdna.fa.gz\n\n/tmp/ncrna.fa.gz".to_string();
+        area.rna_read_concatemer_ui.transcript_index_paths_text =
+            "/tmp/human.index.json\n/tmp/extra.index.json".to_string();
+        area.rna_read_concatemer_ui.fragment_max_parts = "0".to_string();
+        area.rna_seed_selected_record_indices = [8usize, 2usize].into_iter().collect();
+
+        let (selection, limit, selected_record_indices, settings) =
+            area.current_rna_read_concatemer_request().unwrap();
+
+        assert_eq!(selection, RnaReadHitSelection::Aligned);
+        assert_eq!(limit, 25);
+        assert_eq!(selected_record_indices, vec![2, 8]);
+        assert_eq!(
+            settings.adapter_fasta_path.as_deref(),
+            Some("/tmp/adapters.fa")
+        );
+        assert_eq!(
+            settings.transcript_fasta_paths,
+            vec![
+                "/tmp/cdna.fa.gz".to_string(),
+                "/tmp/ncrna.fa.gz".to_string()
+            ]
+        );
+        assert_eq!(
+            settings.transcript_index_paths,
+            vec![
+                "/tmp/human.index.json".to_string(),
+                "/tmp/extra.index.json".to_string()
+            ]
+        );
+        assert_eq!(settings.fragment_max_parts, 0);
+    }
+
+    #[test]
     fn rna_reads_ui_checkpoint_defaults_when_missing_from_partial_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -11110,6 +11177,7 @@ pub struct MainAreaDna {
     dotplot_query_override_source_label: String,
     rna_reads_ui: RnaReadInterpretOpsUiState,
     rna_read_evidence_ui: RnaReadEvidenceUiState,
+    rna_read_concatemer_ui: RnaReadConcatemerUiState,
     show_engine_ops: bool,
     show_shell: bool,
     shell_command_text: String,
@@ -11266,6 +11334,7 @@ pub struct MainAreaDna {
     cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
+    cached_rna_read_concatemer_inspection: Option<CachedRnaReadConcatemerInspection>,
     attract_evidence_ui: AttractEvidenceUiState,
     cached_splicing_attract_evidence: Option<CachedSplicingAttractEvidence>,
     rna_read_statistics_tab: RnaReadEvidenceSourceTab,
@@ -11706,6 +11775,7 @@ impl MainAreaDna {
             dotplot_query_override_source_label: String::new(),
             rna_reads_ui: RnaReadInterpretOpsUiState::default(),
             rna_read_evidence_ui: RnaReadEvidenceUiState::default(),
+            rna_read_concatemer_ui: RnaReadConcatemerUiState::default(),
             show_engine_ops: false,
             show_shell: false,
             shell_command_text: "state-summary".to_string(),
@@ -11863,6 +11933,7 @@ impl MainAreaDna {
             cached_saved_rna_read_progress: None,
             cached_rna_read_alignment_inspections: vec![],
             cached_rna_read_alignment_detail: None,
+            cached_rna_read_concatemer_inspection: None,
             attract_evidence_ui: AttractEvidenceUiState::default(),
             cached_splicing_attract_evidence: None,
             rna_read_statistics_tab: RnaReadEvidenceSourceTab::ThresholdedCdna,
@@ -24615,6 +24686,10 @@ impl MainAreaDna {
             }
         }
 
+        if let Some(report) = selected_report.as_deref() {
+            persist_ui_state |= self.render_rna_read_concatemer_review_section(ui, report);
+        }
+
         let progress =
             self.current_rna_read_evidence_progress_for_view(view, selected_report.as_deref());
         if let Some(progress) = progress.as_deref() {
@@ -24700,6 +24775,550 @@ impl MainAreaDna {
             self.save_engine_ops_state();
         }
         ui.separator();
+    }
+
+    fn render_rna_read_concatemer_review_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        report: &RnaReadInterpretationReport,
+    ) -> bool {
+        let mut persist_ui_state = false;
+        egui::CollapsingHeader::new("Concatemer review / partner census")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(
+                            "Run the shared concatemer suspicion audit here, then review recurring partner genes/transcripts without leaving the RNA-read GUI.",
+                        )
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
+                if report.align_config.max_secondary_mappings == 0 {
+                    ui.small(
+                        egui::RichText::new(
+                            "This report was aligned with max_secondary_mappings=0, so concatemer evidence is weaker than it could be. Re-align with retained secondaries before treating negative results as decisive.",
+                        )
+                        .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+
+                let selected_row_count = self.selected_rna_record_indices().len();
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Selection");
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_read_concatemer_ui.selection,
+                            RnaReadHitSelection::All,
+                            "all retained",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_read_concatemer_ui.selection,
+                            RnaReadHitSelection::Aligned,
+                            "already aligned",
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .selectable_value(
+                            &mut self.rna_read_concatemer_ui.selection,
+                            RnaReadHitSelection::SeedPassed,
+                            "seed passed",
+                        )
+                        .changed();
+                    ui.separator();
+                    ui.label("Subset");
+                    egui::ComboBox::from_id_salt((
+                        "rna_read_concatemer_subset_mode",
+                        report.report_id.as_str(),
+                    ))
+                    .selected_text(Self::rna_read_concatemer_subset_mode_label(
+                        self.rna_read_concatemer_ui.subset_mode,
+                    ))
+                    .show_ui(ui, |ui| {
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_read_concatemer_ui.subset_mode,
+                                RnaReadConcatemerSubsetMode::AllMatchingRows,
+                                Self::rna_read_concatemer_subset_mode_label(
+                                    RnaReadConcatemerSubsetMode::AllMatchingRows,
+                                ),
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_read_concatemer_ui.subset_mode,
+                                RnaReadConcatemerSubsetMode::SelectedRowsOnly,
+                                Self::rna_read_concatemer_subset_mode_label(
+                                    RnaReadConcatemerSubsetMode::SelectedRowsOnly,
+                                ),
+                            )
+                            .changed();
+                    });
+                    ui.small(format!("selected rows={selected_row_count}"));
+                    ui.separator();
+                    ui.label("Limit");
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rna_read_concatemer_ui.limit)
+                                .desired_width(50.0),
+                        )
+                        .changed();
+                    persist_ui_state |= ui
+                        .checkbox(&mut self.rna_read_concatemer_ui.show_advanced, "Advanced")
+                        .changed();
+                });
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Adapter/barcode FASTA");
+                    persist_ui_state |= ui
+                        .add(
+                            egui::TextEdit::singleline(
+                                &mut self.rna_read_concatemer_ui.adapter_fasta_path,
+                            )
+                            .desired_width(420.0),
+                        )
+                        .changed();
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Transcript FASTA(s)");
+                    ui.small(
+                        egui::RichText::new("one path per line")
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
+                persist_ui_state |= ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self.rna_read_concatemer_ui.transcript_fasta_paths_text,
+                        )
+                        .desired_rows(2)
+                        .desired_width(f32::INFINITY),
+                    )
+                    .changed();
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Prepared transcript index(es)");
+                    ui.small(
+                        egui::RichText::new("one path per line")
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                });
+                persist_ui_state |= ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self.rna_read_concatemer_ui.transcript_index_paths_text,
+                        )
+                        .desired_rows(2)
+                        .desired_width(f32::INFINITY),
+                    )
+                    .changed();
+
+                if self.rna_read_concatemer_ui.show_advanced {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("internal poly bp");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .internal_homopolymer_min_bp,
+                                )
+                                .desired_width(44.0),
+                            )
+                            .changed();
+                        ui.label("end margin");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.rna_read_concatemer_ui.end_margin_bp,
+                                )
+                                .desired_width(44.0),
+                            )
+                            .changed();
+                        ui.label("max primary qcov");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .max_primary_query_coverage_fraction,
+                                )
+                                .desired_width(52.0),
+                            )
+                            .changed();
+                        ui.label("min secondary id");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .min_secondary_identity_fraction,
+                                )
+                                .desired_width(52.0),
+                            )
+                            .changed();
+                        ui.label("max secondary overlap");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .max_secondary_query_overlap_fraction,
+                                )
+                                .desired_width(52.0),
+                            )
+                            .changed();
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("adapter match bp");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.rna_read_concatemer_ui.adapter_min_match_bp,
+                                )
+                                .desired_width(44.0),
+                            )
+                            .changed();
+                        ui.label("fragment min bp");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.rna_read_concatemer_ui.fragment_min_bp,
+                                )
+                                .desired_width(44.0),
+                            )
+                            .changed();
+                        ui.label("fragment max parts");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self.rna_read_concatemer_ui.fragment_max_parts,
+                                )
+                                .desired_width(44.0),
+                            )
+                            .changed();
+                        ui.label("fragment min id");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .fragment_min_identity_fraction,
+                                )
+                                .desired_width(52.0),
+                            )
+                            .changed();
+                        ui.label("fragment min qcov");
+                        persist_ui_state |= ui
+                            .add(
+                                egui::TextEdit::singleline(
+                                    &mut self
+                                        .rna_read_concatemer_ui
+                                        .fragment_min_query_coverage_fraction,
+                                )
+                                .desired_width(52.0),
+                            )
+                            .changed();
+                    });
+                }
+
+                let request = self.current_rna_read_concatemer_request();
+                let current_cache_key = request.as_ref().ok().map(
+                    |(selection, limit, selected_record_indices, settings)| {
+                        Self::rna_read_concatemer_inspection_cache_key(
+                            &report.report_id,
+                            *selection,
+                            *limit,
+                            selected_record_indices,
+                            settings,
+                        )
+                    },
+                );
+                let mut inspection_result = current_cache_key.as_ref().and_then(|cache_key| {
+                    self.cached_rna_read_concatemer_inspection
+                        .as_ref()
+                        .filter(|cached| cached.cache_key == *cache_key)
+                        .map(|cached| {
+                            cached
+                                .result
+                                .as_ref()
+                                .map(Arc::clone)
+                                .map_err(Clone::clone)
+                        })
+                });
+
+                ui.horizontal_wrapped(|ui| {
+                    let run_clicked = ui
+                        .button("Inspect concatemers")
+                        .on_hover_text(
+                            "Run the shared fragment/concatemer suspicion audit for the selected saved report and current filters.",
+                        )
+                        .clicked();
+                    if run_clicked {
+                        inspection_result = Some(match &request {
+                            Ok((selection, limit, selected_record_indices, settings)) => self
+                                .saved_rna_read_concatemer_inspection_for_report_id(
+                                    &report.report_id,
+                                    *selection,
+                                    *limit,
+                                    selected_record_indices.clone(),
+                                    settings.clone(),
+                                ),
+                            Err(err) => Err(err.clone()),
+                        });
+                    }
+                    if let Some(result) = inspection_result.as_ref()
+                        && let Ok(inspection) = result
+                    {
+                        if ui
+                            .button("Focus suspicious rows")
+                            .on_hover_text(
+                                "Switch the mapped cDNA read-effects view to the suspicious rows returned by this audit.",
+                            )
+                            .clicked()
+                        {
+                            self.focus_rna_read_alignment_effect_record_indices(
+                                inspection
+                                    .rows
+                                    .iter()
+                                    .map(|row| row.record_index)
+                                    .collect::<Vec<_>>(),
+                                "concatemer review",
+                            );
+                        }
+                        let strong_indices = inspection
+                            .rows
+                            .iter()
+                            .filter(|row| row.suspicion_level.as_str() == "strong")
+                            .map(|row| row.record_index)
+                            .collect::<Vec<_>>();
+                        if ui
+                            .add_enabled(
+                                !strong_indices.is_empty(),
+                                egui::Button::new("Focus strong rows"),
+                            )
+                            .on_hover_text(
+                                "Focus only the strongest concatemer-suspicion rows in mapped cDNA -> Read effects.",
+                            )
+                            .clicked()
+                        {
+                            self.focus_rna_read_alignment_effect_record_indices(
+                                strong_indices,
+                                "strong concatemer suspicion",
+                            );
+                        }
+                    }
+                });
+
+                if let Err(err) = &request {
+                    ui.small(
+                        egui::RichText::new(format!("Concatemer review settings: {err}"))
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+
+                let Some(result) = inspection_result else {
+                    ui.small(
+                        egui::RichText::new(
+                            "Click 'Inspect concatemers' to populate the suspicion ranking and recurring partner census for this report.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    ui.separator();
+                    return;
+                };
+
+                let inspection = match result {
+                    Ok(inspection) => inspection,
+                    Err(err) => {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "Concatemer review unavailable: {err}"
+                            ))
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                        ui.separator();
+                        return;
+                    }
+                };
+
+                ui.small(format!(
+                    "Subset matches={} inspected={} suspicious={} strong={} | low-qcov={} internal polyA={} internal polyT={} adapter-matches={} disjoint-secondaries={} phase1-partial={} multi-gene={} | selection={} limit={}",
+                    inspection.subset_match_count,
+                    inspection.inspected_count,
+                    inspection.suspicious_count,
+                    inspection.strong_count,
+                    inspection.low_query_coverage_count,
+                    inspection.internal_poly_a_count,
+                    inspection.internal_poly_t_count,
+                    inspection.internal_adapter_match_count,
+                    inspection.disjoint_secondary_mapping_count,
+                    inspection.phase1_partial_origin_count,
+                    inspection.multi_gene_fragment_count,
+                    inspection.selection.as_str(),
+                    inspection.limit,
+                ));
+                ui.small(format!(
+                    "Partners: genes={} transcripts={} | settings: adapter={} transcript FASTA={} transcript index={}",
+                    inspection.partner_gene_summaries.len(),
+                    inspection.partner_transcript_summaries.len(),
+                    inspection
+                        .settings
+                        .adapter_fasta_path
+                        .as_deref()
+                        .unwrap_or("<none>"),
+                    inspection.settings.transcript_fasta_paths.len(),
+                    inspection.settings.transcript_index_paths.len(),
+                ));
+                for warning in inspection.warnings.iter().take(3) {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+
+                if !inspection.partner_gene_summaries.is_empty() {
+                    ui.label(egui::RichText::new("Recurring partner genes").strong());
+                    egui::Grid::new(format!(
+                        "rna_concatemer_partner_gene_grid_{}",
+                        report.report_id
+                    ))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small("Rank");
+                        ui.small("Gene");
+                        ui.small("Suspicious reads");
+                        ui.small("Fragments");
+                        ui.end_row();
+                        for row in inspection.partner_gene_summaries.iter().take(12) {
+                            ui.small(row.rank.to_string());
+                            ui.small(&row.gene_id);
+                            ui.small(row.suspicious_read_count.to_string());
+                            ui.small(row.fragment_count.to_string());
+                            ui.end_row();
+                        }
+                    });
+                }
+
+                if !inspection.partner_transcript_summaries.is_empty() {
+                    ui.label(egui::RichText::new("Recurring partner transcripts").strong());
+                    egui::Grid::new(format!(
+                        "rna_concatemer_partner_transcript_grid_{}",
+                        report.report_id
+                    ))
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small("Rank");
+                        ui.small("Transcript");
+                        ui.small("Gene");
+                        ui.small("Suspicious reads");
+                        ui.small("Fragments");
+                        ui.end_row();
+                        for row in inspection.partner_transcript_summaries.iter().take(12) {
+                            ui.small(row.rank.to_string());
+                            ui.small(format!("{} ({})", row.transcript_id, row.transcript_label));
+                            ui.small(&row.gene_id);
+                            ui.small(row.suspicious_read_count.to_string());
+                            ui.small(row.fragment_count.to_string());
+                            ui.end_row();
+                        }
+                    });
+                }
+
+                ui.label(egui::RichText::new("Suspicious rows").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(format!("rna_concatemer_rows_{}", report.report_id))
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new(format!("rna_concatemer_grid_{}", report.report_id))
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.small("Focus");
+                                ui.small("Rank");
+                                ui.small("Read");
+                                ui.small("Level");
+                                ui.small("Best");
+                                ui.small("Partners");
+                                ui.small("Signals");
+                                ui.end_row();
+                                for row in inspection.rows.iter().take(64) {
+                                    if ui.small_button("Show").clicked() {
+                                        self.focus_rna_read_alignment_effect_record_indices(
+                                            vec![row.record_index],
+                                            "concatemer review row",
+                                        );
+                                    }
+                                    ui.small(format!("#{}", row.rank));
+                                    ui.small(format!(
+                                        "{} (r{})",
+                                        row.header_id,
+                                        row.record_index + 1
+                                    ));
+                                    let level_color = match row.suspicion_level.as_str() {
+                                        "strong" => egui::Color32::from_rgb(185, 28, 28),
+                                        "moderate" => egui::Color32::from_rgb(180, 83, 9),
+                                        "weak" => egui::Color32::from_rgb(100, 116, 139),
+                                        _ => egui::Color32::from_rgb(100, 116, 139),
+                                    };
+                                    ui.small(
+                                        egui::RichText::new(format!(
+                                            "{} ({})",
+                                            row.suspicion_level.as_str(),
+                                            row.suspicion_score
+                                        ))
+                                        .color(level_color),
+                                    );
+                                    ui.small(
+                                        row.best_gene_id
+                                            .as_deref()
+                                            .or(row.best_transcript_id.as_deref())
+                                            .unwrap_or("<none>"),
+                                    );
+                                    let partner_preview = if row.partner_gene_ids.is_empty() {
+                                        row.partner_transcript_ids
+                                            .iter()
+                                            .take(3)
+                                            .cloned()
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    } else {
+                                        row.partner_gene_ids
+                                            .iter()
+                                            .take(3)
+                                            .cloned()
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    };
+                                    let partner_suffix = if row.partner_gene_count > 3
+                                        || row.partner_transcript_count > 3
+                                    {
+                                        " …"
+                                    } else {
+                                        ""
+                                    };
+                                    ui.small(format!(
+                                        "{}{}",
+                                        if partner_preview.is_empty() {
+                                            "<none>"
+                                        } else {
+                                            &partner_preview
+                                        },
+                                        partner_suffix
+                                    ));
+                                    ui.small(Self::summarize_status_items(
+                                        &row.suspicion_signals,
+                                        3,
+                                        " | ",
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                ui.separator();
+            });
+        persist_ui_state
     }
 
     fn attract_region_filter_label(filter: AttractRegionFilter) -> &'static str {
@@ -25529,6 +26148,134 @@ impl MainAreaDna {
         self.rna_reads_ui.report_mode = RnaReadReportMode::Full;
         self.rna_reads_ui.show_advanced = true;
         self.op_status = "Prepared RNA-read alignment settings for concatemer review (all retained, max secondary=5, full report mode).".to_string();
+    }
+
+    fn rna_read_concatemer_subset_mode_label(mode: RnaReadConcatemerSubsetMode) -> &'static str {
+        match mode {
+            RnaReadConcatemerSubsetMode::AllMatchingRows => "all matching rows",
+            RnaReadConcatemerSubsetMode::SelectedRowsOnly => "selected rows only",
+        }
+    }
+
+    fn parse_multiline_nonempty_paths(text: &str) -> Vec<String> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    fn current_rna_read_concatemer_request(
+        &self,
+    ) -> Result<
+        (
+            RnaReadHitSelection,
+            usize,
+            Vec<usize>,
+            RnaReadConcatemerInspectionSettings,
+        ),
+        String,
+    > {
+        let limit = Self::parse_positive_usize_text(
+            &self.rna_read_concatemer_ui.limit,
+            "concatemer limit",
+        )?;
+        let selected_record_indices = match self.rna_read_concatemer_ui.subset_mode {
+            RnaReadConcatemerSubsetMode::AllMatchingRows => vec![],
+            RnaReadConcatemerSubsetMode::SelectedRowsOnly => {
+                let selected = self.selected_rna_record_indices();
+                if selected.is_empty() {
+                    return Err(
+                        "Select one or more mapped cDNA rows first before using 'selected rows only'"
+                            .to_string(),
+                    );
+                }
+                selected
+            }
+        };
+        Ok((
+            self.rna_read_concatemer_ui.selection,
+            limit,
+            selected_record_indices,
+            RnaReadConcatemerInspectionSettings {
+                internal_homopolymer_min_bp: Self::parse_positive_usize_text(
+                    &self.rna_read_concatemer_ui.internal_homopolymer_min_bp,
+                    "internal_homopolymer_min_bp",
+                )?,
+                end_margin_bp: Self::parse_positive_usize_text(
+                    &self.rna_read_concatemer_ui.end_margin_bp,
+                    "end_margin_bp",
+                )?,
+                max_primary_query_coverage_fraction: Self::parse_optional_f64_text(
+                    &self
+                        .rna_read_concatemer_ui
+                        .max_primary_query_coverage_fraction,
+                    "max_primary_query_coverage_fraction",
+                )?
+                .unwrap_or_else(|| {
+                    RnaReadConcatemerInspectionSettings::default()
+                        .max_primary_query_coverage_fraction
+                }),
+                min_secondary_identity_fraction: Self::parse_optional_f64_text(
+                    &self.rna_read_concatemer_ui.min_secondary_identity_fraction,
+                    "min_secondary_identity_fraction",
+                )?
+                .unwrap_or_else(|| {
+                    RnaReadConcatemerInspectionSettings::default().min_secondary_identity_fraction
+                }),
+                max_secondary_query_overlap_fraction: Self::parse_optional_f64_text(
+                    &self
+                        .rna_read_concatemer_ui
+                        .max_secondary_query_overlap_fraction,
+                    "max_secondary_query_overlap_fraction",
+                )?
+                .unwrap_or_else(|| {
+                    RnaReadConcatemerInspectionSettings::default()
+                        .max_secondary_query_overlap_fraction
+                }),
+                adapter_fasta_path: {
+                    let trimmed = self.rna_read_concatemer_ui.adapter_fasta_path.trim();
+                    (!trimmed.is_empty()).then_some(trimmed.to_string())
+                },
+                adapter_min_match_bp: Self::parse_positive_usize_text(
+                    &self.rna_read_concatemer_ui.adapter_min_match_bp,
+                    "adapter_min_match_bp",
+                )?,
+                fragment_min_bp: Self::parse_positive_usize_text(
+                    &self.rna_read_concatemer_ui.fragment_min_bp,
+                    "fragment_min_bp",
+                )?,
+                fragment_max_parts: self
+                    .rna_read_concatemer_ui
+                    .fragment_max_parts
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| "fragment_max_parts must be a non-negative integer".to_string())?,
+                fragment_min_identity_fraction: Self::parse_optional_f64_text(
+                    &self.rna_read_concatemer_ui.fragment_min_identity_fraction,
+                    "fragment_min_identity_fraction",
+                )?
+                .unwrap_or_else(|| {
+                    RnaReadConcatemerInspectionSettings::default().fragment_min_identity_fraction
+                }),
+                fragment_min_query_coverage_fraction: Self::parse_optional_f64_text(
+                    &self
+                        .rna_read_concatemer_ui
+                        .fragment_min_query_coverage_fraction,
+                    "fragment_min_query_coverage_fraction",
+                )?
+                .unwrap_or_else(|| {
+                    RnaReadConcatemerInspectionSettings::default()
+                        .fragment_min_query_coverage_fraction
+                }),
+                transcript_fasta_paths: Self::parse_multiline_nonempty_paths(
+                    &self.rna_read_concatemer_ui.transcript_fasta_paths_text,
+                ),
+                transcript_index_paths: Self::parse_multiline_nonempty_paths(
+                    &self.rna_read_concatemer_ui.transcript_index_paths_text,
+                ),
+            },
+        ))
     }
 
     fn reset_rna_read_dotplot_parameters_to_defaults(&mut self) {
@@ -43942,6 +44689,7 @@ impl MainAreaDna {
             dotplot_ui: self.dotplot_ui.clone(),
             rna_reads_ui: self.rna_reads_ui.clone(),
             rna_read_evidence_ui: self.rna_read_evidence_ui.clone(),
+            rna_read_concatemer_ui: self.rna_read_concatemer_ui.clone(),
             shell_command_text: self.shell_command_text.clone(),
             digest_enzymes_text: self.digest_enzymes_text.clone(),
             digest_prefix_text: self.digest_prefix_text.clone(),
@@ -44160,6 +44908,7 @@ impl MainAreaDna {
         self.dotplot_ui = s.dotplot_ui;
         self.rna_reads_ui = s.rna_reads_ui;
         self.rna_read_evidence_ui = s.rna_read_evidence_ui;
+        self.rna_read_concatemer_ui = s.rna_read_concatemer_ui;
         self.invalidate_dotplot_cache();
         self.shell_command_text = s.shell_command_text;
         self.digest_enzymes_text = s.digest_enzymes_text;
