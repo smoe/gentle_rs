@@ -2121,6 +2121,83 @@ impl MainAreaDna {
         );
     }
 
+    fn promoter_design_overlay_track_meta(
+        track: &crate::engine::TfbsScoreTrackOverlayTrack,
+    ) -> String {
+        let mut parts = vec![format!("{} interval(s)", track.interval_count)];
+        if let Some(max_score) = track.max_score {
+            parts.push(format!("max score {:.2}", max_score));
+        }
+        format!("{} | {}", track.source_kind, parts.join(" | "))
+    }
+
+    fn promoter_design_overlay_interval_alpha(
+        interval: &crate::engine::TfbsScoreTrackOverlayInterval,
+        track: &crate::engine::TfbsScoreTrackOverlayTrack,
+    ) -> f32 {
+        match (interval.score, track.max_score) {
+            (Some(score), Some(max_score)) if max_score.is_finite() && max_score > 0.0 => {
+                ((score / max_score).clamp(0.0, 1.0) as f32 * 0.5 + 0.25).clamp(0.25, 0.85)
+            }
+            _ => 0.6,
+        }
+    }
+
+    fn paint_promoter_design_overlay_track_plot(
+        ui: &mut egui::Ui,
+        report: &TfbsScoreTrackReport,
+        track: &crate::engine::TfbsScoreTrackOverlayTrack,
+    ) {
+        let desired = egui::vec2(ui.available_width().max(420.0), 34.0);
+        let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        let plot_rect = rect.shrink2(egui::vec2(8.0, 6.0));
+        painter.rect_filled(plot_rect, 4.0, egui::Color32::WHITE);
+        painter.rect_stroke(
+            plot_rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(221, 214, 254)),
+            egui::StrokeKind::Inside,
+        );
+        let denom = report
+            .view_end_0based_exclusive
+            .saturating_sub(report.view_start_0based)
+            .max(1) as f32;
+        let lane_rect = plot_rect.shrink2(egui::vec2(6.0, 5.0));
+        for interval in &track.intervals {
+            let start_fraction = (interval
+                .start_0based
+                .saturating_sub(report.view_start_0based) as f32
+                / denom)
+                .clamp(0.0, 1.0);
+            let end_fraction = (interval
+                .end_0based_exclusive
+                .saturating_sub(report.view_start_0based) as f32
+                / denom)
+                .clamp(0.0, 1.0);
+            let x1 = lane_rect.left() + lane_rect.width() * start_fraction;
+            let x2 = lane_rect.left() + lane_rect.width() * end_fraction;
+            let width = (x2 - x1).max(2.0);
+            let fill = egui::Color32::from_rgba_premultiplied(
+                124,
+                58,
+                237,
+                (255.0 * Self::promoter_design_overlay_interval_alpha(interval, track)) as u8,
+            );
+            let interval_rect = egui::Rect::from_min_size(
+                egui::pos2(x1, lane_rect.top()),
+                egui::vec2(width, lane_rect.height()),
+            );
+            painter.rect_filled(interval_rect, 2.0, fill);
+            painter.rect_stroke(
+                interval_rect,
+                2.0,
+                egui::Stroke::new(0.8, egui::Color32::from_rgb(91, 33, 182)),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+
     pub(super) fn render_tfbs_score_track_summary_panel(
         ui: &mut egui::Ui,
         title: &str,
@@ -2243,6 +2320,46 @@ impl MainAreaDna {
                         Self::paint_promoter_design_track_plot(ui, report, track, &markers);
                     });
                 });
+            }
+            if !report.overlay_tracks.is_empty() {
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Imported BED interval tracks")
+                        .color(egui::Color32::from_rgb(88, 28, 135))
+                        .strong(),
+                );
+                ui.small(
+                    egui::RichText::new(
+                        "Imported BED/CUT&RUN peaks on this sequence are shown as extra interval lanes under the motif score tracks.",
+                    )
+                    .color(egui::Color32::from_rgb(107, 114, 128)),
+                );
+                for overlay_track in &report.overlay_tracks {
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.set_min_width(238.0);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(&overlay_track.display_label)
+                                    .color(egui::Color32::from_rgb(88, 28, 135))
+                                    .strong(),
+                            );
+                            ui.small(
+                                egui::RichText::new(
+                                    Self::promoter_design_overlay_track_meta(overlay_track),
+                                )
+                                .color(egui::Color32::from_rgb(107, 114, 128)),
+                            );
+                        });
+                        ui.vertical(|ui| {
+                            Self::paint_promoter_design_overlay_track_plot(
+                                ui,
+                                report,
+                                overlay_track,
+                            );
+                        });
+                    });
+                }
             }
             Self::render_variant_followup_score_track_correlation_summary(
                 ui,

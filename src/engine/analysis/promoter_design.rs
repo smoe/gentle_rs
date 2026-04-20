@@ -285,6 +285,99 @@ impl GentleEngine {
         markers
     }
 
+    fn summarize_tfbs_score_track_overlay_tracks(
+        &self,
+        dna: &DNAsequence,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Vec<TfbsScoreTrackOverlayTrack> {
+        let mut grouped = std::collections::BTreeMap::<String, TfbsScoreTrackOverlayTrack>::new();
+        for feature in dna.features() {
+            if !Self::is_generated_genome_bed_feature(feature) {
+                continue;
+            }
+            let source_kind = Self::feature_qualifier_text(feature, "gentle_track_source")
+                .unwrap_or_else(|| "BED".to_string());
+            let track_name =
+                Self::first_nonempty_feature_qualifier(feature, &["gentle_track_name", "name"])
+                    .unwrap_or_else(|| "BED track".to_string());
+            let source_file_name = Self::feature_qualifier_text(feature, "gentle_track_file")
+                .and_then(|value| {
+                    std::path::Path::new(value.trim())
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(|name| name.to_string())
+                });
+            let display_label = match source_file_name.as_deref() {
+                Some(file_name) if file_name != track_name => {
+                    format!("{track_name} ({file_name})")
+                }
+                _ => track_name.clone(),
+            };
+            let group_key = match source_file_name.as_deref() {
+                Some(file_name) => format!("{track_name}\u{1f}{file_name}"),
+                None => track_name.clone(),
+            };
+            let interval_label = Self::feature_qualifier_text(feature, "label");
+            let score = Self::feature_qualifier_text(feature, "score")
+                .and_then(|value| value.trim().parse::<f64>().ok());
+            let strand = Self::feature_qualifier_text(feature, "bed_strand")
+                .or_else(|| Self::feature_qualifier_text(feature, "strand"));
+
+            let mut ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            for (range_start, range_end) in ranges {
+                if range_end <= range_start {
+                    continue;
+                }
+                let clipped_start = range_start.max(start_0based);
+                let clipped_end = range_end.min(end_0based_exclusive);
+                if clipped_end <= clipped_start {
+                    continue;
+                }
+                let track = grouped.entry(group_key.clone()).or_insert_with(|| {
+                    TfbsScoreTrackOverlayTrack {
+                        source_kind: source_kind.clone(),
+                        track_name: track_name.clone(),
+                        display_label: display_label.clone(),
+                        source_file_name: source_file_name.clone(),
+                        interval_count: 0,
+                        max_score: None,
+                        intervals: vec![],
+                    }
+                });
+                track.intervals.push(TfbsScoreTrackOverlayInterval {
+                    start_0based: clipped_start,
+                    end_0based_exclusive: clipped_end,
+                    label: interval_label.clone(),
+                    score,
+                    strand: strand.clone(),
+                });
+                track.interval_count += 1;
+                if let Some(score) = score {
+                    let current_max = track.max_score.unwrap_or(score);
+                    track.max_score = Some(current_max.max(score));
+                }
+            }
+        }
+
+        let mut tracks = grouped.into_values().collect::<Vec<_>>();
+        for track in &mut tracks {
+            track.intervals.sort_by(|left, right| {
+                left.start_0based
+                    .cmp(&right.start_0based)
+                    .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                    .then(left.label.cmp(&right.label))
+            });
+        }
+        tracks.sort_by(|left, right| {
+            left.display_label
+                .cmp(&right.display_label)
+                .then(left.track_name.cmp(&right.track_name))
+        });
+        tracks
+    }
+
     fn tfbs_track_display_signal(track: &TfbsScoreTrackRow) -> Vec<f64> {
         track
             .forward_scores
@@ -927,21 +1020,28 @@ impl GentleEngine {
             });
         }
 
-        let tss_markers = if let Some(seq_id) = tss_source_seq_id {
+        let (tss_markers, overlay_tracks) = if let Some(seq_id) = tss_source_seq_id {
             self.state
                 .sequences
                 .get(&seq_id)
                 .map(|dna| {
-                    self.summarize_tfbs_score_track_tss_markers(
-                        &seq_id,
-                        dna,
-                        scan_start_0based,
-                        scan_end_0based_exclusive,
+                    (
+                        self.summarize_tfbs_score_track_tss_markers(
+                            &seq_id,
+                            dna,
+                            scan_start_0based,
+                            scan_end_0based_exclusive,
+                        ),
+                        self.summarize_tfbs_score_track_overlay_tracks(
+                            dna,
+                            scan_start_0based,
+                            scan_end_0based_exclusive,
+                        ),
                     )
                 })
-                .unwrap_or_default()
+                .unwrap_or_else(|| (vec![], vec![]))
         } else {
-            vec![]
+            (vec![], vec![])
         };
 
         Ok(TfbsScoreTrackReport {
@@ -962,6 +1062,7 @@ impl GentleEngine {
             motifs_requested: motifs.to_vec(),
             global_max_score,
             tss_markers,
+            overlay_tracks,
             correlation_summary: if include_correlation_summary {
                 Self::summarize_tfbs_score_track_correlation_summary(&tracks)
             } else {

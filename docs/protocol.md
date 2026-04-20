@@ -195,6 +195,19 @@ Behavior notes:
 - `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
   score arrays over a `SequenceScanTarget`, so the same report path works for
   stored `seq_id` spans and inline ASCII DNA.
+- when the target is a stored `seq_id`, the same shared report can also carry
+  `overlay_tracks[]` for imported genome-track evidence already materialized on
+  that sequence (for example projected BED / CUT&RUN peak intervals):
+  - `source_kind`
+  - `track_name`
+  - `display_label`
+  - optional `source_file_name`
+  - `interval_count`
+  - optional `max_score`
+  - `intervals[]` with clipped local `start_0based`, `end_0based_exclusive`,
+    optional `label`, optional numeric `score`, and optional `strand`
+  These overlays reuse the same deterministic report/renderer path instead of
+  forcing GUI-only evidence lanes.
 - the same shared report also carries a correlation sidecar:
   - `signal_source`
   - `smoothing_method`

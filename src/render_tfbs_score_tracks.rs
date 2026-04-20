@@ -11,11 +11,13 @@ const SVG_MARGIN_LEFT: f64 = 32.0;
 const SVG_MARGIN_RIGHT: f64 = 28.0;
 const SVG_HEADER_HEIGHT: f64 = 82.0;
 const SVG_FOOTER_HEIGHT: f64 = 42.0;
-const SVG_ROW_HEIGHT: f64 = 88.0;
+const SVG_ROW_HEIGHT: f64 = 96.0;
 const SVG_ROW_GAP: f64 = 14.0;
-const SVG_LABEL_WIDTH: f64 = 260.0;
-const SVG_LOGO_WIDTH: f64 = 92.0;
-const SVG_LOGO_HEIGHT: f64 = 54.0;
+const SVG_OVERLAY_ROW_HEIGHT: f64 = 34.0;
+const SVG_OVERLAY_ROW_GAP: f64 = 8.0;
+const SVG_LABEL_WIDTH: f64 = 320.0;
+const SVG_LOGO_WIDTH: f64 = 84.0;
+const SVG_LOGO_HEIGHT: f64 = 24.0;
 const SVG_TRACK_PADDING_X: f64 = 10.0;
 const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
@@ -112,8 +114,8 @@ fn render_tf_track_logo_svg(
         ));
         return svg;
     }
-    let margin_x = 6.0_f64;
-    let margin_y = 5.0_f64;
+    let margin_x = 4.0_f64;
+    let margin_y = 3.0_f64;
     let left = x + margin_x;
     let baseline = y + height - margin_y;
     let usable_width = (width - margin_x * 2.0).max(8.0);
@@ -124,8 +126,29 @@ fn render_tf_track_logo_svg(
         "<line x1=\"{left:.1}\" y1=\"{baseline:.1}\" x2=\"{:.1}\" y2=\"{baseline:.1}\" stroke=\"#cbd5e1\" stroke-width=\"0.8\"/>\n",
         x + width - margin_x,
     ));
+    svg.push_str(&format!(
+        "<line x1=\"{left:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#e2e8f0\" stroke-width=\"0.8\" stroke-dasharray=\"2 2\"/>\n",
+        baseline - usable_height,
+        x + width - margin_x,
+        baseline - usable_height,
+    ));
     for column in columns {
-        let x_center = left + (column.position_1based as f64 - 0.5) * column_width;
+        let x_left = left + (column.position_1based as f64 - 1.0) * column_width;
+        let x_center = x_left + column_width * 0.5;
+        let information_height =
+            (column.information_content_bits * bits_to_px).clamp(0.0, usable_height);
+        if information_height > 0.75 {
+            let alpha =
+                ((column.information_content_bits / 2.0).clamp(0.24, 0.62) * 100.0).round() / 100.0;
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"1.5\" fill=\"#cbd5e1\" fill-opacity=\"{alpha:.2}\" stroke=\"#cbd5e1\" stroke-opacity=\"{:.2}\" stroke-width=\"0.4\"/>\n",
+                x_left + column_width * 0.08,
+                baseline - information_height,
+                (column_width * 0.84).max(1.5),
+                information_height,
+                (alpha * 0.8).clamp(0.12, 0.55),
+            ));
+        }
         let mut rows = vec![
             ('A', column.a_logo_bits),
             ('C', column.c_logo_bits),
@@ -138,14 +161,18 @@ fn render_tf_track_logo_svg(
             if bits <= 0.0001 {
                 continue;
             }
-            let font_size = ((bits * bits_to_px).max(5.0)).min((column_width * 1.35).max(5.0));
+            let letter_height = (bits * bits_to_px).clamp(0.0, usable_height - used_height);
+            if letter_height <= 0.75 {
+                continue;
+            }
             svg.push_str(&format!(
-                "<text x=\"{x_center:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{font_size:.2}\" fill=\"{}\">{}</text>\n",
+                "<text x=\"{x_center:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"{}\" data-gentle-role=\"tfbs-score-track-logo-letter\">{}</text>\n",
                 baseline - used_height,
+                letter_height,
                 tfbs_logo_base_color(base),
                 base,
             ));
-            used_height += font_size * 0.82;
+            used_height += letter_height * 0.86;
         }
     }
     svg
@@ -185,6 +212,32 @@ fn format_report_normalization_note(report: &TfbsScoreTrackReport) -> Option<Str
         normalization.random_sequence_length_bp,
         normalization.chance_model
     ))
+}
+
+fn format_overlay_track_meta(track: &crate::engine::TfbsScoreTrackOverlayTrack) -> String {
+    let mut parts = vec![format!("{} interval(s)", track.interval_count)];
+    if let Some(max_score) = track.max_score {
+        parts.push(format!("max score {:.2}", max_score));
+    }
+    match track.source_file_name.as_deref() {
+        Some(file_name) if file_name != track.track_name => {
+            parts.push(format!("file {}", file_name));
+        }
+        _ => {}
+    }
+    format!("{} | {}", track.source_kind, parts.join(" | "))
+}
+
+fn overlay_track_interval_fill_opacity(
+    interval: &crate::engine::TfbsScoreTrackOverlayInterval,
+    track: &crate::engine::TfbsScoreTrackOverlayTrack,
+) -> f64 {
+    match (interval.score, track.max_score) {
+        (Some(score), Some(max_score)) if max_score.is_finite() && max_score > 0.0 => {
+            ((score / max_score).clamp(0.0, 1.0) * 0.5 + 0.25).clamp(0.25, 0.85)
+        }
+        _ => 0.6,
+    }
 }
 
 fn correlation_fill_color(value: f64) -> &'static str {
@@ -487,10 +540,17 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
     );
     let header_height = SVG_HEADER_HEIGHT + (tss_marker_lanes as f64) * SVG_TSS_MARKER_ROW_HEIGHT;
     let track_count = report.tracks.len().max(1);
-    let svg_height = header_height
-        + SVG_FOOTER_HEIGHT
-        + track_count as f64 * SVG_ROW_HEIGHT
-        + track_count.saturating_sub(1) as f64 * SVG_ROW_GAP;
+    let overlay_count = report.overlay_tracks.len();
+    let motif_block_height =
+        track_count as f64 * SVG_ROW_HEIGHT + track_count.saturating_sub(1) as f64 * SVG_ROW_GAP;
+    let overlay_block_height = if overlay_count == 0 {
+        0.0
+    } else {
+        SVG_ROW_GAP
+            + overlay_count as f64 * SVG_OVERLAY_ROW_HEIGHT
+            + overlay_count.saturating_sub(1) as f64 * SVG_OVERLAY_ROW_GAP
+    };
+    let svg_height = header_height + SVG_FOOTER_HEIGHT + motif_block_height + overlay_block_height;
     let content_left = SVG_MARGIN_LEFT;
     let content_right = SVG_WIDTH - SVG_MARGIN_RIGHT;
     let plot_left = content_left + SVG_LABEL_WIDTH;
@@ -518,7 +578,11 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             ""
         }
     );
-    let legend = "forward strand = teal | reverse strand = amber";
+    let legend = if overlay_count > 0 {
+        "forward strand = teal | reverse strand = amber | imported BED intervals = violet"
+    } else {
+        "forward strand = teal | reverse strand = amber"
+    };
     let score_range_label = format!("{min_score:.2} .. {max_score:.2}");
     let normalization_note = format_report_normalization_note(report);
 
@@ -565,9 +629,10 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             .max_position_0based
             .map(|value| format!(" @ {value}"))
             .unwrap_or_default();
+        let title_x = content_left + 12.0;
         let logo_x = content_left + 12.0;
-        let logo_y = row_top + 12.0;
-        let text_x = logo_x + SVG_LOGO_WIDTH + 12.0;
+        let logo_y = row_top + 30.0;
+        let meta_x = logo_x + SVG_LOGO_WIDTH + 12.0;
         let meta = format!(
             "{} bp motif | {} windows | max {:.2}{}",
             track.motif_length_bp, track.scored_window_count, track.max_score, max_position
@@ -597,21 +662,21 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>\n",
-            text_x,
+            title_x,
             row_top + 24.0,
             escape_svg_text(&label)
         ));
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
-            text_x,
-            row_top + 40.0,
+            meta_x,
+            row_top + 46.0,
             escape_svg_text(&meta)
         ));
         if let Some(normalization_meta) = normalization_meta {
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
-                text_x,
-                row_top + 56.0,
+                meta_x,
+                row_top + 62.0,
                 escape_svg_text(&normalization_meta)
             ));
         }
@@ -695,11 +760,95 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         }
     }
 
+    if !report.overlay_tracks.is_empty() {
+        let overlay_block_top = header_height + motif_block_height + SVG_ROW_GAP;
+        for (overlay_idx, overlay_track) in report.overlay_tracks.iter().enumerate() {
+            let row_top = overlay_block_top
+                + overlay_idx as f64 * (SVG_OVERLAY_ROW_HEIGHT + SVG_OVERLAY_ROW_GAP);
+            let row_bottom = row_top + SVG_OVERLAY_ROW_HEIGHT;
+            let plot_top = row_top + 6.0;
+            let plot_bottom = row_bottom - 6.0;
+            let row_fill = if overlay_idx % 2 == 0 {
+                "#faf5ff"
+            } else {
+                "#fdfbff"
+            };
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\" fill=\"{}\" stroke=\"#e9d5ff\" stroke-width=\"1\" data-gentle-role=\"tfbs-score-track-overlay-row\"/>\n",
+                content_left,
+                row_top,
+                content_right - content_left,
+                SVG_OVERLAY_ROW_HEIGHT,
+                row_fill
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"11\" fill=\"#581c87\">{}</text>\n",
+                content_left + 12.0,
+                row_top + 15.0,
+                escape_svg_text(&overlay_track.display_label)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"9\" fill=\"#7c3aed\">{}</text>\n",
+                content_left + 12.0,
+                row_top + 27.0,
+                escape_svg_text(&format_overlay_track_meta(overlay_track))
+            ));
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#ddd6fe\" stroke-width=\"1\" data-gentle-role=\"tfbs-score-track-overlay-plot\"/>\n",
+                plot_left,
+                plot_top,
+                plot_right - plot_left,
+                plot_bottom - plot_top
+            ));
+            let lane_top = plot_top + 5.0;
+            let lane_bottom = plot_bottom - 5.0;
+            let lane_height = (lane_bottom - lane_top).max(2.0);
+            for interval in &overlay_track.intervals {
+                let start_fraction = if report.view_end_0based_exclusive > report.view_start_0based
+                {
+                    (interval
+                        .start_0based
+                        .saturating_sub(report.view_start_0based) as f64)
+                        / (report.view_end_0based_exclusive - report.view_start_0based) as f64
+                } else {
+                    0.0
+                };
+                let end_fraction = if report.view_end_0based_exclusive > report.view_start_0based {
+                    (interval
+                        .end_0based_exclusive
+                        .saturating_sub(report.view_start_0based) as f64)
+                        / (report.view_end_0based_exclusive - report.view_start_0based) as f64
+                } else {
+                    1.0
+                };
+                let x1 = plot_left
+                    + SVG_TRACK_PADDING_X
+                    + (plot_right - plot_left - SVG_TRACK_PADDING_X * 2.0)
+                        * start_fraction.clamp(0.0, 1.0);
+                let x2 = plot_left
+                    + SVG_TRACK_PADDING_X
+                    + (plot_right - plot_left - SVG_TRACK_PADDING_X * 2.0)
+                        * end_fraction.clamp(0.0, 1.0);
+                let width = (x2 - x1).max(2.0);
+                let opacity = overlay_track_interval_fill_opacity(interval, overlay_track);
+                svg.push_str(&format!(
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" fill=\"#7c3aed\" fill-opacity=\"{:.2}\" stroke=\"#5b21b6\" stroke-width=\"0.6\" data-gentle-role=\"tfbs-score-track-overlay-interval\"/>\n",
+                    x1,
+                    lane_top,
+                    width,
+                    lane_height,
+                    opacity
+                ));
+            }
+        }
+    }
+
     if tss_marker_lanes > 0 {
-        let stack_bottom = header_height
-            + report.tracks.len().max(1) as f64 * (SVG_ROW_HEIGHT + SVG_ROW_GAP)
-            - SVG_ROW_GAP
-            - 10.0;
+        let overlay_bottom = if overlay_count > 0 {
+            header_height + motif_block_height + overlay_block_height - 10.0
+        } else {
+            header_height + motif_block_height - 10.0
+        };
         svg.push_str(&render_tss_marker_annotations(
             &summarized_tss_markers,
             report.view_start_0based,
@@ -708,7 +857,7 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             plot_right - SVG_TRACK_PADDING_X,
             SVG_HEADER_HEIGHT - 2.0,
             header_height - 6.0,
-            stack_bottom,
+            overlay_bottom,
         ));
     }
 
@@ -1001,8 +1150,9 @@ pub fn render_tfbs_score_track_correlation_svg(
 mod tests {
     use super::*;
     use crate::engine::{
-        JasparExpertColumn, TfbsScoreTrackNormalizationReference, TfbsScoreTrackReport,
-        TfbsScoreTrackRow, TfbsScoreTrackValueKind,
+        JasparExpertColumn, TfbsScoreTrackNormalizationReference, TfbsScoreTrackOverlayInterval,
+        TfbsScoreTrackOverlayTrack, TfbsScoreTrackReport, TfbsScoreTrackRow,
+        TfbsScoreTrackValueKind,
     };
 
     fn sample_logo_columns(len: usize) -> Vec<JasparExpertColumn> {
@@ -1053,6 +1203,30 @@ mod tests {
                 label: "NM_TP73".to_string(),
                 position_0based: 12,
                 is_reverse: false,
+            }],
+            overlay_tracks: vec![TfbsScoreTrackOverlayTrack {
+                source_kind: "BED".to_string(),
+                track_name: "cutrun_tp73".to_string(),
+                display_label: "cutrun_tp73 (tp73_cutrun.bed)".to_string(),
+                source_file_name: Some("tp73_cutrun.bed".to_string()),
+                interval_count: 2,
+                max_score: Some(42.0),
+                intervals: vec![
+                    TfbsScoreTrackOverlayInterval {
+                        start_0based: 8,
+                        end_0based_exclusive: 14,
+                        label: Some("peak_a".to_string()),
+                        score: Some(21.0),
+                        strand: None,
+                    },
+                    TfbsScoreTrackOverlayInterval {
+                        start_0based: 22,
+                        end_0based_exclusive: 28,
+                        label: Some("peak_b".to_string()),
+                        score: Some(42.0),
+                        strand: None,
+                    },
+                ],
             }],
             correlation_summary: None,
             tracks: vec![
@@ -1132,9 +1306,14 @@ mod tests {
         assert!(svg.contains("p73 (MA0828.2)"));
         assert!(svg.contains("SP1 (MA0079.3)"));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
         assert!(svg.contains("base-pair position in selected span"));
         assert!(svg.contains("#0e7490"));
         assert!(svg.contains("#b45309"));
+        assert!(svg.contains("imported BED intervals = violet"));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-overlay-row\""));
+        assert!(svg.contains("data-gentle-role=\"tfbs-score-track-overlay-interval\""));
+        assert!(svg.contains("cutrun_tp73 (tp73_cutrun.bed)"));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-line\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-arrow\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-tss-label-bg\""));
@@ -1166,6 +1345,7 @@ mod tests {
             motifs_requested: vec!["REST".to_string()],
             global_max_score: 4.0,
             tss_markers: vec![],
+            overlay_tracks: vec![],
             correlation_summary: None,
             tracks: vec![TfbsScoreTrackRow {
                 tf_id: "REST".to_string(),
@@ -1229,6 +1409,7 @@ mod tests {
             motifs_requested: vec!["SP1".to_string(), "MYC".to_string(), "PATZ1".to_string()],
             global_max_score: 4.2,
             tss_markers: vec![],
+            overlay_tracks: vec![],
             correlation_summary: Some(crate::engine::TfbsScoreTrackCorrelationSummary {
                 signal_source: "max(forward_score, reverse_score)".to_string(),
                 smoothing_method: "centered_boxcar".to_string(),

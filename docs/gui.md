@@ -3234,6 +3234,10 @@ Safety behavior:
   - each motif row now includes a `PSSM…` action that opens the shared
     `JASPAR Expert...` window focused on that motif, which is a better home
     for matrix/logo interpretation than the cramped score-track side rail
+  - when the active sequence already carries imported BED-style track features
+    (for example projected CUT&RUN peaks), the same inspector now shows those
+    intervals as extra shared overlay rows underneath the motif score tracks
+    instead of leaving them trapped in the generic feature map alone
   - export the cached view through the shared `RenderTfbsScoreTracksSvg`
     engine route instead of a GUI-only painter
 - Threshold fields remain relevant for hit annotation and `TFBS scan`; the

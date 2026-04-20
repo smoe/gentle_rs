@@ -676,6 +676,36 @@ pub struct TfbsScoreTrackTssMarker {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One external interval projected into the selected TFBS score-track span.
+pub struct TfbsScoreTrackOverlayInterval {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One external interval-track lane rendered underneath the motif score rows.
+pub struct TfbsScoreTrackOverlayTrack {
+    pub source_kind: String,
+    pub track_name: String,
+    pub display_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file_name: Option<String>,
+    pub interval_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_score: Option<f64>,
+    #[serde(default)]
+    pub intervals: Vec<TfbsScoreTrackOverlayInterval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Portable per-position TF motif score tracks for promoter-design review.
 pub struct TfbsScoreTrackReport {
     pub schema: String,
@@ -703,6 +733,8 @@ pub struct TfbsScoreTrackReport {
     pub global_max_score: f64,
     #[serde(default)]
     pub tss_markers: Vec<TfbsScoreTrackTssMarker>,
+    #[serde(default)]
+    pub overlay_tracks: Vec<TfbsScoreTrackOverlayTrack>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_summary: Option<TfbsScoreTrackCorrelationSummary>,
     #[serde(default)]

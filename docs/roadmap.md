@@ -1181,6 +1181,10 @@ order. Durable architecture constraints and decisions remain in
           renderers and specialist reuse, while the GUI score-track rows now
           prefer a direct `PSSM…` jump into the JASPAR expert instead of
           squeezing the full matrix/logo explanation into the left label lane
+        - the same shared score-track report now also carries imported
+          BED-style overlay rows for stored sequence targets, so projected
+          CUT&RUN peaks can appear underneath the continuous TF tracks in GUI
+          and SVG exports without inventing a second adapter-only track stack
         - `SummarizeTfbsScoreTracks` now also emits TFBS progress events for
           `background calibration` and `target scan`, and both the DNA-window
           TFBS panel and the Promoter design window now show those progress

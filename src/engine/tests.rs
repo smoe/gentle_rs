@@ -7646,6 +7646,78 @@ fn summarize_tfbs_score_tracks_can_cancel_via_progress_callback() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_collects_imported_bed_overlay_tracks() {
+    let mut dna = seq("GGGGCGGGGGGGGCGGGGTTTT");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(4, 9),
+        qualifiers: vec![
+            ("label".into(), Some("peak_a".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_BED_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("gentle_track_source".into(), Some("BED".to_string())),
+            ("gentle_track_name".into(), Some("cutrun_sp1".to_string())),
+            (
+                "gentle_track_file".into(),
+                Some("/tmp/cutrun_sp1.bed".to_string()),
+            ),
+            ("score".into(), Some("12.500000".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(12, 18),
+        qualifiers: vec![
+            ("label".into(), Some("peak_b".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_BED_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("gentle_track_source".into(), Some("BED".to_string())),
+            ("gentle_track_name".into(), Some("cutrun_sp1".to_string())),
+            (
+                "gentle_track_file".into(),
+                Some("/tmp/cutrun_sp1.bed".to_string()),
+            ),
+            ("score".into(), Some("24.000000".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::SummarizeTfbsScoreTracks {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "s".to_string(),
+                span_start_0based: Some(5),
+                span_end_0based_exclusive: Some(15),
+            },
+            motifs: vec!["SP1".to_string()],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            path: None,
+        })
+        .unwrap();
+    let report = result.tfbs_score_tracks.expect("score-track report");
+    assert_eq!(report.overlay_tracks.len(), 1);
+    let overlay = &report.overlay_tracks[0];
+    assert_eq!(overlay.source_kind, "BED");
+    assert_eq!(overlay.track_name, "cutrun_sp1");
+    assert_eq!(overlay.display_label, "cutrun_sp1 (cutrun_sp1.bed)");
+    assert_eq!(overlay.interval_count, 2);
+    assert_eq!(overlay.max_score, Some(24.0));
+    assert_eq!(overlay.intervals.len(), 2);
+    assert_eq!(overlay.intervals[0].start_0based, 5);
+    assert_eq!(overlay.intervals[0].end_0based_exclusive, 9);
+    assert_eq!(overlay.intervals[0].label.as_deref(), Some("peak_a"));
+    assert_eq!(overlay.intervals[1].start_0based, 12);
+    assert_eq!(overlay.intervals[1].end_0based_exclusive, 15);
+    assert_eq!(overlay.intervals[1].label.as_deref(), Some("peak_b"));
+}
+
+#[test]
 fn test_annotate_tfbs_per_tf_override_changes_quantile_threshold() {
     let mut state = ProjectState::default();
     state
