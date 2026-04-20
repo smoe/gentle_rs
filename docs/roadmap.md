@@ -3584,14 +3584,15 @@ Status:
      - per-base coverage
      - cut-site counts
      - compact support clusters inside the anchored ROI window
+   - the same V2 path now accepts either explicit raw-read file paths or
+     prepared raw reads linked from a CUT&RUN catalog entry after
+     `PrepareCutRunDataset`.
    - deterministic regression coverage now exists for:
      - paired-end fragment reconstruction,
      - orphan handling,
-     - saved report list/show access,
-     - coverage/cut-site TSV export.
-   - remaining V2 follow-up:
-     - allow catalog-linked raw-read assets to flow directly into the same V2
-       report path instead of only ad hoc file paths.
+      - prepared raw-read dataset resolution,
+      - saved report list/show access,
+      - coverage/cut-site TSV export.
 
 3. Planned V3:
    - regulatory reasoning over promoter-boundary candidates, TFBS support, and

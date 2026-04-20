@@ -1595,17 +1595,21 @@ Current draft operations:
 - `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
 - `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
 - `ProjectCutRunDataset { seq_id, dataset_id, include_peaks?, include_signal?, clear_existing?, catalog_path?, cache_dir? }`
-- `InterpretCutRunReads { seq_id, input_r1_path, input_r2_path?, input_format?, read_layout?, roi_flank_bp?, seed_filter?, align_config?, deduplicate_fragments?, report_id?, checkpoint_path?, checkpoint_every_reads? }`
+- `InterpretCutRunReads { seq_id, input_r1_path?, input_r2_path?, dataset_id?, catalog_path?, cache_dir?, input_format?, read_layout?, roi_flank_bp?, seed_filter?, align_config?, deduplicate_fragments?, report_id?, checkpoint_path?, checkpoint_every_reads? }`
 - `ListCutRunReadReports { seq_id? }`
 - `ShowCutRunReadReport { report_id }`
 - `ExportCutRunReadCoverage { report_id, path, kind? }`
   - V1 is processed-evidence-first and currently reuses the shared anchored
     `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
-  - V2 is ROI-first and currently interprets ad hoc `FASTA`/`FASTQ` inputs only
-    against one selected genome-anchored region plus deterministic flanks.
+  - V2 is ROI-first and interprets either ad hoc `FASTA`/`FASTQ` inputs or
+    prepared catalog-linked raw reads against one selected genome-anchored
+    region plus deterministic flanks.
   - paired-end interpretation is first-class: mates are paired by normalized
     read id, concordant pairs emit fragment spans, and orphan/single-ended
     observations are retained as explicit report rows instead of being dropped.
+  - when `dataset_id` is provided, the engine resolves `reads_r1` / `reads_r2`
+    from the prepared CUT&RUN manifest and infers the raw-read format from the
+    prepared file names.
   - `ExportCutRunReadCoverage` writes TSV summaries for one saved read report:
     `coverage`, `cut_sites`, or `fragments`.
   - default catalog: `assets/cutrun.json`; default prepared-cache root:

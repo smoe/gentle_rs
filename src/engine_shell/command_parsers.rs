@@ -5739,30 +5739,38 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             })
         }
         "interpret" => {
-            if tokens.len() < 4 {
+            if tokens.len() < 3 {
                 return Err(
-                    "cutrun interpret requires SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
+                    "cutrun interpret requires SEQ_ID plus either INPUT_R1 [INPUT_R2] or --dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
                         .to_string(),
                 );
             }
             let seq_id = tokens[2].trim().to_string();
-            let input_r1_path = tokens[3].trim().to_string();
             if seq_id.is_empty() {
                 return Err("cutrun interpret requires a non-empty SEQ_ID".to_string());
             }
-            if input_r1_path.is_empty() {
-                return Err("cutrun interpret requires a non-empty INPUT_R1".to_string());
-            }
-            let mut idx = 4usize;
+            let mut idx = 3usize;
+            let mut input_r1_path: Option<String> = None;
             let mut input_r2_path: Option<String> = None;
             if idx < tokens.len() && !tokens[idx].starts_with("--") {
                 let raw = tokens[idx].trim();
                 if raw.is_empty() {
-                    return Err("cutrun interpret INPUT_R2 must not be empty".to_string());
+                    return Err("cutrun interpret INPUT_R1 must not be empty".to_string());
                 }
-                input_r2_path = Some(raw.to_string());
+                input_r1_path = Some(raw.to_string());
                 idx += 1;
+                if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                    let raw = tokens[idx].trim();
+                    if raw.is_empty() {
+                        return Err("cutrun interpret INPUT_R2 must not be empty".to_string());
+                    }
+                    input_r2_path = Some(raw.to_string());
+                    idx += 1;
+                }
             }
+            let mut dataset_id: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
             let mut input_format = CutRunInputFormat::Fasta;
             let mut read_layout = CutRunReadLayout::SingleEnd;
             let mut roi_flank_bp = 150usize;
@@ -5774,6 +5782,29 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             let mut deduplicate_fragments = true;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--dataset" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--dataset", "cutrun interpret")?;
+                        if raw.trim().is_empty() {
+                            return Err("cutrun interpret --dataset must not be empty".to_string());
+                        }
+                        dataset_id = Some(raw);
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "cutrun interpret",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "cutrun interpret",
+                        )?);
+                    }
                     "--format" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--format", "cutrun interpret")?;
@@ -5910,10 +5941,25 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                     other => return Err(format!("Unknown option '{other}' for cutrun interpret")),
                 }
             }
+            if dataset_id.is_some() && input_r1_path.is_some() {
+                return Err(
+                    "cutrun interpret accepts either positional INPUT_R1 [INPUT_R2] or --dataset DATASET_ID, not both"
+                        .to_string(),
+                );
+            }
+            if dataset_id.is_none() && input_r1_path.is_none() {
+                return Err(
+                    "cutrun interpret requires INPUT_R1 [INPUT_R2] or --dataset DATASET_ID"
+                        .to_string(),
+                );
+            }
             Ok(ShellCommand::CutRunInterpret {
                 seq_id,
                 input_r1_path,
                 input_r2_path,
+                dataset_id,
+                catalog_path,
+                cache_dir,
                 input_format,
                 read_layout,
                 roi_flank_bp,

@@ -163,6 +163,17 @@ const MAX_RECENT_PROJECTS: usize = 12;
 const MAX_BACKGROUND_JOB_EVENTS: usize = 200;
 const MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS: usize = 120;
 const MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES: usize = 240;
+const BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID: &str =
+    "background_jobs_recent_job_events_scroll";
+const BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID: &str =
+    "background_jobs_retry_snapshots_removed_preview_scroll";
+const BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID: &str =
+    "background_jobs_retry_snapshots_retained_preview_scroll";
+const BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID: &str =
+    "background_jobs_retry_snapshots_scroll";
+const BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID: &str =
+    "background_jobs_retry_cleanup_audit_scroll";
+const OPERATION_HISTORY_SCROLL_ID: &str = "operation_history_scroll";
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const RACK_WORKSPACE_METADATA_KEY: &str = "gui.rack.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
@@ -19597,6 +19608,7 @@ Error: `{err}`"
             ui.small("No UniProt entries imported in this project yet.");
         } else {
             egui::ScrollArea::vertical()
+                .id_salt("protein_evidence_recent_uniprot_entries_scroll")
                 .max_height(180.0)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -19652,6 +19664,7 @@ Error: `{err}`"
             );
         } else {
             egui::ScrollArea::vertical()
+                .id_salt("protein_evidence_recent_projections_scroll")
                 .max_height(160.0)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -19804,6 +19817,7 @@ Error: `{err}`"
             ui.small("No Ensembl protein entries fetched in this project yet.");
         } else {
             egui::ScrollArea::vertical()
+                .id_salt("protein_evidence_recent_ensembl_entries_scroll")
                 .max_height(180.0)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -20540,6 +20554,7 @@ Error: `{err}`"
                     .default_size(Vec2::new(760.0, 560.0))
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
+                            .id_salt("prepare_genome_embedded_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 close_requested = self.render_reference_genome_prepare_contents(ui);
@@ -20568,6 +20583,7 @@ Error: `{err}`"
             let mut close_requested = false;
             crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                 egui::ScrollArea::vertical()
+                    .id_salt("prepare_genome_viewport_scroll")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         close_requested = self.render_reference_genome_prepare_contents(ui);
@@ -20736,6 +20752,7 @@ Error: `{err}`"
                     dialog.preview.skipped_entries.len()
                 ));
                 egui::ScrollArea::vertical()
+                    .id_salt("ensembl_catalog_update_updates_scroll")
                     .max_height(220.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -20897,6 +20914,7 @@ Error: `{err}`"
                     dialog.report.collection_filter
                 ));
                 egui::ScrollArea::vertical()
+                    .id_salt("ensembl_candidates_scroll")
                     .max_height(320.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -22425,6 +22443,7 @@ Error: `{err}`"
                             ui.label("No prepared references found for this catalog/cache.");
                         } else {
                             egui::ScrollArea::vertical()
+                                .id_salt("prepared_genome_inspector_scroll")
                                 .max_height(320.0)
                                 .show(ui, |ui| {
                                     scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -23807,6 +23826,7 @@ Error: `{err}`"
                         ui.small("Nothing to clean in selected cache roots.");
                     } else {
                         egui::ScrollArea::vertical()
+                            .id_salt("cache_cleanup_discovered_items_scroll")
                             .max_height(260.0)
                             .show(ui, |ui| {
                                 egui::Grid::new("cache_cleanup_grid")
@@ -26072,12 +26092,14 @@ Error: `{err}`"
                     .default_size(Vec2::new(1040.0, 820.0))
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
+                            .id_salt("gibson_embedded_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
                     });
             } else {
                 crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     egui::ScrollArea::vertical()
+                        .id_salt("gibson_viewport_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
                 });
@@ -26348,6 +26370,7 @@ Error: `{err}`"
                         .default_size(Vec2::new(980.0, 760.0))
                         .show(ctx, |ui| {
                             egui::ScrollArea::vertical()
+                                .id_salt("arrangement_gel_embedded_scroll")
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
                                     close_requested =
@@ -26364,6 +26387,7 @@ Error: `{err}`"
                         egui::CentralPanel::default(),
                         |ui| {
                             egui::ScrollArea::vertical()
+                                .id_salt("arrangement_gel_viewport_scroll")
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
                                     close_requested =
@@ -26469,6 +26493,7 @@ Error: `{err}`"
                     .default_size(Vec2::new(1200.0, 840.0))
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical()
+                            .id_salt("pcr_design_embedded_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 close_requested = self.render_pcr_design_contents(ui, ctx)
@@ -26481,6 +26506,7 @@ Error: `{err}`"
                 let mut close_requested = false;
                 crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     egui::ScrollArea::vertical()
+                        .id_salt("pcr_design_viewport_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             close_requested = self.render_pcr_design_contents(ui, ctx)
@@ -26596,6 +26622,7 @@ Error: `{err}`"
                         .default_size(Vec2::new(1180.0, 820.0))
                         .show(ctx, |ui| {
                             egui::ScrollArea::vertical()
+                                .id_salt("sequencing_confirmation_embedded_scroll")
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
                                     close_requested =
@@ -26612,6 +26639,7 @@ Error: `{err}`"
                         egui::CentralPanel::default(),
                         |ui| {
                             egui::ScrollArea::vertical()
+                                .id_salt("sequencing_confirmation_viewport_scroll")
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
                                     close_requested =
@@ -40797,6 +40825,7 @@ Error: `{err}`"
                 }
                 ui.separator();
                 egui::ScrollArea::vertical()
+                    .id_salt("configuration_dialog_scroll")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41018,6 +41047,7 @@ Error: `{err}`"
                         ui.small("No matching commands");
                     } else {
                         egui::ScrollArea::vertical()
+                            .id_salt("command_palette_results_scroll")
                             .max_height(400.0)
                             .show(ui, |ui| {
                                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41382,7 +41412,7 @@ Error: `{err}`"
                 ui.separator();
                 ui.strong("Recent job events");
                 egui::ScrollArea::vertical()
-                    .id_salt("background_jobs_recent_job_events_scroll")
+                    .id_salt(BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID)
                     .max_height(180.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41587,7 +41617,9 @@ Error: `{err}`"
                         ui.columns(2, |columns| {
                             columns[0].small("Would be removed");
                             egui::ScrollArea::vertical()
-                                .id_salt("background_jobs_retry_snapshots_removed_preview_scroll")
+                                .id_salt(
+                                    BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
+                                )
                                 .max_height(120.0)
                                 .show(&mut columns[0], |ui| {
                                     if filtered_snapshots.is_empty() {
@@ -41606,7 +41638,9 @@ Error: `{err}`"
                                 });
                             columns[1].small("Would remain");
                             egui::ScrollArea::vertical()
-                                .id_salt("background_jobs_retry_snapshots_retained_preview_scroll")
+                                .id_salt(
+                                    BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
+                                )
                                 .max_height(120.0)
                                 .show(&mut columns[1], |ui| {
                                     if dry_run_diff.retained.is_empty() {
@@ -41706,7 +41740,7 @@ Error: `{err}`"
                     self.retry_argument_snapshots.len()
                 ));
                 egui::ScrollArea::vertical()
-                    .id_salt("background_jobs_retry_snapshots_scroll")
+                    .id_salt(BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID)
                     .max_height(160.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41881,7 +41915,7 @@ Error: `{err}`"
                     self.retry_snapshot_cleanup_audit.len()
                 ));
                 egui::ScrollArea::vertical()
-                    .id_salt("background_jobs_retry_cleanup_audit_scroll")
+                    .id_salt(BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID)
                     .max_height(120.0)
                     .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
@@ -41957,7 +41991,9 @@ Error: `{err}`"
                 if history_rows.is_empty() {
                     ui.small("No operations recorded yet.");
                 } else {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt(OPERATION_HISTORY_SCROLL_ID)
+                        .show(ui, |ui| {
                         scroll_input_policy::apply_scrollarea_keyboard_navigation(
                             ui,
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
@@ -43651,7 +43687,11 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
+        BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+        BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
+        BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
+        BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BACKGROUND_JOB_HISTORY_METADATA_KEY,
         BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
         CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         ContainerRow, DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
@@ -43662,10 +43702,11 @@ mod tests {
         GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
-        PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
-        PrepareGenomeFailureRecovery, PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
+        OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
+        PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
+        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
+        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
         PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
         RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
         ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
@@ -45198,6 +45239,24 @@ mod tests {
             4,
             "delete 3"
         ));
+    }
+
+    #[test]
+    fn background_jobs_and_history_scroll_area_ids_are_unique_and_stable() {
+        let ids = [
+            BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
+            BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
+            BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
+            BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID,
+            BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+            OPERATION_HISTORY_SCROLL_ID,
+        ];
+        let unique: HashSet<_> = ids.into_iter().collect();
+        assert_eq!(unique.len(), ids.len(), "duplicate auxiliary scroll id salt");
+        assert!(ids.iter().all(|id| id.ends_with("_scroll")));
+        assert!(
+            ids.iter().all(|id| id.starts_with("background_jobs_") || *id == OPERATION_HISTORY_SCROLL_ID)
+        );
     }
 
     #[test]

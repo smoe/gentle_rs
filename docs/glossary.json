@@ -1874,8 +1874,8 @@
             "cli-direct"
          ],
          "path": "cutrun interpret",
-         "summary": "Interpret CUT&RUN FASTA/FASTQ reads against one anchored ROI and save a read report.",
-         "usage": "cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
+         "summary": "Interpret CUT&RUN FASTA/FASTQ reads or prepared dataset-backed raw reads against one anchored ROI and save a read report.",
+         "usage": "cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
       },
       {
          "aliases": [],

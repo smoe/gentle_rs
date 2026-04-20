@@ -88,6 +88,8 @@ Catalog path note:
   - `cutrun interpret` maps ad hoc `FASTA`/`FASTQ` reads only against one
     selected genome-anchored ROI plus deterministic flanks and stores a shared
     engine-owned read report for later inspection/export
+  - the same `cutrun interpret` route can also resolve prepared raw reads from
+    `cutrun prepare` via `--dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]`
   - `cutrun export-coverage` writes TSV summaries for per-base coverage,
     cut-site density, or derived fragment spans from one saved CUT&RUN read
     report
@@ -1458,6 +1460,7 @@ cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.jso
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun project grch38_tp53 toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun --clear-existing
 cargo run --bin gentle_cli -- cutrun interpret grch38_tp53 reads_r1.fastq.gz reads_r2.fastq.gz --format fastq --layout paired_end --flank-bp 150 --report-id tp53_cutrun_reads --seed-kmer-len 9 --min-seed-matches 2 --max-mismatches 4 --min-identity 0.9 --max-fragment-span-bp 800
+cargo run --bin gentle_cli -- cutrun interpret grch38_tp53 --dataset toy_ctcf_reads --catalog assets/cutrun.json --cache-dir data/cutrun --report-id tp53_cutrun_reads_from_dataset
 cargo run --bin gentle_cli -- cutrun list-read-reports grch38_tp53
 cargo run --bin gentle_cli -- cutrun show-read-report tp53_cutrun_reads
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.coverage.tsv --kind coverage

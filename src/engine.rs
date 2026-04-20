@@ -2954,9 +2954,16 @@ pub enum Operation {
     },
     InterpretCutRunReads {
         seq_id: SeqId,
-        input_r1_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_r1_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         input_r2_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dataset_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
         #[serde(default)]
         input_format: CutRunInputFormat,
         #[serde(default)]

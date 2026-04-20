@@ -3480,6 +3480,10 @@ pub struct CutRunPreparedManifest {
     pub peaks: Option<CutRunPreparedAssetManifest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signal: Option<CutRunPreparedAssetManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reads_r1: Option<CutRunPreparedAssetManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reads_r2: Option<CutRunPreparedAssetManifest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3529,6 +3533,8 @@ pub struct CutRunDatasetStatus {
     pub read_layout: CutRunReadLayout,
     pub peaks: CutRunPreparedAssetStatus,
     pub signal: CutRunPreparedAssetStatus,
+    pub reads_r1: CutRunPreparedAssetStatus,
+    pub reads_r2: CutRunPreparedAssetStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

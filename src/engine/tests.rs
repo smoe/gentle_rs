@@ -15899,8 +15899,12 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
     let root = td.path();
     let peaks_path = root.join("toy_peaks.bed");
     let signal_path = root.join("toy_signal.bw");
+    let reads_r1_path = root.join("toy_reads_r1.fastq");
+    let reads_r2_path = root.join("toy_reads_r2.fastq");
     fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
     fs::write(&signal_path, "placeholder").expect("write signal");
+    fs::write(&reads_r1_path, "@read1/1\nACGT\n+\nIIII\n").expect("write reads r1");
+    fs::write(&reads_r2_path, "@read1/2\nACGT\n+\nIIII\n").expect("write reads r2");
     let catalog_path = root.join("cutrun.catalog.json");
     fs::write(
         &catalog_path,
@@ -15910,11 +15914,16 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
     "peaks_local": "{}",
-    "signal_local": "{}"
+    "signal_local": "{}",
+    "reads_r1_local": "{}",
+    "reads_r2_local": "{}",
+    "read_layout": "paired_end"
   }}
 }}"#,
             peaks_path.display(),
-            signal_path.display()
+            signal_path.display(),
+            reads_r1_path.display(),
+            reads_r2_path.display()
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -15935,6 +15944,9 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
     assert!(status.prepared);
     assert!(status.peaks.prepared);
     assert!(status.signal.prepared);
+    assert!(status.reads_r1.prepared);
+    assert!(status.reads_r2.prepared);
+    assert_eq!(status.read_layout, CutRunReadLayout::PairedEnd);
     assert!(
         status
             .install_dir
@@ -15951,6 +15963,128 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
         .expect("show CUT&RUN status");
     assert!(status_check.manifest_path.is_some());
     assert!(status_check.manifest.is_some());
+    assert!(
+        status_check
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.reads_r1.as_ref())
+            .is_some()
+    );
+    assert!(
+        status_check
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.reads_r2.as_ref())
+            .is_some()
+    );
+}
+
+#[test]
+fn test_interpret_cutrun_reads_resolves_prepared_dataset_raw_reads() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_test_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let reads_r1_path = root.join("toy_reads_r1.fastq");
+    let reads_r2_path = root.join("toy_reads_r2.fastq");
+    fs::write(
+        &reads_r1_path,
+        "@pair1/1\nGCCG\n+\nIIII\n@orphan_r1/1\nTAGC\n+\nIIII\n",
+    )
+    .expect("write dataset reads r1");
+    fs::write(
+        &reads_r2_path,
+        "@pair1/2\nGTAA\n+\nIIII\n@orphan_r2/2\nACGG\n+\nIIII\n",
+    )
+    .expect("write dataset reads r2");
+    let catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun_reads": {{
+    "summary": "Toy CUT&RUN raw reads",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "reads_r1_local": "{}",
+    "reads_r2_local": "{}",
+    "read_layout": "paired_end"
+  }}
+}}"#,
+            reads_r1_path.display(),
+            reads_r2_path.display()
+        ),
+    )
+    .expect("write CUT&RUN raw-read catalog");
+    let cache_dir = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_cutrun_reads".to_string(),
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare CUT&RUN dataset raw reads");
+
+    let result = engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: None,
+            input_r2_path: None,
+            dataset_id: Some("toy_cutrun_reads".to_string()),
+            catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 2,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads_from_dataset".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret CUT&RUN dataset-backed reads");
+    let report = result
+        .cutrun_read_report
+        .expect("dataset-backed CUT&RUN report");
+    assert_eq!(report.input_format, CutRunInputFormat::Fastq);
+    assert_eq!(report.read_layout, CutRunReadLayout::PairedEnd);
+    assert!(report.input_r1_path.contains("cutrun_cache"));
+    assert!(report.input_r2_path.as_deref().unwrap_or("").contains("cutrun_cache"));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("resolved CUT&RUN raw reads from prepared dataset"))
+    );
+    assert_eq!(report.fragment_count, 3);
+    assert_eq!(report.concordant_pair_count, 1);
 }
 
 #[cfg(unix)]
@@ -16152,8 +16286,11 @@ fn test_interpret_cutrun_reads_builds_paired_end_roi_report_with_orphans() {
     let result = engine
         .apply(Operation::InterpretCutRunReads {
             seq_id: "toy_cutrun_roi".to_string(),
-            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
             input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
             input_format: CutRunInputFormat::Fastq,
             read_layout: CutRunReadLayout::PairedEnd,
             roi_flank_bp: 0,
@@ -16262,8 +16399,11 @@ fn test_export_cutrun_read_coverage_writes_cut_sites_summary() {
     engine
         .apply(Operation::InterpretCutRunReads {
             seq_id: "toy_cutrun_roi".to_string(),
-            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
             input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
             input_format: CutRunInputFormat::Fastq,
             read_layout: CutRunReadLayout::PairedEnd,
             roi_flank_bp: 0,

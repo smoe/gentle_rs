@@ -684,11 +684,23 @@ impl GentleEngine {
             entry.signal_local.as_deref(),
             entry.signal_remote.as_deref(),
         );
-        if peaks_source.is_none() && signal_source.is_none() {
+        let reads_r1_source = cutrun_entry_source(
+            entry.reads_r1_local.as_deref(),
+            entry.reads_r1_remote.as_deref(),
+        );
+        let reads_r2_source = cutrun_entry_source(
+            entry.reads_r2_local.as_deref(),
+            entry.reads_r2_remote.as_deref(),
+        );
+        if peaks_source.is_none()
+            && signal_source.is_none()
+            && reads_r1_source.is_none()
+            && reads_r2_source.is_none()
+        {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "CUT&RUN dataset '{}' does not declare any processed peaks/signal assets",
+                    "CUT&RUN dataset '{}' does not declare any prepared peaks, signal, or raw-read assets",
                     resolved_dataset_id
                 ),
             });
@@ -711,6 +723,18 @@ impl GentleEngine {
                 )
             })
             .transpose()?;
+        let reads_r1 = reads_r1_source
+            .as_deref()
+            .map(|source| {
+                self.materialize_cutrun_asset(source, &entry_base_dir, &install_dir, "reads_r1.fastq")
+            })
+            .transpose()?;
+        let reads_r2 = reads_r2_source
+            .as_deref()
+            .map(|source| {
+                self.materialize_cutrun_asset(source, &entry_base_dir, &install_dir, "reads_r2.fastq")
+            })
+            .transpose()?;
 
         let manifest = CutRunPreparedManifest {
             schema: CUTRUN_PREPARED_MANIFEST_SCHEMA.to_string(),
@@ -720,6 +744,8 @@ impl GentleEngine {
             install_dir: install_dir.display().to_string(),
             peaks,
             signal,
+            reads_r1,
+            reads_r2,
         };
         self.write_cutrun_prepared_manifest(
             &install_dir.join(CUTRUN_MANIFEST_FILE_NAME),
@@ -887,6 +913,14 @@ impl GentleEngine {
             entry.signal_local.as_deref(),
             entry.signal_remote.as_deref(),
         );
+        let reads_r1_source = cutrun_entry_source(
+            entry.reads_r1_local.as_deref(),
+            entry.reads_r1_remote.as_deref(),
+        );
+        let reads_r2_source = cutrun_entry_source(
+            entry.reads_r2_local.as_deref(),
+            entry.reads_r2_remote.as_deref(),
+        );
         let peaks_status = Self::cutrun_asset_status_from_manifest(
             "peaks",
             peaks_source,
@@ -897,10 +931,24 @@ impl GentleEngine {
             signal_source,
             manifest.as_ref().and_then(|m| m.signal.as_ref()),
         );
-        let configured_assets =
-            usize::from(peaks_status.configured) + usize::from(signal_status.configured);
-        let prepared_assets =
-            usize::from(peaks_status.prepared) + usize::from(signal_status.prepared);
+        let reads_r1_status = Self::cutrun_asset_status_from_manifest(
+            "reads_r1",
+            reads_r1_source,
+            manifest.as_ref().and_then(|m| m.reads_r1.as_ref()),
+        );
+        let reads_r2_status = Self::cutrun_asset_status_from_manifest(
+            "reads_r2",
+            reads_r2_source,
+            manifest.as_ref().and_then(|m| m.reads_r2.as_ref()),
+        );
+        let configured_assets = usize::from(peaks_status.configured)
+            + usize::from(signal_status.configured)
+            + usize::from(reads_r1_status.configured)
+            + usize::from(reads_r2_status.configured);
+        let prepared_assets = usize::from(peaks_status.prepared)
+            + usize::from(signal_status.prepared)
+            + usize::from(reads_r1_status.prepared)
+            + usize::from(reads_r2_status.prepared);
         let prepared = configured_assets > 0 && configured_assets == prepared_assets;
         Ok(CutRunDatasetStatus {
             schema: CUTRUN_DATASET_STATUS_SCHEMA.to_string(),
@@ -929,6 +977,8 @@ impl GentleEngine {
             read_layout: entry.read_layout,
             peaks: peaks_status,
             signal: signal_status,
+            reads_r1: reads_r1_status,
+            reads_r2: reads_r2_status,
             manifest_path: manifest_path
                 .exists()
                 .then(|| manifest_path.display().to_string()),
@@ -1396,6 +1446,135 @@ impl GentleEngine {
             }
             CutRunInputFormat::Fastq => Self::parse_cutrun_fastq_records(path),
         }
+    }
+
+    fn infer_cutrun_input_format_from_path(path: &str) -> Result<CutRunInputFormat, EngineError> {
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".fa")
+            || lower.ends_with(".fasta")
+            || lower.ends_with(".fa.gz")
+            || lower.ends_with(".fasta.gz")
+        {
+            return Ok(CutRunInputFormat::Fasta);
+        }
+        if lower.ends_with(".fq")
+            || lower.ends_with(".fastq")
+            || lower.ends_with(".fq.gz")
+            || lower.ends_with(".fastq.gz")
+        {
+            return Ok(CutRunInputFormat::Fastq);
+        }
+        Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not infer CUT&RUN input format from '{}' (expected .fa/.fasta/.fq/.fastq with optional .gz)",
+                path
+            ),
+        })
+    }
+
+    fn resolve_cutrun_interpret_inputs(
+        &self,
+        input_r1_path: Option<&str>,
+        input_r2_path: Option<&str>,
+        input_format: CutRunInputFormat,
+        read_layout: CutRunReadLayout,
+        dataset_id: Option<&str>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<
+        (
+            String,
+            Option<String>,
+            CutRunInputFormat,
+            CutRunReadLayout,
+            Vec<String>,
+        ),
+        EngineError,
+    > {
+        let trimmed_r1 = input_r1_path.map(str::trim).filter(|value| !value.is_empty());
+        let trimmed_r2 = input_r2_path.map(str::trim).filter(|value| !value.is_empty());
+        let trimmed_dataset = dataset_id.map(str::trim).filter(|value| !value.is_empty());
+        if trimmed_dataset.is_some() && trimmed_r1.is_some() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "CUT&RUN interpret accepts either explicit input paths or dataset_id, not both"
+                        .to_string(),
+            });
+        }
+        if let Some(dataset_id) = trimmed_dataset {
+            let status = self.show_cutrun_dataset_status(dataset_id, catalog_path, cache_dir)?;
+            let manifest = status.manifest.ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "CUT&RUN dataset '{}' has not been prepared yet; run prepare before dataset-backed interpret",
+                    status.dataset_id
+                ),
+            })?;
+            let r1 = manifest
+                .reads_r1
+                .as_ref()
+                .map(|asset| asset.local_path.clone())
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prepared CUT&RUN dataset '{}' does not contain reads_r1",
+                        status.dataset_id
+                    ),
+                })?;
+            let resolved_layout = status.read_layout;
+            let r2 = match resolved_layout {
+                CutRunReadLayout::SingleEnd => manifest.reads_r2.as_ref().map(|asset| asset.local_path.clone()),
+                CutRunReadLayout::PairedEnd => Some(
+                    manifest
+                        .reads_r2
+                        .as_ref()
+                        .map(|asset| asset.local_path.clone())
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Prepared CUT&RUN dataset '{}' is paired-end but does not contain reads_r2",
+                                status.dataset_id
+                            ),
+                        })?,
+                ),
+            };
+            let resolved_format = Self::infer_cutrun_input_format_from_path(&r1)?;
+            if let Some(r2_path) = r2.as_deref() {
+                let r2_format = Self::infer_cutrun_input_format_from_path(r2_path)?;
+                if r2_format != resolved_format {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Prepared CUT&RUN dataset '{}' uses mismatched raw-read formats between R1 and R2",
+                            status.dataset_id
+                        ),
+                    });
+                }
+            }
+            return Ok((
+                r1,
+                r2,
+                resolved_format,
+                resolved_layout,
+                vec![format!(
+                    "resolved CUT&RUN raw reads from prepared dataset '{}'",
+                    status.dataset_id
+                )],
+            ));
+        }
+        let r1 = trimmed_r1.ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "CUT&RUN interpret requires INPUT_R1 or --dataset".to_string(),
+        })?;
+        Ok((
+            r1.to_string(),
+            trimmed_r2.map(|value| value.to_string()),
+            input_format,
+            read_layout,
+            vec![],
+        ))
     }
 
     fn build_cutrun_input_units(
@@ -2008,8 +2187,11 @@ impl GentleEngine {
     pub fn interpret_cutrun_reads(
         &mut self,
         seq_id: &str,
-        input_r1_path: &str,
+        input_r1_path: Option<&str>,
         input_r2_path: Option<&str>,
+        dataset_id: Option<&str>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
         input_format: CutRunInputFormat,
         read_layout: CutRunReadLayout,
         roi_flank_bp: usize,
@@ -2020,9 +2202,24 @@ impl GentleEngine {
         checkpoint_path: Option<&str>,
         checkpoint_every_reads: usize,
     ) -> Result<CutRunReadReport, EngineError> {
-        match read_layout {
+        let (
+            resolved_input_r1_path,
+            resolved_input_r2_path,
+            resolved_input_format,
+            resolved_read_layout,
+            input_resolution_warnings,
+        ) = self.resolve_cutrun_interpret_inputs(
+            input_r1_path,
+            input_r2_path,
+            input_format,
+            read_layout,
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        )?;
+        match resolved_read_layout {
             CutRunReadLayout::SingleEnd => {
-                if input_r2_path.is_some() {
+                if resolved_input_r2_path.is_some() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "CUT&RUN single-end interpretation does not accept input_r2_path"
@@ -2031,7 +2228,8 @@ impl GentleEngine {
                 }
             }
             CutRunReadLayout::PairedEnd => {
-                if input_r2_path
+                if resolved_input_r2_path
+                    .as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .is_none()
@@ -2066,10 +2264,8 @@ impl GentleEngine {
         };
         let checkpoint_every_reads = checkpoint_every_reads.max(1);
         let mut warnings = Vec::<String>::new();
-        if let Some(path) = checkpoint_path
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
+        warnings.extend(input_resolution_warnings);
+        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
             warnings.push(format!(
                 "checkpoint snapshots enabled every {} unit(s) at '{}'",
                 checkpoint_every_reads, path
@@ -2077,12 +2273,14 @@ impl GentleEngine {
         }
         let window = self.build_cutrun_reference_window(seq_id, roi_flank_bp)?;
         warnings.extend(window.warnings.clone());
-        let input_r1_records = Self::parse_cutrun_input_records(input_r1_path, input_format)?;
-        let input_r2_records = match input_r2_path
+        let input_r1_records =
+            Self::parse_cutrun_input_records(&resolved_input_r1_path, resolved_input_format)?;
+        let input_r2_records = match resolved_input_r2_path
+            .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            Some(path) => Self::parse_cutrun_input_records(path, input_format)?,
+            Some(path) => Self::parse_cutrun_input_records(path, resolved_input_format)?,
             None => vec![],
         };
         let total_record_count = input_r1_records
@@ -2095,7 +2293,11 @@ impl GentleEngine {
             .map(|record| record.sequence.len())
             .sum::<usize>();
         let mean_read_length_bp = total_read_bases as f64 / total_record_count;
-        let units = Self::build_cutrun_input_units(input_r1_records, input_r2_records, read_layout);
+        let units = Self::build_cutrun_input_units(
+            input_r1_records,
+            input_r2_records,
+            resolved_read_layout,
+        );
         let mut mapped_read_bases = 0usize;
         let mut mapped_read_count = 0usize;
         let mut rows = Vec::<CutRunReadUnitRow>::new();
@@ -2144,7 +2346,7 @@ impl GentleEngine {
                 duplicate_count: 1,
                 notes: vec![],
             };
-            match read_layout {
+            match resolved_read_layout {
                 CutRunReadLayout::SingleEnd => {
                     if let Some(placement) = row.r1_placement.clone() {
                         row.status = CutRunReadUnitStatus::SingleMapped;
@@ -2251,10 +2453,10 @@ impl GentleEngine {
                     let snapshot = Self::build_cutrun_report_from_units(
                         &report_id,
                         seq_id,
-                        input_r1_path,
-                        input_r2_path.map(|value| value.to_string()),
-                        input_format,
-                        read_layout,
+                        &resolved_input_r1_path,
+                        resolved_input_r2_path.clone(),
+                        resolved_input_format,
+                        resolved_read_layout,
                         roi_flank_bp,
                         deduplicate_fragments,
                         seed_filter.clone(),
@@ -2281,10 +2483,10 @@ impl GentleEngine {
         let report = Self::build_cutrun_report_from_units(
             &report_id,
             seq_id,
-            input_r1_path,
-            input_r2_path.map(|value| value.to_string()),
-            input_format,
-            read_layout,
+            &resolved_input_r1_path,
+            resolved_input_r2_path,
+            resolved_input_format,
+            resolved_read_layout,
             roi_flank_bp,
             deduplicate_fragments,
             seed_filter.clone(),

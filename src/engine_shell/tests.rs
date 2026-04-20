@@ -4936,6 +4936,9 @@ fn parse_cutrun_interpret() {
             seq_id,
             input_r1_path,
             input_r2_path,
+            dataset_id,
+            catalog_path,
+            cache_dir,
             input_format,
             read_layout,
             roi_flank_bp,
@@ -4947,8 +4950,11 @@ fn parse_cutrun_interpret() {
             checkpoint_every_reads,
         } => {
             assert_eq!(seq_id, "toy_slice");
-            assert_eq!(input_r1_path, "reads_r1.fastq.gz");
+            assert_eq!(input_r1_path.as_deref(), Some("reads_r1.fastq.gz"));
             assert_eq!(input_r2_path.as_deref(), Some("reads_r2.fastq.gz"));
+            assert!(dataset_id.is_none());
+            assert!(catalog_path.is_none());
+            assert!(cache_dir.is_none());
             assert_eq!(input_format, CutRunInputFormat::Fastq);
             assert_eq!(read_layout, CutRunReadLayout::PairedEnd);
             assert_eq!(roi_flank_bp, 0);
@@ -4961,6 +4967,35 @@ fn parse_cutrun_interpret() {
             assert_eq!(report_id.as_deref(), Some("toy_cutrun_reads"));
             assert!(checkpoint_path.is_none());
             assert_eq!(checkpoint_every_reads, 500);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cutrun_interpret_dataset_backed() {
+    let cmd = parse_shell_line(
+        "cutrun interpret toy_slice --dataset toy_ctcf_reads --catalog assets/cutrun.json --cache-dir data/cutrun --report-id toy_cutrun_reads",
+    )
+    .expect("parse dataset-backed CUT&RUN interpret");
+    match cmd {
+        ShellCommand::CutRunInterpret {
+            seq_id,
+            input_r1_path,
+            input_r2_path,
+            dataset_id,
+            catalog_path,
+            cache_dir,
+            report_id,
+            ..
+        } => {
+            assert_eq!(seq_id, "toy_slice");
+            assert!(input_r1_path.is_none());
+            assert!(input_r2_path.is_none());
+            assert_eq!(dataset_id.as_deref(), Some("toy_ctcf_reads"));
+            assert_eq!(catalog_path.as_deref(), Some("assets/cutrun.json"));
+            assert_eq!(cache_dir.as_deref(), Some("data/cutrun"));
+            assert_eq!(report_id.as_deref(), Some("toy_cutrun_reads"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -13910,8 +13945,11 @@ fn execute_cutrun_interpret_list_show_and_export_coverage() {
         &mut engine,
         &ShellCommand::CutRunInterpret {
             seq_id: "toy_cutrun_roi".to_string(),
-            input_r1_path: input_r1.to_string_lossy().to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
             input_r2_path: Some(input_r2.to_string_lossy().to_string()),
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
             input_format: CutRunInputFormat::Fastq,
             read_layout: CutRunReadLayout::PairedEnd,
             roi_flank_bp: 0,
@@ -13999,6 +14037,124 @@ fn execute_cutrun_interpret_list_show_and_export_coverage() {
     assert!(coverage_text.contains("1\t4\t1"));
     assert!(coverage_text.contains("5\t8\t3"));
     assert!(coverage_text.contains("12\t15\t1"));
+}
+
+#[test]
+fn execute_cutrun_interpret_from_prepared_dataset_reads() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_shell_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let reads_r1_path = root.join("toy_reads_r1.fastq");
+    let reads_r2_path = root.join("toy_reads_r2.fastq");
+    fs::write(
+        &reads_r1_path,
+        "@pair1/1\nGCCG\n+\nIIII\n@orphan_r1/1\nTAGC\n+\nIIII\n",
+    )
+    .expect("write shell dataset reads r1");
+    fs::write(
+        &reads_r2_path,
+        "@pair1/2\nGTAA\n+\nIIII\n@orphan_r2/2\nACGG\n+\nIIII\n",
+    )
+    .expect("write shell dataset reads r2");
+    let cutrun_catalog = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog,
+        format!(
+            r#"{{
+  "toy_ctcf_reads": {{
+    "summary": "Toy CUT&RUN raw reads",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "reads_r1_local": "{}",
+    "reads_r2_local": "{}",
+    "read_layout": "paired_end"
+  }}
+}}"#,
+            reads_r1_path.display(),
+            reads_r2_path.display()
+        ),
+    )
+    .expect("write shell CUT&RUN raw-read catalog");
+    let cutrun_cache = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_shell_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunPrepare {
+            dataset_id: "toy_ctcf_reads".to_string(),
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+        },
+    )
+    .expect("prepare shell CUT&RUN raw-read dataset");
+
+    let interpret = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunInterpret {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: None,
+            input_r2_path: None,
+            dataset_id: Some("toy_ctcf_reads".to_string()),
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 2,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads_from_dataset".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        },
+    )
+    .expect("execute dataset-backed CUT&RUN interpret");
+    assert!(interpret.state_changed);
+    assert_eq!(
+        interpret.output["report"]["report_id"].as_str(),
+        Some("toy_cutrun_reads_from_dataset")
+    );
+    assert_eq!(
+        interpret.output["report"]["input_format"].as_str(),
+        Some("fastq")
+    );
+    assert_eq!(
+        interpret.output["report"]["read_layout"].as_str(),
+        Some("paired_end")
+    );
+    assert!(
+        interpret.output["report"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str())
+            .any(|value| value.contains("resolved CUT&RUN raw reads from prepared dataset"))
+    );
 }
 
 #[test]

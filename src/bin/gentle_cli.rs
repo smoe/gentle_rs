@@ -705,7 +705,7 @@ fn usage() {
   gentle_cli cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
   gentle_cli [--state PATH|--project PATH] cutrun list-read-reports [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] cutrun show-read-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n\n  \
@@ -4964,6 +4964,9 @@ mod tests {
                 seq_id,
                 input_r1_path,
                 input_r2_path,
+                dataset_id,
+                catalog_path,
+                cache_dir,
                 input_format,
                 read_layout,
                 roi_flank_bp,
@@ -4975,8 +4978,11 @@ mod tests {
                 checkpoint_every_reads,
             })
                 if seq_id == "toy_slice"
-                    && input_r1_path == "reads_r1.fastq.gz"
+                    && input_r1_path.as_deref() == Some("reads_r1.fastq.gz")
                     && input_r2_path.as_deref() == Some("reads_r2.fastq.gz")
+                    && dataset_id.is_none()
+                    && catalog_path.is_none()
+                    && cache_dir.is_none()
                     && input_format == gentle::engine::CutRunInputFormat::Fastq
                     && read_layout == gentle::engine::CutRunReadLayout::PairedEnd
                     && roi_flank_bp == 0
@@ -4989,6 +4995,45 @@ mod tests {
                     && report_id.as_deref() == Some("toy_cutrun_reads")
                     && checkpoint_path.is_none()
                     && checkpoint_every_reads == 500
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cutrun_interpret_dataset_backed() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cutrun".to_string(),
+            "interpret".to_string(),
+            "toy_slice".to_string(),
+            "--dataset".to_string(),
+            "toy_ctcf_reads".to_string(),
+            "--catalog".to_string(),
+            "assets/cutrun.json".to_string(),
+            "--cache-dir".to_string(),
+            "data/cutrun".to_string(),
+            "--report-id".to_string(),
+            "toy_cutrun_reads".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::CutRunInterpret {
+                seq_id,
+                input_r1_path,
+                input_r2_path,
+                dataset_id,
+                catalog_path,
+                cache_dir,
+                report_id,
+                ..
+            })
+                if seq_id == "toy_slice"
+                    && input_r1_path.is_none()
+                    && input_r2_path.is_none()
+                    && dataset_id.as_deref() == Some("toy_ctcf_reads")
+                    && catalog_path.as_deref() == Some("assets/cutrun.json")
+                    && cache_dir.as_deref() == Some("data/cutrun")
+                    && report_id.as_deref() == Some("toy_cutrun_reads")
         ));
     }
 
