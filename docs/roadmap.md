@@ -1154,6 +1154,12 @@ order. Durable architecture constraints and decisions remain in
           `reverse_only`) plus one per-motif forward-vs-reverse directional
           summary, so cases like TP73/tetramer-style reverse-flank questions
           can ask whether orientation really changes the picture on one gene
+        - the default `max_strands` export is now being promoted from a hidden
+          strand collapse into one strand-expanded all-vs-all matrix:
+          every motif appears twice on each axis in `F` then `R` order, so one
+          matrix shows mixed-orientation pairing directly as adjacent 2x2
+          TF-pair blocks (`F-F / F-R / R-F / R-R`) for loci like TERT before
+          we decide whether a more advanced lag/flanking model is needed
         - the same shared score-track route now also has export parity for that
           synchrony view:
           `RenderTfbsScoreTrackCorrelationSvg` writes one dual heatmap

@@ -395,6 +395,16 @@ impl GentleEngine {
         }
     }
 
+    fn tfbs_track_strand_signal(
+        track: &TfbsScoreTrackRow,
+        strand: TfbsScoreTrackStrandComponent,
+    ) -> &[f64] {
+        match strand {
+            TfbsScoreTrackStrandComponent::Forward => &track.forward_scores,
+            TfbsScoreTrackStrandComponent::Reverse => &track.reverse_scores,
+        }
+    }
+
     fn primary_signal_peak_position(signal: &[f64], track_start_0based: usize) -> Option<usize> {
         signal
             .iter()
@@ -627,6 +637,127 @@ impl GentleEngine {
             Self::summarize_tfbs_score_track_correlation_summary_for_source(tracks, signal_source)
         })
         .collect()
+    }
+
+    fn summarize_tfbs_score_track_cross_strand_correlation_summary(
+        tracks: &[TfbsScoreTrackRow],
+    ) -> Option<TfbsScoreTrackCrossStrandCorrelationSummary> {
+        if tracks.len() < 2 {
+            return None;
+        }
+        let mut rows = vec![];
+        for left_idx in 0..tracks.len() {
+            let left = &tracks[left_idx];
+            for right in tracks.iter().skip(left_idx + 1) {
+                let mut cells = vec![];
+                for (left_strand, right_strand) in [
+                    (
+                        TfbsScoreTrackStrandComponent::Forward,
+                        TfbsScoreTrackStrandComponent::Forward,
+                    ),
+                    (
+                        TfbsScoreTrackStrandComponent::Forward,
+                        TfbsScoreTrackStrandComponent::Reverse,
+                    ),
+                    (
+                        TfbsScoreTrackStrandComponent::Reverse,
+                        TfbsScoreTrackStrandComponent::Forward,
+                    ),
+                    (
+                        TfbsScoreTrackStrandComponent::Reverse,
+                        TfbsScoreTrackStrandComponent::Reverse,
+                    ),
+                ] {
+                    let left_signal = Self::tfbs_track_strand_signal(left, left_strand);
+                    let right_signal = Self::tfbs_track_strand_signal(right, right_strand);
+                    let overlap_window_count = left_signal.len().min(right_signal.len());
+                    if overlap_window_count < 2 {
+                        continue;
+                    }
+                    let left_signal = &left_signal[..overlap_window_count];
+                    let right_signal = &right_signal[..overlap_window_count];
+                    let left_smoothed = Self::smooth_tfbs_track_signal(
+                        left_signal,
+                        Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+                    );
+                    let right_smoothed = Self::smooth_tfbs_track_signal(
+                        right_signal,
+                        Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+                    );
+                    let left_peak =
+                        Self::primary_signal_peak_position(left_signal, left.track_start_0based);
+                    let right_peak =
+                        Self::primary_signal_peak_position(right_signal, right.track_start_0based);
+                    cells.push(TfbsScoreTrackCrossStrandCorrelationCell {
+                        left_strand,
+                        right_strand,
+                        overlap_window_count,
+                        raw_pearson: Self::pearson_correlation(left_signal, right_signal),
+                        smoothed_pearson: Self::pearson_correlation(
+                            &left_smoothed,
+                            &right_smoothed,
+                        ),
+                        raw_spearman: Self::spearman_correlation(left_signal, right_signal),
+                        smoothed_spearman: Self::spearman_correlation(
+                            &left_smoothed,
+                            &right_smoothed,
+                        ),
+                        signed_primary_peak_offset_bp: match (left_peak, right_peak) {
+                            (Some(left_peak), Some(right_peak)) => {
+                                Some(right_peak as i64 - left_peak as i64)
+                            }
+                            _ => None,
+                        },
+                    });
+                }
+                if cells.is_empty() {
+                    continue;
+                }
+                rows.push(TfbsScoreTrackCrossStrandCorrelationRow {
+                    left_tf_id: left.tf_id.clone(),
+                    left_tf_name: left.tf_name.clone(),
+                    right_tf_id: right.tf_id.clone(),
+                    right_tf_name: right.tf_name.clone(),
+                    cells,
+                });
+            }
+        }
+        if rows.is_empty() {
+            return None;
+        }
+        rows.sort_by(|left, right| {
+            let left_smoothed = left
+                .cells
+                .iter()
+                .map(|cell| cell.smoothed_spearman.abs())
+                .fold(0.0_f64, f64::max);
+            let right_smoothed = right
+                .cells
+                .iter()
+                .map(|cell| cell.smoothed_spearman.abs())
+                .fold(0.0_f64, f64::max);
+            let left_raw = left
+                .cells
+                .iter()
+                .map(|cell| cell.raw_spearman.abs())
+                .fold(0.0_f64, f64::max);
+            let right_raw = right
+                .cells
+                .iter()
+                .map(|cell| cell.raw_spearman.abs())
+                .fold(0.0_f64, f64::max);
+            right_smoothed
+                .total_cmp(&left_smoothed)
+                .then(right_raw.total_cmp(&left_raw))
+                .then(left.left_tf_id.cmp(&right.left_tf_id))
+                .then(left.right_tf_id.cmp(&right.right_tf_id))
+        });
+        Some(TfbsScoreTrackCrossStrandCorrelationSummary {
+            smoothing_method: "centered_boxcar".to_string(),
+            smoothing_window_bp: Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+            pair_count: rows.len(),
+            rows,
+        })
     }
 
     fn collect_tfbs_score_track_background_scores(
@@ -1122,6 +1253,11 @@ impl GentleEngine {
         } else {
             vec![]
         };
+        let cross_strand_correlation_summary = if include_correlation_summary {
+            Self::summarize_tfbs_score_track_cross_strand_correlation_summary(&tracks)
+        } else {
+            None
+        };
         Ok(TfbsScoreTrackReport {
             schema: TFBS_SCORE_TRACK_REPORT_SCHEMA.to_string(),
             target_kind,
@@ -1148,6 +1284,7 @@ impl GentleEngine {
                 })
                 .cloned(),
             correlation_summaries,
+            cross_strand_correlation_summary,
             tracks,
         })
     }
