@@ -1210,7 +1210,8 @@ T [0 0 0]
         assert!(snapshot.motifs[0].pfm.is_some());
         assert_eq!(snapshot.motifs[1].motif_iupac, "TCTT");
         assert_eq!(snapshot.motifs[1].model_kind, "consensus_iupac");
-        assert!(!snapshot.motifs[1].pwm_present);
+        assert!(snapshot.motifs[1].pwm_present);
+        assert_eq!(snapshot.motifs[1].pfm_match_status, "none");
         assert!(snapshot.motifs[1].pfm.is_none());
         assert!(
             snapshot

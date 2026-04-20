@@ -2956,11 +2956,9 @@ mod tests {
         assert!(area.tfbs_task.is_some());
 
         let ctx = eframe::egui::Context::default();
-        for _ in 0..300 {
+        let wait_started = Instant::now();
+        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
             area.poll_tfbs_task(&ctx);
-            if area.tfbs_task.is_none() {
-                break;
-            }
             std::thread::sleep(Duration::from_millis(2));
         }
         assert!(

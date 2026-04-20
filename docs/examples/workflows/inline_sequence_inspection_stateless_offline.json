@@ -24,7 +24,7 @@
             "topology": "linear",
             "id_hint": "inline_sequence_inspection_demo",
             "span_start_0based": 0,
-            "span_end_0based_exclusive": 47
+            "span_end_0based_exclusive": 46
           },
           "enzymes": [
             "EcoRI",
@@ -43,7 +43,7 @@
             "topology": "linear",
             "id_hint": "inline_sequence_inspection_demo",
             "span_start_0based": 0,
-            "span_end_0based_exclusive": 47
+            "span_end_0based_exclusive": 46
           },
           "motifs": [
             "SP1",
@@ -62,7 +62,7 @@
             "topology": "linear",
             "id_hint": "inline_sequence_inspection_demo",
             "span_start_0based": 0,
-            "span_end_0based_exclusive": 47
+            "span_end_0based_exclusive": 46
           },
           "motifs": [
             "SP1",
@@ -81,7 +81,7 @@
             "topology": "linear",
             "id_hint": "inline_sequence_inspection_demo",
             "span_start_0based": 0,
-            "span_end_0based_exclusive": 47
+            "span_end_0based_exclusive": 46
           },
           "motifs": [
             "SP1",

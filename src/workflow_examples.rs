@@ -1384,6 +1384,32 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::FindRestrictionSites { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ScanTfbsHits { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::SummarizeTfbsScoreTracks { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::RenderTfbsScoreTracksSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::PrepareGenome {
             catalog_path,
             cache_dir,
