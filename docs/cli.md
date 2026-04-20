@@ -2073,6 +2073,9 @@ Shared shell command:
         - `gentle_cli shell 'features tfbs-score-tracks-svg tp73_context docs/figures/tp73_upstream_tfbs_score_tracks.svg --motif TP53 --motif TP63 --motif TP73 --motif PATZ1 --motif SP1 --motif BACH2 --motif REST --range 15564..16764 --score-kind llr_background_tail_log10 --allow-negative'`
       - state-optional inline export through the same shell/CLI route:
         - `gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text ACGTACGTACGT --id-hint inline_promoter --output /tmp/inline_tfbs_tracks.svg --motif SP1 --range 0..12 --score-kind llr_background_tail_log10'`
+      - anchor-vs-candidate similarity ranking through the same shell/CLI
+        family:
+        - `gentle_cli shell 'features tfbs-track-similarity tp73_context --anchor-motif TP73 --candidate-motif ALL --range 15564..16764 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tp73_tfbs_similarity.json'`
       - `--score-kind` now lets you inspect raw bit scores, in-window
         quantiles, random-background percentiles, or `-log10(background tail)`
         views; the background-tail modes are the best first pass when random

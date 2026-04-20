@@ -688,18 +688,20 @@ impl GentleEngine {
             .collect()
     }
 
-    pub(crate) fn summarize_tfbs_score_tracks(
+    fn summarize_tfbs_score_tracks_internal(
         &self,
         target: SequenceScanTarget,
         motifs: &[String],
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
+        include_correlation_summary: bool,
     ) -> Result<TfbsScoreTrackReport, EngineError> {
         self.summarize_tfbs_score_tracks_with_progress(
             target,
             motifs,
             score_kind,
             clip_negative,
+            include_correlation_summary,
             &mut |_| true,
         )
     }
@@ -710,6 +712,7 @@ impl GentleEngine {
         motifs: &[String],
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
+        include_correlation_summary: bool,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<TfbsScoreTrackReport, EngineError> {
         if motifs.is_empty() {
@@ -956,8 +959,359 @@ impl GentleEngine {
             motifs_requested: motifs.to_vec(),
             global_max_score,
             tss_markers,
-            correlation_summary: Self::summarize_tfbs_score_track_correlation_summary(&tracks),
+            correlation_summary: if include_correlation_summary {
+                Self::summarize_tfbs_score_track_correlation_summary(&tracks)
+            } else {
+                None
+            },
             tracks,
+        })
+    }
+
+    pub(crate) fn summarize_tfbs_score_tracks(
+        &self,
+        target: SequenceScanTarget,
+        motifs: &[String],
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+    ) -> Result<TfbsScoreTrackReport, EngineError> {
+        self.summarize_tfbs_score_tracks_internal(target, motifs, score_kind, clip_negative, true)
+    }
+
+    fn tfbs_track_similarity_metric_value(
+        row: &TfbsTrackSimilarityRow,
+        metric: TfbsTrackSimilarityRankingMetric,
+    ) -> f64 {
+        match metric {
+            TfbsTrackSimilarityRankingMetric::RawPearson => row.raw_pearson,
+            TfbsTrackSimilarityRankingMetric::SmoothedPearson => row.smoothed_pearson,
+            TfbsTrackSimilarityRankingMetric::RawSpearman => row.raw_spearman,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman => row.smoothed_spearman,
+        }
+    }
+
+    fn summarize_tfbs_track_similarity_row(
+        anchor: &TfbsScoreTrackRow,
+        candidate: &TfbsScoreTrackRow,
+        remote_summary: Option<JasparCatalogRemoteSummary>,
+    ) -> Option<TfbsTrackSimilarityRow> {
+        let anchor_signal = Self::tfbs_track_display_signal(anchor);
+        let candidate_signal = Self::tfbs_track_display_signal(candidate);
+        let overlap_window_count = anchor_signal.len().min(candidate_signal.len());
+        if overlap_window_count < 2 {
+            return None;
+        }
+        let anchor_smoothed = Self::smooth_tfbs_track_signal(
+            &anchor_signal,
+            Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+        );
+        let candidate_smoothed = Self::smooth_tfbs_track_signal(
+            &candidate_signal,
+            Self::TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP,
+        );
+        Some(TfbsTrackSimilarityRow {
+            candidate_tf_id: candidate.tf_id.clone(),
+            candidate_tf_name: candidate.tf_name.clone(),
+            overlap_window_count,
+            raw_pearson: Self::pearson_correlation(
+                &anchor_signal[..overlap_window_count],
+                &candidate_signal[..overlap_window_count],
+            ),
+            smoothed_pearson: Self::pearson_correlation(
+                &anchor_smoothed[..overlap_window_count],
+                &candidate_smoothed[..overlap_window_count],
+            ),
+            raw_spearman: Self::spearman_correlation(
+                &anchor_signal[..overlap_window_count],
+                &candidate_signal[..overlap_window_count],
+            ),
+            smoothed_spearman: Self::spearman_correlation(
+                &anchor_smoothed[..overlap_window_count],
+                &candidate_smoothed[..overlap_window_count],
+            ),
+            signed_primary_peak_offset_bp: Self::summarize_tfbs_track_primary_peak_offset_bp(
+                anchor, candidate,
+            ),
+            remote_summary,
+        })
+    }
+
+    fn jaspar_species_filter_matches(
+        row: &JasparRemoteMetadataSnapshotRow,
+        filters: &[String],
+    ) -> bool {
+        if filters.is_empty() {
+            return true;
+        }
+        filters.iter().any(|filter| {
+            let filter = filter.trim().to_ascii_lowercase();
+            if filter.is_empty() {
+                return false;
+            }
+            row.remote_metadata
+                .species_assignments
+                .iter()
+                .any(|assignment| {
+                    assignment
+                        .scientific_name
+                        .to_ascii_lowercase()
+                        .contains(&filter)
+                        || assignment
+                            .common_name
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_ascii_lowercase()
+                            .contains(&filter)
+                        || assignment
+                            .tax_id
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_ascii_lowercase()
+                            .contains(&filter)
+                })
+        })
+    }
+
+    pub(crate) fn summarize_tfbs_track_similarity(
+        &self,
+        target: SequenceScanTarget,
+        anchor_motif: &str,
+        candidate_motifs: &[String],
+        ranking_metric: TfbsTrackSimilarityRankingMetric,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        species_filters: &[String],
+        include_remote_metadata: bool,
+        limit: Option<usize>,
+    ) -> Result<TfbsTrackSimilarityReport, EngineError> {
+        self.summarize_tfbs_track_similarity_with_snapshot_path(
+            target,
+            anchor_motif,
+            candidate_motifs,
+            ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            include_remote_metadata,
+            limit,
+            None,
+        )
+    }
+
+    pub(crate) fn summarize_tfbs_track_similarity_with_snapshot_path(
+        &self,
+        target: SequenceScanTarget,
+        anchor_motif: &str,
+        candidate_motifs: &[String],
+        ranking_metric: TfbsTrackSimilarityRankingMetric,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        species_filters: &[String],
+        include_remote_metadata: bool,
+        limit: Option<usize>,
+        snapshot_path: Option<&str>,
+    ) -> Result<TfbsTrackSimilarityReport, EngineError> {
+        let anchor_requested = anchor_motif.trim().to_string();
+        if anchor_requested.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SummarizeTfbsTrackSimilarity requires non-empty anchor_motif".to_string(),
+            });
+        }
+        let (anchor_tf_id, anchor_tf_name_resolved, _anchor_consensus, _anchor_matrix_counts) =
+            Self::resolve_tf_motif_for_scoring(&anchor_requested)?;
+        let candidate_scope = if candidate_motifs.is_empty()
+            || (candidate_motifs.len() == 1
+                && matches!(
+                    candidate_motifs[0].trim().to_ascii_uppercase().as_str(),
+                    "ALL" | "*"
+                )) {
+            "all_registry".to_string()
+        } else {
+            "explicit".to_string()
+        };
+        let requested_candidate_tokens = if candidate_scope == "all_registry" {
+            crate::tf_motifs::all_motif_ids()
+        } else {
+            candidate_motifs.to_vec()
+        };
+        if requested_candidate_tokens.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "SummarizeTfbsTrackSimilarity requires at least one candidate motif or ALL"
+                        .to_string(),
+            });
+        }
+
+        let normalized_species_filters = species_filters
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+
+        let needs_remote_snapshot =
+            include_remote_metadata || !normalized_species_filters.is_empty();
+        let mut warnings = vec![];
+        let cached_remote_rows = if needs_remote_snapshot {
+            match Self::load_jaspar_remote_metadata_snapshot_rows(snapshot_path) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    warnings.push(err);
+                    std::collections::BTreeMap::new()
+                }
+            }
+        } else {
+            std::collections::BTreeMap::new()
+        };
+
+        let mut seen_candidate_ids = std::collections::BTreeSet::new();
+        let mut candidate_ids = vec![];
+        let mut species_excluded_count = 0usize;
+        let mut species_metadata_missing_count = 0usize;
+        for token in requested_candidate_tokens.iter() {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let (candidate_tf_id, _candidate_tf_name, _consensus, _matrix_counts) =
+                Self::resolve_tf_motif_for_scoring(token)?;
+            if candidate_tf_id == anchor_tf_id {
+                continue;
+            }
+            if !normalized_species_filters.is_empty() {
+                match cached_remote_rows.get(&candidate_tf_id) {
+                    Some(row) => {
+                        if !Self::jaspar_species_filter_matches(row, &normalized_species_filters) {
+                            species_excluded_count = species_excluded_count.saturating_add(1);
+                            continue;
+                        }
+                    }
+                    None => {
+                        species_metadata_missing_count =
+                            species_metadata_missing_count.saturating_add(1);
+                        continue;
+                    }
+                }
+            }
+            if seen_candidate_ids.insert(candidate_tf_id.clone()) {
+                candidate_ids.push(candidate_tf_id);
+            }
+        }
+        if !normalized_species_filters.is_empty() {
+            if species_excluded_count > 0 {
+                warnings.push(format!(
+                    "Species filter excluded {} candidate motif(s) from the similarity ranking",
+                    species_excluded_count
+                ));
+            }
+            if species_metadata_missing_count > 0 {
+                warnings.push(format!(
+                    "Species filter skipped {} candidate motif(s) without cached JASPAR remote metadata",
+                    species_metadata_missing_count
+                ));
+            }
+        }
+
+        let mut motifs_to_score = Vec::with_capacity(candidate_ids.len().saturating_add(1));
+        motifs_to_score.push(anchor_tf_id.clone());
+        motifs_to_score.extend(candidate_ids.iter().cloned());
+        let base_report = self.summarize_tfbs_score_tracks_internal(
+            target,
+            &motifs_to_score,
+            score_kind,
+            clip_negative,
+            false,
+        )?;
+        let anchor_track = base_report
+            .tracks
+            .iter()
+            .find(|track| track.tf_id == anchor_tf_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not recover anchor motif '{}' from score-track summary",
+                    anchor_tf_id
+                ),
+            })?;
+
+        let mut rows = base_report
+            .tracks
+            .iter()
+            .filter(|track| track.tf_id != anchor_tf_id)
+            .filter_map(|track| {
+                Self::summarize_tfbs_track_similarity_row(
+                    anchor_track,
+                    track,
+                    if include_remote_metadata {
+                        cached_remote_rows
+                            .get(&track.tf_id)
+                            .and_then(|row| row.remote_summary.clone())
+                            .or_else(|| {
+                                cached_remote_rows.get(&track.tf_id).map(|row| {
+                                    Self::jaspar_remote_metadata_summary(&row.remote_metadata)
+                                })
+                            })
+                    } else {
+                        None
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            Self::tfbs_track_similarity_metric_value(right, ranking_metric)
+                .total_cmp(&Self::tfbs_track_similarity_metric_value(
+                    left,
+                    ranking_metric,
+                ))
+                .then(right.smoothed_spearman.total_cmp(&left.smoothed_spearman))
+                .then(right.smoothed_pearson.total_cmp(&left.smoothed_pearson))
+                .then_with(|| {
+                    left.signed_primary_peak_offset_bp
+                        .unwrap_or(i64::MAX)
+                        .abs()
+                        .cmp(
+                            &right
+                                .signed_primary_peak_offset_bp
+                                .unwrap_or(i64::MAX)
+                                .abs(),
+                        )
+                })
+                .then(left.candidate_tf_id.cmp(&right.candidate_tf_id))
+        });
+        let scanned_candidate_count = rows.len();
+        if let Some(limit) = limit {
+            if rows.len() > limit {
+                rows.truncate(limit);
+            }
+        }
+
+        Ok(TfbsTrackSimilarityReport {
+            schema: TFBS_TRACK_SIMILARITY_REPORT_SCHEMA.to_string(),
+            target_kind: base_report.target_kind,
+            target_label: base_report.target_label.clone(),
+            seq_id: base_report.seq_id,
+            source_sequence_length_bp: base_report.source_sequence_length_bp,
+            scan_topology: base_report.scan_topology,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            score_kind,
+            view_start_0based: base_report.view_start_0based,
+            view_end_0based_exclusive: base_report.view_end_0based_exclusive,
+            clip_negative,
+            anchor_requested,
+            anchor_tf_id,
+            anchor_tf_name: anchor_track.tf_name.clone().or(anchor_tf_name_resolved),
+            candidate_scope,
+            candidates_requested: candidate_motifs.to_vec(),
+            species_filters: normalized_species_filters,
+            include_remote_metadata,
+            ranking_metric,
+            scanned_candidate_count,
+            returned_candidate_count: rows.len(),
+            warnings,
+            rows,
         })
     }
 

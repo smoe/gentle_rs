@@ -20,7 +20,7 @@ use crate::engine::{
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
     RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride,
+    TfThresholdOverride, TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
@@ -4434,6 +4434,55 @@ fn parse_features_tfbs_score_track_correlation_svg_with_range_and_negative_score
             );
             assert!(!clip_negative);
             assert_eq!(output, "/tmp/seq_a.tfbs_corr.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_features_tfbs_track_similarity_for_inline_targets_with_species_filter() {
+    let cmd = parse_shell_line(
+        "features tfbs-track-similarity --sequence-text ACGTACGTACGT --topology circular --id-hint inline_tp73 --anchor-motif SP1 --candidate-motif MYC --candidate-motif PATZ1 --range 2..10 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species human --include-remote-metadata --limit 5 --path /tmp/inline.tfbs_similarity.json",
+    )
+    .expect("parse inline features tfbs-track-similarity");
+    match cmd {
+        ShellCommand::FeaturesTfbsTrackSimilarity {
+            target,
+            anchor_motif,
+            candidate_motifs,
+            ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            include_remote_metadata,
+            limit,
+            path,
+        } => {
+            assert_eq!(
+                target,
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: "ACGTACGTACGT".to_string(),
+                    topology: InlineSequenceTopology::Circular,
+                    id_hint: Some("inline_tp73".to_string()),
+                    span_start_0based: Some(2),
+                    span_end_0based_exclusive: Some(10),
+                }
+            );
+            assert_eq!(anchor_motif, "SP1");
+            assert_eq!(
+                candidate_motifs,
+                vec!["MYC".to_string(), "PATZ1".to_string()]
+            );
+            assert_eq!(
+                ranking_metric,
+                TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+            );
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert!(clip_negative);
+            assert_eq!(species_filters, vec!["human".to_string()]);
+            assert!(include_remote_metadata);
+            assert_eq!(limit, Some(5));
+            assert_eq!(path.as_deref(), Some("/tmp/inline.tfbs_similarity.json"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -9731,6 +9780,56 @@ fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_an
     assert!(svg.contains("Raw Spearman rho"));
     assert!(svg.contains("SP1"));
     assert!(svg.contains("MYC"));
+}
+
+#[test]
+fn execute_features_tfbs_track_similarity_shell_command_returns_report() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tert_context".to_string(),
+        DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
+            .expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesTfbsTrackSimilarity {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "tert_context".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
+            anchor_motif: "SP1".to_string(),
+            candidate_motifs: vec!["MYC".to_string(), "PATZ1".to_string()],
+            ranking_metric: TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            species_filters: vec![],
+            include_remote_metadata: false,
+            limit: Some(2),
+            path: None,
+        },
+    )
+    .expect("features tfbs-track-similarity");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["result"]["tfbs_track_similarity"]["schema"].as_str(),
+        Some("gentle.tfbs_track_similarity.v1")
+    );
+    assert_eq!(
+        run.output["report"]["anchor_requested"].as_str(),
+        Some("SP1")
+    );
+    assert_eq!(
+        run.output["report"]["ranking_metric"].as_str(),
+        Some("smoothed_spearman")
+    );
+    assert_eq!(
+        run.output["report"]["returned_candidate_count"].as_u64(),
+        Some(2)
+    );
 }
 
 #[test]

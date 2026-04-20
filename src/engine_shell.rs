@@ -64,8 +64,8 @@ use crate::{
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
-        TfbsScoreTrackValueKind, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1463,6 +1463,18 @@ pub enum ShellCommand {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         output: String,
+    },
+    FeaturesTfbsTrackSimilarity {
+        target: SequenceScanTarget,
+        anchor_motif: String,
+        candidate_motifs: Vec<String>,
+        ranking_metric: TfbsTrackSimilarityRankingMetric,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        species_filters: Vec<String>,
+        include_remote_metadata: bool,
+        limit: Option<usize>,
+        path: Option<String>,
     },
     FeaturesTfbsScoreTrackCorrelationSvg {
         seq_id: String,
@@ -7075,6 +7087,69 @@ impl ShellCommand {
                     motifs.join(","),
                     score_kind.as_str(),
                     clip_negative
+                )
+            }
+            Self::FeaturesTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path,
+            } => {
+                let target_label = match target {
+                    SequenceScanTarget::SeqId {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "{}{}",
+                        seq_id,
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                    SequenceScanTarget::InlineSequence {
+                        id_hint,
+                        topology,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                        ..
+                    } => format!(
+                        "{}[{}]{}",
+                        id_hint
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or("inline_sequence"),
+                        topology.as_str(),
+                        format_optional_span(*span_start_0based, *span_end_0based_exclusive)
+                    ),
+                };
+                format!(
+                    "rank TFBS track similarity for '{}' (anchor={}, candidates={}, metric={}, score_kind={}, clip_negative={}, species_filters={}, include_remote_metadata={}, limit={}, path={})",
+                    target_label,
+                    anchor_motif,
+                    if candidate_motifs.is_empty() {
+                        "ALL".to_string()
+                    } else {
+                        candidate_motifs.join(",")
+                    },
+                    ranking_metric.as_str(),
+                    score_kind.as_str(),
+                    clip_negative,
+                    if species_filters.is_empty() {
+                        "-".to_string()
+                    } else {
+                        species_filters.join(",")
+                    },
+                    include_remote_metadata,
+                    limit
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "all".to_string()),
+                    path.clone().unwrap_or_else(|| "-".to_string())
                 )
             }
             Self::FeaturesTfbsScoreTrackCorrelationSvg {
@@ -20939,6 +21014,41 @@ fn execute_sequence_analysis_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::FeaturesTfbsTrackSimilarity {
+            target,
+            anchor_motif,
+            candidate_motifs,
+            ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            include_remote_metadata,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeTfbsTrackSimilarity {
+                    target: target.clone(),
+                    anchor_motif: anchor_motif.clone(),
+                    candidate_motifs: candidate_motifs.clone(),
+                    ranking_metric: *ranking_metric,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    species_filters: species_filters.clone(),
+                    include_remote_metadata: *include_remote_metadata,
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.tfbs_track_similarity.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg {
             seq_id,
             motifs,
@@ -23773,6 +23883,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+            | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesRestrictionScan { .. }
@@ -24049,6 +24160,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
+        | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
         | ShellCommand::FeaturesRestrictionScan { .. }

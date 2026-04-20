@@ -12,7 +12,9 @@
 //! - places to extend when a shell family gets too large for `engine_shell.rs`
 
 use super::*;
-use crate::engine::{TfbsScoreTrackCorrelationMetric, TfbsScoreTrackValueKind};
+use crate::engine::{
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+};
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
@@ -1746,7 +1748,7 @@ fn build_sequence_scan_target_from_feature_state(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2159,6 +2161,308 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 score_kind,
                 clip_negative,
                 output,
+            })
+        }
+        "tfbs-track-similarity" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features tfbs-track-similarity requires either SEQ_ID or --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let mut seq_id: Option<String> = None;
+            let mut sequence_text: Option<String> = None;
+            let mut topology = InlineSequenceTopology::Linear;
+            let mut id_hint: Option<String> = None;
+            let mut anchor_motif: Option<String> = None;
+            let mut candidate_motifs: Vec<String> = vec![];
+            let mut ranking_metric = TfbsTrackSimilarityRankingMetric::SmoothedSpearman;
+            let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
+            let mut clip_negative = true;
+            let mut species_filters: Vec<String> = vec![];
+            let mut include_remote_metadata = false;
+            let mut limit: Option<usize> = None;
+            let mut path: Option<String> = None;
+            let mut state = FeatureQueryOptionState::default();
+            let mut idx = 2usize;
+            if tokens[2].starts_with("--") {
+                // options-only inline form
+            } else {
+                let raw = tokens[2].trim().to_string();
+                if !raw.is_empty() {
+                    seq_id = Some(raw);
+                }
+                idx = 3usize;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-text" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--sequence-text",
+                            "features tfbs-track-similarity",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--sequence-text must not be empty".to_string());
+                        }
+                        sequence_text = Some(raw);
+                    }
+                    "--topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--topology",
+                            "features tfbs-track-similarity",
+                        )?;
+                        topology = match raw.trim() {
+                            "linear" => InlineSequenceTopology::Linear,
+                            "circular" => InlineSequenceTopology::Circular,
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --topology value '{other}' (expected linear or circular)"
+                                ));
+                            }
+                        };
+                    }
+                    "--id-hint" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--id-hint",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            id_hint = None;
+                        } else {
+                            id_hint = Some(trimmed.to_string());
+                        }
+                    }
+                    "--anchor-motif" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-motif",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--anchor-motif must not be empty".to_string());
+                        }
+                        anchor_motif = Some(trimmed.to_string());
+                    }
+                    "--candidate-motif" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate-motif",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--candidate-motif must not be empty".to_string());
+                        }
+                        candidate_motifs.push(trimmed.to_string());
+                    }
+                    "--candidate-motifs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate-motifs",
+                            "features tfbs-track-similarity",
+                        )?;
+                        for token in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            candidate_motifs.push(token.to_string());
+                        }
+                    }
+                    "--range" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--range",
+                            "features tfbs-track-similarity",
+                        )?;
+                        if state.range_arg.is_some() {
+                            return Err("--range was specified multiple times".to_string());
+                        }
+                        state.range_arg =
+                            Some(parse_feature_range(&raw, "features tfbs-track-similarity")?);
+                    }
+                    "--start" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--start",
+                            "features tfbs-track-similarity",
+                        )?;
+                        state.start_arg = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --start value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--end",
+                            "features tfbs-track-similarity",
+                        )?;
+                        state.end_arg = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --end value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--ranking-metric" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ranking-metric",
+                            "features tfbs-track-similarity",
+                        )?;
+                        ranking_metric = match raw.trim() {
+                            "raw_pearson" => TfbsTrackSimilarityRankingMetric::RawPearson,
+                            "smoothed_pearson" => TfbsTrackSimilarityRankingMetric::SmoothedPearson,
+                            "raw_spearman" => TfbsTrackSimilarityRankingMetric::RawSpearman,
+                            "smoothed_spearman" => {
+                                TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --ranking-metric value '{other}' (expected raw_pearson, smoothed_pearson, raw_spearman, or smoothed_spearman)"
+                                ));
+                            }
+                        };
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--score-kind",
+                            "features tfbs-track-similarity",
+                        )?;
+                        score_kind = match raw.trim() {
+                            "llr_bits" => TfbsScoreTrackValueKind::LlrBits,
+                            "llr_quantile" => TfbsScoreTrackValueKind::LlrQuantile,
+                            "llr_background_quantile" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundQuantile
+                            }
+                            "llr_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::LlrBackgroundTailLog10
+                            }
+                            "true_log_odds_bits" => TfbsScoreTrackValueKind::TrueLogOddsBits,
+                            "true_log_odds_quantile" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsQuantile
+                            }
+                            "true_log_odds_background_quantile" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile
+                            }
+                            "true_log_odds_background_tail_log10" => {
+                                TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --score-kind value '{other}' (expected llr_bits, llr_quantile, llr_background_quantile, llr_background_tail_log10, true_log_odds_bits, true_log_odds_quantile, true_log_odds_background_quantile, or true_log_odds_background_tail_log10)"
+                                ));
+                            }
+                        };
+                    }
+                    "--allow-negative" => {
+                        clip_negative = false;
+                        idx += 1;
+                    }
+                    "--species" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--species must not be empty".to_string());
+                        }
+                        species_filters.push(trimmed.to_string());
+                    }
+                    "--species-filter" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species-filter",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--species must not be empty".to_string());
+                        }
+                        species_filters.push(trimmed.to_string());
+                    }
+                    "--include-remote-metadata" => {
+                        include_remote_metadata = true;
+                        idx += 1;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                        limit = Some(parsed);
+                    }
+                    "--path" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "features tfbs-track-similarity",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            path = None;
+                        } else {
+                            path = Some(trimmed.to_string());
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features tfbs-track-similarity"
+                        ));
+                    }
+                }
+            }
+            let anchor_motif = anchor_motif.ok_or_else(|| {
+                "features tfbs-track-similarity requires --anchor-motif TOKEN".to_string()
+            })?;
+            let target = build_sequence_scan_target_from_feature_state(
+                seq_id,
+                sequence_text,
+                topology,
+                id_hint,
+                state,
+                "features tfbs-track-similarity",
+            )?;
+            Ok(ShellCommand::FeaturesTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path,
             })
         }
         "tfbs-score-track-correlation-svg" => {

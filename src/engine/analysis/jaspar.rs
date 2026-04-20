@@ -480,7 +480,7 @@ impl GentleEngine {
         }
     }
 
-    fn load_jaspar_remote_metadata_snapshot_rows(
+    pub(crate) fn load_jaspar_remote_metadata_snapshot_rows(
         path: Option<&str>,
     ) -> Result<BTreeMap<String, JasparRemoteMetadataSnapshotRow>, String> {
         let path = Self::default_jaspar_remote_metadata_snapshot_path(path);

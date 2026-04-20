@@ -466,6 +466,7 @@ const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
+const TFBS_TRACK_SIMILARITY_REPORT_SCHEMA: &str = "gentle.tfbs_track_similarity.v1";
 pub(crate) const DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP: usize = 1000;
 pub(crate) const DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP: usize = 200;
 pub const DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP: usize = 10_000;
@@ -504,6 +505,10 @@ fn default_tfbs_score_track_clip_negative() -> bool {
 
 fn default_tfbs_score_track_value_kind() -> TfbsScoreTrackValueKind {
     TfbsScoreTrackValueKind::LlrBits
+}
+
+fn default_tfbs_track_similarity_ranking_metric() -> TfbsTrackSimilarityRankingMetric {
+    TfbsTrackSimilarityRankingMetric::SmoothedSpearman
 }
 
 fn default_promoter_window_upstream_bp() -> usize {
@@ -3432,6 +3437,26 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeTfbsTrackSimilarity {
+        target: SequenceScanTarget,
+        anchor_motif: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        candidate_motifs: Vec<String>,
+        #[serde(default = "default_tfbs_track_similarity_ranking_metric")]
+        ranking_metric: TfbsTrackSimilarityRankingMetric,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        species_filters: Vec<String>,
+        #[serde(default)]
+        include_remote_metadata: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ScanTfbsHits {
         target: SequenceScanTarget,
         motifs: Vec<String>,
@@ -4798,6 +4823,7 @@ impl GentleEngine {
                 "InspectRnaReadGeneSupport".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
+                "SummarizeTfbsTrackSimilarity".to_string(),
                 "ScanTfbsHits".to_string(),
                 "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
@@ -6704,6 +6730,7 @@ impl GentleEngine {
                 | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
+                | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }

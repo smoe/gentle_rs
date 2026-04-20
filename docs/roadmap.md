@@ -1146,6 +1146,20 @@ order. Durable architecture constraints and decisions remain in
           (smoothed selected metric left, raw selected metric right) plus a
           ranked synchronized pair footer, so the “are these maxima actually
           synced?” question is no longer trapped in GUI tables or JSON sidecars
+        - the next score-track interpretation question is now also underway as
+          an engine-owned route rather than a GUI-only idea:
+          `SummarizeTfbsTrackSimilarity` ranks other JASPAR motifs against one
+          anchor motif over the same displayed DNA span, starting from the same
+          per-position score-track signals instead of raw PWM similarity
+        - that first baseline intentionally sorts by one explicit score-track
+          similarity metric (default: `smoothed_spearman`) and can optionally
+          restrict candidates through the cached JASPAR remote-metadata
+          snapshot, so “rank all first” and “species-of-interest subset” can
+          share one deterministic report path
+        - still open on that track:
+          GUI-side ranked-table inspection, explicit pre-rank vs post-rank
+          species filtering controls, and richer metadata facets such as TF
+          family/class/tax-group pivots
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span

@@ -492,6 +492,93 @@ pub struct TfbsScoreTrackCorrelationSummary {
     pub rows: Vec<TfbsScoreTrackCorrelationRow>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which anchor-vs-candidate statistic is used when ranking TFBS score-track
+/// similarity for one selected DNA span.
+pub enum TfbsTrackSimilarityRankingMetric {
+    RawPearson,
+    SmoothedPearson,
+    RawSpearman,
+    #[default]
+    SmoothedSpearman,
+}
+
+impl TfbsTrackSimilarityRankingMetric {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RawPearson => "raw_pearson",
+            Self::SmoothedPearson => "smoothed_pearson",
+            Self::RawSpearman => "raw_spearman",
+            Self::SmoothedSpearman => "smoothed_spearman",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One candidate TF ranked against one anchor TF over the same displayed
+/// score-track span.
+pub struct TfbsTrackSimilarityRow {
+    pub candidate_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_tf_name: Option<String>,
+    pub overlap_window_count: usize,
+    pub raw_pearson: f64,
+    pub smoothed_pearson: f64,
+    pub raw_spearman: f64,
+    pub smoothed_spearman: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_primary_peak_offset_bp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_summary: Option<JasparCatalogRemoteSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared anchor-vs-candidate TFBS score-track ranking over one selected DNA
+/// span.
+pub struct TfbsTrackSimilarityReport {
+    pub schema: String,
+    #[serde(default)]
+    pub target_kind: String,
+    #[serde(default)]
+    pub target_label: String,
+    pub seq_id: String,
+    pub source_sequence_length_bp: usize,
+    #[serde(default)]
+    pub scan_topology: InlineSequenceTopology,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub view_start_0based: usize,
+    pub view_end_0based_exclusive: usize,
+    pub clip_negative: bool,
+    pub anchor_requested: String,
+    pub anchor_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_tf_name: Option<String>,
+    #[serde(default)]
+    pub candidate_scope: String,
+    #[serde(default)]
+    pub candidates_requested: Vec<String>,
+    #[serde(default)]
+    pub species_filters: Vec<String>,
+    #[serde(default)]
+    pub include_remote_metadata: bool,
+    #[serde(default)]
+    pub ranking_metric: TfbsTrackSimilarityRankingMetric,
+    pub scanned_candidate_count: usize,
+    pub returned_candidate_count: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<TfbsTrackSimilarityRow>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// One continuous TF motif score track over a requested DNA span.
@@ -2220,6 +2307,8 @@ pub struct OpResult {
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_hit_scan: Option<TfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

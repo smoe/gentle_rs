@@ -5778,6 +5778,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
+            tfbs_track_similarity: None,
             tfbs_hit_scan: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
@@ -12560,6 +12561,7 @@ impl GentleEngine {
                     &motifs,
                     score_kind,
                     clip_negative,
+                    true,
                     &mut |progress| on_progress(progress),
                 )?;
                 report.op_id = Some(result.op_id.clone());
@@ -12581,6 +12583,54 @@ impl GentleEngine {
                     report.clip_negative
                 ));
                 result.tfbs_score_tracks = Some(report);
+            }
+            Operation::SummarizeTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_track_similarity(
+                    target.clone(),
+                    &anchor_motif,
+                    &candidate_motifs,
+                    ranking_metric,
+                    score_kind,
+                    clip_negative,
+                    &species_filters,
+                    include_remote_metadata,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "TFBS similarity report")?;
+                    result.messages.push(format!(
+                        "Wrote TFBS track-similarity report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "TFBS track similarity for '{}' ranked {} candidate motif(s) against '{}' over {}..{} (metric={}, score_kind={}, clip_negative={})",
+                    report.target_label,
+                    report.returned_candidate_count,
+                    report.anchor_tf_id,
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.ranking_metric.as_str(),
+                    report.score_kind.as_str(),
+                    report.clip_negative
+                ));
+                result.tfbs_track_similarity = Some(report);
             }
             Operation::ScanTfbsHits {
                 target,

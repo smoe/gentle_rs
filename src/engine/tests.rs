@@ -27430,6 +27430,157 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
 }
 
 #[test]
+fn summarize_tfbs_track_similarity_ranks_candidates_and_supports_species_filtering() {
+    let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
+        .expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let myc_tf_id = GentleEngine::resolve_tf_motif_for_scoring("MYC")
+        .expect("resolve MYC")
+        .0;
+    let patz1_tf_id = GentleEngine::resolve_tf_motif_for_scoring("PATZ1")
+        .expect("resolve PATZ1")
+        .0;
+    let td = tempdir().expect("tempdir");
+    let snapshot_path = td.path().join("jaspar.remote_metadata.json");
+    fs::write(
+        &snapshot_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema": "gentle.jaspar_remote_metadata_snapshot.v1",
+            "rows": [
+                {
+                    "motif_id": myc_tf_id,
+                    "motif_name": "MYC",
+                    "consensus_iupac": "CACGTG",
+                    "motif_length_bp": 6,
+                    "remote_metadata": {
+                        "source_url": "synthetic",
+                        "collection": "CORE",
+                        "tax_group": "vertebrates",
+                        "tf_class": "bHLH",
+                        "tf_family": "Myc",
+                        "species_assignments": [
+                            {
+                                "tax_id": "9606",
+                                "scientific_name": "Homo sapiens",
+                                "common_name": "human"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "motif_id": patz1_tf_id,
+                    "motif_name": "PATZ1",
+                    "consensus_iupac": "GGGGG",
+                    "motif_length_bp": 5,
+                    "remote_metadata": {
+                        "source_url": "synthetic",
+                        "collection": "CORE",
+                        "tax_group": "vertebrates",
+                        "tf_class": "zinc finger",
+                        "tf_family": "Patz",
+                        "species_assignments": [
+                            {
+                                "tax_id": "10090",
+                                "scientific_name": "Mus musculus",
+                                "common_name": "mouse"
+                            }
+                        ]
+                    }
+                }
+            ]
+        }))
+        .expect("serialize snapshot"),
+    )
+    .expect("write snapshot");
+
+    let report = engine
+        .summarize_tfbs_track_similarity_with_snapshot_path(
+            SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
+            "SP1",
+            &[String::from("MYC"), String::from("PATZ1")],
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+            &[String::from("human")],
+            true,
+            None,
+            Some(snapshot_path.to_str().expect("utf8 path")),
+        )
+        .expect("similarity report");
+
+    assert_eq!(report.schema, "gentle.tfbs_track_similarity.v1");
+    assert_eq!(report.anchor_requested, "SP1");
+    assert!(report.anchor_tf_id.starts_with("MA0079."));
+    assert_eq!(
+        report.ranking_metric,
+        TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+    );
+    assert_eq!(report.species_filters, vec!["human".to_string()]);
+    assert_eq!(report.scanned_candidate_count, 1);
+    assert_eq!(report.returned_candidate_count, 1);
+    let row = report.rows.first().expect("ranked candidate");
+    assert_eq!(row.candidate_tf_id, "MA0147.4");
+    assert_eq!(row.candidate_tf_name.as_deref(), Some("MYC"));
+    assert!(row.remote_summary.is_some());
+    assert!(row.smoothed_spearman.is_finite());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("excluded 1 candidate motif"))
+    );
+}
+
+#[test]
+fn apply_summarize_tfbs_track_similarity_operation_returns_similarity_payload() {
+    let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
+        .expect("sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("promoter".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::SummarizeTfbsTrackSimilarity {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "promoter".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(120),
+            },
+            anchor_motif: "SP1".to_string(),
+            candidate_motifs: vec!["MYC".to_string(), "PATZ1".to_string()],
+            ranking_metric: TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            species_filters: vec![],
+            include_remote_metadata: false,
+            limit: Some(2),
+            path: None,
+        })
+        .expect("apply similarity op");
+
+    let report = result
+        .tfbs_track_similarity
+        .expect("similarity report should be attached");
+    assert_eq!(report.seq_id, "promoter");
+    assert_eq!(report.target_kind, "seq_id");
+    assert_eq!(report.anchor_requested, "SP1");
+    assert_eq!(report.returned_candidate_count, 2);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("TFBS track similarity"))
+    );
+}
+
+#[test]
 fn summarize_tfbs_score_tracks_prefers_named_myc_registry_entry_over_iupac_letters() {
     let dna = DNAsequence::from_sequence("CACGTG".repeat(12).as_str()).expect("sequence");
     let mut state = ProjectState::default();

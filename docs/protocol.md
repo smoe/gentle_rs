@@ -285,6 +285,46 @@ Behavior notes:
   useful for figure/report contexts where one wants to show that only some
   factors cross into positive support while the others remain below zero.
 
+## TFBS score-track similarity contract
+
+GENtle now also exposes one anchor-vs-candidate TFBS score-track similarity
+report for the same selected DNA span.
+
+First-class operation route:
+
+```json
+{"SummarizeTfbsTrackSimilarity":{"target":{"kind":"seq_id","seq_id":"SEQ_ID","span_start_0based":15564,"span_end_0based_exclusive":16764},"anchor_motif":"TP73","candidate_motifs":["ALL"],"ranking_metric":"smoothed_spearman","score_kind":"llr_background_tail_log10","clip_negative":true,"species_filters":["Homo sapiens"],"include_remote_metadata":true,"limit":25}}
+```
+
+Portable schema:
+
+- `gentle.tfbs_track_similarity.v1`
+
+Behavior notes:
+
+- the report ranks candidate motifs against one selected anchor motif using the
+  same displayed score-track vectors already used by the continuous TFBS score
+  track route
+- initial ranking metrics are:
+  - `raw_pearson`
+  - `smoothed_pearson`
+  - `raw_spearman`
+  - `smoothed_spearman`
+- rows retain the full metric family plus signed primary-peak offset so
+  adapters can later re-sort without recomputing biology
+- `candidate_motifs=["ALL"]` or `["*"]` expands to the full local JASPAR
+  registry
+- optional `species_filters[]` currently use the persisted local
+  `jaspar.remote_metadata.json` snapshot rather than live network refresh:
+  motifs without cached metadata are skipped when such a filter is active
+- remote metadata remains additive:
+  - the ranking can run without it
+  - `include_remote_metadata=true` adds compact per-row summaries when cached
+    rows exist locally
+- unlike the pairwise synchrony heatmap, this route sorts by the selected
+  metric itself rather than its absolute value because the intent is “most
+  similarly scoring”, not “most strongly related in either direction”
+
 ## Stateless sequence-scan contract
 
 Implemented additive contract:
