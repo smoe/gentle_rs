@@ -183,7 +183,9 @@ order. Durable architecture constraints and decisions remain in
   - `execute_shell_command_with_options(...)` now also early-dispatches the
     `routines`, `planning`, `guides`, `primers`, `transcripts/features/dotplot`
     analysis, external `genbank`/`dbsnp` fetch, `sequencing`, `rna-reads`,
-    and configuration `set-param` command families through dedicated
+    configuration `set-param`, prepared-cache maintenance, `shell-help`,
+    `ui` intent/query, and macro-instance inspection command families through
+    dedicated
     `#[inline(never)]` helpers before the monolithic inner matcher
   - the inner exhaustive matcher still owns the same implementation path by
     delegating those variants back into the same helpers, so stack-hardening

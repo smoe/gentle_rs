@@ -12323,16 +12323,41 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
     );
     assert_eq!(
         out.output["attract"]["support_status"].as_str(),
-        Some("known_external_only")
+        Some(
+            if std::path::Path::new(crate::attract_motifs::DEFAULT_ATTRACT_RESOURCE_PATH).exists()
+            {
+                "runtime_snapshot"
+            } else {
+                "known_external_only"
+            },
+        )
     );
     assert_eq!(
         out.output["attract"]["display_name"].as_str(),
         Some("ATtRACT")
     );
-    assert_eq!(
-        out.output["attract"]["active_pwm_row_count"].as_u64(),
-        Some(0)
-    );
+    if out.output["attract"]["support_status"].as_str() == Some("runtime_snapshot") {
+        assert!(
+            out.output["attract"]["active_pwm_row_count"]
+                .as_u64()
+                .unwrap_or(0)
+                > 0
+                || out.output["attract"]["active_consensus_only_row_count"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    > 0
+        );
+        assert_eq!(out.output["attract"]["active_source"].as_str(), Some("runtime"));
+    } else {
+        assert_eq!(
+            out.output["attract"]["active_pwm_row_count"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            out.output["attract"]["active_source"].as_str(),
+            Some("unavailable")
+        );
+    }
     assert_eq!(
         out.output["attract"]["download_url"].as_str(),
         Some("https://attract.cnic.es/attract/static/ATtRACT.zip")

@@ -16322,6 +16322,51 @@ pub fn execute_shell_command(
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
+#[inline(never)]
+fn execute_help_command(
+    _engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::Help {
+            topic,
+            format,
+            interface_filter,
+        } => {
+            let help_output = if topic.is_empty() {
+                match format {
+                    HelpOutputFormat::Text => {
+                        json!({ "help": render_shell_help_text(interface_filter.as_deref())? })
+                    }
+                    HelpOutputFormat::Json => render_shell_help_json(interface_filter.as_deref())?,
+                    HelpOutputFormat::Markdown => json!({
+                        "help_markdown": render_shell_help_markdown(interface_filter.as_deref())?
+                    }),
+                }
+            } else {
+                match format {
+                    HelpOutputFormat::Text => json!({
+                        "topic": topic.join(" "),
+                        "help": render_shell_topic_help_text(topic, interface_filter.as_deref())?
+                    }),
+                    HelpOutputFormat::Json => {
+                        render_shell_topic_help_json(topic, interface_filter.as_deref())?
+                    }
+                    HelpOutputFormat::Markdown => json!({
+                        "topic": topic.join(" "),
+                        "help_markdown": render_shell_topic_help_markdown(topic, interface_filter.as_deref())?
+                    }),
+                }
+            };
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: help_output,
+            })
+        }
+        _ => unreachable!("non-help command passed to help helper"),
+    }
+}
+
 fn execute_agents_ask_command(
     engine: &mut GentleEngine,
     system_id: &str,
@@ -16643,6 +16688,42 @@ fn execute_macros_template_run_command(
             );
             Err(format!("{} [macro_instance_id={}]", err, macro_instance_id))
         }
+    }
+}
+
+#[inline(never)]
+fn execute_macro_instance_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::MacrosInstanceList => {
+            let instances = engine.lineage_macro_instances().to_vec();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.lineage_macro_instances.v1",
+                    "count": instances.len(),
+                    "instances": instances
+                }),
+            })
+        }
+        ShellCommand::MacrosInstanceShow { macro_instance_id } => {
+            let instance = engine
+                .lineage_macro_instances()
+                .iter()
+                .find(|instance| instance.macro_instance_id == *macro_instance_id)
+                .cloned()
+                .ok_or_else(|| format!("Macro instance '{}' was not found", macro_instance_id))?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.lineage_macro_instance.v1",
+                    "instance": instance
+                }),
+            })
+        }
+        _ => unreachable!("non-macro-instance command passed to macro-instance helper"),
     }
 }
 
@@ -23315,6 +23396,52 @@ fn execute_configuration_command(
 }
 
 #[inline(never)]
+fn execute_cache_command(
+    _engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::CacheInspect { scope, cache_dirs } => {
+            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
+            let report = GentleEngine::inspect_prepared_cache_roots(&cache_roots)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize prepared cache inspection report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::CacheClear {
+            mode,
+            scope,
+            cache_dirs,
+            prepared_ids,
+            prepared_paths,
+            include_orphans,
+        } => {
+            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
+            let request = PreparedCacheCleanupRequest {
+                mode: *mode,
+                cache_roots,
+                prepared_ids: prepared_ids.clone(),
+                prepared_paths: prepared_paths.clone(),
+                include_orphaned_remnants: *include_orphans,
+            };
+            let report =
+                GentleEngine::clear_prepared_cache_roots(&request).map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize prepared cache cleanup report: {e}")
+                })?,
+            })
+        }
+        _ => unreachable!("non-cache command passed to cache helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_op_command(engine: &mut GentleEngine, payload: &str) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let op: Operation =
@@ -23508,6 +23635,97 @@ fn execute_ui_latest_prepared_command(
 }
 
 #[inline(never)]
+fn execute_ui_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::UiListIntents => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_intents.v1",
+                "targets": [
+                    "prepared-references",
+                    "prepare-reference-genome",
+                    "retrieve-genome-sequence",
+                    "blast-genome-sequence",
+                    "import-genome-track",
+                    "pcr-design",
+                    "sequencing-confirmation",
+                    "agent-assistant",
+                    "prepare-helper-genome",
+                    "retrieve-helper-sequence",
+                    "blast-helper-sequence"
+                ],
+                "commands": [
+                    "ui intents",
+                    "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                    "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                    "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                    "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
+                ],
+                "notes": [
+                    "UI intent commands are host-application intents and require GUI host integration to apply.",
+                    "CLI execution returns deterministic intent/query payloads for agents/automation.",
+                    "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection."
+                ]
+            }),
+        }),
+        ShellCommand::UiIntent {
+            action,
+            target,
+            genome_id,
+            helper_mode,
+            catalog_path,
+            cache_dir,
+            filter,
+            species,
+            latest,
+        } => execute_ui_intent_command(
+            engine,
+            *action,
+            *target,
+            genome_id.clone(),
+            *helper_mode,
+            catalog_path.clone(),
+            cache_dir.clone(),
+            filter.clone(),
+            species.clone(),
+            *latest,
+            options,
+        ),
+        ShellCommand::UiPreparedGenomes {
+            helper_mode,
+            catalog_path,
+            cache_dir,
+            filter,
+            species,
+            latest,
+        } => execute_ui_prepared_genomes_command(
+            *helper_mode,
+            catalog_path.clone(),
+            cache_dir.clone(),
+            filter.clone(),
+            species.clone(),
+            *latest,
+        ),
+        ShellCommand::UiLatestPrepared {
+            helper_mode,
+            catalog_path,
+            cache_dir,
+            species,
+        } => execute_ui_latest_prepared_command(
+            *helper_mode,
+            catalog_path.clone(),
+            cache_dir.clone(),
+            species.clone(),
+        ),
+        _ => unreachable!("non-ui command passed to helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_ui_intent_command(
     engine: &mut GentleEngine,
     action: UiIntentAction,
@@ -23586,6 +23804,9 @@ pub fn execute_shell_command_with_options(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    if matches!(command, ShellCommand::Help { .. }) {
+        return execute_help_command(engine, command);
+    }
     if let ShellCommand::AgentsAsk {
         system_id,
         prompt,
@@ -23671,6 +23892,12 @@ pub fn execute_shell_command_with_options(
             *transactional,
             options,
         );
+    }
+    if matches!(
+        command,
+        ShellCommand::MacrosInstanceList | ShellCommand::MacrosInstanceShow { .. }
+    ) {
+        return execute_macro_instance_command(engine, command);
     }
     if matches!(
         command,
@@ -23994,37 +24221,26 @@ pub fn execute_shell_command_with_options(
     if matches!(command, ShellCommand::SetParameter { .. }) {
         return execute_configuration_command(engine, command);
     }
+    if matches!(
+        command,
+        ShellCommand::CacheInspect { .. } | ShellCommand::CacheClear { .. }
+    ) {
+        return execute_cache_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::UiListIntents
+            | ShellCommand::UiIntent { .. }
+            | ShellCommand::UiPreparedGenomes { .. }
+            | ShellCommand::UiLatestPrepared { .. }
+    ) {
+        return execute_ui_command(engine, command, options);
+    }
     if let ShellCommand::Op { payload } = command {
         return execute_op_command(engine, payload);
     }
     if let ShellCommand::Workflow { payload } = command {
         return execute_workflow_command(engine, payload);
-    }
-    if let ShellCommand::UiIntent {
-        action,
-        target,
-        genome_id,
-        helper_mode,
-        catalog_path,
-        cache_dir,
-        filter,
-        species,
-        latest,
-    } = command
-    {
-        return execute_ui_intent_command(
-            engine,
-            *action,
-            *target,
-            genome_id.clone(),
-            *helper_mode,
-            catalog_path.clone(),
-            cache_dir.clone(),
-            filter.clone(),
-            species.clone(),
-            *latest,
-            options,
-        );
     }
     execute_shell_command_with_options_inner(engine, command, options)
 }
@@ -24041,41 +24257,7 @@ fn execute_shell_command_with_options_inner(
         );
     }
     let result = match command {
-        ShellCommand::Help {
-            topic,
-            format,
-            interface_filter,
-        } => {
-            let help_output = if topic.is_empty() {
-                match format {
-                    HelpOutputFormat::Text => {
-                        json!({ "help": render_shell_help_text(interface_filter.as_deref())? })
-                    }
-                    HelpOutputFormat::Json => render_shell_help_json(interface_filter.as_deref())?,
-                    HelpOutputFormat::Markdown => json!({
-                        "help_markdown": render_shell_help_markdown(interface_filter.as_deref())?
-                    }),
-                }
-            } else {
-                match format {
-                    HelpOutputFormat::Text => json!({
-                        "topic": topic.join(" "),
-                        "help": render_shell_topic_help_text(topic, interface_filter.as_deref())?
-                    }),
-                    HelpOutputFormat::Json => {
-                        render_shell_topic_help_json(topic, interface_filter.as_deref())?
-                    }
-                    HelpOutputFormat::Markdown => json!({
-                        "topic": topic.join(" "),
-                        "help_markdown": render_shell_topic_help_markdown(topic, interface_filter.as_deref())?
-                    }),
-                }
-            };
-            ShellRunResult {
-                state_changed: false,
-                output: help_output,
-            }
-        }
+        ShellCommand::Help { .. } => execute_help_command(engine, command)?,
         ShellCommand::Capabilities | ShellCommand::StateSummary => {
             execute_agent_meta_command(engine, command)?
         }
@@ -24260,41 +24442,8 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::GibsonPreview { .. } | ShellCommand::GibsonApply { .. } => {
             execute_gibson_command(engine, command)?
         }
-        ShellCommand::CacheInspect { scope, cache_dirs } => {
-            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
-            let report = GentleEngine::inspect_prepared_cache_roots(&cache_roots)
-                .map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report).map_err(|e| {
-                    format!("Could not serialize prepared cache inspection report: {e}")
-                })?,
-            }
-        }
-        ShellCommand::CacheClear {
-            mode,
-            scope,
-            cache_dirs,
-            prepared_ids,
-            prepared_paths,
-            include_orphans,
-        } => {
-            let cache_roots = effective_cache_cleanup_roots(*scope, cache_dirs);
-            let request = PreparedCacheCleanupRequest {
-                mode: *mode,
-                cache_roots,
-                prepared_ids: prepared_ids.clone(),
-                prepared_paths: prepared_paths.clone(),
-                include_orphaned_remnants: *include_orphans,
-            };
-            let report =
-                GentleEngine::clear_prepared_cache_roots(&request).map_err(|e| e.to_string())?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report).map_err(|e| {
-                    format!("Could not serialize prepared cache cleanup report: {e}")
-                })?,
-            }
+        ShellCommand::CacheInspect { .. } | ShellCommand::CacheClear { .. } => {
+            execute_cache_command(engine, command)?
         }
         ShellCommand::RenderPoolGelSvg {
             inputs,
@@ -24893,92 +25042,10 @@ fn execute_shell_command_with_options_inner(
                 }),
             }
         }
-        ShellCommand::UiListIntents => ShellRunResult {
-            state_changed: false,
-            output: json!({
-                "schema": "gentle.ui_intents.v1",
-                "targets": [
-                    "prepared-references",
-                    "prepare-reference-genome",
-                    "retrieve-genome-sequence",
-                    "blast-genome-sequence",
-                    "import-genome-track",
-                    "pcr-design",
-                    "sequencing-confirmation",
-                    "agent-assistant",
-                    "prepare-helper-genome",
-                    "retrieve-helper-sequence",
-                    "blast-helper-sequence"
-                ],
-                "commands": [
-                    "ui intents",
-                    "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
-                ],
-                "notes": [
-                    "UI intent commands are host-application intents and require GUI host integration to apply.",
-                    "CLI execution returns deterministic intent/query payloads for agents/automation.",
-                    "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection."
-                ]
-            }),
-        },
-        ShellCommand::UiIntent {
-            action,
-            target,
-            genome_id,
-            helper_mode,
-            catalog_path,
-            cache_dir,
-            filter,
-            species,
-            latest,
-        } => {
-            return execute_ui_intent_command(
-                engine,
-                *action,
-                *target,
-                genome_id.clone(),
-                *helper_mode,
-                catalog_path.clone(),
-                cache_dir.clone(),
-                filter.clone(),
-                species.clone(),
-                *latest,
-                options,
-            );
-        }
-        ShellCommand::UiPreparedGenomes {
-            helper_mode,
-            catalog_path,
-            cache_dir,
-            filter,
-            species,
-            latest,
-        } => {
-            return execute_ui_prepared_genomes_command(
-                *helper_mode,
-                catalog_path.clone(),
-                cache_dir.clone(),
-                filter.clone(),
-                species.clone(),
-                *latest,
-            );
-        }
-        ShellCommand::UiLatestPrepared {
-            helper_mode,
-            catalog_path,
-            cache_dir,
-            species,
-        } => {
-            return execute_ui_latest_prepared_command(
-                *helper_mode,
-                catalog_path.clone(),
-                cache_dir.clone(),
-                species.clone(),
-            );
-        }
+        ShellCommand::UiListIntents
+        | ShellCommand::UiIntent { .. }
+        | ShellCommand::UiPreparedGenomes { .. }
+        | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,
         ShellCommand::HostsList { .. }
         | ShellCommand::ReferenceList { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
@@ -25054,31 +25121,8 @@ fn execute_shell_command_with_options_inner(
                 }
             }
         }
-        ShellCommand::MacrosInstanceList => {
-            let instances = engine.lineage_macro_instances().to_vec();
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.lineage_macro_instances.v1",
-                    "count": instances.len(),
-                    "instances": instances
-                }),
-            }
-        }
-        ShellCommand::MacrosInstanceShow { macro_instance_id } => {
-            let instance = engine
-                .lineage_macro_instances()
-                .iter()
-                .find(|instance| instance.macro_instance_id == *macro_instance_id)
-                .cloned()
-                .ok_or_else(|| format!("Macro instance '{}' was not found", macro_instance_id))?;
-            ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.lineage_macro_instance.v1",
-                    "instance": instance
-                }),
-            }
+        ShellCommand::MacrosInstanceList | ShellCommand::MacrosInstanceShow { .. } => {
+            execute_macro_instance_command(engine, command)?
         }
         ShellCommand::MacrosTemplateList => {
             let templates = engine.list_workflow_macro_templates();
