@@ -224,6 +224,23 @@ Behavior notes:
     optional `right_tf_name`, `overlap_window_count`, `raw_pearson`,
     `smoothed_pearson`, `raw_spearman`, `smoothed_spearman`, and optional
     `signed_primary_peak_offset_bp`
+- the same report now also carries one explicit
+  `cross_strand_correlation_summary` for the correlation-export overview:
+  - `pair_count`
+  - `smoothing_method`
+  - `smoothing_window_bp`
+  - `rows[]` keyed by one TF pair
+  - each row carries `cells[]` in deterministic `F-F`, `F-R`, `R-F`, `R-R`
+    order with the same raw/smoothed Pearson/Spearman fields plus one optional
+    strand-specific peak offset
+  - the shared SVG export now uses that overview when
+    `correlation_signal_source=max_strands`, but it renders the result as one
+    strand-expanded all-vs-all matrix:
+    - every motif appears twice on each axis, ordered `F` then `R`
+    - each TF-pair therefore reads naturally as one adjacent 2x2 block
+      (`F-F / F-R / R-F / R-R`)
+    - no prior `max(forward, reverse)` aggregation is used for those block
+      values
 - each returned track now also carries one `directional_summary` describing how
   its own forward and reverse curves travel together over the selected span:
   - optional `forward_primary_peak_position_0based`

@@ -471,11 +471,26 @@ work like this, GENtle now offers both Pearson and Spearman on the exact and
 smoothed per-position signals. This README figure uses Spearman because the
 track values are clearly non-normal and often tied by clipping/background
 thresholding, so rank-based correlation is the more honest default summary.
+The default `max_strands` export now keeps the strand logic visible too, but in
+the simpler way: it renders one all-against-all matrix over the strand-specific
+curves themselves, ordered `F` then `R` for every motif. That means every TF
+pair naturally appears as one 2x2 block with `F-F / F-R / R-F / R-R`, instead
+of hiding mixed-orientation pairings behind one collapsed number.
 
 That makes the TERT story easier to read: we can see not just which motifs
 peak, but which ones peak in the same neighborhoods. In the current slice,
 `SP1 (MA0079.5)` and `PATZ1 (MA1961.2)` form the strongest synchronized pair,
 with `KLF4 (MA0039.5)` also tracking the same neighborhood.
+
+GENtle now also keeps strand-aware companion exports for the same TERT slice,
+so orientation-sensitive questions do not have to be flattened into one
+`max(forward, reverse)` summary. The current README uses the combined
+max-strands Spearman view, while the matching
+[forward-only](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.png)
+and
+[reverse-only](docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.png)
+exports stay available when strand-specific spacing or flanking-motif
+relationships matter.
 
 ### Stateless Sequence Inspection
 

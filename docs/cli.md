@@ -1694,6 +1694,10 @@ Shared shell command:
         kinked arrow if feature-derived or promoter-provenance TSS metadata is
         available
     - `features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--signal-source max_strands|forward_only|reverse_only] [--allow-negative]`
+      - `max_strands` now renders one strand-expanded all-vs-all matrix:
+        every motif appears twice on each axis, ordered `F` then `R`, so each
+        TF pair naturally reads as one adjacent `F-F / F-R / R-F / R-R` block
+      - `forward_only` and `reverse_only` keep the single-signal projections
       - renders the same shared synchrony sidecar as a dedicated dual heatmap:
         smoothed selected-metric correlation on the left, raw selected-metric
         correlation on the right

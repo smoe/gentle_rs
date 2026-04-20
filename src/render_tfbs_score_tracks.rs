@@ -283,6 +283,50 @@ fn correlation_value(
     }
 }
 
+fn cross_strand_correlation_value(
+    cell: &crate::engine::TfbsScoreTrackCrossStrandCorrelationCell,
+    metric: crate::engine::TfbsScoreTrackCorrelationMetric,
+    smoothed: bool,
+) -> f64 {
+    match (metric, smoothed) {
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, true) => cell.smoothed_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, false) => cell.raw_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, true) => cell.smoothed_spearman,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, false) => cell.raw_spearman,
+    }
+}
+
+fn directional_correlation_value(
+    summary: &crate::engine::TfbsScoreTrackDirectionalSummary,
+    metric: crate::engine::TfbsScoreTrackCorrelationMetric,
+    smoothed: bool,
+) -> f64 {
+    match (metric, smoothed) {
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, true) => summary.smoothed_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Pearson, false) => summary.raw_pearson,
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, true) => {
+            summary.smoothed_spearman
+        }
+        (crate::engine::TfbsScoreTrackCorrelationMetric::Spearman, false) => summary.raw_spearman,
+    }
+}
+
+fn cross_strand_lookup_cell<'a>(
+    row: &'a crate::engine::TfbsScoreTrackCrossStrandCorrelationRow,
+    row_is_left: bool,
+    row_strand: crate::engine::TfbsScoreTrackStrandComponent,
+    col_strand: crate::engine::TfbsScoreTrackStrandComponent,
+) -> Option<&'a crate::engine::TfbsScoreTrackCrossStrandCorrelationCell> {
+    let (left_strand, right_strand) = if row_is_left {
+        (row_strand, col_strand)
+    } else {
+        (col_strand, row_strand)
+    };
+    row.cells
+        .iter()
+        .find(|cell| cell.left_strand == left_strand && cell.right_strand == right_strand)
+}
+
 fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
     let mut min_score = 0.0_f64;
     let mut max_score = report.global_max_score.max(0.0);
@@ -899,6 +943,12 @@ pub fn render_tfbs_score_track_correlation_svg(
     metric: crate::engine::TfbsScoreTrackCorrelationMetric,
     signal_source: crate::engine::TfbsScoreTrackCorrelationSignalSource,
 ) -> String {
+    let cross_strand_correlation = report
+        .cross_strand_correlation_summary
+        .as_ref()
+        .filter(|_| {
+            signal_source == crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands
+        });
     let correlation = report
         .correlation_summaries
         .iter()
@@ -910,7 +960,7 @@ pub fn render_tfbs_score_track_correlation_svg(
                         == crate::engine::TfbsScoreTrackCorrelationSignalSource::MaxStrands
             })
         });
-    let Some(correlation) = correlation else {
+    if correlation.is_none() && cross_strand_correlation.is_none() {
         return format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
 <rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n\
@@ -924,7 +974,7 @@ pub fn render_tfbs_score_track_correlation_svg(
             report.view_end_0based_exclusive,
             escape_svg_text(signal_source.as_str()),
         );
-    };
+    }
     if report.tracks.is_empty() {
         return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"960\" height=\"220\" viewBox=\"0 0 960 220\">\n\
 <rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n\
@@ -933,6 +983,321 @@ pub fn render_tfbs_score_track_correlation_svg(
 </svg>\n"
             .to_string();
     }
+
+    if let Some(cross_strand_correlation) = cross_strand_correlation {
+        let components = report
+            .tracks
+            .iter()
+            .enumerate()
+            .flat_map(|(track_idx, track)| {
+                let label = format_tf_track_label(&track.tf_id, track.tf_name.as_deref());
+                [
+                    (
+                        track_idx,
+                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                        format!("{label} F"),
+                    ),
+                    (
+                        track_idx,
+                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                        format!("{label} R"),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let matrix_size = components.len();
+        let label_width = components
+            .iter()
+            .map(|(_, _, label)| label.chars().count() as f64 * 6.8)
+            .fold(160.0_f64, f64::max)
+            .min(280.0);
+        let panel_size = matrix_size as f64 * CORR_CELL_SIZE;
+        let panel_width = label_width + CORR_LABEL_GAP + panel_size;
+        let content_width =
+            CORR_MARGIN_LEFT + panel_width * 2.0 + CORR_PANEL_GAP + CORR_MARGIN_RIGHT;
+        let svg_width = CORR_SVG_WIDTH.max(content_width);
+
+        let mut ranked_cells = vec![];
+        for row in &cross_strand_correlation.rows {
+            for cell in &row.cells {
+                ranked_cells.push((row, cell));
+            }
+        }
+        ranked_cells.sort_by(|(left_row, left_cell), (right_row, right_cell)| {
+            cross_strand_correlation_value(right_cell, metric, true)
+                .abs()
+                .total_cmp(&cross_strand_correlation_value(left_cell, metric, true).abs())
+                .then(
+                    cross_strand_correlation_value(right_cell, metric, false)
+                        .abs()
+                        .total_cmp(&cross_strand_correlation_value(left_cell, metric, false).abs()),
+                )
+                .then(left_row.left_tf_id.cmp(&right_row.left_tf_id))
+                .then(left_row.right_tf_id.cmp(&right_row.right_tf_id))
+                .then(
+                    left_cell
+                        .left_strand
+                        .as_str()
+                        .cmp(right_cell.left_strand.as_str()),
+                )
+                .then(
+                    left_cell
+                        .right_strand
+                        .as_str()
+                        .cmp(right_cell.right_strand.as_str()),
+                )
+        });
+        let list_rows = ranked_cells.len().min(8);
+        let list_height = 34.0 + list_rows as f64 * 18.0;
+        let svg_height = CORR_HEADER_HEIGHT + panel_size + list_height + CORR_FOOTER_HEIGHT;
+
+        let left_panel_left = CORR_MARGIN_LEFT;
+        let right_panel_left = left_panel_left + panel_width + CORR_PANEL_GAP;
+        let matrix_top = CORR_HEADER_HEIGHT;
+        let matrix_left = |panel_left: f64| panel_left + label_width + CORR_LABEL_GAP;
+
+        let mut cross_row_lookup = std::collections::HashMap::<
+            (usize, usize),
+            &crate::engine::TfbsScoreTrackCrossStrandCorrelationRow,
+        >::new();
+        for row in &cross_strand_correlation.rows {
+            let left_idx = report
+                .tracks
+                .iter()
+                .position(|track| track.tf_id == row.left_tf_id);
+            let right_idx = report
+                .tracks
+                .iter()
+                .position(|track| track.tf_id == row.right_tf_id);
+            if let (Some(left_idx), Some(right_idx)) = (left_idx, right_idx) {
+                cross_row_lookup.insert((left_idx.min(right_idx), left_idx.max(right_idx)), row);
+            }
+        }
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width:.0}\" height=\"{svg_height:.0}\" viewBox=\"0 0 {svg_width:.0} {svg_height:.0}\">\n"
+        ));
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#fffdf8\"/>\n");
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"34\" font-family=\"monospace\" font-size=\"16\" fill=\"#111827\">TFBS track correlation</text>\n",
+            CORR_MARGIN_LEFT
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"54\" font-family=\"monospace\" font-size=\"11\" fill=\"#475569\">seq={} | span={}..{} | score={} | pair_count={}</text>\n",
+            CORR_MARGIN_LEFT,
+            escape_svg_text(&report.seq_id),
+            report.view_start_0based,
+            report.view_end_0based_exclusive,
+            escape_svg_text(report.score_kind.as_str()),
+            cross_strand_correlation.pair_count
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"71\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">Smoothed {} is the main neighborhood-synchrony view; raw {} stays alongside it as the strict per-position check.</text>\n",
+            CORR_MARGIN_LEFT,
+            escape_svg_text(metric.as_str()),
+            escape_svg_text(metric.as_str())
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"86\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">rows and columns list each motif twice in F then R order | smoothing={} {} bp</text>\n",
+            CORR_MARGIN_LEFT,
+            escape_svg_text(&cross_strand_correlation.smoothing_method),
+            cross_strand_correlation.smoothing_window_bp
+        ));
+
+        for (panel_left, panel_title, is_smoothed) in [
+            (left_panel_left, metric.display_label(true), true),
+            (right_panel_left, metric.display_label(false), false),
+        ] {
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"106\" font-family=\"monospace\" font-size=\"12\" fill=\"#0f172a\">{}</text>\n",
+                panel_left,
+                escape_svg_text(panel_title)
+            ));
+            let grid_left = matrix_left(panel_left);
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
+                grid_left,
+                matrix_top,
+                panel_size,
+                panel_size
+            ));
+            for tf_group_idx in 0..report.tracks.len() {
+                let block_x = grid_left + (tf_group_idx * 2) as f64 * CORR_CELL_SIZE;
+                let block_y = matrix_top + (tf_group_idx * 2) as f64 * CORR_CELL_SIZE;
+                let block_size = CORR_CELL_SIZE * 2.0;
+                svg.push_str(&format!(
+                    "<rect x=\"{block_x:.1}\" y=\"{block_y:.1}\" width=\"{block_size:.1}\" height=\"{block_size:.1}\" fill=\"#fef3c7\" fill-opacity=\"0.18\" stroke=\"#92400e\" stroke-width=\"1.4\" stroke-dasharray=\"3 2\"/>\n"
+                ));
+            }
+            for (idx, (_, _, label)) in components.iter().enumerate() {
+                let y = matrix_top + idx as f64 * CORR_CELL_SIZE + CORR_CELL_SIZE * 0.65;
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>\n",
+                    grid_left - 6.0,
+                    y,
+                    escape_svg_text(label)
+                ));
+                let column_x = grid_left + idx as f64 * CORR_CELL_SIZE + CORR_CELL_SIZE * 0.35;
+                let label_y = matrix_top - 8.0;
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" transform=\"rotate(-45 {:.1} {:.1})\" font-family=\"monospace\" font-size=\"9\" fill=\"#334155\">{}</text>\n",
+                    column_x,
+                    label_y,
+                    column_x,
+                    label_y,
+                    escape_svg_text(label)
+                ));
+            }
+
+            for row_idx in 0..matrix_size {
+                for col_idx in 0..matrix_size {
+                    let x = grid_left + col_idx as f64 * CORR_CELL_SIZE;
+                    let y = matrix_top + row_idx as f64 * CORR_CELL_SIZE;
+                    let (row_track_idx, row_strand, _) = &components[row_idx];
+                    let (col_track_idx, col_strand, _) = &components[col_idx];
+                    let value = if row_track_idx == col_track_idx {
+                        if row_strand == col_strand {
+                            1.0
+                        } else {
+                            report.tracks[*row_track_idx]
+                                .directional_summary
+                                .as_ref()
+                                .map(|summary| {
+                                    directional_correlation_value(summary, metric, is_smoothed)
+                                })
+                                .unwrap_or(0.0)
+                        }
+                    } else {
+                        let key = (
+                            (*row_track_idx).min(*col_track_idx),
+                            (*row_track_idx).max(*col_track_idx),
+                        );
+                        let row_is_left = row_track_idx < col_track_idx;
+                        cross_row_lookup
+                            .get(&key)
+                            .and_then(|row| {
+                                cross_strand_lookup_cell(
+                                    row,
+                                    row_is_left,
+                                    *row_strand,
+                                    *col_strand,
+                                )
+                            })
+                            .map(|cell| {
+                                cross_strand_correlation_value(cell, metric, is_smoothed)
+                            })
+                            .unwrap_or(0.0)
+                    };
+                    svg.push_str(&format!(
+                        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{CORR_CELL_SIZE:.1}\" height=\"{CORR_CELL_SIZE:.1}\" fill=\"{}\" stroke=\"#e2e8f0\" stroke-width=\"0.8\"/>\n",
+                        correlation_fill_color(value)
+                    ));
+                    svg.push_str(&format!(
+                        "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" fill=\"{}\">{:+.2}</text>\n",
+                        x + CORR_CELL_SIZE * 0.5,
+                        y + CORR_CELL_SIZE * 0.60,
+                        correlation_text_color(value),
+                        value
+                    ));
+                    svg.push_str(&format!(
+                        "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{CORR_CELL_SIZE:.1}\" height=\"{CORR_CELL_SIZE:.1}\" fill=\"none\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n"
+                    ));
+                }
+            }
+            for separator_idx in (2..matrix_size).step_by(2) {
+                let separator_x = grid_left + separator_idx as f64 * CORR_CELL_SIZE;
+                let separator_y = matrix_top + separator_idx as f64 * CORR_CELL_SIZE;
+                svg.push_str(&format!(
+                    "<line x1=\"{separator_x:.1}\" y1=\"{matrix_top:.1}\" x2=\"{separator_x:.1}\" y2=\"{:.1}\" stroke=\"#475569\" stroke-width=\"2.2\" opacity=\"0.95\"/>\n",
+                    matrix_top + panel_size
+                ));
+                svg.push_str(&format!(
+                    "<line x1=\"{grid_left:.1}\" y1=\"{separator_y:.1}\" x2=\"{:.1}\" y2=\"{separator_y:.1}\" stroke=\"#475569\" stroke-width=\"2.2\" opacity=\"0.95\"/>\n",
+                    grid_left + panel_size
+                ));
+            }
+        }
+
+        let legend_y = matrix_top + panel_size + 20.0;
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#475569\">color scale: strong negative -> neutral -> strong positive | rows/columns are ordered F then R for every motif, so each TF-pair block reads F-F / F-R / R-F / R-R</text>\n",
+            CORR_MARGIN_LEFT,
+            legend_y
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#92400e\">amber dashed 2x2 diagonal blocks mark one motif's own F/R self-comparison; the off-diagonal cells inside those blocks are the mutual F↔R direction scores</text>\n",
+            CORR_MARGIN_LEFT,
+            legend_y + 14.0
+        ));
+        for (idx, (value, label)) in [
+            (-1.0, "-1.0"),
+            (-0.5, "-0.5"),
+            (0.0, "0"),
+            (0.5, "+0.5"),
+            (1.0, "+1.0"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let x = CORR_MARGIN_LEFT + 430.0 + idx as f64 * 66.0;
+            svg.push_str(&format!(
+                "<rect x=\"{x:.1}\" y=\"{:.1}\" width=\"18\" height=\"12\" fill=\"{}\" stroke=\"#cbd5e1\" stroke-width=\"1\"/>\n",
+                legend_y - 10.0,
+                correlation_fill_color(*value)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"9\" fill=\"#475569\">{}</text>\n",
+                x + 24.0,
+                legend_y,
+                label
+            ));
+        }
+
+        let list_top = legend_y + 36.0;
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"12\" fill=\"#0f172a\">Top synchronized strand pairs</text>\n",
+            CORR_MARGIN_LEFT,
+            list_top
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">ranked by |smoothed {}|, then |raw {}|; offset uses strand-specific primary peak start positions</text>\n",
+            CORR_MARGIN_LEFT,
+            list_top + 14.0,
+            escape_svg_text(metric.as_str()),
+            escape_svg_text(metric.as_str())
+        ));
+        let mut line_y = list_top + 32.0;
+        for (row, cell) in ranked_cells.into_iter().take(list_rows) {
+            let left_label = format_tf_track_label(&row.left_tf_id, row.left_tf_name.as_deref());
+            let right_label = format_tf_track_label(&row.right_tf_id, row.right_tf_name.as_deref());
+            let offset = cell
+                .signed_primary_peak_offset_bp
+                .map(|value| format!("{value:+} bp"))
+                .unwrap_or_else(|| "n/a".to_string());
+            let summary = format!(
+                "{} {} vs {} {} | smoothed {:+.3} | raw {:+.3} | offset {}",
+                left_label,
+                cell.left_strand.short_label(),
+                right_label,
+                cell.right_strand.short_label(),
+                cross_strand_correlation_value(cell, metric, true),
+                cross_strand_correlation_value(cell, metric, false),
+                offset
+            );
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#334155\">{}</text>\n",
+                CORR_MARGIN_LEFT,
+                line_y,
+                escape_svg_text(&summary)
+            ));
+            line_y += 18.0;
+        }
+        svg.push_str("</svg>\n");
+        return svg;
+    }
+
+    let correlation = correlation.expect("checked above");
 
     let labels = report
         .tracks
@@ -1243,6 +1608,7 @@ mod tests {
             }],
             correlation_summary: None,
             correlation_summaries: vec![],
+            cross_strand_correlation_summary: None,
             tracks: vec![
                 TfbsScoreTrackRow {
                     tf_id: "MA0828.2".to_string(),
@@ -1364,6 +1730,7 @@ mod tests {
             overlay_tracks: vec![],
             correlation_summary: None,
             correlation_summaries: vec![],
+            cross_strand_correlation_summary: None,
             tracks: vec![TfbsScoreTrackRow {
                 tf_id: "REST".to_string(),
                 tf_name: Some("REST".to_string()),
@@ -1516,6 +1883,183 @@ mod tests {
                     },
                 ],
             }],
+            cross_strand_correlation_summary: Some(
+                crate::engine::TfbsScoreTrackCrossStrandCorrelationSummary {
+                    smoothing_method: "centered_boxcar".to_string(),
+                    smoothing_window_bp: 25,
+                    pair_count: 3,
+                    rows: vec![
+                        crate::engine::TfbsScoreTrackCrossStrandCorrelationRow {
+                            left_tf_id: "MA0079.5".to_string(),
+                            left_tf_name: Some("SP1".to_string()),
+                            right_tf_id: "MA0147.4".to_string(),
+                            right_tf_name: Some("MYC".to_string()),
+                            cells: vec![
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.41,
+                                    smoothed_pearson: 0.82,
+                                    raw_spearman: 0.54,
+                                    smoothed_spearman: 0.87,
+                                    signed_primary_peak_offset_bp: Some(80),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.22,
+                                    smoothed_pearson: 0.61,
+                                    raw_spearman: 0.26,
+                                    smoothed_spearman: 0.59,
+                                    signed_primary_peak_offset_bp: Some(319),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.19,
+                                    smoothed_pearson: 0.52,
+                                    raw_spearman: 0.07,
+                                    smoothed_spearman: 0.51,
+                                    signed_primary_peak_offset_bp: Some(239),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.38,
+                                    smoothed_pearson: 0.77,
+                                    raw_spearman: 0.44,
+                                    smoothed_spearman: 0.79,
+                                    signed_primary_peak_offset_bp: Some(0),
+                                },
+                            ],
+                        },
+                        crate::engine::TfbsScoreTrackCrossStrandCorrelationRow {
+                            left_tf_id: "MA0079.5".to_string(),
+                            left_tf_name: Some("SP1".to_string()),
+                            right_tf_id: "MA1961.2".to_string(),
+                            right_tf_name: Some("PATZ1".to_string()),
+                            cells: vec![
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.38,
+                                    smoothed_pearson: 0.96,
+                                    raw_spearman: 0.48,
+                                    smoothed_spearman: 0.97,
+                                    signed_primary_peak_offset_bp: Some(-152),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.24,
+                                    smoothed_pearson: 0.73,
+                                    raw_spearman: 0.24,
+                                    smoothed_spearman: 0.73,
+                                    signed_primary_peak_offset_bp: Some(-1),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.39,
+                                    smoothed_pearson: 0.87,
+                                    raw_spearman: 0.39,
+                                    smoothed_spearman: 0.87,
+                                    signed_primary_peak_offset_bp: Some(-72),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.34,
+                                    smoothed_pearson: 0.90,
+                                    raw_spearman: 0.34,
+                                    smoothed_spearman: 0.90,
+                                    signed_primary_peak_offset_bp: Some(-1),
+                                },
+                            ],
+                        },
+                        crate::engine::TfbsScoreTrackCrossStrandCorrelationRow {
+                            left_tf_id: "MA0147.4".to_string(),
+                            left_tf_name: Some("MYC".to_string()),
+                            right_tf_id: "MA1961.2".to_string(),
+                            right_tf_name: Some("PATZ1".to_string()),
+                            cells: vec![
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.18,
+                                    smoothed_pearson: 0.44,
+                                    raw_spearman: 0.21,
+                                    smoothed_spearman: 0.46,
+                                    signed_primary_peak_offset_bp: Some(87),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.21,
+                                    smoothed_pearson: 0.62,
+                                    raw_spearman: 0.20,
+                                    smoothed_spearman: 0.62,
+                                    signed_primary_peak_offset_bp: Some(318),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Forward,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.11,
+                                    smoothed_pearson: 0.48,
+                                    raw_spearman: 0.10,
+                                    smoothed_spearman: 0.48,
+                                    signed_primary_peak_offset_bp: Some(87),
+                                },
+                                crate::engine::TfbsScoreTrackCrossStrandCorrelationCell {
+                                    left_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    right_strand:
+                                        crate::engine::TfbsScoreTrackStrandComponent::Reverse,
+                                    overlap_window_count: 100,
+                                    raw_pearson: 0.18,
+                                    smoothed_pearson: 0.41,
+                                    raw_spearman: 0.19,
+                                    smoothed_spearman: 0.42,
+                                    signed_primary_peak_offset_bp: Some(-72),
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ),
             tracks: vec![
                 TfbsScoreTrackRow {
                     tf_id: "MA0079.5".to_string(),
@@ -1576,7 +2120,12 @@ mod tests {
         assert!(svg.contains("SP1 (MA0079.5)"));
         assert!(svg.contains("MYC (MA0147.4)"));
         assert!(svg.contains("PATZ1 (MA1961.2)"));
-        assert!(svg.contains("Top synchronized pairs"));
+        assert!(svg.contains("Top synchronized strand pairs"));
+        assert!(svg.contains("rows and columns list each motif twice in F then R order"));
+        assert!(svg.contains("SP1 (MA0079.5) F"));
+        assert!(svg.contains("SP1 (MA0079.5) R"));
+        assert!(svg.contains("PATZ1 (MA1961.2) F"));
+        assert!(svg.contains("SP1 (MA0079.5) F vs PATZ1 (MA1961.2) F"));
         assert!(svg.contains("offset +80 bp"));
         assert!(svg.contains("offset -152 bp"));
     }

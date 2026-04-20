@@ -28253,6 +28253,54 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
     assert!(report.correlation_summaries.iter().any(|candidate| {
         candidate.signal_source == TfbsScoreTrackCorrelationSignalSource::ReverseOnly
     }));
+    let cross_summary = report
+        .cross_strand_correlation_summary
+        .as_ref()
+        .expect("cross-strand correlation summary");
+    assert_eq!(cross_summary.smoothing_method, "centered_boxcar");
+    assert_eq!(cross_summary.smoothing_window_bp, 25);
+    assert_eq!(cross_summary.pair_count, 1);
+    let cross_row = cross_summary.rows.first().expect("cross-strand row");
+    assert_eq!(cross_row.left_tf_name.as_deref(), Some("SP1"));
+    assert_eq!(cross_row.right_tf_name.as_deref(), Some("MYC"));
+    assert_eq!(cross_row.cells.len(), 4);
+    assert_eq!(
+        cross_row
+            .cells
+            .iter()
+            .map(|cell| (cell.left_strand, cell.right_strand))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                TfbsScoreTrackStrandComponent::Forward,
+                TfbsScoreTrackStrandComponent::Forward,
+            ),
+            (
+                TfbsScoreTrackStrandComponent::Forward,
+                TfbsScoreTrackStrandComponent::Reverse,
+            ),
+            (
+                TfbsScoreTrackStrandComponent::Reverse,
+                TfbsScoreTrackStrandComponent::Forward,
+            ),
+            (
+                TfbsScoreTrackStrandComponent::Reverse,
+                TfbsScoreTrackStrandComponent::Reverse,
+            ),
+        ]
+    );
+    assert!(
+        cross_row
+            .cells
+            .iter()
+            .all(|cell| (-1.0..=1.0).contains(&cell.raw_spearman))
+    );
+    assert!(
+        cross_row
+            .cells
+            .iter()
+            .all(|cell| (-1.0..=1.0).contains(&cell.smoothed_spearman))
+    );
     assert_eq!(summary.smoothing_method, "centered_boxcar");
     assert_eq!(summary.smoothing_window_bp, 25);
     assert_eq!(summary.pair_count, 1);

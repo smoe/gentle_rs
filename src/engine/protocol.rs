@@ -462,6 +462,32 @@ pub struct TfbsScoreTrackCorrelationRow {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// One strand-specific TFBS score-track component used in cross-strand
+/// correlation summaries.
+pub enum TfbsScoreTrackStrandComponent {
+    #[default]
+    Forward,
+    Reverse,
+}
+
+impl TfbsScoreTrackStrandComponent {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::Reverse => "reverse",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Self::Forward => "F",
+            Self::Reverse => "R",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 /// Which strand-handling rule is used before comparing TFBS score tracks.
 pub enum TfbsScoreTrackCorrelationSignalSource {
     #[default]
@@ -534,6 +560,49 @@ pub struct TfbsScoreTrackCorrelationSummary {
     pub smoothing_window_bp: usize,
     pub pair_count: usize,
     pub rows: Vec<TfbsScoreTrackCorrelationRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One explicit strand-pair synchrony estimate between two TF score tracks.
+pub struct TfbsScoreTrackCrossStrandCorrelationCell {
+    pub left_strand: TfbsScoreTrackStrandComponent,
+    pub right_strand: TfbsScoreTrackStrandComponent,
+    pub overlap_window_count: usize,
+    pub raw_pearson: f64,
+    pub smoothed_pearson: f64,
+    pub raw_spearman: f64,
+    pub smoothed_spearman: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_primary_peak_offset_bp: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One TF-pair block containing all four `F-F / F-R / R-F / R-R` synchrony
+/// estimates.
+pub struct TfbsScoreTrackCrossStrandCorrelationRow {
+    pub left_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_tf_name: Option<String>,
+    pub right_tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_tf_name: Option<String>,
+    #[serde(default)]
+    pub cells: Vec<TfbsScoreTrackCrossStrandCorrelationCell>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared cross-strand TFBS synchrony summary where each TF-pair carries all
+/// four strand pairings in one row so renderers can either show grouped 2x2
+/// TF-pair blocks or expand the matrix into explicit `F, R` curve axes.
+pub struct TfbsScoreTrackCrossStrandCorrelationSummary {
+    pub smoothing_method: String,
+    pub smoothing_window_bp: usize,
+    pub pair_count: usize,
+    #[serde(default)]
+    pub rows: Vec<TfbsScoreTrackCrossStrandCorrelationRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -802,6 +871,8 @@ pub struct TfbsScoreTrackReport {
     pub correlation_summary: Option<TfbsScoreTrackCorrelationSummary>,
     #[serde(default)]
     pub correlation_summaries: Vec<TfbsScoreTrackCorrelationSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_strand_correlation_summary: Option<TfbsScoreTrackCrossStrandCorrelationSummary>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
 }

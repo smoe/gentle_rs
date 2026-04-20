@@ -428,6 +428,105 @@ cargo run --quiet --bin gentle_examples_docs -- \
   docs/figures/tp73_upstream_tfbs_score_tracks.png
 ```
 
+`tert_upstream_early_coding_llr_background_tail_log10.svg` is the
+README-facing reverse-strand TERT promoter case study rendered through the
+shared promoter-slice + TFBS score-track path. It uses the local prepared
+`Human GRCh38 Ensembl 116` cache, derives one `1000 bp` upstream plus `200 bp`
+into-transcribed promoter slice for transcript `ENST00001058280`, and keeps
+the shared transcription-start marker visible as one dashed line with a kinked
+top arrow across the stacked motif rows.
+
+`tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.svg`
+is the matching synchrony export for the same slice using the default
+`max_strands` signal source. In that default view, the export renders one
+strand-expanded all-vs-all matrix where every motif appears twice on each axis
+in `F` then `R` order, so mixed-orientation relationships show up as adjacent
+2x2 TF-pair blocks rather than being hidden behind one pre-aggregated strand
+collapse. The two orientation-sensitive companions
+`tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.svg`
+and
+`tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.svg`
+render the same Spearman heatmap with `forward_only` and `reverse_only`
+signals respectively, so promoter case studies can compare strand-collapsed
+versus strand-specific motif co-occurrence.
+
+The matching `.png` files are the README-friendly raster derivatives.
+
+Regenerate the TERT TFBS figure family from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tert_readme_tfbs.state.json \
+  genomes extract-promoter \
+  "Human GRCh38 Ensembl 116" \
+  TERT \
+  --transcript-id ENST00001058280 \
+  --output-id tert_promoter_1000up_200down \
+  --upstream-bp 1000 \
+  --downstream-bp 200 \
+  --annotation-scope none \
+  --catalog assets/genomes.json \
+  --cache-dir data/genomes
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tert_readme_tfbs.state.json \
+  features tfbs-score-tracks-svg \
+  tert_promoter_1000up_200down \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10.svg \
+  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --score-kind llr_background_tail_log10
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tert_readme_tfbs.state.json \
+  features tfbs-score-track-correlation-svg \
+  tert_promoter_1000up_200down \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.svg \
+  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --score-kind llr_background_tail_log10 \
+  --correlation-metric spearman \
+  --signal-source max_strands
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tert_readme_tfbs.state.json \
+  features tfbs-score-track-correlation-svg \
+  tert_promoter_1000up_200down \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.svg \
+  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --score-kind llr_background_tail_log10 \
+  --correlation-metric spearman \
+  --signal-source forward_only
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tert_readme_tfbs.state.json \
+  features tfbs-score-track-correlation-svg \
+  tert_promoter_1000up_200down \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.svg \
+  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --score-kind llr_background_tail_log10 \
+  --correlation-metric spearman \
+  --signal-source reverse_only
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10.svg \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10.png
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.svg \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.png
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.svg \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.png
+
+cargo run --quiet --bin gentle_examples_docs -- \
+  svg-png \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.svg \
+  docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.png
+```
+
 `toy_shared_exon_anchor_source.gb` is a hand-crafted 150 bp synthetic teaching
 locus with four short exons and three transcripts. All three transcripts share
 exon `85..108`, but one starts later (`delta 5'`) and one ends earlier

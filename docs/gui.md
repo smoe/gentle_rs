@@ -3936,6 +3936,13 @@ Tutorial projects:
     - smoothed selected-metric correlation on the left
     - raw selected-metric correlation on the right
     - selectable `max_strands` / `forward_only` / `reverse_only` signal source
+    - when `max_strands` is selected, the export becomes one strand-expanded
+      all-vs-all matrix:
+      - every motif appears twice on each axis, ordered `F` then `R`
+      - each TF-pair therefore reads as one adjacent 2x2 block
+        `F-F / F-R / R-F / R-R`
+      - the block values come directly from the strand-specific curves rather
+        than from a prior `max(forward, reverse)` collapse
     - ranked synchronized pairs with signed peak offsets in the footer
   - stacked SVG exports now render motif labels as `TF name (JASPAR id)` and
     carry one shared dashed TSS line with a single top-level kinked arrow when
