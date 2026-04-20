@@ -1197,9 +1197,10 @@ mod tests {
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode,
-            DotplotView, EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
-            GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
+            AnnotationCandidateSummary, ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef,
+            DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
+            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
+            OpResult, Operation,
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
             PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
             PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
@@ -10164,6 +10165,29 @@ mod tests {
     }
 
     #[test]
+    fn construct_reasoning_summary_entries_use_stable_ids_not_titles() {
+        let first = MainAreaDna::construct_reasoning_inspector_entry_for_annotation_summary(
+            &AnnotationCandidateSummary {
+                summary_id: "summary-1".to_string(),
+                title: "Inverted repeat cluster".to_string(),
+                ..AnnotationCandidateSummary::default()
+            },
+        );
+        let second = MainAreaDna::construct_reasoning_inspector_entry_for_annotation_summary(
+            &AnnotationCandidateSummary {
+                summary_id: "summary-2".to_string(),
+                title: "Inverted repeat cluster".to_string(),
+                ..AnnotationCandidateSummary::default()
+            },
+        );
+
+        assert_eq!(first.title, second.title);
+        assert_ne!(first.stable_id, second.stable_id);
+        assert_eq!(first.stable_id, "summary-1");
+        assert_eq!(second.stable_id, "summary-2");
+    }
+
+    #[test]
     fn refresh_description_cache_includes_similarity_reasoning_facts() {
         let sequence = format!(
             "{}{}{}{}{}",
@@ -11454,6 +11478,7 @@ pub struct MainAreaDna {
 
 #[derive(Clone, Debug, Default)]
 struct ConstructReasoningInspectorEntry {
+    stable_id: String,
     title: String,
     detail_lines: Vec<String>,
     warning_lines: Vec<String>,
@@ -20862,6 +20887,11 @@ impl MainAreaDna {
             _ => {}
         }
         ConstructReasoningInspectorEntry {
+            stable_id: if fact.fact_id.trim().is_empty() {
+                fact.label.clone()
+            } else {
+                fact.fact_id.clone()
+            },
             title: fact.label.clone(),
             detail_lines,
             warning_lines,
@@ -20888,6 +20918,11 @@ impl MainAreaDna {
             detail_lines.push(format!("output_facts: {}", node.output_fact_ids.join(", ")));
         }
         ConstructReasoningInspectorEntry {
+            stable_id: if node.decision_id.trim().is_empty() {
+                node.title.clone()
+            } else {
+                node.decision_id.clone()
+            },
             title: node.title.clone(),
             detail_lines,
             warning_lines: vec![],
@@ -20955,6 +20990,11 @@ impl MainAreaDna {
             warning_lines.push("Transcript interpretations remain ambiguous".to_string());
         }
         ConstructReasoningInspectorEntry {
+            stable_id: if summary.summary_id.trim().is_empty() {
+                summary.title.clone()
+            } else {
+                summary.summary_id.clone()
+            },
             title: summary.title.clone(),
             detail_lines,
             warning_lines,
@@ -21006,6 +21046,15 @@ impl MainAreaDna {
             warning_lines.push("Transcript interpretation remains ambiguous".to_string());
         }
         ConstructReasoningInspectorEntry {
+            stable_id: if candidate.annotation_id.trim().is_empty() {
+                if candidate.label.trim().is_empty() {
+                    Self::construct_reasoning_role_label(candidate.role).to_string()
+                } else {
+                    candidate.label.clone()
+                }
+            } else {
+                candidate.annotation_id.clone()
+            },
             title: if candidate.label.trim().is_empty() {
                 Self::construct_reasoning_role_label(candidate.role).to_string()
             } else {
@@ -47589,25 +47638,28 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                     for entry in reasoning.annotation_summary_entries {
-                        egui::CollapsingHeader::new(entry.title.clone())
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                for line in &entry.detail_lines {
-                                    ui.label(
-                                        egui::RichText::new(line)
-                                            .monospace()
-                                            .size(detail_font_size),
-                                    );
-                                }
-                                for warning in &entry.warning_lines {
-                                    ui.label(
-                                        egui::RichText::new(format!("warning: {warning}"))
-                                            .monospace()
-                                            .size(detail_font_size)
-                                            .color(egui::Color32::from_rgb(176, 80, 32)),
-                                    );
-                                }
-                            });
+                        let stable_id = entry.stable_id.clone();
+                        ui.push_id(("construct_reasoning_annotation_summary", stable_id), |ui| {
+                            egui::CollapsingHeader::new(entry.title.clone())
+                                .default_open(false)
+                                .show(ui, |ui| {
+                                    for line in &entry.detail_lines {
+                                        ui.label(
+                                            egui::RichText::new(line)
+                                                .monospace()
+                                                .size(detail_font_size),
+                                        );
+                                    }
+                                    for warning in &entry.warning_lines {
+                                        ui.label(
+                                            egui::RichText::new(format!("warning: {warning}"))
+                                                .monospace()
+                                                .size(detail_font_size)
+                                                .color(egui::Color32::from_rgb(176, 80, 32)),
+                                        );
+                                    }
+                                });
+                        });
                     }
                 }
                 if !reasoning.annotation_entries.is_empty() {
@@ -47617,21 +47669,48 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                     for entry in reasoning.annotation_entries {
+                        let stable_id = entry.stable_id.clone();
+                        ui.push_id(("construct_reasoning_annotation_candidate", stable_id), |ui| {
+                            egui::CollapsingHeader::new(entry.title.clone())
+                                .default_open(false)
+                                .show(ui, |ui| {
+                                    if let (Some(annotation_id), Some(editable_status)) = (
+                                        entry.annotation_id.as_deref(),
+                                        entry.editable_status,
+                                    ) {
+                                        self.render_construct_reasoning_annotation_candidate_actions(
+                                            ui,
+                                            &reasoning_graph_id,
+                                            annotation_id,
+                                            editable_status,
+                                            entry.source_kind.as_deref().unwrap_or_default(),
+                                        );
+                                    }
+                                    for line in &entry.detail_lines {
+                                        ui.label(
+                                            egui::RichText::new(line)
+                                                .monospace()
+                                                .size(detail_font_size),
+                                        );
+                                    }
+                                    for warning in &entry.warning_lines {
+                                        ui.label(
+                                            egui::RichText::new(format!("warning: {warning}"))
+                                                .monospace()
+                                                .size(detail_font_size)
+                                                .color(egui::Color32::from_rgb(176, 80, 32)),
+                                        );
+                                    }
+                                });
+                        });
+                    }
+                }
+                for entry in reasoning.fact_entries {
+                    let stable_id = entry.stable_id.clone();
+                    ui.push_id(("construct_reasoning_fact", stable_id), |ui| {
                         egui::CollapsingHeader::new(entry.title.clone())
-                            .default_open(false)
+                            .default_open(true)
                             .show(ui, |ui| {
-                                if let (Some(annotation_id), Some(editable_status)) = (
-                                    entry.annotation_id.as_deref(),
-                                    entry.editable_status,
-                                ) {
-                                    self.render_construct_reasoning_annotation_candidate_actions(
-                                        ui,
-                                        &reasoning_graph_id,
-                                        annotation_id,
-                                        editable_status,
-                                        entry.source_kind.as_deref().unwrap_or_default(),
-                                    );
-                                }
                                 for line in &entry.detail_lines {
                                     ui.label(
                                         egui::RichText::new(line)
@@ -47648,28 +47727,7 @@ impl MainAreaDna {
                                     );
                                 }
                             });
-                    }
-                }
-                for entry in reasoning.fact_entries {
-                    egui::CollapsingHeader::new(entry.title.clone())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            for line in &entry.detail_lines {
-                                ui.label(
-                                    egui::RichText::new(line)
-                                        .monospace()
-                                        .size(detail_font_size),
-                                );
-                            }
-                            for warning in &entry.warning_lines {
-                                ui.label(
-                                    egui::RichText::new(format!("warning: {warning}"))
-                                        .monospace()
-                                        .size(detail_font_size)
-                                        .color(egui::Color32::from_rgb(176, 80, 32)),
-                                );
-                            }
-                        });
+                    });
                 }
                 if !reasoning.decision_entries.is_empty() {
                     ui.label(
@@ -47678,17 +47736,20 @@ impl MainAreaDna {
                             .size(detail_font_size),
                     );
                     for entry in reasoning.decision_entries {
-                        egui::CollapsingHeader::new(entry.title.clone())
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                for line in &entry.detail_lines {
-                                    ui.label(
-                                        egui::RichText::new(line)
-                                            .monospace()
-                                            .size(detail_font_size),
-                                    );
-                                }
-                            });
+                        let stable_id = entry.stable_id.clone();
+                        ui.push_id(("construct_reasoning_decision", stable_id), |ui| {
+                            egui::CollapsingHeader::new(entry.title.clone())
+                                .default_open(false)
+                                .show(ui, |ui| {
+                                    for line in &entry.detail_lines {
+                                        ui.label(
+                                            egui::RichText::new(line)
+                                                .monospace()
+                                                .size(detail_font_size),
+                                        );
+                                    }
+                                });
+                        });
                     }
                 }
                 for note in &reasoning.note_lines {
