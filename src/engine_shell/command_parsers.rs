@@ -5783,7 +5783,8 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--dataset" => {
-                        let raw = parse_option_path(tokens, &mut idx, "--dataset", "cutrun interpret")?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--dataset", "cutrun interpret")?;
                         if raw.trim().is_empty() {
                             return Err("cutrun interpret --dataset must not be empty".to_string());
                         }

@@ -8693,131 +8693,131 @@ impl GentleEngine {
                         ));
                     }
                 }
-            Operation::ListCutRunDatasets {
-                filter,
-                catalog_path,
-            } => {
-                let report =
-                    Self::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())?;
-                result.messages.push(format!(
-                    "Listed {} CUT&RUN dataset(s)",
-                    report.dataset_count
-                ));
-                result.cutrun_dataset_list = Some(report);
-            }
-            Operation::ShowCutRunDatasetStatus {
-                dataset_id,
-                catalog_path,
-                cache_dir,
-            } => {
-                let status = self.show_cutrun_dataset_status(
-                    &dataset_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                result.messages.push(format!(
-                    "Inspected CUT&RUN dataset '{}' status",
-                    status.dataset_id
-                ));
-                result.warnings.extend(status.warnings.clone());
-                result.cutrun_dataset_status = Some(status);
-            }
-            Operation::PrepareCutRunDataset {
-                dataset_id,
-                catalog_path,
-                cache_dir,
-            } => {
-                let status = self.prepare_cutrun_dataset(
-                    &dataset_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                let prepared_assets = [
-                    status.peaks.prepared.then_some("peaks"),
-                    status.signal.prepared.then_some("signal"),
-                ]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>();
-                let prepared_label = if prepared_assets.is_empty() {
-                    "no processed assets".to_string()
-                } else {
-                    prepared_assets.join("+")
-                };
-                result.messages.push(format!(
-                    "Prepared CUT&RUN dataset '{}' ({prepared_label})",
-                    status.dataset_id
-                ));
-                result.warnings.extend(status.warnings.clone());
-                result.cutrun_dataset_status = Some(status);
-            }
-            Operation::ProjectCutRunDataset {
-                seq_id,
-                dataset_id,
-                include_peaks,
-                include_signal,
-                clear_existing,
-                catalog_path,
-                cache_dir,
-            } => {
-                let report = self.project_cutrun_dataset(
-                    &seq_id,
-                    &dataset_id,
-                    include_peaks.unwrap_or(true),
-                    include_signal.unwrap_or(true),
-                    clear_existing.unwrap_or(false),
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(report.warnings.clone());
-                result.messages.push(format!(
-                    "Projected CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={})",
-                    report.dataset_id,
-                    report.seq_id,
-                    report.projected_peak_features,
-                    report.projected_signal_features
-                ));
-                result.cutrun_dataset_projection = Some(report);
-            }
-            Operation::InterpretCutRunReads {
-                seq_id,
-                input_r1_path,
-                input_r2_path,
-                dataset_id,
-                catalog_path,
-                cache_dir,
-                input_format,
-                read_layout,
-                roi_flank_bp,
-                seed_filter,
-                align_config,
-                deduplicate_fragments,
-                report_id,
-                checkpoint_path,
-                checkpoint_every_reads,
-            } => {
-                let mut report = self.interpret_cutrun_reads(
-                    &seq_id,
-                    input_r1_path.as_deref(),
-                    input_r2_path.as_deref(),
-                    dataset_id.as_deref(),
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
+                Operation::ListCutRunDatasets {
+                    filter,
+                    catalog_path,
+                } => {
+                    let report =
+                        Self::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())?;
+                    result.messages.push(format!(
+                        "Listed {} CUT&RUN dataset(s)",
+                        report.dataset_count
+                    ));
+                    result.cutrun_dataset_list = Some(report);
+                }
+                Operation::ShowCutRunDatasetStatus {
+                    dataset_id,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let status = self.show_cutrun_dataset_status(
+                        &dataset_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    result.messages.push(format!(
+                        "Inspected CUT&RUN dataset '{}' status",
+                        status.dataset_id
+                    ));
+                    result.warnings.extend(status.warnings.clone());
+                    result.cutrun_dataset_status = Some(status);
+                }
+                Operation::PrepareCutRunDataset {
+                    dataset_id,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let status = self.prepare_cutrun_dataset(
+                        &dataset_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    let prepared_assets = [
+                        status.peaks.prepared.then_some("peaks"),
+                        status.signal.prepared.then_some("signal"),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                    let prepared_label = if prepared_assets.is_empty() {
+                        "no processed assets".to_string()
+                    } else {
+                        prepared_assets.join("+")
+                    };
+                    result.messages.push(format!(
+                        "Prepared CUT&RUN dataset '{}' ({prepared_label})",
+                        status.dataset_id
+                    ));
+                    result.warnings.extend(status.warnings.clone());
+                    result.cutrun_dataset_status = Some(status);
+                }
+                Operation::ProjectCutRunDataset {
+                    seq_id,
+                    dataset_id,
+                    include_peaks,
+                    include_signal,
+                    clear_existing,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let report = self.project_cutrun_dataset(
+                        &seq_id,
+                        &dataset_id,
+                        include_peaks.unwrap_or(true),
+                        include_signal.unwrap_or(true),
+                        clear_existing.unwrap_or(false),
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Projected CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={})",
+                        report.dataset_id,
+                        report.seq_id,
+                        report.projected_peak_features,
+                        report.projected_signal_features
+                    ));
+                    result.cutrun_dataset_projection = Some(report);
+                }
+                Operation::InterpretCutRunReads {
+                    seq_id,
+                    input_r1_path,
+                    input_r2_path,
+                    dataset_id,
+                    catalog_path,
+                    cache_dir,
                     input_format,
                     read_layout,
                     roi_flank_bp,
-                    &seed_filter,
-                    &align_config,
+                    seed_filter,
+                    align_config,
                     deduplicate_fragments,
-                    report_id.as_deref(),
-                    checkpoint_path.as_deref(),
+                    report_id,
+                    checkpoint_path,
                     checkpoint_every_reads,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                self.upsert_cutrun_read_report(report.clone())?;
-                result.messages.push(format!(
+                } => {
+                    let mut report = self.interpret_cutrun_reads(
+                        &seq_id,
+                        input_r1_path.as_deref(),
+                        input_r2_path.as_deref(),
+                        dataset_id.as_deref(),
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        input_format,
+                        read_layout,
+                        roi_flank_bp,
+                        &seed_filter,
+                        &align_config,
+                        deduplicate_fragments,
+                        report_id.as_deref(),
+                        checkpoint_path.as_deref(),
+                        checkpoint_every_reads,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.upsert_cutrun_read_report(report.clone())?;
+                    result.messages.push(format!(
                     "Interpreted CUT&RUN reads into report '{}' (units={}, mapped={}, fragments={}, concordant_pairs={})",
                     report.report_id,
                     report.total_units,
@@ -8825,49 +8825,49 @@ impl GentleEngine {
                     report.fragment_count,
                     report.concordant_pair_count
                 ));
-                result.warnings.extend(report.warnings.clone());
-                result.cutrun_read_report = Some(report);
-            }
-            Operation::ListCutRunReadReports { seq_id } => {
-                let rows = self.list_cutrun_read_reports(seq_id.as_deref());
-                result.messages.push(format!(
-                    "CUT&RUN read reports: {} row(s){}",
-                    rows.len(),
-                    seq_id
-                        .as_deref()
-                        .map(|value| format!(" (seq_id='{}')", value))
-                        .unwrap_or_default()
-                ));
-                result.cutrun_read_report_summaries = Some(rows);
-            }
-            Operation::ShowCutRunReadReport { report_id } => {
-                let report = self.get_cutrun_read_report(&report_id)?;
-                result.messages.push(format!(
-                    "CUT&RUN read report '{}' for '{}' (units={}, mapped={}, fragments={})",
-                    report.report_id,
-                    report.seq_id,
-                    report.total_units,
-                    report.mapped_units,
-                    report.fragment_count
-                ));
-                result.warnings.extend(report.warnings.clone());
-                result.cutrun_read_report = Some(report);
-            }
-            Operation::ExportCutRunReadCoverage {
-                report_id,
-                path,
-                kind,
-            } => {
-                let export = self.export_cutrun_read_coverage(&report_id, &path, kind)?;
-                result.messages.push(format!(
-                    "Exported CUT&RUN {} rows for '{}' to '{}'",
-                    export.kind.as_str(),
-                    export.report_id,
-                    export.path
-                ));
-                result.cutrun_read_coverage_export = Some(export);
-            }
-            Operation::ImportIsoformPanel {
+                    result.warnings.extend(report.warnings.clone());
+                    result.cutrun_read_report = Some(report);
+                }
+                Operation::ListCutRunReadReports { seq_id } => {
+                    let rows = self.list_cutrun_read_reports(seq_id.as_deref());
+                    result.messages.push(format!(
+                        "CUT&RUN read reports: {} row(s){}",
+                        rows.len(),
+                        seq_id
+                            .as_deref()
+                            .map(|value| format!(" (seq_id='{}')", value))
+                            .unwrap_or_default()
+                    ));
+                    result.cutrun_read_report_summaries = Some(rows);
+                }
+                Operation::ShowCutRunReadReport { report_id } => {
+                    let report = self.get_cutrun_read_report(&report_id)?;
+                    result.messages.push(format!(
+                        "CUT&RUN read report '{}' for '{}' (units={}, mapped={}, fragments={})",
+                        report.report_id,
+                        report.seq_id,
+                        report.total_units,
+                        report.mapped_units,
+                        report.fragment_count
+                    ));
+                    result.warnings.extend(report.warnings.clone());
+                    result.cutrun_read_report = Some(report);
+                }
+                Operation::ExportCutRunReadCoverage {
+                    report_id,
+                    path,
+                    kind,
+                } => {
+                    let export = self.export_cutrun_read_coverage(&report_id, &path, kind)?;
+                    result.messages.push(format!(
+                        "Exported CUT&RUN {} rows for '{}' to '{}'",
+                        export.kind.as_str(),
+                        export.report_id,
+                        export.path
+                    ));
+                    result.cutrun_read_coverage_export = Some(export);
+                }
+                Operation::ImportIsoformPanel {
                     seq_id,
                     panel_path,
                     panel_id,
@@ -13472,7 +13472,7 @@ impl GentleEngine {
                         complete_rule,
                         append,
                     )?;
-                result.messages.push(format!(
+                    result.messages.push(format!(
                     "Exported RNA-read sample sheet '{}' with {} report row(s) (genes={}, complete_rule={}, append={})",
                     export.path,
                     export.report_count,

@@ -1739,6 +1739,14 @@ Controls:
          - `Nanopore/direct-sequencing review suggested`
          - `Repeat-driven mapping review suggested`
          - `Cloning stability review suggested`
+     - repeat/similarity summaries, candidates, and repeat-driven fact rows
+       can now open the shared dotplot workspace directly:
+       - `Dotplot` opens a self-forward dotplot centered on the implicated
+         repeat/low-complexity span
+       - `RevComp Dotplot` opens a self-reverse-complement dotplot for
+         inverted-repeat / inversion-risk review
+       - the linear viewport is focused onto the implicated span first so the
+         dotplot uses the same region the reasoning row is describing
   - Both the clicked-span detail view and the `Annotation candidates` section
     now expose shared-engine accept/reject/draft controls so reviewed
     automated-annotation candidates can be curated without inventing GUI-only

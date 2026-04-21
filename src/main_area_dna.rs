@@ -10334,6 +10334,117 @@ mod tests {
     }
 
     #[test]
+    fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
+        );
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_similarity".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("seq_reasoning_similarity", None, None)
+            .expect("build graph");
+
+        let cache = MainAreaDna::build_construct_reasoning_inspector_cache(&graph);
+
+        let pcr_entry = cache
+            .fact_entries
+            .iter()
+            .find(|entry| entry.title == "PCR/amplification review suggested")
+            .expect("pcr reasoning entry");
+        assert!(
+            pcr_entry
+                .dotplot_actions
+                .iter()
+                .any(|action| action.mode == DotplotMode::SelfForward),
+            "pcr entry actions: {:?}",
+            pcr_entry.dotplot_actions
+        );
+
+        let cloning_entry = cache
+            .fact_entries
+            .iter()
+            .find(|entry| entry.title == "Cloning stability review suggested")
+            .expect("cloning reasoning entry");
+        assert!(
+            cloning_entry
+                .dotplot_actions
+                .iter()
+                .any(|action| action.mode == DotplotMode::SelfReverseComplement),
+            "cloning entry actions: {:?}",
+            cloning_entry.dotplot_actions
+        );
+    }
+
+    #[test]
+    fn open_construct_reasoning_dotplot_action_focuses_repeat_region() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
+        );
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_reasoning_similarity".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("seq_reasoning_similarity", None, None)
+            .expect("build graph");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(
+            dna,
+            Some("seq_reasoning_similarity".to_string()),
+            Some(engine),
+        );
+        let cache = MainAreaDna::build_construct_reasoning_inspector_cache(&graph);
+        let action = cache
+            .fact_entries
+            .iter()
+            .find(|entry| entry.title == "Cloning stability review suggested")
+            .and_then(|entry| {
+                entry
+                    .dotplot_actions
+                    .iter()
+                    .find(|action| action.mode == DotplotMode::SelfReverseComplement)
+            })
+            .cloned()
+            .expect("cloning revcomp dotplot action");
+
+        area.open_construct_reasoning_dotplot_action(&action)
+            .expect("open reasoning-guided dotplot");
+
+        assert!(area.show_dotplot_window);
+        assert_eq!(area.primary_map_mode, PrimaryMapMode::Dotplot);
+        assert_eq!(area.dotplot_ui.mode, DotplotMode::SelfReverseComplement);
+        assert!(!area.dotplot_ui.dotplot_id.trim().is_empty());
+        let view = area
+            .dotplot_cached_view
+            .as_ref()
+            .expect("cached reasoning-guided dotplot");
+        let focus_midpoint_0based = action.focus_start_0based.saturating_add(
+            action
+                .focus_end_0based_exclusive
+                .saturating_sub(action.focus_start_0based)
+                / 2,
+        );
+        assert!(view.span_start_0based <= focus_midpoint_0based);
+        assert!(view.span_end_0based > focus_midpoint_0based);
+    }
+
+    #[test]
     fn focus_construct_reasoning_graph_prefers_requested_graph() {
         let dna = DNAsequence::from_sequence("ATGCGTATGCGTATGCGTATGCGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -11563,6 +11674,7 @@ struct ConstructReasoningInspectorEntry {
     annotation_id: Option<String>,
     editable_status: Option<EditableStatus>,
     source_kind: Option<String>,
+    dotplot_actions: Vec<ConstructReasoningDotplotAction>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -11575,6 +11687,16 @@ struct ConstructReasoningInspectorCache {
     fact_entries: Vec<ConstructReasoningInspectorEntry>,
     decision_entries: Vec<ConstructReasoningInspectorEntry>,
     note_lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ConstructReasoningDotplotAction {
+    stable_id: String,
+    button_label: String,
+    hover_text: String,
+    mode: DotplotMode,
+    focus_start_0based: usize,
+    focus_end_0based_exclusive: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19571,6 +19693,71 @@ impl MainAreaDna {
         }
     }
 
+    fn open_construct_reasoning_dotplot_action(
+        &mut self,
+        action: &ConstructReasoningDotplotAction,
+    ) -> Result<(), String> {
+        let seq_id = self.seq_id.clone().ok_or_else(|| {
+            "No active sequence selected for reasoning-guided dotplot".to_string()
+        })?;
+        let sequence_len = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
+        if sequence_len == 0 {
+            return Err("Active sequence is empty; dotplot span unavailable".to_string());
+        }
+        let focus_start_0based = action
+            .focus_start_0based
+            .min(sequence_len.saturating_sub(1));
+        let focus_end_0based_exclusive = action
+            .focus_end_0based_exclusive
+            .max(focus_start_0based.saturating_add(1))
+            .min(sequence_len);
+        let focus_span_bp = focus_end_0based_exclusive
+            .saturating_sub(focus_start_0based)
+            .max(1);
+        let target_span_bp = if sequence_len <= 200 {
+            sequence_len
+        } else {
+            focus_span_bp.saturating_mul(3).clamp(200, sequence_len)
+        };
+        let half_window_bp = target_span_bp.saturating_sub(1) / 2;
+        let focus_center_0based = focus_start_0based
+            .saturating_add(focus_span_bp / 2)
+            .min(sequence_len.saturating_sub(1));
+        let (viewport_start_0based, viewport_end_0based_exclusive) =
+            Self::bounded_center_window(sequence_len, focus_center_0based, half_window_bp)
+                .ok_or_else(|| "Could not resolve a viewport for the repeat region".to_string())?;
+        self.set_linear_viewport(
+            viewport_start_0based,
+            viewport_end_0based_exclusive.saturating_sub(viewport_start_0based),
+        );
+        self.sync_linear_view_input_fields_to_viewport();
+        self.dotplot_ui.mode = action.mode;
+        self.dotplot_ui.half_window_bp = half_window_bp.max(1).to_string();
+        self.dotplot_ui.overlay_enabled = false;
+        self.dotplot_ui.reference_seq_id.clear();
+        self.dotplot_ui.reference_span_start_0based.clear();
+        self.dotplot_ui.reference_span_end_0based.clear();
+        self.dotplot_ui.flex_track_id.clear();
+        self.clear_dotplot_query_override();
+        let mode_tag = match action.mode {
+            DotplotMode::SelfForward => "self",
+            DotplotMode::SelfReverseComplement => "revcomp",
+            DotplotMode::PairForward => "pair_forward",
+            DotplotMode::PairReverseComplement => "pair_revcomp",
+        };
+        self.dotplot_ui.dotplot_id = format!(
+            "{}_reasoning_{}_{}_{}",
+            Self::normalize_operation_id_token(&seq_id),
+            focus_start_0based.saturating_add(1),
+            focus_end_0based_exclusive,
+            mode_tag
+        );
+        self.primary_map_mode = PrimaryMapMode::Dotplot;
+        self.compute_primary_dotplot();
+        self.open_dotplot_window();
+        Ok(())
+    }
+
     fn extract_current_selection_as_sequence(&mut self) {
         let template = self.seq_id.clone().unwrap_or_default();
         if template.is_empty() {
@@ -20248,6 +20435,35 @@ impl MainAreaDna {
         None
     }
 
+    fn render_construct_reasoning_dotplot_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        actions: &[ConstructReasoningDotplotAction],
+    ) {
+        if actions.is_empty() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            for action in actions {
+                ui.push_id(
+                    ("construct_reasoning_dotplot_action", &action.stable_id),
+                    |ui| {
+                        if ui
+                            .button(action.button_label.as_str())
+                            .on_hover_text(action.hover_text.as_str())
+                            .clicked()
+                        {
+                            match self.open_construct_reasoning_dotplot_action(action) {
+                                Ok(()) => self.focus_dotplot_workspace_view(ui.ctx()),
+                                Err(err) => self.op_status = err,
+                            }
+                        }
+                    },
+                );
+            }
+        });
+    }
+
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
         match method {
             DecisionMethod::HardRule => "hard_rule",
@@ -20290,6 +20506,7 @@ impl MainAreaDna {
     }
 
     fn construct_reasoning_inspector_entry_for_fact(
+        graph: &ConstructReasoningGraph,
         fact: &DesignFact,
     ) -> ConstructReasoningInspectorEntry {
         let mut detail_lines = vec![];
@@ -20977,6 +21194,7 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
+            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_fact(graph, fact),
         }
     }
 
@@ -21008,6 +21226,7 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
+            dotplot_actions: vec![],
         }
     }
 
@@ -21080,6 +21299,18 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
+            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_range(
+                if summary.summary_id.trim().is_empty() {
+                    summary.title.as_str()
+                } else {
+                    summary.summary_id.as_str()
+                },
+                summary.title.as_str(),
+                summary.role,
+                summary.start_0based,
+                summary.end_0based_exclusive,
+                &[],
+            ),
         }
     }
 
@@ -21144,6 +21375,26 @@ impl MainAreaDna {
             annotation_id: Some(candidate.annotation_id.clone()),
             editable_status: Some(candidate.editable_status),
             source_kind: Some(candidate.source_kind.clone()),
+            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_range(
+                if candidate.annotation_id.trim().is_empty() {
+                    if candidate.label.trim().is_empty() {
+                        Self::construct_reasoning_role_label(candidate.role)
+                    } else {
+                        candidate.label.as_str()
+                    }
+                } else {
+                    candidate.annotation_id.as_str()
+                },
+                if candidate.label.trim().is_empty() {
+                    Self::construct_reasoning_role_label(candidate.role)
+                } else {
+                    candidate.label.as_str()
+                },
+                candidate.role,
+                candidate.start_0based,
+                candidate.end_0based_exclusive,
+                &[],
+            ),
         }
     }
 
@@ -21163,7 +21414,7 @@ impl MainAreaDna {
         let mut fact_entries = graph
             .facts
             .iter()
-            .map(Self::construct_reasoning_inspector_entry_for_fact)
+            .map(|fact| Self::construct_reasoning_inspector_entry_for_fact(graph, fact))
             .collect::<Vec<_>>();
         let mut decision_entries = graph
             .decisions
@@ -21184,6 +21435,151 @@ impl MainAreaDna {
             decision_entries,
             note_lines: graph.notes.clone(),
         }
+    }
+
+    fn construct_reasoning_dotplot_title_has_inverted_signal(title: &str) -> bool {
+        let lower = title.trim().to_ascii_lowercase();
+        lower.contains("inverted")
+            || lower.contains("palindromic")
+            || lower.contains("inversion")
+            || lower.contains("revcomp")
+    }
+
+    fn construct_reasoning_dotplot_should_offer_forward(
+        role: ConstructRole,
+        title: &str,
+        context_tags: &[String],
+    ) -> bool {
+        role == ConstructRole::MobileElement
+            || context_tags.iter().any(|tag| {
+                matches!(
+                    tag.as_str(),
+                    "low_complexity"
+                        | "homopolymer_run"
+                        | "tandem_repeat"
+                        | "direct_repeat"
+                        | "repeat_dense"
+                        | "mapping_ambiguity_risk"
+                        | "polymerase_slippage_risk"
+                        | "alu_like"
+                )
+            })
+            || title.trim().to_ascii_lowercase().contains("direct")
+            || title.trim().to_ascii_lowercase().contains("tandem")
+            || title.trim().to_ascii_lowercase().contains("low-complexity")
+            || title.trim().to_ascii_lowercase().contains("homopolymer")
+            || title.trim().to_ascii_lowercase().contains("alu")
+            || title.trim().to_ascii_lowercase().contains("mobile")
+    }
+
+    fn construct_reasoning_dotplot_should_offer_revcomp(
+        title: &str,
+        context_tags: &[String],
+    ) -> bool {
+        context_tags.iter().any(|tag| {
+            matches!(
+                tag.as_str(),
+                "inverted_repeat" | "palindromic_repeat_risk" | "inversion_risk"
+            )
+        }) || Self::construct_reasoning_dotplot_title_has_inverted_signal(title)
+    }
+
+    fn construct_reasoning_dotplot_actions_for_range(
+        stable_id: &str,
+        title: &str,
+        role: ConstructRole,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        context_tags: &[String],
+    ) -> Vec<ConstructReasoningDotplotAction> {
+        if end_0based_exclusive <= start_0based {
+            return vec![];
+        }
+        let mut actions = vec![];
+        let start_1based = start_0based.saturating_add(1);
+        let end_1based = end_0based_exclusive;
+        if Self::construct_reasoning_dotplot_should_offer_forward(role, title, context_tags) {
+            actions.push(ConstructReasoningDotplotAction {
+                stable_id: format!("{stable_id}:dotplot:self_forward"),
+                button_label: "Dotplot".to_string(),
+                hover_text: format!(
+                    "Open a self-forward dotplot centered on {start_1based}..{end_1based} for '{title}'"
+                ),
+                mode: DotplotMode::SelfForward,
+                focus_start_0based: start_0based,
+                focus_end_0based_exclusive: end_0based_exclusive,
+            });
+        }
+        if Self::construct_reasoning_dotplot_should_offer_revcomp(title, context_tags) {
+            actions.push(ConstructReasoningDotplotAction {
+                stable_id: format!("{stable_id}:dotplot:self_revcomp"),
+                button_label: "RevComp Dotplot".to_string(),
+                hover_text: format!(
+                    "Open a self-reverse-complement dotplot centered on {start_1based}..{end_1based} for '{title}'"
+                ),
+                mode: DotplotMode::SelfReverseComplement,
+                focus_start_0based: start_0based,
+                focus_end_0based_exclusive: end_0based_exclusive,
+            });
+        }
+        actions
+    }
+
+    fn construct_reasoning_dotplot_actions_for_fact(
+        graph: &ConstructReasoningGraph,
+        fact: &DesignFact,
+    ) -> Vec<ConstructReasoningDotplotAction> {
+        let rows = graph
+            .evidence
+            .iter()
+            .filter(|row| {
+                row.scope == crate::engine::EvidenceScope::SequenceSpan
+                    && fact
+                        .based_on_evidence_ids
+                        .iter()
+                        .any(|evidence_id| evidence_id == &row.evidence_id)
+                    && row.end_0based_exclusive > row.start_0based
+            })
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            return vec![];
+        }
+        let focus_start_0based = rows
+            .iter()
+            .map(|row| row.start_0based)
+            .min()
+            .unwrap_or_default();
+        let focus_end_0based_exclusive = rows
+            .iter()
+            .map(|row| row.end_0based_exclusive)
+            .max()
+            .unwrap_or(focus_start_0based.saturating_add(1));
+        let mut context_tags = rows
+            .iter()
+            .flat_map(|row| row.context_tags.iter().cloned())
+            .collect::<Vec<_>>();
+        context_tags.sort();
+        context_tags.dedup();
+        let role = if rows
+            .iter()
+            .any(|row| row.role == ConstructRole::MobileElement)
+        {
+            ConstructRole::MobileElement
+        } else {
+            ConstructRole::RepeatRegion
+        };
+        Self::construct_reasoning_dotplot_actions_for_range(
+            if fact.fact_id.trim().is_empty() {
+                fact.label.as_str()
+            } else {
+                fact.fact_id.as_str()
+            },
+            fact.label.as_str(),
+            role,
+            focus_start_0based,
+            focus_end_0based_exclusive,
+            &context_tags,
+        )
     }
 
     fn construct_reasoning_title(span: &ConstructReasoningOverlaySpan) -> String {
@@ -48033,6 +48429,18 @@ impl MainAreaDna {
                         span.supporting_fact_labels.join(", ")
                     ));
                 }
+                let selected_span_dotplot_actions = Self::construct_reasoning_dotplot_actions_for_range(
+                    span.annotation_id.as_str(),
+                    Self::construct_reasoning_title(&span).as_str(),
+                    span.role,
+                    span.start_0based,
+                    span.end_0based_exclusive,
+                    &span.context_tags,
+                );
+                self.render_construct_reasoning_dotplot_actions(
+                    ui,
+                    &selected_span_dotplot_actions,
+                );
                 self.render_construct_reasoning_annotation_candidate_actions(
                     ui,
                     &overlay.graph_id,
@@ -48093,6 +48501,10 @@ impl MainAreaDna {
                             egui::CollapsingHeader::new(entry.title.clone())
                                 .default_open(false)
                                 .show(ui, |ui| {
+                                    self.render_construct_reasoning_dotplot_actions(
+                                        ui,
+                                        &entry.dotplot_actions,
+                                    );
                                     for line in &entry.detail_lines {
                                         ui.label(
                                             egui::RichText::new(line)
@@ -48124,6 +48536,10 @@ impl MainAreaDna {
                             egui::CollapsingHeader::new(entry.title.clone())
                                 .default_open(false)
                                 .show(ui, |ui| {
+                                    self.render_construct_reasoning_dotplot_actions(
+                                        ui,
+                                        &entry.dotplot_actions,
+                                    );
                                     if let (Some(annotation_id), Some(editable_status)) = (
                                         entry.annotation_id.as_deref(),
                                         entry.editable_status,
@@ -48161,6 +48577,10 @@ impl MainAreaDna {
                         egui::CollapsingHeader::new(entry.title.clone())
                             .default_open(true)
                             .show(ui, |ui| {
+                                self.render_construct_reasoning_dotplot_actions(
+                                    ui,
+                                    &entry.dotplot_actions,
+                                );
                                 for line in &entry.detail_lines {
                                     ui.label(
                                         egui::RichText::new(line)

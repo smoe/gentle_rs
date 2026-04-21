@@ -16076,7 +16076,13 @@ fn test_interpret_cutrun_reads_resolves_prepared_dataset_raw_reads() {
     assert_eq!(report.input_format, CutRunInputFormat::Fastq);
     assert_eq!(report.read_layout, CutRunReadLayout::PairedEnd);
     assert!(report.input_r1_path.contains("cutrun_cache"));
-    assert!(report.input_r2_path.as_deref().unwrap_or("").contains("cutrun_cache"));
+    assert!(
+        report
+            .input_r2_path
+            .as_deref()
+            .unwrap_or("")
+            .contains("cutrun_cache")
+    );
     assert!(
         report
             .warnings

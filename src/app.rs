@@ -169,8 +169,7 @@ const BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID: &str =
     "background_jobs_retry_snapshots_removed_preview_scroll";
 const BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID: &str =
     "background_jobs_retry_snapshots_retained_preview_scroll";
-const BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID: &str =
-    "background_jobs_retry_snapshots_scroll";
+const BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID: &str = "background_jobs_retry_snapshots_scroll";
 const BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID: &str =
     "background_jobs_retry_cleanup_audit_scroll";
 const OPERATION_HISTORY_SCROLL_ID: &str = "operation_history_scroll";
@@ -41995,16 +41994,16 @@ Error: `{err}`"
                     egui::ScrollArea::vertical()
                         .id_salt(OPERATION_HISTORY_SCROLL_ID)
                         .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        for (op_id, run_id, summary) in &history_rows {
-                            ui.monospace(format!("[{op_id}] run={run_id}"));
-                            ui.small(summary);
-                            ui.separator();
-                        }
-                    });
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            for (op_id, run_id, summary) in &history_rows {
+                                ui.monospace(format!("[{op_id}] run={run_id}"));
+                                ui.small(summary);
+                                ui.separator();
+                            }
+                        });
                 }
             };
 
@@ -43688,12 +43687,12 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
+        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+        BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
-        BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BACKGROUND_JOB_HISTORY_METADATA_KEY,
-        BACKGROUND_JOB_HISTORY_SCHEMA, BackgroundJobEventPhase, BackgroundJobKind,
+        BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
         CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         ContainerRow, DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DbSnpFetchTask, DbSnpFetchTaskMessage, EngineError,
@@ -43707,14 +43706,13 @@ mod tests {
         PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
         PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
-        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
-        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
-        RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
-        TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-        TutorialProjectTaskProgress,
+        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
+        PreparedGenomeReinstallRequest, ProjectAction, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
+        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
+        TutorialProjectTaskMessage, TutorialProjectTaskProgress,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -45253,10 +45251,15 @@ mod tests {
             OPERATION_HISTORY_SCROLL_ID,
         ];
         let unique: HashSet<_> = ids.into_iter().collect();
-        assert_eq!(unique.len(), ids.len(), "duplicate auxiliary scroll id salt");
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "duplicate auxiliary scroll id salt"
+        );
         assert!(ids.iter().all(|id| id.ends_with("_scroll")));
         assert!(
-            ids.iter().all(|id| id.starts_with("background_jobs_") || *id == OPERATION_HISTORY_SCROLL_ID)
+            ids.iter()
+                .all(|id| id.starts_with("background_jobs_") || *id == OPERATION_HISTORY_SCROLL_ID)
         );
     }
 

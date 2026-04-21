@@ -4998,6 +4998,13 @@ Post-baseline follow-ups:
     facts/decisions, so GUI/CLI/ClawBio can inspect task-shaped PCR,
     direct-sequencing, mapping, and cloning review cues without inventing a
     second predictor pipeline.
+  - Done (2026-04-21, repeat reasoning -> dotplot bridge): repeat/mobile-
+    element annotation summaries/candidates and repeat-driven reasoning facts
+    now expose direct `Dotplot` / `RevComp Dotplot` actions in the DNA-window
+    inspector. Those actions reuse the shared dotplot workspace, first focus
+    the implicated linear span, and then open a self-forward or
+    self-reverse-complement dotplot instead of inventing a GUI-local repeat
+    viewer.
   - Done (2026-04-12, protocol groundwork): the portable construct-reasoning
     contracts now reserve additive host/helper context fields
     (`propagation_host_profile_id`, `expression_host_profile_id`, `host_route`,

@@ -726,13 +726,23 @@ impl GentleEngine {
         let reads_r1 = reads_r1_source
             .as_deref()
             .map(|source| {
-                self.materialize_cutrun_asset(source, &entry_base_dir, &install_dir, "reads_r1.fastq")
+                self.materialize_cutrun_asset(
+                    source,
+                    &entry_base_dir,
+                    &install_dir,
+                    "reads_r1.fastq",
+                )
             })
             .transpose()?;
         let reads_r2 = reads_r2_source
             .as_deref()
             .map(|source| {
-                self.materialize_cutrun_asset(source, &entry_base_dir, &install_dir, "reads_r2.fastq")
+                self.materialize_cutrun_asset(
+                    source,
+                    &entry_base_dir,
+                    &install_dir,
+                    "reads_r2.fastq",
+                )
             })
             .transpose()?;
 
@@ -1492,8 +1502,12 @@ impl GentleEngine {
         ),
         EngineError,
     > {
-        let trimmed_r1 = input_r1_path.map(str::trim).filter(|value| !value.is_empty());
-        let trimmed_r2 = input_r2_path.map(str::trim).filter(|value| !value.is_empty());
+        let trimmed_r1 = input_r1_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let trimmed_r2 = input_r2_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let trimmed_dataset = dataset_id.map(str::trim).filter(|value| !value.is_empty());
         if trimmed_dataset.is_some() && trimmed_r1.is_some() {
             return Err(EngineError {
@@ -2265,7 +2279,10 @@ impl GentleEngine {
         let checkpoint_every_reads = checkpoint_every_reads.max(1);
         let mut warnings = Vec::<String>::new();
         warnings.extend(input_resolution_warnings);
-        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(path) = checkpoint_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             warnings.push(format!(
                 "checkpoint snapshots enabled every {} unit(s) at '{}'",
                 checkpoint_every_reads, path
