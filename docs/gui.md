@@ -1675,6 +1675,9 @@ Controls:
      initial linear viewport instead of forcing a full-sequence span immediately,
      to keep the window responsive; use `Fit Seq` if you explicitly want the
      full linear extent.
+   - For debugging topology-switch hangs, launching GENtle with
+     `GENTLE_TRACE_TOPOLOGY_TRANSITIONS=1` emits coarse stage tracing to the
+     terminal and mirrors it into the window status line.
 2. Show/Hide sequence panel
    - Shows or hides the sequence text panel.
 3. Show/Hide map panel

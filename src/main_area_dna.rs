@@ -147,6 +147,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    env,
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -10966,6 +10967,7 @@ const DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS: usize = 80_000;
 const DOTPLOT_SPARSE_POINT_HINT_THRESHOLD: usize = 80;
 const DOTPLOT_HIT_ENVELOPE_PADDING_BP: usize = 250;
 const LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP: usize = 50_000;
+const TOPOLOGY_TRANSITION_TRACE_ENV: &str = "GENTLE_TRACE_TOPOLOGY_TRANSITIONS";
 const GUI_TFBS_SCAN_MAX_HITS: usize = 200;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
@@ -12711,6 +12713,9 @@ impl MainAreaDna {
     }
 
     fn log_topology_transition_status(&mut self, stage: &str) {
+        if !Self::topology_transition_tracing_enabled() {
+            return;
+        }
         let (sequence_length, is_circular, feature_count) = self
             .dna
             .read()
@@ -12739,6 +12744,19 @@ impl MainAreaDna {
         );
         self.op_status = status.clone();
         eprintln!("{status}");
+    }
+
+    fn topology_transition_tracing_enabled() -> bool {
+        env::var(TOPOLOGY_TRANSITION_TRACE_ENV)
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                !normalized.is_empty()
+                    && normalized != "0"
+                    && normalized != "false"
+                    && normalized != "off"
+                    && normalized != "no"
+            })
+            .unwrap_or(false)
     }
 
     pub fn refresh_from_engine_settings(&mut self) {

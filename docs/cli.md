@@ -53,6 +53,15 @@ Structured workflow examples:
     (takes precedence over `GENTLE_TEST_ONLINE`)
 - `skip` examples are syntax-checked only
 
+Optional GUI diagnostics when launching `gentle` from a terminal:
+
+- `GENTLE_TRACE_TOPOLOGY_TRANSITIONS=1`
+  - enables coarse circular/linear topology-switch trace logging from sequence
+    windows
+  - writes stage summaries to stderr and mirrors them into the sequence-window
+    status line while enabled
+  - useful when a topology switch appears to hang or repaint-loop
+
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.
 
