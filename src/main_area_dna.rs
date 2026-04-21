@@ -1188,7 +1188,8 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::{
-        DnaPresentationMode, MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
+        DnaPresentationMode, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
+        PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
         RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
         RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
         SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,

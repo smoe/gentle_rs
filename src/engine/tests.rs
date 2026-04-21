@@ -1285,7 +1285,10 @@ fn cutrun_test_tfbs_feature(
         .0;
     gb_io::seq::Feature {
         kind: "TFBS".into(),
-        location: gb_io::seq::Location::simple_range(start_0based, end_0based_exclusive),
+        location: gb_io::seq::Location::simple_range(
+            start_0based as i64,
+            end_0based_exclusive as i64,
+        ),
         qualifiers: vec![
             ("bound_moiety".into(), Some(factor.to_string())),
             ("tf_id".into(), Some(motif_id)),
