@@ -12601,14 +12601,22 @@ impl MainAreaDna {
             .read()
             .map(|existing| existing.is_circular())
             .unwrap_or(true);
+        let new_is_circular = dna.is_circular();
+        let topology_changed = previous_is_circular != new_is_circular;
         let previous_len = self
             .dna
             .read()
             .map(|existing| existing.len())
             .unwrap_or_default();
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: begin");
+        }
         *self.dna.write().expect("DNA lock poisoned") = dna;
         if clear_feature_focus {
             self.clear_feature_focus();
+        }
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: dna swapped");
         }
         self.description_cache_initialized = false;
         self.invalidate_dotplot_cache();
@@ -12617,10 +12625,22 @@ impl MainAreaDna {
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.mark_dna_layout_dirty();
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: caches invalidated");
+        }
         self.reconcile_linear_viewport_after_dna_replace(previous_len, previous_is_circular);
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: viewport reconciled");
+        }
         self.update_dna_map();
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: renderer updated");
+        }
         self.construct_reasoning_overlay_sync_key = None;
         self.refresh_construct_reasoning_overlay_if_needed(true);
+        if topology_changed {
+            self.log_topology_transition_status("replace_active_dna: overlay refreshed");
+        }
     }
 
     fn invalidate_dotplot_cache(&mut self) {
@@ -12688,6 +12708,37 @@ impl MainAreaDna {
             return;
         }
         self.set_linear_viewport(start_bp, span_bp);
+    }
+
+    fn log_topology_transition_status(&mut self, stage: &str) {
+        let (sequence_length, is_circular, feature_count) = self
+            .dna
+            .read()
+            .map(|dna| (dna.len(), dna.is_circular(), dna.features().len()))
+            .unwrap_or((0, true, 0));
+        let (view_start, view_span) = self
+            .dna_display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_view_start_bp(),
+                    display.linear_view_span_bp(),
+                )
+            })
+            .unwrap_or((0, 0));
+        let status = format!(
+            "Topology transition [{stage}] | topology={} | len={} bp | features={} | mode={} | primary_map={} | linear_view={}..{} (span {} bp)",
+            if is_circular { "circular" } else { "linear" },
+            sequence_length,
+            feature_count,
+            self.dna_presentation_mode.label(),
+            self.primary_map_mode.label(),
+            view_start.saturating_add(1),
+            view_start.saturating_add(view_span),
+            view_span,
+        );
+        self.op_status = status.clone();
+        eprintln!("{status}");
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
@@ -13680,33 +13731,37 @@ impl MainAreaDna {
                 .add(button)
                 .on_hover_text("Toggle DNA map topology: circular <-> linear");
             if response.clicked() {
+                self.log_topology_transition_status("toggle clicked");
                 if let (Some(engine), Some(seq_id)) = (self.engine.clone(), self.seq_id.clone()) {
                     let new_circular = !self.dna.read().expect("DNA lock poisoned").is_circular();
                     let op = Operation::SetTopology {
                         seq_id: seq_id.clone(),
                         circular: new_circular,
                     };
+                    self.log_topology_transition_status("toggle applying engine SetTopology");
                     if engine
                         .write()
                         .expect("Engine lock poisoned")
                         .apply(op)
                         .is_ok()
                     {
-                        if let Some(updated) = engine
-                            .read()
-                            .expect("Engine lock poisoned")
-                            .state()
-                            .sequences
-                            .get(&seq_id)
-                            .cloned()
-                        {
+                        self.log_topology_transition_status("toggle engine SetTopology applied");
+                        let updated = {
+                            let guard = engine.read().expect("Engine lock poisoned");
+                            guard.state().sequences.get(&seq_id).cloned()
+                        };
+                        if let Some(updated) = updated {
                             self.replace_active_dna(updated, true);
+                            self.log_topology_transition_status("toggle replace_active_dna completed");
                         }
                     }
                 } else {
+                    self.log_topology_transition_status("toggle applying local topology change");
                     let mut dna = self.dna.write().expect("DNA lock poisoned");
                     let is_circular = dna.is_circular();
                     dna.set_circular(!is_circular);
+                    drop(dna);
+                    self.log_topology_transition_status("toggle local topology change applied");
                 }
             }
 
