@@ -1671,6 +1671,10 @@ Controls:
 
 1. Circular/Linear toggle
    - Switches DNA map topology visualization between circular and linear.
+   - For long circular sequences, switching into linear mode now opens a bounded
+     initial linear viewport instead of forcing a full-sequence span immediately,
+     to keep the window responsive; use `Fit Seq` if you explicitly want the
+     full linear extent.
 2. Show/Hide sequence panel
    - Shows or hides the sequence text panel.
 3. Show/Hide map panel

@@ -6478,6 +6478,25 @@ mod tests {
     }
 
     #[test]
+    fn replace_active_dna_limits_initial_linear_view_after_circular_topology_switch() {
+        let mut initial_dna =
+            DNAsequence::from_sequence("A".repeat(120_000).as_str()).expect("sequence");
+        initial_dna.set_circular(true);
+        let mut area = MainAreaDna::new(initial_dna, None, None);
+
+        let mut linear_dna =
+            DNAsequence::from_sequence("A".repeat(120_000).as_str()).expect("sequence");
+        linear_dna.set_circular(false);
+        area.replace_active_dna(linear_dna, true);
+
+        let (start, span, seq_len) = area.current_linear_viewport();
+        assert_eq!(start, 0);
+        assert_eq!(span, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP);
+        assert_eq!(seq_len, 120_000);
+        assert!(!area.map_dna.is_circular());
+    }
+
+    #[test]
     fn replace_active_dna_invalidates_feature_tree_cache() {
         let mut initial_dna =
             DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
@@ -10946,6 +10965,7 @@ const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
 const DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS: usize = 80_000;
 const DOTPLOT_SPARSE_POINT_HINT_THRESHOLD: usize = 80;
 const DOTPLOT_HIT_ENVELOPE_PADDING_BP: usize = 250;
+const LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP: usize = 50_000;
 const GUI_TFBS_SCAN_MAX_HITS: usize = 200;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
@@ -12576,6 +12596,11 @@ impl MainAreaDna {
     }
 
     fn replace_active_dna(&mut self, dna: DNAsequence, clear_feature_focus: bool) {
+        let previous_is_circular = self
+            .dna
+            .read()
+            .map(|existing| existing.is_circular())
+            .unwrap_or(true);
         let previous_len = self
             .dna
             .read()
@@ -12592,7 +12617,7 @@ impl MainAreaDna {
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.mark_dna_layout_dirty();
-        self.reconcile_linear_viewport_after_dna_replace(previous_len);
+        self.reconcile_linear_viewport_after_dna_replace(previous_len, previous_is_circular);
         self.update_dna_map();
         self.construct_reasoning_overlay_sync_key = None;
         self.refresh_construct_reasoning_overlay_if_needed(true);
@@ -12618,7 +12643,18 @@ impl MainAreaDna {
         }
     }
 
-    fn reconcile_linear_viewport_after_dna_replace(&self, previous_len: usize) {
+    fn suggested_linear_viewport_span_after_topology_switch(
+        sequence_length: usize,
+    ) -> Option<usize> {
+        (sequence_length > LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP)
+            .then_some(LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP.min(sequence_length))
+    }
+
+    fn reconcile_linear_viewport_after_dna_replace(
+        &self,
+        previous_len: usize,
+        previous_is_circular: bool,
+    ) {
         if self.is_circular() {
             return;
         }
@@ -12638,6 +12674,15 @@ impl MainAreaDna {
             .unwrap_or((0, new_len));
 
         let was_full_sequence_view = previous_len > 0 && (span_bp == 0 || span_bp >= previous_len);
+        if previous_is_circular
+            && was_full_sequence_view
+            && let Some(initial_span) =
+                Self::suggested_linear_viewport_span_after_topology_switch(new_len)
+        {
+            self.set_linear_viewport(0, initial_span);
+            return;
+        }
+
         if was_full_sequence_view && new_len > previous_len {
             self.set_linear_viewport(0, new_len);
             return;
