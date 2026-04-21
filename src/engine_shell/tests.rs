@@ -16832,6 +16832,23 @@ fn parse_rna_reads_commands() {
                 && append
     ));
 
+    let export_target_quality = parse_shell_line(
+        "rna-reads export-target-quality tp73_reads target_quality.json --gene TP73 --gene TP53 --complete-rule exact",
+    )
+    .expect("parse rna-reads export-target-quality");
+    assert!(matches!(
+        export_target_quality,
+        ShellCommand::RnaReadsExportTargetQuality {
+            report_id,
+            path,
+            gene_ids,
+            complete_rule
+        } if report_id == "tp73_reads"
+            && path == "target_quality.json"
+            && gene_ids == vec!["TP73".to_string(), "TP53".to_string()]
+            && complete_rule == RnaReadGeneSupportCompleteRule::Exact
+    ));
+
     let export_paths =
         parse_shell_line(
             "rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed --record-indices 3,5 --subset-spec filtered_tp53",
@@ -17701,6 +17718,37 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert!(sheet_text.contains("exon_support_frequencies_json"));
     assert!(sheet_text.contains("origin_mode"));
     assert!(sheet_text.contains("target_gene_ids_json"));
+
+    let exported_target_quality = fasta_dir.path().join("target_quality.json");
+    let export_target_quality_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportTargetQuality {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_target_quality.display().to_string(),
+            gene_ids: vec!["TP53".to_string()],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+        },
+    )
+    .expect("export rna-read target quality");
+    assert_eq!(
+        export_target_quality_result.output["format"].as_str(),
+        Some("json")
+    );
+    assert_eq!(
+        export_target_quality_result.output["gene_ids"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
+    assert_eq!(
+        export_target_quality_result.output["entry_count"].as_u64(),
+        Some(1)
+    );
+    let target_quality_text =
+        fs::read_to_string(exported_target_quality).expect("read target quality export");
+    assert!(target_quality_text.contains("gentle.rna_read_target_quality_comparison_bundle.v1"));
+    assert!(target_quality_text.contains("\"requested_gene_ids\""));
+    assert!(target_quality_text.contains("\"gentle_version\""));
 
     let exported_paths = fasta_dir.path().join("paths.tsv");
     let export_paths_result = execute_shell_command(

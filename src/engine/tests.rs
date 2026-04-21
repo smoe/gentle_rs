@@ -21421,6 +21421,43 @@ fn test_summarize_rna_read_gene_support_splits_fragments_from_complete_reads() {
     assert_eq!(summary.complete_exact_count, 2);
     assert_eq!(summary.fragments.read_count, 1);
     assert_eq!(summary.complete.read_count, 2);
+    assert_eq!(summary.evaluated_read_lengths.sample_count, 5);
+    assert_eq!(summary.accepted_target_read_lengths.sample_count, 3);
+    assert_eq!(summary.accepted_target_fragment_lengths.sample_count, 3);
+    assert_eq!(summary.accepted_target_query_coverage.sample_count, 3);
+    assert!(
+        (summary.accepted_target_query_coverage.mean_fraction - (2.6 / 3.0)).abs() < 1e-9,
+        "mean coverage fraction should reflect the 1.0 / 0.6 / 1.0 accepted cohort"
+    );
+    assert!((summary.accepted_target_query_coverage.median_fraction - 1.0).abs() < 1e-9);
+    assert!((summary.accepted_target_query_coverage.p95_fraction - 1.0).abs() < 1e-9);
+    assert_eq!(
+        summary
+            .evaluated_read_lengths
+            .length_counts
+            .iter()
+            .copied()
+            .sum::<u64>(),
+        5
+    );
+    assert_eq!(
+        summary
+            .accepted_target_read_lengths
+            .length_counts
+            .iter()
+            .copied()
+            .sum::<u64>(),
+        3
+    );
+    assert_eq!(
+        summary
+            .accepted_target_fragment_lengths
+            .length_counts
+            .iter()
+            .copied()
+            .sum::<u64>(),
+        3
+    );
 }
 
 #[test]
@@ -21504,6 +21541,89 @@ fn test_summarize_rna_read_gene_support_honors_selected_record_indices_before_ge
             .iter()
             .all(|row| row.gene_id == "GENE1")
     );
+}
+
+#[test]
+fn test_export_rna_read_target_quality_appends_json_bundle_for_comparison() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let td = tempdir().expect("tempdir");
+    let path = td.path().join("target_quality_compare.json");
+    let path_text = path.display().to_string();
+
+    let first = engine
+        .export_rna_read_target_quality(
+            "rna_reads_gene_support",
+            &path_text,
+            &["GENE1".to_string()],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("first export");
+    assert_eq!(first.format, "json");
+    assert_eq!(first.entry_count, 1);
+    assert!(!first.appended_to_existing_bundle);
+    assert!(!first.reused_existing_entry_slot);
+
+    let second = engine
+        .export_rna_read_target_quality(
+            "rna_reads_gene_support",
+            &path_text,
+            &["GENE2".to_string()],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("second export");
+    assert_eq!(second.format, "json");
+    assert_eq!(second.entry_count, 2);
+    assert!(second.appended_to_existing_bundle);
+    assert!(!second.reused_existing_entry_slot);
+
+    let bundle: RnaReadTargetQualityComparisonBundle =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("bundle text"))
+            .expect("bundle JSON");
+    assert_eq!(
+        bundle.schema,
+        "gentle.rna_read_target_quality_comparison_bundle.v1"
+    );
+    assert_eq!(bundle.entries.len(), 2);
+    assert!(
+        bundle
+            .entries
+            .iter()
+            .any(|entry| entry.requested_gene_ids == vec!["GENE1".to_string()])
+    );
+    assert!(
+        bundle
+            .entries
+            .iter()
+            .any(|entry| entry.requested_gene_ids == vec!["GENE2".to_string()])
+    );
+}
+
+#[test]
+fn test_export_rna_read_target_quality_svg_keeps_existing_nonbundle_file() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let td = tempdir().expect("tempdir");
+    let requested_path = td.path().join("target_quality.svg");
+    std::fs::write(&requested_path, "<svg>legacy</svg>").expect("legacy svg");
+    let export = engine
+        .export_rna_read_target_quality(
+            "rna_reads_gene_support",
+            requested_path.to_str().expect("utf-8 path"),
+            &["GENE1".to_string()],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("svg export");
+
+    assert_eq!(export.format, "svg");
+    assert_eq!(
+        export.requested_path,
+        requested_path.to_str().expect("utf-8 path")
+    );
+    assert_ne!(export.written_path, export.requested_path);
+    assert!(export.written_path.ends_with("_compare.svg"));
+    let original = std::fs::read_to_string(&requested_path).expect("legacy svg text");
+    assert_eq!(original, "<svg>legacy</svg>");
+    let sidecar_path = export.bundle_path.expect("sidecar path");
+    assert!(Path::new(&sidecar_path).exists());
 }
 
 #[test]

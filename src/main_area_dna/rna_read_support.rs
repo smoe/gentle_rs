@@ -360,6 +360,12 @@ pub(super) struct CachedRnaReadProgress {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct CachedRnaReadGeneSupportSummary {
+    pub(super) cache_key: String,
+    pub(super) result: Result<Arc<RnaReadGeneSupportSummary>, String>,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct CachedRnaReadAlignmentInspection {
     pub(super) cache_key: String,
     pub(super) result: Result<Arc<RnaReadAlignmentInspection>, String>,
@@ -413,6 +419,7 @@ impl MainAreaDna {
         self.cached_saved_rna_read_report = None;
         self.cached_rna_read_report_summaries = None;
         self.cached_saved_rna_read_progress = None;
+        self.cached_rna_read_gene_support_summary = None;
         self.cached_rna_read_alignment_inspections.clear();
         self.cached_rna_read_alignment_detail = None;
         self.cached_rna_read_concatemer_inspection = None;
@@ -430,6 +437,21 @@ impl MainAreaDna {
         format!(
             "report={report_id}|limit={}|subset={subset_spec_json}",
             limit.max(1)
+        )
+    }
+
+    pub(super) fn rna_read_gene_support_summary_cache_key(
+        report_id: &str,
+        gene_ids: &[String],
+        selected_record_indices: &[usize],
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> String {
+        let gene_ids_json = serde_json::to_string(gene_ids).unwrap_or_else(|_| "[]".to_string());
+        let selected_json =
+            serde_json::to_string(selected_record_indices).unwrap_or_else(|_| "[]".to_string());
+        format!(
+            "report={report_id}|genes={gene_ids_json}|selected={selected_json}|complete_rule={}",
+            complete_rule.as_str()
         )
     }
 
@@ -554,6 +576,54 @@ impl MainAreaDna {
     ) -> Option<Arc<RnaReadInterpretationReport>> {
         self.selected_rna_read_evidence_report_id()
             .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+    }
+
+    pub(super) fn saved_rna_read_gene_support_summary_for_report_id(
+        &mut self,
+        report_id: &str,
+        gene_ids: Vec<String>,
+        selected_record_indices: Vec<usize>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> Result<Arc<RnaReadGeneSupportSummary>, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err("Select a Report first before summarizing target-gene support".to_string());
+        }
+        let cache_key = Self::rna_read_gene_support_summary_cache_key(
+            report_id,
+            &gene_ids,
+            &selected_record_indices,
+            complete_rule,
+        );
+        if let Some(cached) = self.cached_rna_read_gene_support_summary.as_ref()
+            && cached.cache_key == cache_key
+        {
+            return cached.result.as_ref().map(Arc::clone).map_err(Clone::clone);
+        }
+        let result = {
+            let Some(engine) = &self.engine else {
+                return Err("No engine attached".to_string());
+            };
+            match engine.read() {
+                Ok(guard) => guard
+                    .summarize_rna_read_gene_support(
+                        report_id,
+                        &gene_ids,
+                        &selected_record_indices,
+                        complete_rule,
+                    )
+                    .map(Arc::new)
+                    .map_err(|e| e.message),
+                Err(_) => {
+                    Err("Engine lock poisoned while summarizing RNA-read gene support".to_string())
+                }
+            }
+        };
+        self.cached_rna_read_gene_support_summary = Some(CachedRnaReadGeneSupportSummary {
+            cache_key,
+            result: result.clone(),
+        });
+        result
     }
 
     pub(super) fn saved_rna_read_concatemer_inspection_for_report_id(

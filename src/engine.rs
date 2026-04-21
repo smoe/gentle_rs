@@ -406,6 +406,9 @@ const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_expo
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_GENE_SUPPORT_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_support_summary.v1";
 const RNA_READ_GENE_SUPPORT_AUDIT_SCHEMA: &str = "gentle.rna_read_gene_support_audit.v1";
+const RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA: &str =
+    "gentle.rna_read_target_quality_comparison_bundle.v1";
+const RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA: &str = "gentle.rna_read_target_quality_export.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
@@ -3707,6 +3710,14 @@ pub enum Operation {
         #[serde(default)]
         append: bool,
     },
+    ExportRnaReadTargetQuality {
+        report_id: String,
+        path: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        gene_ids: Vec<String>,
+        #[serde(default)]
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    },
     ExportRnaReadExonPathsTsv {
         report_id: String,
         path: String,
@@ -4945,6 +4956,7 @@ impl GentleEngine {
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
                 "ExportRnaReadSampleSheet".to_string(),
+                "ExportRnaReadTargetQuality".to_string(),
                 "ExportRnaReadExonPathsTsv".to_string(),
                 "ExportRnaReadExonAbundanceTsv".to_string(),
                 "ExportRnaReadScoreDensitySvg".to_string(),
@@ -6850,6 +6862,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
+                | Operation::ExportRnaReadTargetQuality { .. }
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }

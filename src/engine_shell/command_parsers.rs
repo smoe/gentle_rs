@@ -6058,7 +6058,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -7248,6 +7248,65 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 append,
             })
         }
+        "export-target-quality" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-target-quality requires REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut gene_ids: Vec<String> = vec![];
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads export-target-quality",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "rna-reads export-target-quality requires non-empty --gene"
+                                    .to_string(),
+                            );
+                        }
+                        gene_ids.push(trimmed.to_string());
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads export-target-quality",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-target-quality"
+                        ));
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                return Err(
+                    "rna-reads export-target-quality requires at least one --gene GENE_ID"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsExportTargetQuality {
+                report_id,
+                path,
+                gene_ids,
+                complete_rule,
+            })
+        }
         "export-paths-tsv" => {
             if tokens.len() < 4 {
                 return Err(
@@ -7531,7 +7590,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

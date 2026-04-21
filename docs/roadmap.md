@@ -3444,6 +3444,20 @@ Status:
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.
+  - The RNA-read length panel now also exposes target-fragment quality
+    distributions from the shared `SummarizeRnaReadGeneSupport` engine route:
+    - target-positive share by total read length
+    - accepted target-read lengths
+    - accepted target-fragment lengths
+    - accepted target-fragment/read coverage fractions
+  - Those target-quality distributions can now be exported for comparison
+    across genes, GENtle versions, and parameter sets:
+    - `.json` exports append/merge into a comparison bundle instead of
+      clobbering earlier runs
+    - `.svg` exports write a comparison figure plus a `.bundle.json` sidecar
+    - pre-existing opaque SVG files are preserved; the engine falls back to a
+      sibling `*_compare.svg` output when it cannot safely extend the original
+      path
 
 Track boundaries:
 

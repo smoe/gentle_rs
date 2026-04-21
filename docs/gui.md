@@ -1056,8 +1056,26 @@ Feature tree grouping:
         - seed-passed reads
         - aligned reads
         - full-length exact / near / strict subsets
+        - target-positive share by total read length for the current
+          splicing-group gene/report target
+        - accepted target-positive read lengths
+        - accepted target-fragment lengths
+        - accepted target-fragment / total-read coverage fractions
         - the engine stores exact per-bp counts; GUI bins are presentation-only
           and deterministic from those exact counts
+        - target-positive quality plots are derived from the shared
+          `SummarizeRnaReadGeneSupport` engine payload, so the GUI is not using
+          a second frontend-only definition of "TP73-positive"
+        - `Export target quality...` now writes the current target-quality view
+          through the shared engine export route:
+          - saving as `.json` creates or extends a comparison bundle rather than
+            silently overwriting one prior target/program/parameter run
+          - saving as `.svg` writes a comparison figure plus a
+            same-basename `.bundle.json` sidecar that accumulates comparable
+            entries across genes, GENtle versions, and settings
+          - if the requested SVG path already exists but is not paired with a
+            reusable GENtle sidecar bundle, the engine preserves that file and
+            writes a sibling `*_compare.svg` + sidecar instead
     - `Aggregate support`
       - `Mapped cDNA exon support`, `Mapped cDNA junction support`, and
         `Mapped cDNA isoform ranking` use phase-2 best mappings only and are

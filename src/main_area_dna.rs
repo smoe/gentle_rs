@@ -84,9 +84,9 @@ use crate::{
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
         RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
         RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
-        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+        RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
         RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
         RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
@@ -1710,6 +1710,7 @@ mod tests {
             cutrun_read_coverage_export: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
+            rna_read_target_quality_export: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -4561,6 +4562,7 @@ mod tests {
                 cutrun_read_coverage_export: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
+                rna_read_target_quality_export: None,
                 tfbs_region_summary: None,
                 tfbs_score_tracks: None,
                 tfbs_track_similarity: None,
@@ -11443,6 +11445,7 @@ pub struct MainAreaDna {
     cached_saved_rna_read_report: Option<CachedRnaReadReport>,
     cached_rna_read_report_summaries: Option<CachedRnaReadReportSummaries>,
     cached_saved_rna_read_progress: Option<CachedRnaReadProgress>,
+    cached_rna_read_gene_support_summary: Option<CachedRnaReadGeneSupportSummary>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
     cached_rna_read_concatemer_inspection: Option<CachedRnaReadConcatemerInspection>,
@@ -12043,6 +12046,7 @@ impl MainAreaDna {
             cached_saved_rna_read_report: None,
             cached_rna_read_report_summaries: None,
             cached_saved_rna_read_progress: None,
+            cached_rna_read_gene_support_summary: None,
             cached_rna_read_alignment_inspections: vec![],
             cached_rna_read_alignment_detail: None,
             cached_rna_read_concatemer_inspection: None,
@@ -24347,6 +24351,7 @@ impl MainAreaDna {
                 );
                 self.render_rna_read_length_distributions_panel(
                     ui,
+                    view,
                     workspace_saved_report.as_deref(),
                 );
                 self.render_rna_read_statistics_tabs(ui, view, progress, true);
@@ -24460,7 +24465,11 @@ impl MainAreaDna {
                 progress,
                 self.rna_read_evidence_ui.score_density_use_log_scale,
             );
-            self.render_rna_read_length_distributions_panel(ui, workspace_saved_report.as_deref());
+            self.render_rna_read_length_distributions_panel(
+                ui,
+                view,
+                workspace_saved_report.as_deref(),
+            );
             self.render_rna_read_statistics_tabs(ui, view, progress, true);
             highlight_selection_update =
                 self.render_rna_read_top_hits_preview(ui, view, progress, true);
@@ -24898,7 +24907,7 @@ impl MainAreaDna {
                 progress,
                 self.rna_read_evidence_ui.score_density_use_log_scale,
             );
-            self.render_rna_read_length_distributions_panel(ui, selected_report.as_deref());
+            self.render_rna_read_length_distributions_panel(ui, view, selected_report.as_deref());
             self.render_rna_read_statistics_tabs(ui, view, progress, false);
             if let Some(next_selection) =
                 self.render_rna_read_top_hits_preview(ui, view, progress, false)
@@ -28125,6 +28134,53 @@ impl MainAreaDna {
         });
     }
 
+    fn export_rna_read_target_quality(
+        &mut self,
+        report_id: String,
+        target_gene_ids: Vec<String>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) {
+        if report_id.trim().is_empty() {
+            let message = "Set a Report ID first to export target-quality comparison".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        if target_gene_ids.is_empty() {
+            let message =
+                "No target gene/group is available yet for target-quality export".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let gene_token = target_gene_ids
+            .join("_")
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        let default_name = format!("{report_id}_{gene_token}_target_quality.svg");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        self.apply_operation_with_feedback(Operation::ExportRnaReadTargetQuality {
+            report_id,
+            path: path.display().to_string(),
+            gene_ids: target_gene_ids,
+            complete_rule,
+        });
+    }
+
     fn selected_rna_record_indices(&self) -> Vec<usize> {
         self.rna_seed_selected_record_indices
             .iter()
@@ -29620,9 +29676,226 @@ impl MainAreaDna {
         }
     }
 
-    fn render_rna_read_length_distributions_panel(
+    fn rna_read_target_gene_ids_for_view(
+        report: &RnaReadInterpretationReport,
+        view: &SplicingExpertView,
+    ) -> Vec<String> {
+        let mut gene_ids = if report.target_gene_ids.is_empty() {
+            let trimmed = view.group_label.trim();
+            if trimmed.is_empty() {
+                vec![]
+            } else {
+                vec![trimmed.to_string()]
+            }
+        } else {
+            report.target_gene_ids.clone()
+        };
+        gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        gene_ids
+    }
+
+    fn format_length_distribution_stats_line(
+        label: &str,
+        sample_count: usize,
+        mean_length_bp: f64,
+        median_length_bp: usize,
+        p95_length_bp: usize,
+    ) -> String {
+        format!(
+            "{label}: n={} mean={:.1} bp median={} bp p95={} bp",
+            Self::format_count_compact_km(sample_count as u64),
+            mean_length_bp,
+            median_length_bp,
+            p95_length_bp
+        )
+    }
+
+    fn render_rna_read_target_share_by_length_series(
         &self,
         ui: &mut egui::Ui,
+        label: &str,
+        total_length_counts: &[u64],
+        target_length_counts: &[u64],
+        bar_color: egui::Color32,
+    ) {
+        let bins = GentleEngine::auto_bin_read_length_counts(total_length_counts, 24);
+        ui.horizontal_wrapped(|ui| {
+            ui.small(
+                egui::RichText::new(label)
+                    .strong()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            ui.separator();
+            ui.small("y = target-positive share within each read-length bin");
+        });
+        if bins.is_empty() {
+            ui.small("No reads in this subset yet.");
+            ui.add_space(4.0);
+            return;
+        }
+        let desired = Vec2::new(ui.available_width().max(300.0), 52.0);
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::StrokeKind::Inside,
+        );
+        let axis_bottom = rect.bottom() - 1.5;
+        let plot_top = rect.top() + 2.0;
+        let plot_h = (axis_bottom - plot_top).max(1.0);
+        let bin_w = rect.width() / bins.len().max(1) as f32;
+        for (idx, (start, end, total_count)) in bins.iter().enumerate() {
+            if *total_count == 0 {
+                continue;
+            }
+            let target_count = target_length_counts
+                .iter()
+                .enumerate()
+                .skip(*start)
+                .take(end.saturating_sub(*start).saturating_add(1))
+                .map(|(_, count)| *count)
+                .sum::<u64>();
+            let share = target_count as f32 / (*total_count).max(1) as f32;
+            let x0 = rect.left() + idx as f32 * bin_w + 0.6;
+            let x1 = if idx + 1 == bins.len() {
+                rect.right() - 0.6
+            } else {
+                rect.left() + (idx + 1) as f32 * bin_w - 0.6
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            let bar_rect = egui::Rect::from_min_max(
+                egui::pos2(x0, axis_bottom - share * plot_h),
+                egui::pos2(x1, axis_bottom),
+            );
+            painter.rect_filled(bar_rect, 0.0, bar_color);
+        }
+        if let Some(pointer) = response.hover_pos()
+            && pointer.x >= rect.left()
+            && pointer.x <= rect.right()
+            && pointer.y >= plot_top
+            && pointer.y <= axis_bottom
+        {
+            let mut idx =
+                ((pointer.x - rect.left()) / rect.width() * bins.len() as f32).floor() as usize;
+            idx = idx.min(bins.len().saturating_sub(1));
+            if let Some((start, end, total_count)) = bins.get(idx) {
+                let target_count = target_length_counts
+                    .iter()
+                    .enumerate()
+                    .skip(*start)
+                    .take(end.saturating_sub(*start).saturating_add(1))
+                    .map(|(_, count)| *count)
+                    .sum::<u64>();
+                let share = if *total_count == 0 {
+                    0.0
+                } else {
+                    target_count as f64 / *total_count as f64
+                };
+                response.on_hover_ui_at_pointer(|ui| {
+                    if start == end {
+                        ui.monospace(format!("{start} bp"));
+                    } else {
+                        ui.monospace(format!("{start}..{end} bp"));
+                    }
+                    ui.monospace(format!(
+                        "target-positive: {} / {} ({:.1}%)",
+                        target_count,
+                        total_count,
+                        share * 100.0
+                    ));
+                });
+            }
+        }
+        ui.add_space(4.0);
+    }
+
+    fn render_rna_read_fraction_distribution_series(
+        &self,
+        ui: &mut egui::Ui,
+        label: &str,
+        bin_counts: &[u64],
+        bar_color: egui::Color32,
+    ) {
+        let total = bin_counts.iter().copied().sum::<u64>();
+        ui.horizontal_wrapped(|ui| {
+            ui.small(
+                egui::RichText::new(label)
+                    .strong()
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+            );
+            ui.separator();
+            ui.small(format!("samples={}", Self::format_count_compact_km(total)));
+            ui.separator();
+            ui.small("x = fraction of the read covered by target-assigned fragment");
+        });
+        if total == 0 || bin_counts.is_empty() {
+            ui.small("No target-positive fragments yet.");
+            ui.add_space(4.0);
+            return;
+        }
+        let desired = Vec2::new(ui.available_width().max(300.0), 52.0);
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::StrokeKind::Inside,
+        );
+        let max_count = bin_counts.iter().copied().max().unwrap_or(1) as f32;
+        let axis_bottom = rect.bottom() - 1.5;
+        let plot_top = rect.top() + 2.0;
+        let plot_h = (axis_bottom - plot_top).max(1.0);
+        let bin_w = rect.width() / bin_counts.len().max(1) as f32;
+        for (idx, count) in bin_counts.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            let x0 = rect.left() + idx as f32 * bin_w + 0.6;
+            let x1 = if idx + 1 == bin_counts.len() {
+                rect.right() - 0.6
+            } else {
+                rect.left() + (idx + 1) as f32 * bin_w - 0.6
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            let h = (*count as f32 / max_count) * plot_h;
+            let bar_rect = egui::Rect::from_min_max(
+                egui::pos2(x0, axis_bottom - h),
+                egui::pos2(x1, axis_bottom),
+            );
+            painter.rect_filled(bar_rect, 0.0, bar_color);
+        }
+        if let Some(pointer) = response.hover_pos()
+            && pointer.x >= rect.left()
+            && pointer.x <= rect.right()
+            && pointer.y >= plot_top
+            && pointer.y <= axis_bottom
+        {
+            let mut idx = ((pointer.x - rect.left()) / rect.width() * bin_counts.len() as f32)
+                .floor() as usize;
+            idx = idx.min(bin_counts.len().saturating_sub(1));
+            let left = idx as f64 / bin_counts.len().saturating_sub(1).max(1) as f64;
+            let right = ((idx + 1).min(bin_counts.len().saturating_sub(1))) as f64
+                / bin_counts.len().saturating_sub(1).max(1) as f64;
+            response.on_hover_ui_at_pointer(|ui| {
+                ui.monospace(format!("{:.0}%..{:.0}%", left * 100.0, right * 100.0));
+                ui.monospace(format!("fragments: {}", bin_counts[idx]));
+            });
+        }
+        ui.add_space(4.0);
+    }
+
+    fn render_rna_read_length_distributions_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
         report: Option<&RnaReadInterpretationReport>,
     ) {
         egui::CollapsingHeader::new("Read length distributions")
@@ -29672,6 +29945,107 @@ impl MainAreaDna {
                     "Full-length strict_end",
                     &report.read_length_counts_full_length_strict,
                     egui::Color32::from_rgb(21, 128, 61),
+                );
+
+                let target_gene_ids = Self::rna_read_target_gene_ids_for_view(report, view);
+                if target_gene_ids.is_empty() {
+                    ui.small(
+                        egui::RichText::new(
+                            "No target gene/group label is available for the target-fragment quality summary yet.",
+                        )
+                        .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                    return;
+                }
+                let target_summary = match self.saved_rna_read_gene_support_summary_for_report_id(
+                    &report.report_id,
+                    target_gene_ids.clone(),
+                    vec![],
+                    RnaReadGeneSupportCompleteRule::Near,
+                ) {
+                    Ok(summary) => summary,
+                    Err(err) => {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "Target-fragment quality summary unavailable: {err}"
+                            ))
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                        );
+                        return;
+                    }
+                };
+                let target_label = if target_summary.matched_gene_ids.is_empty() {
+                    target_gene_ids.join(", ")
+                } else {
+                    target_summary.matched_gene_ids.join(", ")
+                };
+                ui.separator();
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Target-fragment quality for {target_label} (accepted target-support reads under complete_rule=near).",
+                    ))
+                    .color(egui::Color32::from_rgb(30, 41, 59)),
+                );
+                ui.small(Self::format_length_distribution_stats_line(
+                    "Target-positive reads",
+                    target_summary.accepted_target_read_lengths.sample_count,
+                    target_summary.accepted_target_read_lengths.mean_length_bp,
+                    target_summary.accepted_target_read_lengths.median_length_bp,
+                    target_summary.accepted_target_read_lengths.p95_length_bp,
+                ));
+                ui.small(Self::format_length_distribution_stats_line(
+                    "Target fragment lengths",
+                    target_summary.accepted_target_fragment_lengths.sample_count,
+                    target_summary.accepted_target_fragment_lengths.mean_length_bp,
+                    target_summary.accepted_target_fragment_lengths.median_length_bp,
+                    target_summary.accepted_target_fragment_lengths.p95_length_bp,
+                ));
+                ui.small(format!(
+                    "Target fragment/read coverage: n={} mean={:.1}% median={:.1}% p95={:.1}%",
+                    Self::format_count_compact_km(
+                        target_summary.accepted_target_query_coverage.sample_count as u64
+                    ),
+                    target_summary.accepted_target_query_coverage.mean_fraction * 100.0,
+                    target_summary.accepted_target_query_coverage.median_fraction * 100.0,
+                    target_summary.accepted_target_query_coverage.p95_fraction * 100.0,
+                ));
+                if ui
+                    .small_button("Export target quality...")
+                    .on_hover_text(
+                        "Export this target-fragment quality summary as SVG or JSON through the shared engine comparison route.",
+                    )
+                    .clicked()
+                {
+                    self.export_rna_read_target_quality(
+                        report.report_id.clone(),
+                        target_gene_ids.clone(),
+                        RnaReadGeneSupportCompleteRule::Near,
+                    );
+                }
+                self.render_rna_read_target_share_by_length_series(
+                    ui,
+                    &format!("{target_label} share by read length"),
+                    &report.read_length_counts_all,
+                    &target_summary.accepted_target_read_lengths.length_counts,
+                    egui::Color32::from_rgb(5, 150, 105),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    &format!("{target_label} positive reads"),
+                    &target_summary.accepted_target_read_lengths.length_counts,
+                    egui::Color32::from_rgb(5, 150, 105),
+                );
+                self.render_rna_read_length_distribution_series(
+                    ui,
+                    &format!("{target_label} fragment lengths"),
+                    &target_summary.accepted_target_fragment_lengths.length_counts,
+                    egui::Color32::from_rgb(13, 148, 136),
+                );
+                self.render_rna_read_fraction_distribution_series(
+                    ui,
+                    &format!("{target_label} fragment/read coverage"),
+                    &target_summary.accepted_target_query_coverage.bin_counts,
+                    egui::Color32::from_rgb(2, 132, 199),
                 );
             });
     }

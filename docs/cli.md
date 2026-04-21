@@ -506,6 +506,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
+  - `rna-reads export-target-quality`
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
@@ -516,6 +517,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `SummarizeRnaReadGeneSupport`, `InspectRnaReadGeneSupport`,
   `ExportRnaReadReport`,
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
+  `ExportRnaReadTargetQuality`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
   `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
@@ -571,6 +573,16 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `build-transcript-index`: prepares a reusable external transcript catalog
     JSON for later concatemer audits, with precomputed per-template k-mer
     positions and preserved source-path provenance.
+  - `export-target-quality`: exports the target-fragment quality summary for
+    one saved report and one or more requested genes/groups.
+    - `.json` output creates or extends a comparison bundle so repeated runs
+      can accumulate side-by-side across target genes, GENtle versions, and
+      parameter changes.
+    - `.svg` output writes a comparison figure plus a `.bundle.json` sidecar
+      that stores the comparable entries.
+    - if the requested SVG path already exists without a reusable GENtle
+      sidecar bundle, the export preserves that file and writes a sibling
+      `*_compare.svg` instead of overwriting it.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
     downstream table-based triage.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
@@ -1757,6 +1769,7 @@ Shared shell command:
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
+    - `rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]`
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
@@ -1866,6 +1879,16 @@ Shared shell command:
       - `exon_pair_support` includes skipped ordered pairs like `1->3`
       - `direct_transition_support` includes neighboring exon steps only
       - `--output PATH` writes the same JSON returned on stdout
+    - `rna-reads export-target-quality` materializes a comparison-friendly
+      target-quality artifact from that same shared-engine summary:
+      - `.json` output writes a cumulative comparison bundle that appends or
+        replaces one matching entry rather than blindly overwriting prior runs
+      - `.svg` output writes a comparison figure plus a `.bundle.json`
+        sidecar so later exports for another gene, GENtle version, or
+        parameter set can be compared directly
+      - if a requested SVG path already exists without a reusable GENtle
+        sidecar bundle, the engine preserves it and writes `*_compare.svg`
+        instead
     - `rna-reads inspect-gene-support` returns a row-level
       `gentle.rna_read_gene_support_audit.v1` payload for the same saved-report
       target-gene evaluation:

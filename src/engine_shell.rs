@@ -1924,6 +1924,12 @@ pub enum ShellCommand {
         complete_rule: RnaReadGeneSupportCompleteRule,
         append: bool,
     },
+    RnaReadsExportTargetQuality {
+        report_id: String,
+        path: String,
+        gene_ids: Vec<String>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    },
     RnaReadsExportExonPathsTsv {
         report_id: String,
         path: String,
@@ -8443,6 +8449,18 @@ impl ShellCommand {
                 },
                 complete_rule.as_str(),
                 append
+            ),
+            Self::RnaReadsExportTargetQuality {
+                report_id,
+                path,
+                gene_ids,
+                complete_rule,
+            } => format!(
+                "export RNA-read target-quality comparison from '{}' to '{}' (genes={}, complete_rule={})",
+                report_id,
+                path,
+                gene_ids.join(","),
+                complete_rule.as_str()
             ),
             Self::RnaReadsExportExonPathsTsv {
                 report_id,
@@ -23633,6 +23651,32 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsExportTargetQuality {
+            report_id,
+            path,
+            gene_ids,
+            complete_rule,
+        } => {
+            let export = engine
+                .export_rna_read_target_quality(report_id, path, gene_ids, *complete_rule)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "requested_path": export.requested_path,
+                    "written_path": export.written_path,
+                    "bundle_path": export.bundle_path,
+                    "format": export.format,
+                    "report_id": export.report_id,
+                    "gene_ids": export.requested_gene_ids,
+                    "complete_rule": export.complete_rule.as_str(),
+                    "entry_count": export.entry_count,
+                    "appended_to_existing_bundle": export.appended_to_existing_bundle,
+                    "reused_existing_entry_slot": export.reused_existing_entry_slot,
+                }),
+            })
+        }
         ShellCommand::RnaReadsExportExonPathsTsv {
             report_id,
             path,
@@ -24636,6 +24680,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
             | ShellCommand::RnaReadsExportSampleSheet { .. }
+            | ShellCommand::RnaReadsExportTargetQuality { .. }
             | ShellCommand::RnaReadsExportExonPathsTsv { .. }
             | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
             | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
@@ -26374,6 +26419,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }
         | ShellCommand::RnaReadsExportSampleSheet { .. }
+        | ShellCommand::RnaReadsExportTargetQuality { .. }
         | ShellCommand::RnaReadsExportExonPathsTsv { .. }
         | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }

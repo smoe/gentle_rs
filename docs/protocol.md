@@ -1558,6 +1558,7 @@ Current draft operations:
 - `ExportRnaReadReport { report_id, path }`
 - `ExportRnaReadHitsFasta { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
+- `ExportRnaReadTargetQuality { report_id, path, gene_ids, complete_rule? }`
 - `ExportRnaReadExonPathsTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale, variant }`
@@ -5147,6 +5148,29 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - `exon_support[]`
       - `exon_pair_support[]`
       - `direct_transition_support[]`
+    - top-level distribution sidecars also summarize target-fragment quality:
+      - `evaluated_read_lengths`
+        - read-length distribution over the aligned/evaluable base cohort used
+          for gene-support classification
+      - `accepted_target_read_lengths`
+        - total read-length distribution for accepted target-positive reads
+      - `accepted_target_fragment_lengths`
+        - aligned query-span distribution for the accepted target fragments
+      - `accepted_target_query_coverage`
+        - fraction-of-read-covered distribution for those accepted target
+          fragments (`query_coverage_fraction`)
+      - each length summary carries:
+        - `sample_count`
+        - `mean_length_bp`
+        - `median_length_bp`
+        - `p95_length_bp`
+        - exact `length_counts[]`
+      - each fraction summary carries:
+        - `sample_count`
+        - `mean_fraction`
+        - `median_fraction`
+        - `p95_fraction`
+        - exact `bin_counts[]`
     - row semantics:
       - `exon_support[]`: each exon counted at most once per read
       - `exon_pair_support[]`: every ordered exon_i -> exon_j pair observed in
@@ -5300,6 +5324,34 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     `gene_support_mean_assigned_read_length_bp`, and JSON-serialized
     exon / exon-pair / direct-transition support tables for the requested gene
     cohort.
+- Target-quality comparison export:
+  - operation:
+    `ExportRnaReadTargetQuality { report_id, path, gene_ids, complete_rule? }`
+  - comparison bundle schema:
+    `gentle.rna_read_target_quality_comparison_bundle.v1`
+  - operation result schema:
+    `gentle.rna_read_target_quality_export.v1`
+  - entry semantics:
+    - each exported entry stores:
+      - `gentle_version`
+      - source report/profile/scope/origin metadata
+      - requested/matched/missing gene ids
+      - the all-read length distribution used for context
+      - the full shared `RnaReadGeneSupportSummary` target-quality payload
+    - entries are keyed deterministically so repeated exports with the same
+      source report + target + settings replace their prior slot instead of
+      duplicating it
+  - path behavior:
+    - `.json` writes the comparison bundle directly
+    - if a `.json` file already exists and is:
+      - an existing comparison bundle: merge/append into it
+      - a legacy single `RnaReadGeneSupportSummary`: wrap it into a new bundle
+        and append the new entry
+    - `.svg` writes a rendered comparison figure plus a same-basename
+      `.bundle.json` sidecar bundle
+    - if the requested SVG path already exists without a reusable GENtle
+      sidecar bundle, the export preserves that file and writes a sibling
+      `*_compare.svg` plus sidecar instead of overwriting
 - Shared-shell command family:
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
@@ -5313,6 +5365,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
+  - `rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
@@ -5327,8 +5380,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads summarize-gene-support` returns the full
       `gentle.rna_read_gene_support_summary.v1` payload directly, including
       `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
-      selected-record echo fields, per-cohort support tables, and both the
-      summary op plus source-report provenance ids/timestamps
+      selected-record echo fields, target-fragment quality distributions,
+      per-cohort support tables, and both the summary op plus source-report
+      provenance ids/timestamps
     - `rna-reads inspect-gene-support` returns the full
       `gentle.rna_read_gene_support_audit.v1` payload directly, including
       grouped cohort record-index arrays plus row-level `status`,
@@ -5361,6 +5415,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads build-transcript-index` returns the full
       `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
       writes the same JSON to the requested output path
+    - `rna-reads export-target-quality` returns the full
+      `gentle.rna_read_target_quality_export.v1` payload directly, including
+      `requested_path`, `written_path`, optional `bundle_path`, `entry_count`,
+      and append/reuse flags so adapters can tell whether the export extended
+      an existing comparison artifact or started a fresh one
 - Alignment-TSV export:
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`

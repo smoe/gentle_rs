@@ -12,7 +12,10 @@
 //! - RNA-read inspection/export/report-store helpers used across GUI and CLI
 
 use super::*;
+use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT: usize = 101;
 
 #[derive(Debug, Clone, Default)]
 struct RnaReadConcatemerTranscriptCatalogSummary {
@@ -1161,6 +1164,566 @@ impl GentleEngine {
         })
     }
 
+    fn build_rna_read_target_quality_comparison_entry(
+        &self,
+        report: &RnaReadInterpretationReport,
+        summary: RnaReadGeneSupportSummary,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> RnaReadTargetQualityComparisonEntry {
+        let target_label = if summary.matched_gene_ids.is_empty() {
+            if summary.requested_gene_ids.is_empty() {
+                "target".to_string()
+            } else {
+                summary.requested_gene_ids.join("+")
+            }
+        } else {
+            summary.matched_gene_ids.join("+")
+        };
+        let entry_id = format!(
+            "{}|genes={}|complete={}|src={}|gentle={}|profile={}|scope={}|origin={}|mode={}",
+            report.report_id,
+            summary.requested_gene_ids.join(","),
+            complete_rule.as_str(),
+            summary.source_report_generated_at_unix_ms,
+            crate::about::GENTLE_PACKAGE_VERSION,
+            report.profile.as_str(),
+            report.scope.as_str(),
+            report.origin_mode.as_str(),
+            report.report_mode.as_str(),
+        );
+        let comparison_label = format!(
+            "{} | {} | {} | {}",
+            target_label,
+            report.report_id,
+            crate::about::GENTLE_PACKAGE_VERSION,
+            complete_rule.as_str()
+        );
+        RnaReadTargetQualityComparisonEntry {
+            entry_id,
+            comparison_label,
+            gentle_version: crate::about::GENTLE_PACKAGE_VERSION.to_string(),
+            report_id: report.report_id.clone(),
+            seq_id: report.seq_id.clone(),
+            report_generated_at_unix_ms: report.generated_at_unix_ms,
+            report_op_id: report.op_id.clone(),
+            report_run_id: report.run_id.clone(),
+            requested_gene_ids: summary.requested_gene_ids.clone(),
+            matched_gene_ids: summary.matched_gene_ids.clone(),
+            missing_gene_ids: summary.missing_gene_ids.clone(),
+            report_target_gene_ids: report.target_gene_ids.clone(),
+            complete_rule,
+            profile: report.profile,
+            scope: report.scope,
+            origin_mode: report.origin_mode,
+            report_mode: report.report_mode,
+            seed_filter: report.seed_filter.clone(),
+            align_config: report.align_config.clone(),
+            all_read_lengths: Self::build_rna_read_length_distribution_summary(
+                &report.read_length_counts_all,
+            ),
+            summary,
+        }
+    }
+
+    fn build_legacy_rna_read_target_quality_entry_from_summary(
+        summary: RnaReadGeneSupportSummary,
+    ) -> RnaReadTargetQualityComparisonEntry {
+        let target_label = if summary.matched_gene_ids.is_empty() {
+            if summary.requested_gene_ids.is_empty() {
+                "legacy-target".to_string()
+            } else {
+                summary.requested_gene_ids.join("+")
+            }
+        } else {
+            summary.matched_gene_ids.join("+")
+        };
+        let entry_id = format!(
+            "{}|genes={}|complete={}|src={}|gentle=legacy_import",
+            summary.report_id,
+            summary.requested_gene_ids.join(","),
+            summary.complete_rule.as_str(),
+            summary.source_report_generated_at_unix_ms,
+        );
+        RnaReadTargetQualityComparisonEntry {
+            entry_id,
+            comparison_label: format!("{target_label} | {} | legacy import", summary.report_id),
+            gentle_version: "legacy_import".to_string(),
+            report_id: summary.report_id.clone(),
+            seq_id: summary.seq_id.clone(),
+            report_generated_at_unix_ms: summary.source_report_generated_at_unix_ms,
+            report_op_id: summary.source_report_op_id.clone(),
+            report_run_id: summary.source_report_run_id.clone(),
+            requested_gene_ids: summary.requested_gene_ids.clone(),
+            matched_gene_ids: summary.matched_gene_ids.clone(),
+            missing_gene_ids: summary.missing_gene_ids.clone(),
+            report_target_gene_ids: vec![],
+            complete_rule: summary.complete_rule,
+            profile: RnaReadInterpretationProfile::default(),
+            scope: SplicingScopePreset::default(),
+            origin_mode: RnaReadOriginMode::default(),
+            report_mode: RnaReadReportMode::default(),
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            align_config: RnaReadAlignConfig::default(),
+            all_read_lengths: summary.evaluated_read_lengths.clone(),
+            summary,
+        }
+    }
+
+    fn read_rna_read_target_quality_bundle_or_legacy(
+        path: &str,
+    ) -> Result<Option<RnaReadTargetQualityComparisonBundle>, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Ok(None);
+        }
+        if !Path::new(path).exists() {
+            return Ok(None);
+        }
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read RNA-read target-quality bundle '{path}': {e}"),
+        })?;
+        if text.trim().is_empty() {
+            return Ok(None);
+        }
+        if let Ok(bundle) = serde_json::from_str::<RnaReadTargetQualityComparisonBundle>(&text) {
+            return Ok(Some(bundle));
+        }
+        if let Ok(summary) = serde_json::from_str::<RnaReadGeneSupportSummary>(&text) {
+            return Ok(Some(RnaReadTargetQualityComparisonBundle {
+                schema: RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA.to_string(),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                entries: vec![
+                    Self::build_legacy_rna_read_target_quality_entry_from_summary(summary),
+                ],
+            }));
+        }
+        Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Existing file '{path}' is neither a RNA-read target-quality comparison bundle nor a legacy gene-support summary JSON"
+            ),
+        })
+    }
+
+    fn merge_rna_read_target_quality_entry(
+        mut bundle: RnaReadTargetQualityComparisonBundle,
+        entry: RnaReadTargetQualityComparisonEntry,
+    ) -> (RnaReadTargetQualityComparisonBundle, bool, bool) {
+        let bundle_had_entries = !bundle.entries.is_empty();
+        let mut reused_existing_entry_slot = false;
+        if let Some(existing) = bundle
+            .entries
+            .iter_mut()
+            .find(|candidate| candidate.entry_id == entry.entry_id)
+        {
+            *existing = entry;
+            reused_existing_entry_slot = true;
+        } else {
+            bundle.entries.push(entry);
+        }
+        bundle.schema = RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA.to_string();
+        bundle.generated_at_unix_ms = Self::now_unix_ms();
+        bundle.entries.sort_by(|left, right| {
+            left.comparison_label
+                .to_ascii_lowercase()
+                .cmp(&right.comparison_label.to_ascii_lowercase())
+                .then(
+                    left.report_generated_at_unix_ms
+                        .cmp(&right.report_generated_at_unix_ms),
+                )
+                .then(left.entry_id.cmp(&right.entry_id))
+        });
+        (
+            bundle,
+            bundle_had_entries && !reused_existing_entry_slot,
+            reused_existing_entry_slot,
+        )
+    }
+
+    fn write_rna_read_target_quality_bundle_json(
+        &self,
+        bundle: &RnaReadTargetQualityComparisonBundle,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(bundle).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize RNA-read target-quality comparison bundle for '{path}': {e}"
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read target-quality comparison bundle to '{path}': {e}"
+            ),
+        })
+    }
+
+    fn rna_read_target_quality_svg_sidecar_path(svg_path: &str) -> String {
+        format!("{svg_path}.bundle.json")
+    }
+
+    fn rna_read_target_quality_fallback_svg_path(requested_path: &str) -> String {
+        let path = Path::new(requested_path);
+        let parent = path.parent().unwrap_or_else(|| Path::new(""));
+        let stem = path
+            .file_stem()
+            .map(|value| value.to_string_lossy().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "rna_target_quality".to_string());
+        let extension = path
+            .extension()
+            .map(|value| value.to_string_lossy().to_string());
+        let file_name = if let Some(ext) = extension.as_deref() {
+            format!("{stem}_compare.{ext}")
+        } else {
+            format!("{stem}_compare")
+        };
+        parent.join(file_name).display().to_string()
+    }
+
+    fn svg_escape_text(raw: &str) -> String {
+        raw.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\"', "&quot;")
+    }
+
+    fn rebin_counts(counts: &[u64], max_bins: usize) -> Vec<u64> {
+        if counts.is_empty() || max_bins == 0 || counts.len() <= max_bins {
+            return counts.to_vec();
+        }
+        let chunk = counts.len().div_ceil(max_bins);
+        counts
+            .chunks(chunk.max(1))
+            .map(|group| group.iter().copied().sum::<u64>())
+            .collect::<Vec<_>>()
+    }
+
+    fn render_rna_read_target_quality_histogram_panel_svg(
+        out: &mut String,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        title: &str,
+        counts: &[u64],
+        color: &str,
+    ) {
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"11\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#0f172a\">{}</text>",
+            x,
+            y - 6.0,
+            Self::svg_escape_text(title)
+        );
+        let _ = write!(
+            out,
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
+            x, y, width, height
+        );
+        if counts.is_empty() {
+            return;
+        }
+        let counts = Self::rebin_counts(counts, 24);
+        let max_count = counts.iter().copied().max().unwrap_or(0) as f32;
+        if max_count <= 0.0 {
+            return;
+        }
+        let bar_w = width / counts.len().max(1) as f32;
+        for (idx, count) in counts.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            let bar_h = (*count as f32 / max_count) * (height - 8.0).max(1.0);
+            let bx = x + idx as f32 * bar_w + 0.5;
+            let by = y + height - bar_h - 1.5;
+            let bw = (bar_w - 1.0).max(0.8);
+            let _ = write!(
+                out,
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{}\" opacity=\"0.90\" />",
+                bx, by, bw, bar_h, color
+            );
+        }
+    }
+
+    fn render_rna_read_target_share_panel_svg(
+        out: &mut String,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        title: &str,
+        total_counts: &[u64],
+        target_counts: &[u64],
+        color: &str,
+    ) {
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"11\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#0f172a\">{}</text>",
+            x,
+            y - 6.0,
+            Self::svg_escape_text(title)
+        );
+        let _ = write!(
+            out,
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
+            x, y, width, height
+        );
+        if total_counts.is_empty() {
+            return;
+        }
+        let bins = Self::auto_bin_read_length_counts(total_counts, 24);
+        if bins.is_empty() {
+            return;
+        }
+        let bar_w = width / bins.len().max(1) as f32;
+        for (idx, (start, end, total)) in bins.iter().enumerate() {
+            if *total == 0 {
+                continue;
+            }
+            let target = target_counts
+                .iter()
+                .enumerate()
+                .skip(*start)
+                .take(end.saturating_sub(*start).saturating_add(1))
+                .map(|(_, count)| *count)
+                .sum::<u64>();
+            let share = target as f32 / (*total).max(1) as f32;
+            let bar_h = share * (height - 8.0).max(1.0);
+            let bx = x + idx as f32 * bar_w + 0.5;
+            let by = y + height - bar_h - 1.5;
+            let bw = (bar_w - 1.0).max(0.8);
+            let _ = write!(
+                out,
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{}\" opacity=\"0.90\" />",
+                bx, by, bw, bar_h, color
+            );
+        }
+    }
+
+    fn render_rna_read_target_quality_comparison_svg_text(
+        bundle: &RnaReadTargetQualityComparisonBundle,
+    ) -> String {
+        let entry_count = bundle.entries.len().max(1);
+        let margin = 18.0f32;
+        let panel_w = 180.0f32;
+        let panel_h = 82.0f32;
+        let entry_h = 164.0f32;
+        let total_w = margin * 2.0 + panel_w * 4.0 + 16.0 * 3.0;
+        let total_h = margin * 2.0 + entry_h * entry_count as f32;
+        let mut svg = String::new();
+        let _ = write!(
+            svg,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+            total_w, total_h, total_w, total_h
+        );
+        let _ = write!(
+            svg,
+            "<rect width=\"100%\" height=\"100%\" fill=\"#f8fafc\"/><text x=\"{:.1}\" y=\"{:.1}\" font-size=\"16\" font-weight=\"700\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#0f172a\">RNA-read target quality comparison</text>",
+            margin,
+            margin + 2.0
+        );
+        for (entry_idx, entry) in bundle.entries.iter().enumerate() {
+            let top = margin + 24.0 + entry_idx as f32 * entry_h;
+            let target_label = if entry.matched_gene_ids.is_empty() {
+                if entry.requested_gene_ids.is_empty() {
+                    "target".to_string()
+                } else {
+                    entry.requested_gene_ids.join(", ")
+                }
+            } else {
+                entry.matched_gene_ids.join(", ")
+            };
+            let subtitle = format!(
+                "{} | report={} | seq={} | version={} | complete_rule={} | profile={}/{}",
+                target_label,
+                entry.report_id,
+                entry.seq_id,
+                entry.gentle_version,
+                entry.complete_rule.as_str(),
+                entry.profile.as_str(),
+                entry.scope.as_str()
+            );
+            let stat_line = format!(
+                "all n={} mean={:.1} bp; target n={} mean={:.1} bp; fragment mean={:.1} bp; target/read median={:.1}%",
+                entry.all_read_lengths.sample_count,
+                entry.all_read_lengths.mean_length_bp,
+                entry.summary.accepted_target_read_lengths.sample_count,
+                entry.summary.accepted_target_read_lengths.mean_length_bp,
+                entry
+                    .summary
+                    .accepted_target_fragment_lengths
+                    .mean_length_bp,
+                entry.summary.accepted_target_query_coverage.median_fraction * 100.0
+            );
+            let _ = write!(
+                svg,
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"13\" font-weight=\"700\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#0f172a\">{}</text>",
+                margin,
+                top,
+                Self::svg_escape_text(&entry.comparison_label)
+            );
+            let _ = write!(
+                svg,
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"10\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#334155\">{}</text>",
+                margin,
+                top + 14.0,
+                Self::svg_escape_text(&subtitle)
+            );
+            let _ = write!(
+                svg,
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"10\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"#475569\">{}</text>",
+                margin,
+                top + 27.0,
+                Self::svg_escape_text(&stat_line)
+            );
+            let panel_y = top + 42.0;
+            let panel1_x = margin;
+            let panel2_x = panel1_x + panel_w + 16.0;
+            let panel3_x = panel2_x + panel_w + 16.0;
+            let panel4_x = panel3_x + panel_w + 16.0;
+            Self::render_rna_read_target_quality_histogram_panel_svg(
+                &mut svg,
+                panel1_x,
+                panel_y,
+                panel_w,
+                panel_h,
+                "All read lengths",
+                &entry.all_read_lengths.length_counts,
+                "#94a3b8",
+            );
+            Self::render_rna_read_target_share_panel_svg(
+                &mut svg,
+                panel2_x,
+                panel_y,
+                panel_w,
+                panel_h,
+                "Target-positive share",
+                &entry.all_read_lengths.length_counts,
+                &entry.summary.accepted_target_read_lengths.length_counts,
+                "#059669",
+            );
+            Self::render_rna_read_target_quality_histogram_panel_svg(
+                &mut svg,
+                panel3_x,
+                panel_y,
+                panel_w,
+                panel_h,
+                "Target fragment lengths",
+                &entry.summary.accepted_target_fragment_lengths.length_counts,
+                "#0d9488",
+            );
+            Self::render_rna_read_target_quality_histogram_panel_svg(
+                &mut svg,
+                panel4_x,
+                panel_y,
+                panel_w,
+                panel_h,
+                "Target/read coverage %",
+                &Self::rebin_counts(&entry.summary.accepted_target_query_coverage.bin_counts, 24),
+                "#0284c7",
+            );
+        }
+        svg.push_str("</svg>");
+        svg
+    }
+
+    pub fn export_rna_read_target_quality(
+        &self,
+        report_id: &str,
+        path: &str,
+        gene_ids: &[String],
+        complete_rule: RnaReadGeneSupportCompleteRule,
+    ) -> Result<RnaReadTargetQualityExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read target-quality export requires non-empty path".to_string(),
+            });
+        }
+        let report = self.get_rna_read_report(report_id)?;
+        let summary =
+            self.summarize_rna_read_gene_support(report_id, gene_ids, &[], complete_rule)?;
+        let entry =
+            self.build_rna_read_target_quality_comparison_entry(&report, summary, complete_rule);
+        let requested_path = path.to_string();
+        let extension = Path::new(path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("svg")
+            .to_ascii_lowercase();
+        if extension == "json" {
+            let existing = Self::read_rna_read_target_quality_bundle_or_legacy(path)?
+                .unwrap_or_else(|| RnaReadTargetQualityComparisonBundle {
+                    schema: RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA.to_string(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    entries: vec![],
+                });
+            let (bundle, appended_to_existing_bundle, reused_existing_entry_slot) =
+                Self::merge_rna_read_target_quality_entry(existing, entry);
+            self.write_rna_read_target_quality_bundle_json(&bundle, path)?;
+            return Ok(RnaReadTargetQualityExport {
+                schema: RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA.to_string(),
+                requested_path,
+                written_path: path.to_string(),
+                bundle_path: None,
+                format: "json".to_string(),
+                report_id: report.report_id,
+                requested_gene_ids: gene_ids.to_vec(),
+                complete_rule,
+                entry_count: bundle.entries.len(),
+                appended_to_existing_bundle,
+                reused_existing_entry_slot,
+            });
+        }
+
+        let requested_svg_path = path.to_string();
+        let requested_sidecar_path = Self::rna_read_target_quality_svg_sidecar_path(path);
+        let mut written_svg_path = requested_svg_path.clone();
+        let mut bundle_path = requested_sidecar_path.clone();
+        let bundle_seed = if Path::new(&requested_sidecar_path).exists() {
+            Self::read_rna_read_target_quality_bundle_or_legacy(&requested_sidecar_path)?
+        } else if Path::new(path).exists() {
+            written_svg_path = Self::rna_read_target_quality_fallback_svg_path(path);
+            bundle_path = Self::rna_read_target_quality_svg_sidecar_path(&written_svg_path);
+            Self::read_rna_read_target_quality_bundle_or_legacy(&bundle_path)?
+        } else {
+            None
+        };
+        let existing = bundle_seed.unwrap_or_else(|| RnaReadTargetQualityComparisonBundle {
+            schema: RNA_READ_TARGET_QUALITY_COMPARISON_BUNDLE_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            entries: vec![],
+        });
+        let (bundle, appended_to_existing_bundle, reused_existing_entry_slot) =
+            Self::merge_rna_read_target_quality_entry(existing, entry);
+        self.write_rna_read_target_quality_bundle_json(&bundle, &bundle_path)?;
+        let svg = Self::render_rna_read_target_quality_comparison_svg_text(&bundle);
+        std::fs::write(&written_svg_path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read target-quality SVG to '{}': {e}",
+                written_svg_path
+            ),
+        })?;
+        Ok(RnaReadTargetQualityExport {
+            schema: RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA.to_string(),
+            requested_path,
+            written_path: written_svg_path,
+            bundle_path: Some(bundle_path),
+            format: "svg".to_string(),
+            report_id: report.report_id,
+            requested_gene_ids: gene_ids.to_vec(),
+            complete_rule,
+            entry_count: bundle.entries.len(),
+            appended_to_existing_bundle,
+            reused_existing_entry_slot,
+        })
+    }
+
     fn rna_read_gene_support_audit_matches_cohort_filter(
         status: RnaReadGeneSupportAuditStatus,
         cohort_filter: RnaReadGeneSupportAuditCohortFilter,
@@ -1246,8 +1809,27 @@ impl GentleEngine {
         let mut all_target = RnaReadGeneSupportAccumulator::default();
         let mut fragments = RnaReadGeneSupportAccumulator::default();
         let mut complete = RnaReadGeneSupportAccumulator::default();
+        let mut evaluated_read_length_counts = vec![0u64; 1];
+        let mut accepted_target_read_length_counts = vec![0u64; 1];
+        let mut accepted_target_fragment_length_counts = vec![0u64; 1];
+        let mut accepted_target_query_coverage_bins =
+            vec![0u64; RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT];
+        let mut accepted_target_query_coverage_sum = 0.0f64;
+        let hits_by_record_index = evaluation
+            .prepared
+            .report
+            .hits
+            .iter()
+            .map(|hit| (hit.record_index, hit))
+            .collect::<HashMap<_, _>>();
 
         for evaluated in &evaluation.rows {
+            if let Some(hit) = hits_by_record_index.get(&evaluated.row.record_index) {
+                Self::update_read_length_counts(
+                    &mut evaluated_read_length_counts,
+                    hit.read_length_bp,
+                );
+            }
             let Some(gene_id) = evaluated.gene_id.as_deref() else {
                 continue;
             };
@@ -1259,6 +1841,28 @@ impl GentleEngine {
                 .collect::<Vec<_>>();
             match evaluated.row.status {
                 RnaReadGeneSupportAuditStatus::AcceptedFragment => {
+                    if let Some(hit) = hits_by_record_index.get(&evaluated.row.record_index) {
+                        Self::update_read_length_counts(
+                            &mut accepted_target_read_length_counts,
+                            hit.read_length_bp,
+                        );
+                        if let Some(mapping) = hit.best_mapping.as_ref() {
+                            let fragment_length_bp = mapping
+                                .query_end_0based_exclusive
+                                .saturating_sub(mapping.query_start_0based)
+                                .min(hit.read_length_bp);
+                            Self::update_read_length_counts(
+                                &mut accepted_target_fragment_length_counts,
+                                fragment_length_bp,
+                            );
+                            Self::update_fraction_bin_counts(
+                                &mut accepted_target_query_coverage_bins,
+                                mapping.query_coverage_fraction,
+                            );
+                            accepted_target_query_coverage_sum +=
+                                mapping.query_coverage_fraction.clamp(0.0, 1.0);
+                        }
+                    }
                     all_target.add_read(
                         gene_id,
                         &evaluated.row.mapped_exon_ordinals,
@@ -1271,6 +1875,28 @@ impl GentleEngine {
                     );
                 }
                 RnaReadGeneSupportAuditStatus::AcceptedComplete => {
+                    if let Some(hit) = hits_by_record_index.get(&evaluated.row.record_index) {
+                        Self::update_read_length_counts(
+                            &mut accepted_target_read_length_counts,
+                            hit.read_length_bp,
+                        );
+                        if let Some(mapping) = hit.best_mapping.as_ref() {
+                            let fragment_length_bp = mapping
+                                .query_end_0based_exclusive
+                                .saturating_sub(mapping.query_start_0based)
+                                .min(hit.read_length_bp);
+                            Self::update_read_length_counts(
+                                &mut accepted_target_fragment_length_counts,
+                                fragment_length_bp,
+                            );
+                            Self::update_fraction_bin_counts(
+                                &mut accepted_target_query_coverage_bins,
+                                mapping.query_coverage_fraction,
+                            );
+                            accepted_target_query_coverage_sum +=
+                                mapping.query_coverage_fraction.clamp(0.0, 1.0);
+                        }
+                    }
                     all_target.add_read(
                         gene_id,
                         &evaluated.row.mapped_exon_ordinals,
@@ -1307,6 +1933,20 @@ impl GentleEngine {
             complete_count: evaluation.complete_record_indices.len(),
             complete_strict_count: evaluation.complete_strict_record_indices.len(),
             complete_exact_count: evaluation.complete_exact_record_indices.len(),
+            evaluated_read_lengths: Self::build_rna_read_length_distribution_summary(
+                &evaluated_read_length_counts,
+            ),
+            accepted_target_read_lengths: Self::build_rna_read_length_distribution_summary(
+                &accepted_target_read_length_counts,
+            ),
+            accepted_target_fragment_lengths: Self::build_rna_read_length_distribution_summary(
+                &accepted_target_fragment_length_counts,
+            ),
+            accepted_target_query_coverage: Self::build_rna_read_fraction_distribution_summary(
+                &accepted_target_query_coverage_bins,
+                evaluation.accepted_target_record_indices.len(),
+                accepted_target_query_coverage_sum,
+            ),
             all_target: Self::build_rna_read_gene_support_cohort_summary(
                 &all_target,
                 &evaluation.prepared.contexts,
@@ -5831,6 +6471,72 @@ impl GentleEngine {
             })
     }
 
+    fn update_fraction_bin_counts(bin_counts: &mut Vec<u64>, fraction: f64) {
+        if bin_counts.len() != RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT {
+            bin_counts.resize(RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT, 0);
+        }
+        let clamped = fraction.clamp(0.0, 1.0);
+        let idx = (clamped * (RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT.saturating_sub(1)) as f64)
+            .round() as usize;
+        if let Some(bucket) =
+            bin_counts.get_mut(idx.min(RNA_READ_TARGET_QUERY_COVERAGE_BIN_COUNT - 1))
+        {
+            *bucket = bucket.saturating_add(1);
+        }
+    }
+
+    fn quantile_fraction_from_bins(bin_counts: &[u64], total_samples: usize, q: f64) -> f64 {
+        if total_samples == 0 || bin_counts.is_empty() {
+            return 0.0;
+        }
+        let target_rank = ((total_samples as f64 - 1.0) * q.clamp(0.0, 1.0)).floor() as usize;
+        let mut seen = 0usize;
+        for (idx, count) in bin_counts.iter().copied().enumerate() {
+            if count == 0 {
+                continue;
+            }
+            seen = seen.saturating_add(count as usize);
+            if seen > target_rank {
+                return idx as f64 / bin_counts.len().saturating_sub(1).max(1) as f64;
+            }
+        }
+        1.0
+    }
+
+    fn build_rna_read_length_distribution_summary(
+        length_counts: &[u64],
+    ) -> RnaReadLengthDistributionSummary {
+        let sample_count = Self::sum_read_length_counts(length_counts);
+        let total_bases = Self::sum_read_length_bases(length_counts);
+        let (mean_length_bp, median_length_bp, p95_length_bp) =
+            Self::summarize_read_lengths(length_counts, sample_count, total_bases);
+        RnaReadLengthDistributionSummary {
+            sample_count,
+            mean_length_bp,
+            median_length_bp,
+            p95_length_bp,
+            length_counts: length_counts.to_vec(),
+        }
+    }
+
+    fn build_rna_read_fraction_distribution_summary(
+        bin_counts: &[u64],
+        sample_count: usize,
+        fraction_sum: f64,
+    ) -> RnaReadFractionDistributionSummary {
+        RnaReadFractionDistributionSummary {
+            sample_count,
+            mean_fraction: if sample_count == 0 {
+                0.0
+            } else {
+                fraction_sum / sample_count as f64
+            },
+            median_fraction: Self::quantile_fraction_from_bins(bin_counts, sample_count, 0.50),
+            p95_fraction: Self::quantile_fraction_from_bins(bin_counts, sample_count, 0.95),
+            bin_counts: bin_counts.to_vec(),
+        }
+    }
+
     fn classify_rna_read_full_length(
         target_start_offset_0based: usize,
         target_end_offset_0based_exclusive: usize,
@@ -9247,6 +9953,7 @@ impl GentleEngine {
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
+            rna_read_target_quality_export: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -9318,6 +10025,7 @@ impl GentleEngine {
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
+            rna_read_target_quality_export: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,

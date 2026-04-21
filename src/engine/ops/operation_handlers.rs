@@ -6186,6 +6186,7 @@ impl GentleEngine {
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
+            rna_read_target_quality_export: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -13471,7 +13472,7 @@ impl GentleEngine {
                         complete_rule,
                         append,
                     )?;
-                    result.messages.push(format!(
+                result.messages.push(format!(
                     "Exported RNA-read sample sheet '{}' with {} report row(s) (genes={}, complete_rule={}, append={})",
                     export.path,
                     export.report_count,
@@ -13479,6 +13480,53 @@ impl GentleEngine {
                     export.complete_rule.as_str(),
                     export.appended
                 ));
+                }
+                Operation::ExportRnaReadTargetQuality {
+                    report_id,
+                    path,
+                    gene_ids,
+                    complete_rule,
+                } => {
+                    let export = self.export_rna_read_target_quality(
+                        &report_id,
+                        &path,
+                        &gene_ids,
+                        complete_rule,
+                    )?;
+                    let target_label = if export.requested_gene_ids.is_empty() {
+                        "target".to_string()
+                    } else {
+                        export.requested_gene_ids.join(",")
+                    };
+                    if export.written_path != export.requested_path {
+                        result.warnings.push(format!(
+                            "Requested target-quality path '{}' already existed without a reusable GENtle comparison bundle; wrote comparison-ready output to '{}' instead",
+                            export.requested_path, export.written_path
+                        ));
+                    }
+                    if let Some(bundle_path) = export.bundle_path.as_deref() {
+                        result.messages.push(format!(
+                            "Exported RNA-read target-quality comparison SVG '{}' for {} to '{}' with bundle '{}' (entries={}, appended={}, reused_existing_entry={})",
+                            export.report_id,
+                            target_label,
+                            export.written_path,
+                            bundle_path,
+                            export.entry_count,
+                            export.appended_to_existing_bundle,
+                            export.reused_existing_entry_slot
+                        ));
+                    } else {
+                        result.messages.push(format!(
+                            "Exported RNA-read target-quality comparison bundle '{}' for {} to '{}' (entries={}, appended={}, reused_existing_entry={})",
+                            export.report_id,
+                            target_label,
+                            export.written_path,
+                            export.entry_count,
+                            export.appended_to_existing_bundle,
+                            export.reused_existing_entry_slot
+                        ));
+                    }
+                    result.rna_read_target_quality_export = Some(export);
                 }
                 Operation::ExportRnaReadExonPathsTsv {
                     report_id,

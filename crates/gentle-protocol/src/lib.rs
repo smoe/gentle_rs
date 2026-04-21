@@ -3224,6 +3224,76 @@ pub struct RnaReadSampleSheetExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadTargetQualityComparisonEntry {
+    pub entry_id: String,
+    pub comparison_label: String,
+    pub gentle_version: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub report_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_run_id: Option<String>,
+    #[serde(default)]
+    pub requested_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub matched_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub missing_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub report_target_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    #[serde(default)]
+    pub profile: RnaReadInterpretationProfile,
+    #[serde(default)]
+    pub scope: SplicingScopePreset,
+    #[serde(default)]
+    pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub report_mode: RnaReadReportMode,
+    #[serde(default)]
+    pub seed_filter: RnaReadSeedFilterConfig,
+    #[serde(default)]
+    pub align_config: RnaReadAlignConfig,
+    #[serde(default)]
+    pub all_read_lengths: RnaReadLengthDistributionSummary,
+    pub summary: RnaReadGeneSupportSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadTargetQualityComparisonBundle {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub entries: Vec<RnaReadTargetQualityComparisonEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadTargetQualityExport {
+    pub schema: String,
+    pub requested_path: String,
+    pub written_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_path: Option<String>,
+    pub format: String,
+    pub report_id: String,
+    #[serde(default)]
+    pub requested_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    pub entry_count: usize,
+    #[serde(default)]
+    pub appended_to_existing_bundle: bool,
+    #[serde(default)]
+    pub reused_existing_entry_slot: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadExonPathsExport {
     pub schema: String,
     pub path: String,
@@ -3280,6 +3350,26 @@ pub struct RnaReadGeneSupportCohortSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadLengthDistributionSummary {
+    pub sample_count: usize,
+    pub mean_length_bp: f64,
+    pub median_length_bp: usize,
+    pub p95_length_bp: usize,
+    pub length_counts: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadFractionDistributionSummary {
+    pub sample_count: usize,
+    pub mean_fraction: f64,
+    pub median_fraction: f64,
+    pub p95_fraction: f64,
+    pub bin_counts: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadGeneSupportSummary {
     pub schema: String,
     pub report_id: String,
@@ -3296,6 +3386,10 @@ pub struct RnaReadGeneSupportSummary {
     pub complete_count: usize,
     pub complete_strict_count: usize,
     pub complete_exact_count: usize,
+    pub evaluated_read_lengths: RnaReadLengthDistributionSummary,
+    pub accepted_target_read_lengths: RnaReadLengthDistributionSummary,
+    pub accepted_target_fragment_lengths: RnaReadLengthDistributionSummary,
+    pub accepted_target_query_coverage: RnaReadFractionDistributionSummary,
     pub all_target: RnaReadGeneSupportCohortSummary,
     pub fragments: RnaReadGeneSupportCohortSummary,
     pub complete: RnaReadGeneSupportCohortSummary,
