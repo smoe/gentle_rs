@@ -11607,7 +11607,9 @@ mod tests {
 
     #[test]
     fn test_build_genbank_efetch_urls() {
-        let _lock = genbank_env_lock().lock().unwrap();
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = EnvVarGuard::set(NCBI_EFETCH_ENV_VAR, DEFAULT_NCBI_EFETCH_ENDPOINT);
         let entry = GenomeCatalogEntry {
             genbank_accession: Some("L09137".to_string()),
@@ -11631,7 +11633,9 @@ mod tests {
 
     #[test]
     fn test_source_plan_keeps_genbank_source_type_with_file_override() {
-        let _lock = genbank_env_lock().lock().unwrap();
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let td = tempdir().unwrap();
         let root = td.path();
         let mock_dir = root.join("mock");
@@ -11738,7 +11742,9 @@ mod tests {
 
     #[test]
     fn test_local_missing_falls_back_to_genbank_accession_source() {
-        let _lock = genbank_env_lock().lock().unwrap();
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _env = EnvVarGuard::set(NCBI_EFETCH_ENV_VAR, DEFAULT_NCBI_EFETCH_ENDPOINT);
         let entry = GenomeCatalogEntry {
             sequence_local: Some("missing/local.fa.gz".to_string()),

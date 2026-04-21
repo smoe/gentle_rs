@@ -236,6 +236,12 @@ order. Durable architecture constraints and decisions remain in
     even smaller helper before the broader rack/export helper so the smallest
     stack-sensitive test threads do not pay for the larger rack-render/export
     command frame when they only need one arrangement update
+  - the broader family has now been split one level further as well:
+    rack commands dispatch through their own dedicated helper, and the
+    pool-gel/ladder routes dispatch through a separate helper, so
+    `racks apply-template` and similar rack-template/state commands no longer
+    pay for the neighboring pool-gel/ladder frame on smaller-stack test
+    threads
 - Engine operation dispatch now applies the same arrangement/rack/ladder
   split-helper pattern:
   - shell-side helper dispatch alone was not sufficient because

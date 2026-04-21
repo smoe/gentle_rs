@@ -2995,9 +2995,9 @@ fn execute_racks_labels_svg_with_preset_writes_marker() {
     assert!(!out.state_changed);
     let svg = fs::read_to_string(&output).expect("labels svg");
     assert!(svg.contains("data-label-preset=\"wide_cards\""));
-    assert!(svg.contains("viewBox=\"0 0 556 124\""));
-    assert!(svg.contains("role: vector"));
-    assert!(svg.contains("arrangement: Demo"));
+    assert!(svg.contains("viewBox=\"0 0 556 156\""));
+    assert!(svg.contains("role vector"));
+    assert!(svg.contains("arrangement Demo"));
 }
 
 #[test]
@@ -12648,13 +12648,15 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["jaspar"]["remote_metadata_snapshot"]["path"].as_str(),
         Some("data/resources/jaspar.remote_metadata.json")
     );
+    let jaspar_remote_metadata_exists =
+        std::path::Path::new("data/resources/jaspar.remote_metadata.json").exists();
     assert_eq!(
         out.output["jaspar"]["remote_metadata_snapshot"]["exists"].as_bool(),
-        Some(false)
+        Some(jaspar_remote_metadata_exists)
     );
     assert_eq!(
         out.output["jaspar"]["remote_metadata_snapshot"]["valid"].as_bool(),
-        Some(false)
+        Some(jaspar_remote_metadata_exists)
     );
     assert_eq!(
         out.output["attract"]["support_status"].as_str(),

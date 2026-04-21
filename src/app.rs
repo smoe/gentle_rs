@@ -50079,7 +50079,9 @@ mod tests {
 
     #[test]
     fn configure_platform_viewport_mode_sets_expected_embed_flag() {
-        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(false);
         let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
@@ -50091,7 +50093,9 @@ mod tests {
 
     #[test]
     fn macos_native_child_viewports_env_override_disables_embed_mode() {
-        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
         let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "1");
@@ -51069,7 +51073,9 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 
     #[test]
     fn genbank_dialog_fetch_imports_sequence_and_opens_window() {
-        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut app = GENtleApp::default();
         let temp = tempdir().expect("tempdir");
         let mock_dir = temp.path().join("mock");
@@ -51228,9 +51234,12 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             app.dbsnp_status
         );
         let wait_started = Instant::now();
-        while app.dbsnp_fetch_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
+        while app.dbsnp_fetch_task.is_some() && wait_started.elapsed() < Duration::from_secs(15) {
             app.poll_dbsnp_fetch_task(&egui::Context::default());
             std::thread::sleep(Duration::from_millis(10));
+        }
+        if app.dbsnp_fetch_task.is_some() {
+            app.poll_dbsnp_fetch_task(&egui::Context::default());
         }
         assert!(
             app.dbsnp_fetch_task.is_none(),

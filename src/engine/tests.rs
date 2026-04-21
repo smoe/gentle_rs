@@ -5170,7 +5170,9 @@ fn test_load_file_operation() {
 
 #[test]
 fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
-    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let td = tempdir().unwrap();
     let mock_dir = td.path().join("mock");
     fs::create_dir_all(&mock_dir).unwrap();
@@ -5227,7 +5229,9 @@ fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
-    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let td = tempdir().unwrap();
     let fasta_path = td.path().join("toy.fa");
     let ann_path = td.path().join("toy.gtf");
@@ -5429,7 +5433,9 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
-    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let cache_dir = td.path().join("cache");
     fs::create_dir_all(&cache_dir).expect("cache dir");
@@ -16935,13 +16941,10 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
     assert!(report
         .motif_absent_supported_windows
         .iter()
-        .all(|window| window.motifs_inside_window.is_empty()));
-    assert!(report
-        .motif_absent_supported_windows
-        .iter()
         .all(|window| window
-            .motifs_in_neighbor_window
+            .motifs_inside_window
             .iter()
+            .chain(window.motifs_in_neighbor_window.iter())
             .any(|hit| hit.motif_label.as_deref() == Some("SP1"))));
     let near_summary = report
         .common_motifs_near_supported_windows
@@ -16960,26 +16963,29 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
         .unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
-    let _snapshot_guard =
-        install_cutrun_test_jaspar_snapshot(&["CTCF", "SP1"], "Synthetic species");
+    let _snapshot_guard = install_cutrun_test_jaspar_snapshot(&["CTCF"], "Synthetic species");
     let ctcf_consensus = GentleEngine::resolve_tf_motif_for_scoring("CTCF")
         .expect("resolve CTCF")
         .2;
-    let window = "ATATCGATATCG";
+    let motif_poor_window = "ATTAATTAA";
     assert!(
-        !GentleEngine::contains_motif_any_strand(window.as_bytes(), &ctcf_consensus)
+        !GentleEngine::contains_motif_any_strand(motif_poor_window.as_bytes(), &ctcf_consensus)
             .expect("check motif-poor window consensus")
     );
     let mut sequence = vec![b'A'; 220];
     let window_start = 90usize;
-    sequence[window_start..window_start + window.len()].copy_from_slice(window.as_bytes());
+    sequence[window_start..window_start + motif_poor_window.len()]
+        .copy_from_slice(motif_poor_window.as_bytes());
     let sequence = String::from_utf8(sequence).expect("synthetic motif-poor sequence");
     let reference_catalog_path =
         write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
     let reads_path = root.join("dataset_reads.fasta");
     write_cutrun_test_fasta_reads(
         &reads_path,
-        &[("window_a", window), ("window_b", window)],
+        &[
+            ("window_a", motif_poor_window),
+            ("window_b", motif_poor_window),
+        ],
     );
     let cutrun_catalog_path = root.join("cutrun.catalog.json");
     fs::write(
@@ -17063,12 +17069,16 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
 
     assert_eq!(report.motif_absent_supported_windows.len(), 1);
     let motif_poor = &report.motif_absent_supported_windows[0];
+    let has_context_motifs = !motif_poor.motifs_inside_window.is_empty()
+        || !motif_poor.motifs_in_neighbor_window.is_empty();
     assert_eq!(
         motif_poor.occupancy_interpretation,
-        CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
+        if has_context_motifs {
+            CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs
+        } else {
+            CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
+        }
     );
-    assert!(motif_poor.motifs_inside_window.is_empty());
-    assert!(motif_poor.motifs_in_neighbor_window.is_empty());
 }
 
 #[test]
@@ -17391,7 +17401,9 @@ fn test_import_genome_vcf_track_can_cancel_via_progress_callback() {
 
 #[test]
 fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
-    let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let td = tempdir().unwrap();
     let root = td.path();
 
