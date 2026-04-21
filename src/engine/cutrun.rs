@@ -16,10 +16,29 @@ use crate::genomes::{
 };
 use reqwest::blocking::Client;
 use sha1::{Digest, Sha1};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 
 const CUTRUN_MANIFEST_FILE_NAME: &str = "manifest.json";
 const CUTRUN_CACHE_DIR_ENV: &str = "GENTLE_CUTRUN_CACHE_DIR";
+const CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP: usize = 50;
+const CUTRUN_SIGNAL_ISLAND_MIN_WIDTH_BP: usize = 20;
+const CUTRUN_SIGNAL_ISLAND_TOP_POSITIVE_FRACTION: f64 = 0.95;
+
+#[derive(Clone, Debug, Default)]
+struct CutRunRegulatoryEvidenceCandidate {
+    local_start_1based: usize,
+    local_end_1based: usize,
+    overlapping_peak_count: usize,
+    max_signal_value: Option<f64>,
+    mean_signal_value: Option<f64>,
+    signal_value_sum: f64,
+    signal_span_bp: usize,
+    supporting_fragment_count: usize,
+    cut_site_count: u32,
+    contributing_dataset_ids: BTreeSet<String>,
+    contributing_read_report_ids: BTreeSet<String>,
+}
 
 #[derive(Clone, Debug)]
 struct CutRunCatalogSourceCandidate {
@@ -2028,6 +2047,9 @@ impl GentleEngine {
         seq_id: &str,
         input_r1_path: &str,
         input_r2_path: Option<String>,
+        dataset_id: Option<String>,
+        target_factor: Option<String>,
+        species: Option<String>,
         input_format: CutRunInputFormat,
         read_layout: CutRunReadLayout,
         roi_flank_bp: usize,
@@ -2149,6 +2171,9 @@ impl GentleEngine {
             run_id: None,
             input_r1_path: input_r1_path.to_string(),
             input_r2_path,
+            dataset_id,
+            target_factor,
+            species,
             input_format,
             read_layout,
             roi_flank_bp,
@@ -2231,6 +2256,13 @@ impl GentleEngine {
             catalog_path,
             cache_dir,
         )?;
+        let source_dataset_status = dataset_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|dataset_query| {
+                self.show_cutrun_dataset_status(dataset_query, catalog_path, cache_dir)
+            })
+            .transpose()?;
         match resolved_read_layout {
             CutRunReadLayout::SingleEnd => {
                 if resolved_input_r2_path.is_some() {
@@ -2472,6 +2504,13 @@ impl GentleEngine {
                         seq_id,
                         &resolved_input_r1_path,
                         resolved_input_r2_path.clone(),
+                        source_dataset_status.as_ref().map(|status| status.dataset_id.clone()),
+                        source_dataset_status
+                            .as_ref()
+                            .and_then(|status| status.target_factor.clone()),
+                        source_dataset_status
+                            .as_ref()
+                            .and_then(|status| status.species.clone()),
                         resolved_input_format,
                         resolved_read_layout,
                         roi_flank_bp,
@@ -2502,6 +2541,13 @@ impl GentleEngine {
             seq_id,
             &resolved_input_r1_path,
             resolved_input_r2_path,
+            source_dataset_status.as_ref().map(|status| status.dataset_id.clone()),
+            source_dataset_status
+                .as_ref()
+                .and_then(|status| status.target_factor.clone()),
+            source_dataset_status
+                .as_ref()
+                .and_then(|status| status.species.clone()),
             resolved_input_format,
             resolved_read_layout,
             roi_flank_bp,
@@ -2522,6 +2568,1209 @@ impl GentleEngine {
         }
         self.upsert_cutrun_read_report(report.clone())?;
         Ok(report)
+    }
+
+    fn cutrun_seq_local_span_to_genomic(
+        anchor: &GenomeSequenceAnchor,
+        local_start_1based: usize,
+        local_end_1based: usize,
+    ) -> (usize, usize) {
+        if anchor.strand == Some('-') {
+            let a = anchor
+                .end_1based
+                .saturating_sub(local_start_1based.saturating_sub(1));
+            let b = anchor
+                .end_1based
+                .saturating_sub(local_end_1based.saturating_sub(1));
+            (a.min(b), a.max(b))
+        } else {
+            let a = anchor
+                .start_1based
+                .saturating_add(local_start_1based.saturating_sub(1));
+            let b = anchor
+                .start_1based
+                .saturating_add(local_end_1based.saturating_sub(1));
+            (a.min(b), a.max(b))
+        }
+    }
+
+    fn cutrun_anchor_genomic_interval_to_local(
+        anchor: &GenomeSequenceAnchor,
+        genomic_start_1based: usize,
+        genomic_end_1based: usize,
+    ) -> Option<(usize, usize)> {
+        if genomic_start_1based == 0 || genomic_end_1based < genomic_start_1based {
+            return None;
+        }
+        let overlap_start_1based = genomic_start_1based.max(anchor.start_1based);
+        let overlap_end_1based = genomic_end_1based.min(anchor.end_1based);
+        if overlap_end_1based < overlap_start_1based {
+            return None;
+        }
+        let local = if anchor.strand == Some('-') {
+            (
+                anchor.end_1based.saturating_sub(overlap_end_1based) + 1,
+                anchor.end_1based.saturating_sub(overlap_start_1based) + 1,
+            )
+        } else {
+            (
+                overlap_start_1based
+                    .saturating_sub(anchor.start_1based)
+                    .saturating_add(1),
+                overlap_end_1based
+                    .saturating_sub(anchor.start_1based)
+                    .saturating_add(1),
+            )
+        };
+        Some((local.0.min(local.1), local.0.max(local.1)))
+    }
+
+    fn cutrun_clip_local_interval_to_span(
+        local_start_1based: usize,
+        local_end_1based: usize,
+        span_start_0based: usize,
+        span_end_0based_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        let span_start_1based = span_start_0based.saturating_add(1);
+        let span_end_1based = span_end_0based_exclusive;
+        let clipped_start = local_start_1based.max(span_start_1based);
+        let clipped_end = local_end_1based.min(span_end_1based);
+        (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+    }
+
+    fn cutrun_append_candidate(
+        candidates: &mut Vec<CutRunRegulatoryEvidenceCandidate>,
+        local_start_1based: usize,
+        local_end_1based: usize,
+        overlapping_peak_count: usize,
+        max_signal_value: Option<f64>,
+        mean_signal_value: Option<f64>,
+        supporting_fragment_count: usize,
+        cut_site_count: u32,
+        dataset_id: Option<&str>,
+        read_report_id: Option<&str>,
+    ) {
+        if local_start_1based == 0 || local_end_1based < local_start_1based {
+            return;
+        }
+        let mut candidate = CutRunRegulatoryEvidenceCandidate {
+            local_start_1based,
+            local_end_1based,
+            overlapping_peak_count,
+            max_signal_value,
+            mean_signal_value,
+            signal_value_sum: 0.0,
+            signal_span_bp: 0,
+            supporting_fragment_count,
+            cut_site_count,
+            contributing_dataset_ids: BTreeSet::new(),
+            contributing_read_report_ids: BTreeSet::new(),
+        };
+        if let Some(value) = mean_signal_value {
+            let span_bp = local_end_1based
+                .saturating_sub(local_start_1based)
+                .saturating_add(1);
+            candidate.signal_value_sum = value * span_bp as f64;
+            candidate.signal_span_bp = span_bp;
+        }
+        if let Some(dataset_id) = dataset_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            candidate
+                .contributing_dataset_ids
+                .insert(dataset_id.to_string());
+        }
+        if let Some(read_report_id) = read_report_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            candidate
+                .contributing_read_report_ids
+                .insert(read_report_id.to_string());
+        }
+        candidates.push(candidate);
+    }
+
+    fn cutrun_signal_threshold(values: &[f64]) -> Option<f64> {
+        let mut positives = values
+            .iter()
+            .copied()
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .collect::<Vec<_>>();
+        if positives.is_empty() {
+            return None;
+        }
+        positives.sort_by(|left, right| left.total_cmp(right));
+        let idx = ((positives.len().saturating_sub(1) as f64)
+            * CUTRUN_SIGNAL_ISLAND_TOP_POSITIVE_FRACTION)
+            .round() as usize;
+        positives.get(idx).copied()
+    }
+
+    fn cutrun_support_strength(
+        overlapping_peak_count: usize,
+        max_signal_value: Option<f64>,
+        supporting_fragment_count: usize,
+        cut_site_count: u32,
+    ) -> CutRunSupportStrength {
+        if overlapping_peak_count > 0
+            || supporting_fragment_count >= 2
+            || cut_site_count >= 4
+            || max_signal_value.is_some_and(|value| value > 0.0)
+        {
+            CutRunSupportStrength::Strong
+        } else if supporting_fragment_count > 0 || cut_site_count > 0 {
+            CutRunSupportStrength::Moderate
+        } else {
+            CutRunSupportStrength::Weak
+        }
+    }
+
+    fn cutrun_merge_regulatory_candidates(
+        anchor: &GenomeSequenceAnchor,
+        mut candidates: Vec<CutRunRegulatoryEvidenceCandidate>,
+    ) -> Vec<CutRunSupportWindowRecord> {
+        candidates.sort_by(|left, right| {
+            left.local_start_1based
+                .cmp(&right.local_start_1based)
+                .then(left.local_end_1based.cmp(&right.local_end_1based))
+        });
+        let mut merged: Vec<CutRunRegulatoryEvidenceCandidate> = vec![];
+        for candidate in candidates {
+            if let Some(last) = merged.last_mut()
+                && candidate.local_start_1based
+                    <= last
+                        .local_end_1based
+                        .saturating_add(CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP)
+                        .saturating_add(1)
+            {
+                last.local_end_1based = last.local_end_1based.max(candidate.local_end_1based);
+                last.overlapping_peak_count = last
+                    .overlapping_peak_count
+                    .saturating_add(candidate.overlapping_peak_count);
+                last.max_signal_value = match (last.max_signal_value, candidate.max_signal_value) {
+                    (Some(left), Some(right)) => Some(left.max(right)),
+                    (Some(left), None) => Some(left),
+                    (None, Some(right)) => Some(right),
+                    (None, None) => None,
+                };
+                last.signal_value_sum += candidate.signal_value_sum;
+                last.signal_span_bp = last.signal_span_bp.saturating_add(candidate.signal_span_bp);
+                last.mean_signal_value = (last.signal_span_bp > 0)
+                    .then_some(last.signal_value_sum / last.signal_span_bp as f64);
+                last.supporting_fragment_count = last
+                    .supporting_fragment_count
+                    .saturating_add(candidate.supporting_fragment_count);
+                last.cut_site_count = last.cut_site_count.saturating_add(candidate.cut_site_count);
+                last.contributing_dataset_ids
+                    .extend(candidate.contributing_dataset_ids);
+                last.contributing_read_report_ids
+                    .extend(candidate.contributing_read_report_ids);
+            } else {
+                merged.push(candidate);
+            }
+        }
+
+        merged
+            .into_iter()
+            .enumerate()
+            .map(|(idx, candidate)| {
+                let (genomic_start_1based, genomic_end_1based) = Self::cutrun_seq_local_span_to_genomic(
+                    anchor,
+                    candidate.local_start_1based,
+                    candidate.local_end_1based,
+                );
+                CutRunSupportWindowRecord {
+                    window_id: format!("window_{}", idx + 1),
+                    local_start_0based: candidate.local_start_1based.saturating_sub(1),
+                    local_end_0based_exclusive: candidate.local_end_1based,
+                    genomic_start_1based,
+                    genomic_end_1based,
+                    support_strength: Self::cutrun_support_strength(
+                        candidate.overlapping_peak_count,
+                        candidate.max_signal_value,
+                        candidate.supporting_fragment_count,
+                        candidate.cut_site_count,
+                    ),
+                    overlapping_peak_count: candidate.overlapping_peak_count,
+                    max_signal_value: candidate.max_signal_value,
+                    mean_signal_value: candidate.mean_signal_value,
+                    supporting_fragment_count: candidate.supporting_fragment_count,
+                    cut_site_count: candidate.cut_site_count,
+                    contributing_dataset_ids: candidate
+                        .contributing_dataset_ids
+                        .into_iter()
+                        .collect(),
+                    contributing_read_report_ids: candidate
+                        .contributing_read_report_ids
+                        .into_iter()
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
+    fn cutrun_collect_dataset_peak_candidates(
+        &self,
+        status: &CutRunDatasetStatus,
+        anchor: &GenomeSequenceAnchor,
+        span_start_0based: usize,
+        span_end_0based_exclusive: usize,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<CutRunRegulatoryEvidenceCandidate>, EngineError> {
+        let Some(path) = status
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.peaks.as_ref())
+            .map(|asset| asset.local_path.clone())
+        else {
+            return Ok(vec![]);
+        };
+        let mut reader = Self::open_text_reader(&path)?;
+        let mut line = String::new();
+        let mut line_no = 0usize;
+        let mut candidates = vec![];
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read CUT&RUN peaks '{}': {e}", path),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.starts_with('#')
+                || trimmed.to_ascii_lowercase().starts_with("track ")
+                || trimmed.to_ascii_lowercase().starts_with("browser ")
+            {
+                continue;
+            }
+            let record = match Self::parse_bed_record(trimmed) {
+                Ok(record) => record,
+                Err(err) => {
+                    if warnings.len() < 20 {
+                        warnings.push(format!(
+                            "CUT&RUN peaks line {} skipped for '{}': {}",
+                            line_no, status.dataset_id, err
+                        ));
+                    }
+                    continue;
+                }
+            };
+            if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
+                continue;
+            }
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_anchor_genomic_interval_to_local(
+                    anchor,
+                    record.start_0based.saturating_add(1),
+                    record.end_0based,
+                )
+            else {
+                continue;
+            };
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_clip_local_interval_to_span(
+                    local_start_1based,
+                    local_end_1based,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                )
+            else {
+                continue;
+            };
+            Self::cutrun_append_candidate(
+                &mut candidates,
+                local_start_1based,
+                local_end_1based,
+                1,
+                None,
+                None,
+                0,
+                0,
+                Some(&status.dataset_id),
+                None,
+            );
+        }
+        Ok(candidates)
+    }
+
+    fn cutrun_collect_dataset_signal_candidates(
+        &self,
+        status: &CutRunDatasetStatus,
+        anchor: &GenomeSequenceAnchor,
+        span_start_0based: usize,
+        span_end_0based_exclusive: usize,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<CutRunRegulatoryEvidenceCandidate>, EngineError> {
+        let Some(path) = status
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.signal.as_ref())
+            .map(|asset| asset.local_path.clone())
+        else {
+            return Ok(vec![]);
+        };
+        let signal_path_lower = path.to_ascii_lowercase();
+        let converted = if signal_path_lower.ends_with(".bw") || signal_path_lower.ends_with(".bigwig")
+        {
+            Some(Self::convert_bigwig_to_bedgraph(&path)?)
+        } else {
+            None
+        };
+        let reader_path = converted
+            .as_ref()
+            .map(|file| file.path().to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        let span_len = span_end_0based_exclusive.saturating_sub(span_start_0based);
+        let mut signal_values = vec![0.0_f64; span_len];
+        let mut reader = Self::open_text_reader(&reader_path)?;
+        let mut line = String::new();
+        let mut line_no = 0usize;
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read CUT&RUN signal '{}': {e}", path),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.starts_with('#')
+                || trimmed.to_ascii_lowercase().starts_with("track ")
+                || trimmed.to_ascii_lowercase().starts_with("browser ")
+            {
+                continue;
+            }
+            let record = Self::parse_bedgraph_record(trimmed)
+                .or_else(|_| Self::parse_bed_record(trimmed))
+                .map_err(|err| {
+                    if warnings.len() < 20 {
+                        warnings.push(format!(
+                            "CUT&RUN signal line {} skipped for '{}': {}",
+                            line_no, status.dataset_id, err
+                        ));
+                    }
+                    err
+                })
+                .ok();
+            let Some(record) = record else {
+                continue;
+            };
+            if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
+                continue;
+            }
+            let Some(score) = record.score.filter(|value| value.is_finite() && *value > 0.0) else {
+                continue;
+            };
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_anchor_genomic_interval_to_local(
+                    anchor,
+                    record.start_0based.saturating_add(1),
+                    record.end_0based,
+                )
+            else {
+                continue;
+            };
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_clip_local_interval_to_span(
+                    local_start_1based,
+                    local_end_1based,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                )
+            else {
+                continue;
+            };
+            let start_idx = local_start_1based
+                .saturating_sub(span_start_0based.saturating_add(1));
+            let end_idx = local_end_1based
+                .saturating_sub(span_start_0based.saturating_add(1));
+            for idx in start_idx..=end_idx.min(signal_values.len().saturating_sub(1)) {
+                signal_values[idx] = signal_values[idx].max(score);
+            }
+        }
+        let Some(threshold) = Self::cutrun_signal_threshold(&signal_values) else {
+            return Ok(vec![]);
+        };
+        let mut candidates = vec![];
+        let mut idx = 0usize;
+        while idx < signal_values.len() {
+            if signal_values[idx] + f64::EPSILON < threshold {
+                idx += 1;
+                continue;
+            }
+            let start_idx = idx;
+            let mut max_signal = 0.0_f64;
+            let mut sum_signal = 0.0_f64;
+            let mut span_bp = 0usize;
+            while idx < signal_values.len() && signal_values[idx] + f64::EPSILON >= threshold {
+                max_signal = max_signal.max(signal_values[idx]);
+                sum_signal += signal_values[idx];
+                span_bp += 1;
+                idx += 1;
+            }
+            if span_bp < CUTRUN_SIGNAL_ISLAND_MIN_WIDTH_BP {
+                continue;
+            }
+            let local_start_1based = span_start_0based.saturating_add(start_idx).saturating_add(1);
+            let local_end_1based = local_start_1based.saturating_add(span_bp).saturating_sub(1);
+            let mean_signal = if span_bp == 0 {
+                None
+            } else {
+                Some(sum_signal / span_bp as f64)
+            };
+            Self::cutrun_append_candidate(
+                &mut candidates,
+                local_start_1based,
+                local_end_1based,
+                0,
+                Some(max_signal),
+                mean_signal,
+                0,
+                0,
+                Some(&status.dataset_id),
+                None,
+            );
+        }
+        Ok(candidates)
+    }
+
+    fn cutrun_collect_read_report_candidates(
+        &self,
+        report: &CutRunReadReport,
+        seq_id: &str,
+        anchor: &GenomeSequenceAnchor,
+        span_start_0based: usize,
+        span_end_0based_exclusive: usize,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<CutRunRegulatoryEvidenceCandidate>, EngineError> {
+        if report.seq_id != seq_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "CUT&RUN read report '{}' belongs to '{}' rather than '{}'",
+                    report.report_id, report.seq_id, seq_id
+                ),
+            });
+        }
+        if !Self::chromosomes_match(&report.chromosome, &anchor.chromosome) {
+            warnings.push(format!(
+                "CUT&RUN read report '{}' chromosome '{}' did not match anchor chromosome '{}'",
+                report.report_id, report.chromosome, anchor.chromosome
+            ));
+            return Ok(vec![]);
+        }
+        let mut candidates = vec![];
+        for cluster in &report.support_clusters {
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_anchor_genomic_interval_to_local(
+                    anchor,
+                    cluster.genomic_start_1based,
+                    cluster.genomic_end_1based,
+                )
+            else {
+                continue;
+            };
+            let Some((local_start_1based, local_end_1based)) =
+                Self::cutrun_clip_local_interval_to_span(
+                    local_start_1based,
+                    local_end_1based,
+                    span_start_0based,
+                    span_end_0based_exclusive,
+                )
+            else {
+                continue;
+            };
+            Self::cutrun_append_candidate(
+                &mut candidates,
+                local_start_1based,
+                local_end_1based,
+                0,
+                None,
+                None,
+                cluster.fragment_count,
+                cluster.total_cut_sites,
+                report.dataset_id.as_deref(),
+                Some(&report.report_id),
+            );
+        }
+        Ok(candidates)
+    }
+
+    fn cutrun_collect_context_motif_tokens(
+        &self,
+        species_filters: &[String],
+        warnings: &mut Vec<String>,
+    ) -> Vec<String> {
+        if species_filters.is_empty() {
+            return crate::tf_motifs::all_motif_ids();
+        }
+        let cached_rows = match Self::load_jaspar_remote_metadata_snapshot_rows(None) {
+            Ok(rows) => rows,
+            Err(err) => {
+                warnings.push(err);
+                return vec![];
+            }
+        };
+        let mut selected = vec![];
+        let mut missing_metadata = 0usize;
+        let mut excluded = 0usize;
+        for motif_id in crate::tf_motifs::all_motif_ids() {
+            match cached_rows.get(&motif_id) {
+                Some(row) => {
+                    if Self::cutrun_jaspar_species_filter_matches(row, species_filters) {
+                        selected.push(motif_id);
+                    } else {
+                        excluded = excluded.saturating_add(1);
+                    }
+                }
+                None => {
+                    missing_metadata = missing_metadata.saturating_add(1);
+                }
+            }
+        }
+        if excluded > 0 {
+            warnings.push(format!(
+                "Species filter excluded {} motif(s) from CUT&RUN regulatory motif-context scans",
+                excluded
+            ));
+        }
+        if missing_metadata > 0 {
+            warnings.push(format!(
+                "Species filter skipped {} motif(s) without cached JASPAR remote metadata",
+                missing_metadata
+            ));
+        }
+        selected
+    }
+
+    fn cutrun_jaspar_species_filter_matches(
+        row: &JasparRemoteMetadataSnapshotRow,
+        filters: &[String],
+    ) -> bool {
+        if filters.is_empty() {
+            return true;
+        }
+        filters.iter().any(|filter| {
+            let filter = filter.trim().to_ascii_lowercase();
+            if filter.is_empty() {
+                return false;
+            }
+            row.remote_metadata
+                .species_assignments
+                .iter()
+                .any(|assignment| {
+                    assignment
+                        .scientific_name
+                        .to_ascii_lowercase()
+                        .contains(&filter)
+                        || assignment
+                            .common_name
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_ascii_lowercase()
+                            .contains(&filter)
+                        || assignment
+                            .tax_id
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_ascii_lowercase()
+                            .contains(&filter)
+                })
+        })
+    }
+
+    fn cutrun_aggregate_motif_context_hits(
+        hits: &[TfbsHitScanRow],
+    ) -> Vec<CutRunMotifContextHit> {
+        let mut grouped = BTreeMap::<String, CutRunMotifContextHit>::new();
+        for hit in hits {
+            let entry = grouped
+                .entry(hit.tf_id.clone())
+                .or_insert_with(|| CutRunMotifContextHit {
+                    motif_id: hit.tf_id.clone(),
+                    motif_label: hit.tf_name.clone(),
+                    hit_count: 0,
+                    best_llr_bits: f64::NEG_INFINITY,
+                    best_true_log_odds_bits: f64::NEG_INFINITY,
+                });
+            entry.hit_count = entry.hit_count.saturating_add(1);
+            entry.best_llr_bits = entry.best_llr_bits.max(hit.llr_bits);
+            entry.best_true_log_odds_bits = entry
+                .best_true_log_odds_bits
+                .max(hit.true_log_odds_bits);
+            if entry.motif_label.is_none() {
+                entry.motif_label = hit.tf_name.clone();
+            }
+        }
+        let mut rows = grouped.into_values().collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .best_llr_bits
+                .total_cmp(&left.best_llr_bits)
+                .then(right.hit_count.cmp(&left.hit_count))
+                .then(left.motif_id.cmp(&right.motif_id))
+        });
+        rows
+    }
+
+    fn cutrun_collect_strong_window_motif_context(
+        &self,
+        dna: &DNAsequence,
+        support_window: &CutRunSupportWindowRecord,
+        motif_tokens: &[String],
+        neighbor_window_bp: usize,
+    ) -> Result<(Vec<CutRunMotifContextHit>, Vec<CutRunMotifContextHit>), EngineError> {
+        if motif_tokens.is_empty() {
+            return Ok((vec![], vec![]));
+        }
+        let window_start_0based = support_window.local_start_0based;
+        let window_end_0based_exclusive = support_window.local_end_0based_exclusive;
+        let inside_sequence = dna
+            .extract_region_preserving_features(window_start_0based, window_end_0based_exclusive)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not extract CUT&RUN support window {}..{}",
+                    window_start_0based, window_end_0based_exclusive
+                ),
+            })?;
+        let inside_hits = self.scan_tfbs_hits(
+            SequenceScanTarget::InlineSequence {
+                sequence_text: inside_sequence.get_forward_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some(support_window.window_id.clone()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            motif_tokens,
+            None,
+            None,
+            &[],
+            Some(5_000),
+            None,
+            None,
+        )?;
+        let neighbor_start_0based = window_start_0based.saturating_sub(neighbor_window_bp);
+        let neighbor_end_0based_exclusive = window_end_0based_exclusive
+            .saturating_add(neighbor_window_bp)
+            .min(dna.len());
+        let mut neighbor_rows = vec![];
+        if neighbor_end_0based_exclusive > neighbor_start_0based {
+            let neighbor_sequence = dna
+                .extract_region_preserving_features(
+                    neighbor_start_0based,
+                    neighbor_end_0based_exclusive,
+                )
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not extract CUT&RUN neighbor window {}..{}",
+                        neighbor_start_0based, neighbor_end_0based_exclusive
+                    ),
+                })?;
+            let neighbor_hits = self.scan_tfbs_hits(
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: neighbor_sequence.get_forward_string(),
+                    topology: InlineSequenceTopology::Linear,
+                    id_hint: Some(format!("{}_neighbor", support_window.window_id)),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                motif_tokens,
+                None,
+                None,
+                &[],
+                Some(10_000),
+                None,
+                None,
+            )?;
+            neighbor_rows = neighbor_hits
+                .rows
+                .into_iter()
+                .filter(|hit| {
+                    let abs_start = neighbor_start_0based.saturating_add(hit.match_start_0based);
+                    let abs_end =
+                        neighbor_start_0based.saturating_add(hit.match_end_0based_exclusive);
+                    abs_end <= window_start_0based || abs_start >= window_end_0based_exclusive
+                })
+                .collect();
+        }
+        Ok((
+            Self::cutrun_aggregate_motif_context_hits(&inside_hits.rows),
+            Self::cutrun_aggregate_motif_context_hits(&neighbor_rows),
+        ))
+    }
+
+    fn cutrun_aggregate_context_summary(
+        windows: &[CutRunMotifAbsentSupportWindow],
+        scope: CutRunMotifContextScope,
+    ) -> Vec<CutRunMotifContextSummaryRow> {
+        let mut grouped = BTreeMap::<String, (Option<String>, usize, f64, f64)>::new();
+        for window in windows {
+            let hits = match scope {
+                CutRunMotifContextScope::InsideWindow => &window.motifs_inside_window,
+                CutRunMotifContextScope::NeighborWindow => &window.motifs_in_neighbor_window,
+            };
+            let mut seen = BTreeSet::<String>::new();
+            for hit in hits {
+                if !seen.insert(hit.motif_id.clone()) {
+                    continue;
+                }
+                let entry = grouped
+                    .entry(hit.motif_id.clone())
+                    .or_insert_with(|| (hit.motif_label.clone(), 0, 0.0, f64::NEG_INFINITY));
+                if entry.0.is_none() {
+                    entry.0 = hit.motif_label.clone();
+                }
+                entry.1 = entry.1.saturating_add(1);
+                entry.2 += hit.best_llr_bits;
+                entry.3 = entry.3.max(hit.best_llr_bits);
+            }
+        }
+        let denominator = windows.len().max(1) as f64;
+        let mut rows = grouped
+            .into_iter()
+            .map(|(motif_id, (motif_label, window_count, score_sum, max_best_score))| {
+                CutRunMotifContextSummaryRow {
+                    motif_id,
+                    motif_label,
+                    context_scope: scope,
+                    window_count,
+                    window_fraction: window_count as f64 / denominator,
+                    mean_best_score: score_sum / window_count.max(1) as f64,
+                    max_best_score,
+                }
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .window_count
+                .cmp(&left.window_count)
+                .then(right.max_best_score.total_cmp(&left.max_best_score))
+                .then(left.motif_id.cmp(&right.motif_id))
+        });
+        rows
+    }
+
+    pub(crate) fn write_cutrun_regulatory_support_json(
+        &self,
+        report: &CutRunRegulatorySupportReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize CUT&RUN regulatory-support report '{}' for '{}': {e}",
+                report.seq_id, path
+            ),
+        })?;
+        fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write CUT&RUN regulatory-support report to '{}': {e}",
+                path
+            ),
+        })
+    }
+
+    pub fn inspect_cutrun_regulatory_support(
+        &self,
+        seq_id: &str,
+        dataset_ids: &[String],
+        read_report_ids: &[String],
+        promoter_search_start_0based: Option<usize>,
+        promoter_search_end_0based_exclusive: Option<usize>,
+        neighbor_window_bp: usize,
+        species_filters: &[String],
+    ) -> Result<CutRunRegulatorySupportReport, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "InspectCutRunRegulatorySupport requires non-empty seq_id".to_string(),
+            });
+        }
+        if dataset_ids.is_empty() && read_report_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "InspectCutRunRegulatorySupport requires at least one dataset or read-report source"
+                        .to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
+        let (span_start_0based, span_end_0based_exclusive) = Self::validate_sequence_scan_span(
+            dna.len(),
+            promoter_search_start_0based,
+            promoter_search_end_0based_exclusive,
+            "InspectCutRunRegulatorySupport",
+        )?;
+        let normalized_species_filters = species_filters
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let mut evidence_sources = vec![];
+        let mut warnings = vec![];
+        let mut target_factors = BTreeSet::<String>::new();
+        let mut candidates = vec![];
+
+        for dataset_query in dataset_ids {
+            let dataset_query = dataset_query.trim();
+            if dataset_query.is_empty() {
+                continue;
+            }
+            let status = self.show_cutrun_dataset_status(dataset_query, None, None)?;
+            if let Some(target_factor) = status
+                .target_factor
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                target_factors.insert(target_factor.to_string());
+            }
+            evidence_sources.push(CutRunRegulatoryEvidenceSourceRef {
+                source_kind: CutRunRegulatoryEvidenceSourceKind::Dataset,
+                source_id: status.dataset_id.clone(),
+                description: status
+                    .summary
+                    .clone()
+                    .or_else(|| status.description.clone()),
+                dataset_id: Some(status.dataset_id.clone()),
+                report_id: None,
+                target_factor: status.target_factor.clone(),
+                species: status.species.clone(),
+            });
+            warnings.extend(status.warnings.clone());
+            candidates.extend(self.cutrun_collect_dataset_peak_candidates(
+                &status,
+                &anchor,
+                span_start_0based,
+                span_end_0based_exclusive,
+                &mut warnings,
+            )?);
+            candidates.extend(self.cutrun_collect_dataset_signal_candidates(
+                &status,
+                &anchor,
+                span_start_0based,
+                span_end_0based_exclusive,
+                &mut warnings,
+            )?);
+        }
+
+        for report_id in read_report_ids {
+            let report_id = report_id.trim();
+            if report_id.is_empty() {
+                continue;
+            }
+            let report = self.get_cutrun_read_report(report_id)?;
+            if let Some(target_factor) = report
+                .target_factor
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                target_factors.insert(target_factor.to_string());
+            }
+            evidence_sources.push(CutRunRegulatoryEvidenceSourceRef {
+                source_kind: CutRunRegulatoryEvidenceSourceKind::ReadReport,
+                source_id: report.report_id.clone(),
+                description: Some(format!("CUT&RUN ROI read report for '{}'", report.seq_id)),
+                dataset_id: report.dataset_id.clone(),
+                report_id: Some(report.report_id.clone()),
+                target_factor: report.target_factor.clone(),
+                species: report.species.clone(),
+            });
+            warnings.extend(report.warnings.clone());
+            candidates.extend(self.cutrun_collect_read_report_candidates(
+                &report,
+                seq_id,
+                &anchor,
+                span_start_0based,
+                span_end_0based_exclusive,
+                &mut warnings,
+            )?);
+        }
+
+        let support_windows = Self::cutrun_merge_regulatory_candidates(&anchor, candidates);
+        let strong_support_windows = support_windows
+            .iter()
+            .filter(|window| window.support_strength == CutRunSupportStrength::Strong)
+            .collect::<Vec<_>>();
+
+        let mut resolved_target_motif_consensus = vec![];
+        for target_factor in target_factors {
+            match Self::resolve_tf_motif_for_scoring(&target_factor) {
+                Ok((tf_id, tf_name, consensus, _matrix)) => {
+                    resolved_target_motif_consensus.push((tf_id, tf_name, consensus));
+                }
+                Err(err) => {
+                    warnings.push(format!(
+                        "CUT&RUN target factor '{}' could not be resolved to a local motif: {}",
+                        target_factor, err.message
+                    ));
+                }
+            }
+        }
+        if resolved_target_motif_consensus.len() > 1 {
+            warnings.push(format!(
+                "CUT&RUN regulatory inspection is aggregating {} target motifs across the selected evidence sources",
+                resolved_target_motif_consensus.len()
+            ));
+        }
+        let context_motif_tokens =
+            self.cutrun_collect_context_motif_tokens(&normalized_species_filters, &mut warnings);
+
+        let mut confirmed_tfbs_rows = vec![];
+        let mut unconfirmed_tfbs_rows = vec![];
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if !Self::is_tfbs_feature(feature) {
+                continue;
+            }
+            let Ok((start_i64, end_i64)) = feature.location.find_bounds() else {
+                continue;
+            };
+            if start_i64 < 0 || end_i64 <= start_i64 {
+                continue;
+            }
+            let start_0based = start_i64 as usize;
+            let end_0based_exclusive = (end_i64 as usize).min(dna.len());
+            if end_0based_exclusive <= start_0based
+                || end_0based_exclusive <= span_start_0based
+                || start_0based >= span_end_0based_exclusive
+            {
+                continue;
+            }
+            let clipped_start_0based = start_0based.max(span_start_0based);
+            let clipped_end_0based_exclusive = end_0based_exclusive.min(span_end_0based_exclusive);
+            let local_start_1based = clipped_start_0based.saturating_add(1);
+            let local_end_1based = clipped_end_0based_exclusive;
+            let (genomic_start_1based, genomic_end_1based) =
+                Self::cutrun_seq_local_span_to_genomic(&anchor, local_start_1based, local_end_1based);
+            let strongest_support_window = support_windows
+                .iter()
+                .filter(|window| {
+                    window.local_end_0based_exclusive > clipped_start_0based
+                        && window.local_start_0based < clipped_end_0based_exclusive
+                })
+                .max_by(|left, right| {
+                    let left_key = (
+                        match left.support_strength {
+                            CutRunSupportStrength::Strong => 3usize,
+                            CutRunSupportStrength::Moderate => 2usize,
+                            CutRunSupportStrength::Weak => 1usize,
+                        },
+                        left.supporting_fragment_count,
+                        left.cut_site_count,
+                        left.overlapping_peak_count,
+                    );
+                    let right_key = (
+                        match right.support_strength {
+                            CutRunSupportStrength::Strong => 3usize,
+                            CutRunSupportStrength::Moderate => 2usize,
+                            CutRunSupportStrength::Weak => 1usize,
+                        },
+                        right.supporting_fragment_count,
+                        right.cut_site_count,
+                        right.overlapping_peak_count,
+                    );
+                    left_key.cmp(&right_key)
+                });
+
+            let motif_token = Self::feature_qualifier_text(feature, "tf_id").or_else(|| {
+                Self::first_nonempty_feature_qualifier(
+                    feature,
+                    &["bound_moiety", "standard_name", "gene", "name"],
+                )
+            });
+            let (motif_id, motif_label, motif_present) = if let Some(token) = motif_token
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let feature_seq = dna
+                    .extract_region_preserving_features(
+                        clipped_start_0based,
+                        clipped_end_0based_exclusive,
+                    )
+                    .map(|row| row.get_forward_string())
+                    .unwrap_or_default();
+                match Self::resolve_tf_motif_for_scoring(token) {
+                    Ok((tf_id, tf_name, consensus, _matrix)) => (
+                        Some(tf_id),
+                        tf_name.or_else(|| Some(token.to_string())),
+                        Self::contains_motif_any_strand(feature_seq.as_bytes(), &consensus)
+                            .unwrap_or(false),
+                    ),
+                    Err(_) => (None, Some(token.to_string()), false),
+                }
+            } else {
+                (None, None, false)
+            };
+            let confirmed = strongest_support_window
+                .is_some_and(|window| window.support_strength == CutRunSupportStrength::Strong)
+                && motif_present;
+            let row = CutRunRegulatoryTfbsRow {
+                feature_id,
+                feature_label: Self::feature_display_label(feature, feature_id),
+                motif_id,
+                motif_label,
+                local_start_0based: clipped_start_0based,
+                local_end_0based_exclusive: clipped_end_0based_exclusive,
+                genomic_start_1based,
+                genomic_end_1based,
+                strand: if crate::feature_location::feature_is_reverse(feature) {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                confirmation_status: if confirmed {
+                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+                } else {
+                    CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+                },
+                strongest_support_window_id: strongest_support_window
+                    .map(|window| window.window_id.clone()),
+                strongest_support_strength: strongest_support_window
+                    .map(|window| window.support_strength),
+                overlapping_peak_count: strongest_support_window
+                    .map(|window| window.overlapping_peak_count)
+                    .unwrap_or(0),
+                max_signal_value: strongest_support_window
+                    .and_then(|window| window.max_signal_value),
+                mean_signal_value: strongest_support_window
+                    .and_then(|window| window.mean_signal_value),
+                supporting_fragment_count: strongest_support_window
+                    .map(|window| window.supporting_fragment_count)
+                    .unwrap_or(0),
+                cut_site_count: strongest_support_window
+                    .map(|window| window.cut_site_count)
+                    .unwrap_or(0),
+            };
+            if confirmed {
+                confirmed_tfbs_rows.push(row);
+            } else {
+                unconfirmed_tfbs_rows.push(row);
+            }
+        }
+
+        let mut motif_absent_supported_windows = vec![];
+        if resolved_target_motif_consensus.is_empty() && !strong_support_windows.is_empty() {
+            warnings.push(
+                "CUT&RUN regulatory inspection could not resolve any target motif from the selected evidence sources, so motif-absent supported windows were not classified".to_string(),
+            );
+        } else {
+            for support_window in strong_support_windows {
+                let window_sequence = dna
+                    .extract_region_preserving_features(
+                        support_window.local_start_0based,
+                        support_window.local_end_0based_exclusive,
+                    )
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not extract CUT&RUN support window '{}' from '{}'",
+                            support_window.window_id, seq_id
+                        ),
+                    })?
+                    .get_forward_string();
+                let target_motif_present = resolved_target_motif_consensus
+                    .iter()
+                    .any(|(_, _, consensus)| {
+                        Self::contains_motif_any_strand(window_sequence.as_bytes(), consensus)
+                            .unwrap_or(false)
+                    });
+                if target_motif_present {
+                    continue;
+                }
+                let (motifs_inside_window, motifs_in_neighbor_window) =
+                    self.cutrun_collect_strong_window_motif_context(
+                        dna,
+                        support_window,
+                        &context_motif_tokens,
+                        neighbor_window_bp,
+                    )?;
+                motif_absent_supported_windows.push(CutRunMotifAbsentSupportWindow {
+                    window_id: support_window.window_id.clone(),
+                    local_start_0based: support_window.local_start_0based,
+                    local_end_0based_exclusive: support_window.local_end_0based_exclusive,
+                    genomic_start_1based: support_window.genomic_start_1based,
+                    genomic_end_1based: support_window.genomic_end_1based,
+                    support_strength: support_window.support_strength,
+                    overlapping_peak_count: support_window.overlapping_peak_count,
+                    max_signal_value: support_window.max_signal_value,
+                    mean_signal_value: support_window.mean_signal_value,
+                    supporting_fragment_count: support_window.supporting_fragment_count,
+                    cut_site_count: support_window.cut_site_count,
+                    target_motif_present: false,
+                    occupancy_interpretation: if motifs_inside_window.is_empty()
+                        && motifs_in_neighbor_window.is_empty()
+                    {
+                        CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
+                    } else {
+                        CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs
+                    },
+                    motifs_inside_window,
+                    motifs_in_neighbor_window,
+                });
+            }
+        }
+
+        confirmed_tfbs_rows.sort_by(|left, right| {
+            left.local_start_0based
+                .cmp(&right.local_start_0based)
+                .then(left.local_end_0based_exclusive.cmp(&right.local_end_0based_exclusive))
+                .then(left.feature_id.cmp(&right.feature_id))
+        });
+        unconfirmed_tfbs_rows.sort_by(|left, right| {
+            left.local_start_0based
+                .cmp(&right.local_start_0based)
+                .then(left.local_end_0based_exclusive.cmp(&right.local_end_0based_exclusive))
+                .then(left.feature_id.cmp(&right.feature_id))
+        });
+
+        Ok(CutRunRegulatorySupportReport {
+            schema: CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            evidence_sources,
+            promoter_search_start_0based: span_start_0based,
+            promoter_search_end_0based_exclusive: span_end_0based_exclusive,
+            neighbor_window_bp,
+            species_filters: normalized_species_filters,
+            support_windows,
+            confirmed_tfbs_rows,
+            unconfirmed_tfbs_rows,
+            common_motifs_inside_supported_windows: Self::cutrun_aggregate_context_summary(
+                &motif_absent_supported_windows,
+                CutRunMotifContextScope::InsideWindow,
+            ),
+            common_motifs_near_supported_windows: Self::cutrun_aggregate_context_summary(
+                &motif_absent_supported_windows,
+                CutRunMotifContextScope::NeighborWindow,
+            ),
+            motif_absent_supported_windows,
+            warnings,
+        })
     }
 
     pub fn export_cutrun_read_coverage(

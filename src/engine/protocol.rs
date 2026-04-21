@@ -26,11 +26,17 @@ pub use gentle_protocol::{
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
     ConstructRole, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
     CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
-    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat, CutRunPreparedAssetManifest,
-    CutRunPreparedAssetStatus, CutRunPreparedManifest, CutRunReadCoverageExport, CutRunReadLayout,
-    CutRunReadOrientation, CutRunReadPlacement, CutRunReadReport, CutRunReadReportStore,
-    CutRunReadReportSummary, CutRunReadUnitRow, CutRunReadUnitStatus, CutRunSeedFilterConfig,
-    CutRunSupportCluster, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
+    CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
+    CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
+    CutRunReadCoverageExport, CutRunReadLayout, CutRunReadOrientation, CutRunReadPlacement,
+    CutRunReadReport, CutRunReadReportStore, CutRunReadReportSummary, CutRunReadUnitRow,
+    CutRunReadUnitStatus, CutRunRegulatoryEvidenceSourceKind,
+    CutRunRegulatoryEvidenceSourceRef, CutRunRegulatorySupportReport,
+    CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow, CutRunSeedFilterConfig,
+    CutRunSupportCluster, CutRunSupportStrength, CutRunSupportWindowRecord,
+    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,
     DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin,
     DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
@@ -2572,6 +2578,8 @@ pub struct OpResult {
     pub cutrun_read_report_summaries: Option<Vec<CutRunReadReportSummary>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cutrun_read_coverage_export: Option<CutRunReadCoverageExport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

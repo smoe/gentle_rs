@@ -6050,8 +6050,142 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 kind,
             })
         }
+        "inspect-regulatory-support" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "cutrun inspect-regulatory-support requires SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "cutrun inspect-regulatory-support requires a non-empty SEQ_ID".to_string(),
+                );
+            }
+            let mut dataset_ids = vec![];
+            let mut read_report_ids = vec![];
+            let mut promoter_search_start_0based: Option<usize> = None;
+            let mut promoter_search_end_0based_exclusive: Option<usize> = None;
+            let mut neighbor_window_bp = 150usize;
+            let mut species_filters = vec![];
+            let mut output_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--dataset" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--dataset",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "cutrun inspect-regulatory-support --dataset must not be empty"
+                                    .to_string(),
+                            );
+                        }
+                        dataset_ids.push(trimmed.to_string());
+                    }
+                    "--read-report" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-report",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "cutrun inspect-regulatory-support --read-report must not be empty"
+                                    .to_string(),
+                            );
+                        }
+                        read_report_ids.push(trimmed.to_string());
+                    }
+                    "--promoter-search-start" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--promoter-search-start",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        promoter_search_start_0based =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --promoter-search-start value '{raw}' for cutrun inspect-regulatory-support: {e}")
+                            })?);
+                    }
+                    "--promoter-search-end" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--promoter-search-end",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        promoter_search_end_0based_exclusive =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --promoter-search-end value '{raw}' for cutrun inspect-regulatory-support: {e}")
+                            })?);
+                    }
+                    "--neighbor-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--neighbor-window-bp",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        neighbor_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --neighbor-window-bp value '{raw}' for cutrun inspect-regulatory-support: {e}")
+                        })?;
+                    }
+                    "--species-filter" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species-filter",
+                            "cutrun inspect-regulatory-support",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            species_filters.push(trimmed.to_string());
+                        }
+                    }
+                    "--path" => {
+                        output_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "cutrun inspect-regulatory-support",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for cutrun inspect-regulatory-support"
+                        ));
+                    }
+                }
+            }
+            if dataset_ids.is_empty() && read_report_ids.is_empty() {
+                return Err(
+                    "cutrun inspect-regulatory-support requires at least one --dataset or --read-report"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CutRunInspectRegulatorySupport {
+                seq_id,
+                dataset_ids,
+                read_report_ids,
+                promoter_search_start_0based,
+                promoter_search_end_0based_exclusive,
+                neighbor_window_bp,
+                species_filters,
+                output_path,
+            })
+        }
         other => Err(format!(
-            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, or export-coverage)"
+            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, export-coverage, or inspect-regulatory-support)"
         )),
     }
 }

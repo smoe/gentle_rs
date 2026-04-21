@@ -6183,6 +6183,7 @@ impl GentleEngine {
             cutrun_read_report: None,
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
+            cutrun_regulatory_support: None,
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -8866,6 +8867,46 @@ impl GentleEngine {
                         export.path
                     ));
                     result.cutrun_read_coverage_export = Some(export);
+                }
+                Operation::InspectCutRunRegulatorySupport {
+                    seq_id,
+                    dataset_ids,
+                    read_report_ids,
+                    promoter_search_start_0based,
+                    promoter_search_end_0based_exclusive,
+                    neighbor_window_bp,
+                    species_filters,
+                    path,
+                } => {
+                    let mut report = self.inspect_cutrun_regulatory_support(
+                        &seq_id,
+                        &dataset_ids,
+                        &read_report_ids,
+                        promoter_search_start_0based,
+                        promoter_search_end_0based_exclusive,
+                        neighbor_window_bp,
+                        &species_filters,
+                    )?;
+                    report.generated_at_unix_ms = Self::now_unix_ms();
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_cutrun_regulatory_support_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote CUT&RUN regulatory-support report for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "CUT&RUN regulatory support for '{}' merged {} evidence source(s), {} support window(s), {} confirmed TFBS, {} motif-absent strong window(s)",
+                        report.seq_id,
+                        report.evidence_sources.len(),
+                        report.support_windows.len(),
+                        report.confirmed_tfbs_rows.len(),
+                        report.motif_absent_supported_windows.len()
+                    ));
+                    result.cutrun_regulatory_support = Some(report);
                 }
                 Operation::ImportIsoformPanel {
                     seq_id,

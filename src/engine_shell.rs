@@ -1290,6 +1290,16 @@ pub enum ShellCommand {
         path: String,
         kind: CutRunCoverageKind,
     },
+    CutRunInspectRegulatorySupport {
+        seq_id: String,
+        dataset_ids: Vec<String>,
+        read_report_ids: Vec<String>,
+        promoter_search_start_0based: Option<usize>,
+        promoter_search_end_0based_exclusive: Option<usize>,
+        neighbor_window_bp: usize,
+        species_filters: Vec<String>,
+        output_path: Option<String>,
+    },
     TracksImportVcf {
         seq_id: String,
         path: String,
@@ -6628,6 +6638,34 @@ impl ShellCommand {
                 kind.as_str(),
                 report_id,
                 path
+            ),
+            Self::CutRunInspectRegulatorySupport {
+                seq_id,
+                dataset_ids,
+                read_report_ids,
+                promoter_search_start_0based,
+                promoter_search_end_0based_exclusive,
+                neighbor_window_bp,
+                species_filters,
+                output_path,
+            } => format!(
+                "inspect CUT&RUN regulatory support for '{}' (datasets={}, read_reports={}, promoter={}..{}, neighbor_window_bp={}, species_filters={}, output='{}')",
+                seq_id,
+                dataset_ids.len(),
+                read_report_ids.len(),
+                promoter_search_start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                promoter_search_end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                neighbor_window_bp,
+                if species_filters.is_empty() {
+                    "-".to_string()
+                } else {
+                    species_filters.join(",")
+                },
+                output_path.as_deref().unwrap_or("-")
             ),
             Self::TracksImportVcf {
                 seq_id,
@@ -19521,6 +19559,39 @@ fn execute_reference_and_track_command(
                     .map_err(|e| format!("Could not serialize CUT&RUN coverage export: {e}"))?,
             })
         }
+        ShellCommand::CutRunInspectRegulatorySupport {
+            seq_id,
+            dataset_ids,
+            read_report_ids,
+            promoter_search_start_0based,
+            promoter_search_end_0based_exclusive,
+            neighbor_window_bp,
+            species_filters,
+            output_path,
+        } => {
+            let result = engine
+                .apply(Operation::InspectCutRunRegulatorySupport {
+                    seq_id: seq_id.clone(),
+                    dataset_ids: dataset_ids.clone(),
+                    read_report_ids: read_report_ids.clone(),
+                    promoter_search_start_0based: *promoter_search_start_0based,
+                    promoter_search_end_0based_exclusive: *promoter_search_end_0based_exclusive,
+                    neighbor_window_bp: *neighbor_window_bp,
+                    species_filters: species_filters.clone(),
+                    path: output_path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cutrun_regulatory_support.ok_or_else(|| {
+                "InspectCutRunRegulatorySupport did not return a regulatory-support payload"
+                    .to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize CUT&RUN regulatory-support report: {e}")
+                })?,
+            })
+        }
         ShellCommand::TracksImportBed {
             seq_id,
             path,
@@ -24496,6 +24567,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::CutRunListReadReports { .. }
             | ShellCommand::CutRunShowReadReport { .. }
             | ShellCommand::CutRunExportCoverage { .. }
+            | ShellCommand::CutRunInspectRegulatorySupport { .. }
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -25552,6 +25624,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::CutRunListReadReports { .. }
         | ShellCommand::CutRunShowReadReport { .. }
         | ShellCommand::CutRunExportCoverage { .. }
+        | ShellCommand::CutRunInspectRegulatorySupport { .. }
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

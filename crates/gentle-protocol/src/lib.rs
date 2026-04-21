@@ -3769,6 +3769,12 @@ pub struct CutRunReadReport {
     pub input_r1_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_r2_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_factor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
     pub input_format: CutRunInputFormat,
     pub read_layout: CutRunReadLayout,
     pub roi_flank_bp: usize,
@@ -3823,6 +3829,195 @@ pub struct CutRunReadCoverageExport {
     pub report_id: String,
     pub kind: CutRunCoverageKind,
     pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunRegulatoryEvidenceSourceKind {
+    #[default]
+    Dataset,
+    ReadReport,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunSupportStrength {
+    #[default]
+    Weak,
+    Moderate,
+    Strong,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunRegulatoryTfbsConfirmationStatus {
+    #[default]
+    Unconfirmed,
+    Confirmed,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunMotifContextScope {
+    #[default]
+    InsideWindow,
+    NeighborWindow,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CutRunMotifAbsentOccupancyInterpretation {
+    #[default]
+    ContextSupportedByOtherMotifs,
+    MotifPoorSupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunRegulatoryEvidenceSourceRef {
+    pub source_kind: CutRunRegulatoryEvidenceSourceKind,
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_factor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunSupportWindowRecord {
+    pub window_id: String,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub support_strength: CutRunSupportStrength,
+    pub overlapping_peak_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_signal_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_signal_value: Option<f64>,
+    pub supporting_fragment_count: usize,
+    pub cut_site_count: u32,
+    #[serde(default)]
+    pub contributing_dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub contributing_read_report_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunRegulatoryTfbsRow {
+    pub feature_id: usize,
+    pub feature_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_label: Option<String>,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub strand: String,
+    pub confirmation_status: CutRunRegulatoryTfbsConfirmationStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strongest_support_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strongest_support_strength: Option<CutRunSupportStrength>,
+    pub overlapping_peak_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_signal_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_signal_value: Option<f64>,
+    pub supporting_fragment_count: usize,
+    pub cut_site_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunMotifContextHit {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_label: Option<String>,
+    pub hit_count: usize,
+    pub best_llr_bits: f64,
+    pub best_true_log_odds_bits: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunMotifAbsentSupportWindow {
+    pub window_id: String,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub support_strength: CutRunSupportStrength,
+    pub overlapping_peak_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_signal_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_signal_value: Option<f64>,
+    pub supporting_fragment_count: usize,
+    pub cut_site_count: u32,
+    pub target_motif_present: bool,
+    #[serde(default)]
+    pub motifs_inside_window: Vec<CutRunMotifContextHit>,
+    #[serde(default)]
+    pub motifs_in_neighbor_window: Vec<CutRunMotifContextHit>,
+    pub occupancy_interpretation: CutRunMotifAbsentOccupancyInterpretation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunMotifContextSummaryRow {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_label: Option<String>,
+    pub context_scope: CutRunMotifContextScope,
+    pub window_count: usize,
+    pub window_fraction: f64,
+    pub mean_best_score: f64,
+    pub max_best_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CutRunRegulatorySupportReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub evidence_sources: Vec<CutRunRegulatoryEvidenceSourceRef>,
+    pub promoter_search_start_0based: usize,
+    pub promoter_search_end_0based_exclusive: usize,
+    pub neighbor_window_bp: usize,
+    #[serde(default)]
+    pub species_filters: Vec<String>,
+    #[serde(default)]
+    pub support_windows: Vec<CutRunSupportWindowRecord>,
+    #[serde(default)]
+    pub confirmed_tfbs_rows: Vec<CutRunRegulatoryTfbsRow>,
+    #[serde(default)]
+    pub unconfirmed_tfbs_rows: Vec<CutRunRegulatoryTfbsRow>,
+    #[serde(default)]
+    pub motif_absent_supported_windows: Vec<CutRunMotifAbsentSupportWindow>,
+    #[serde(default)]
+    pub common_motifs_inside_supported_windows: Vec<CutRunMotifContextSummaryRow>,
+    #[serde(default)]
+    pub common_motifs_near_supported_windows: Vec<CutRunMotifContextSummaryRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

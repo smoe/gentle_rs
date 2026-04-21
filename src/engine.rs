@@ -424,6 +424,7 @@ const CUTRUN_DATASET_PROJECTION_SCHEMA: &str = "gentle.cutrun_dataset_projection
 const CUTRUN_READ_REPORTS_SCHEMA: &str = "gentle.cutrun_read_reports.v1";
 const CUTRUN_READ_REPORT_SCHEMA: &str = "gentle.cutrun_read_report.v1";
 const CUTRUN_READ_COVERAGE_EXPORT_SCHEMA: &str = "gentle.cutrun_read_coverage_export.v1";
+const CUTRUN_REGULATORY_SUPPORT_SCHEMA: &str = "gentle.cutrun_regulatory_support.v1";
 #[cfg(debug_assertions)]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
 #[cfg(not(debug_assertions))]
@@ -626,6 +627,10 @@ fn default_cutrun_roi_flank_bp() -> usize {
 
 fn default_cutrun_checkpoint_every_reads() -> usize {
     500
+}
+
+fn default_cutrun_neighbor_window_bp() -> usize {
+    150
 }
 
 fn default_rna_read_alignment_dotplot_max_points() -> usize {
@@ -2999,6 +3004,23 @@ pub enum Operation {
         #[serde(default)]
         kind: CutRunCoverageKind,
     },
+    InspectCutRunRegulatorySupport {
+        seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        read_report_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        promoter_search_start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        promoter_search_end_0based_exclusive: Option<usize>,
+        #[serde(default = "default_cutrun_neighbor_window_bp")]
+        neighbor_window_bp: usize,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        species_filters: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ImportIsoformPanel {
         seq_id: SeqId,
         panel_path: String,
@@ -4890,6 +4912,7 @@ impl GentleEngine {
                 "ListCutRunReadReports".to_string(),
                 "ShowCutRunReadReport".to_string(),
                 "ExportCutRunReadCoverage".to_string(),
+                "InspectCutRunRegulatorySupport".to_string(),
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
@@ -6843,6 +6866,12 @@ impl GentleEngine {
                 | Operation::ExportFeaturesBed { .. }
                 | Operation::InspectSequenceContextView { .. }
                 | Operation::ExportSequenceContextBundle { .. }
+                | Operation::ListCutRunDatasets { .. }
+                | Operation::ShowCutRunDatasetStatus { .. }
+                | Operation::ListCutRunReadReports { .. }
+                | Operation::ShowCutRunReadReport { .. }
+                | Operation::ExportCutRunReadCoverage { .. }
+                | Operation::InspectCutRunRegulatorySupport { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }

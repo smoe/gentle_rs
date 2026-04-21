@@ -102,6 +102,14 @@ Catalog path note:
   - `cutrun export-coverage` writes TSV summaries for per-base coverage,
     cut-site density, or derived fragment spans from one saved CUT&RUN read
     report
+  - `cutrun inspect-regulatory-support` aggregates prepared datasets and/or
+    saved ROI read reports into one promoter/ROI support report with:
+    - merged `strong`/`moderate`/`weak` support windows
+    - theoretical TFBS rows split into `confirmed` vs `unconfirmed`
+    - motif-absent strong windows classified as
+      `context_supported_by_other_motifs` or `motif_poor_supported`
+    - recurring motif-context summaries across many motif-absent supported
+      windows
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -1487,6 +1495,7 @@ cargo run --bin gentle_cli -- cutrun show-read-report tp53_cutrun_reads
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.coverage.tsv --kind coverage
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.cuts.tsv --kind cut_sites
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.fragments.tsv --kind fragments
+cargo run --bin gentle_cli -- cutrun inspect-regulatory-support grch38_tp53 --dataset toy_ctcf --read-report tp53_cutrun_reads --neighbor-window-bp 150 --species-filter human --path exports/tp53_cutrun.regulatory_support.json
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json

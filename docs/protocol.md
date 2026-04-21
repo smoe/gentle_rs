@@ -1613,6 +1613,16 @@ Current draft operations:
     prepared file names.
   - `ExportCutRunReadCoverage` writes TSV summaries for one saved read report:
     `coverage`, `cut_sites`, or `fragments`.
+  - `InspectCutRunRegulatorySupport` is the first shared V3 reasoning surface:
+    - it accepts one anchored `seq_id` plus repeated prepared `dataset_ids`
+      and/or saved `read_report_ids`
+    - strong support windows can be derived from saved V2 read reports alone,
+      from prepared signal-only evidence, or from prepared peak evidence
+    - theoretical TFBS rows are split into `confirmed` vs `unconfirmed`
+    - motif-absent strong windows are reported separately and classified as
+      `context_supported_by_other_motifs` or `motif_poor_supported`
+    - recurring motif summaries are emitted for motifs found inside supported
+      windows and in their neighbor flanks
   - default catalog: `assets/cutrun.json`; default prepared-cache root:
     `data/cutrun`; environment override: `GENTLE_CUTRUN_CACHE_DIR`.
   - `ProjectCutRunDataset` requires a genome-anchored sequence and rejects
@@ -1624,7 +1634,8 @@ Current draft operations:
     `gentle.cutrun_dataset_projection.v1`,
     `gentle.cutrun_read_report.v1`,
     `gentle.cutrun_read_reports.v1`,
-    `gentle.cutrun_read_coverage_export.v1`.
+    `gentle.cutrun_read_coverage_export.v1`,
+    `gentle.cutrun_regulatory_support.v1`.
 
 Catalog-backed reference/helper discovery notes:
 

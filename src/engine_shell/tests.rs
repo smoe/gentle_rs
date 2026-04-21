@@ -5033,6 +5033,34 @@ fn parse_cutrun_list_show_and_export_read_reports() {
 }
 
 #[test]
+fn parse_cutrun_inspect_regulatory_support() {
+    let cmd = parse_shell_line(
+        "cutrun inspect-regulatory-support toy_cutrun_roi --dataset toy_ctcf --read-report toy_cutrun_reads --promoter-search-start 10 --promoter-search-end 180 --neighbor-window-bp 42 --species-filter human --species-filter mouse --path support.json",
+    )
+    .expect("parse CUT&RUN inspect-regulatory-support");
+    assert!(matches!(
+        cmd,
+        ShellCommand::CutRunInspectRegulatorySupport {
+            seq_id,
+            dataset_ids,
+            read_report_ids,
+            promoter_search_start_0based,
+            promoter_search_end_0based_exclusive,
+            neighbor_window_bp,
+            species_filters,
+            output_path,
+        } if seq_id == "toy_cutrun_roi"
+            && dataset_ids == vec!["toy_ctcf".to_string()]
+            && read_report_ids == vec!["toy_cutrun_reads".to_string()]
+            && promoter_search_start_0based == Some(10)
+            && promoter_search_end_0based_exclusive == Some(180)
+            && neighbor_window_bp == 42
+            && species_filters == vec!["human".to_string(), "mouse".to_string()]
+            && output_path.as_deref() == Some("support.json")
+    ));
+}
+
+#[test]
 fn parse_tracks_import_vcf() {
     let cmd = parse_shell_line(
             "tracks import-vcf toy_slice test_files/data/variants.vcf.gz --name SNPs --min-score 10 --max-score 60 --clear-existing",
@@ -14155,6 +14183,94 @@ fn execute_cutrun_interpret_from_prepared_dataset_reads() {
             .filter_map(|value| value.as_str())
             .any(|value| value.contains("resolved CUT&RUN raw reads from prepared dataset"))
     );
+}
+
+#[test]
+fn execute_cutrun_inspect_regulatory_support_writes_json_payload() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let reference_catalog_path = write_cutrun_shell_reference_catalog_with_sequence(
+        root,
+        "ToyGenome",
+        "AAAGCCGTAGCTTACGGAACCTTT",
+    );
+    let input_r1 = root.join("reads.fasta");
+    fs::write(&input_r1, ">read_a\nGCCGTAGC\n>read_b\nGCCGTAGC\n")
+        .expect("write CUT&RUN shell FASTA");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_shell_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        4,
+        15,
+    );
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunInterpret {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: Some(input_r1.to_string_lossy().to_string()),
+            input_r2_path: None,
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 3,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 32,
+            },
+            deduplicate_fragments: false,
+            report_id: Some("toy_cutrun_reads".to_string()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        },
+    )
+    .expect("execute shell CUT&RUN interpret");
+
+    let output_path = root.join("cutrun_support.json");
+    let inspected = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunInspectRegulatorySupport {
+            seq_id: "toy_cutrun_roi".to_string(),
+            dataset_ids: vec![],
+            read_report_ids: vec!["toy_cutrun_reads".to_string()],
+            promoter_search_start_0based: None,
+            promoter_search_end_0based_exclusive: None,
+            neighbor_window_bp: 150,
+            species_filters: vec![],
+            output_path: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN inspect-regulatory-support");
+    assert!(!inspected.state_changed);
+    assert_eq!(
+        inspected.output["schema"].as_str(),
+        Some("gentle.cutrun_regulatory_support.v1")
+    );
+    assert_eq!(
+        inspected.output["evidence_sources"][0]["report_id"].as_str(),
+        Some("toy_cutrun_reads")
+    );
+    assert_eq!(inspected.output["support_windows"].as_array().map(Vec::len), Some(1));
+    let written = fs::read_to_string(&output_path).expect("read written regulatory-support JSON");
+    assert!(written.contains("\"schema\": \"gentle.cutrun_regulatory_support.v1\""));
+    assert!(written.contains("\"report_id\": \"toy_cutrun_reads\""));
 }
 
 #[test]

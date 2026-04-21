@@ -3558,7 +3558,7 @@ Track boundaries:
    - preserve existing cDNA filtering/mapping behavior unchanged; this deferred
      track should not trigger premature refactors in the current RNA/cDNA path.
 
-### CUT&RUN support track (V1/V2 baseline implemented; V3 planned)
+### CUT&RUN support track (V1/V2 implemented; V3 regulatory reasoning baseline implemented)
 
 Goal: support promoter/ROI-centric CUT&RUN evidence through one shared
 catalog/cache/report family without introducing GUI-only or workflow-specific
@@ -3607,12 +3607,38 @@ Status:
    - the same V2 path now accepts either explicit raw-read file paths or
      prepared raw reads linked from a CUT&RUN catalog entry after
      `PrepareCutRunDataset`.
-   - deterministic regression coverage now exists for:
-     - paired-end fragment reconstruction,
-     - orphan handling,
-      - prepared raw-read dataset resolution,
-      - saved report list/show access,
-      - coverage/cut-site TSV export.
+
+3. Implemented baseline V3:
+   - shared engine-owned reasoning report:
+     - `InspectCutRunRegulatorySupport`
+     - shared shell/CLI route:
+       `cutrun inspect-regulatory-support ...`
+   - V3 currently aggregates evidence from:
+     - prepared peaks from V1
+     - prepared signal islands from V1
+     - saved ROI read reports/support clusters from V2
+   - theoretical TFBS rows are now split into:
+     - `confirmed`
+     - `unconfirmed`
+   - strong supported windows that lack the assayed target motif are now
+     reported separately and classified as:
+     - `context_supported_by_other_motifs`
+     - `motif_poor_supported`
+   - motif-context aggregation across many motif-absent supported windows is
+     now reported through ranked recurring motifs:
+     - inside supported windows
+     - in immediate neighbor flanks
+   - the first V3 surface remains CLI/protocol/shell only; GUI inspection is
+     still deferred until the report shape settles.
+
+Remaining CUT&RUN follow-up:
+
+- expose V3 regulatory-support inspection in the GUI once the report shape is
+  stable in real use
+- consider richer support-window strength tuning and/or user-configurable
+  thresholds for signal-only evidence
+- consider more explicit promoter-boundary candidate interval reporting on top
+  of the current merged support-window baseline
 
 3. Planned V3:
    - regulatory reasoning over promoter-boundary candidates, TFBS support, and

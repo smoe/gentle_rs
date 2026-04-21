@@ -1179,6 +1179,11 @@ struct EnvVarGuard {
     previous: Option<String>,
 }
 
+struct FileRestoreGuard {
+    path: PathBuf,
+    previous: Option<Vec<u8>>,
+}
+
 fn candidate_store_env_lock() -> &'static std::sync::Mutex<()> {
     use std::sync::{Mutex, OnceLock};
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -1206,6 +1211,98 @@ impl Drop for EnvVarGuard {
             },
         }
     }
+}
+
+impl FileRestoreGuard {
+    fn replace(path: PathBuf, content: Vec<u8>) -> Self {
+        let previous = fs::read(&path).ok();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create restore-guard parent dir");
+        }
+        fs::write(&path, content).expect("write restore-guard content");
+        Self { path, previous }
+    }
+}
+
+impl Drop for FileRestoreGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.as_ref() {
+            fs::write(&self.path, previous).expect("restore guarded file");
+        } else {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn install_cutrun_test_jaspar_snapshot(motif_names: &[&str], species_name: &str) -> FileRestoreGuard {
+    let rows = motif_names
+        .iter()
+        .map(|motif_name| {
+            let (motif_id, _, consensus, _matrix) =
+                GentleEngine::resolve_tf_motif_for_scoring(motif_name)
+                    .unwrap_or_else(|err| panic!("resolve motif '{motif_name}': {}", err.message));
+            serde_json::json!({
+                "motif_id": motif_id,
+                "motif_name": motif_name,
+                "consensus_iupac": consensus,
+                "motif_length_bp": consensus.len(),
+                "remote_metadata": {
+                    "source_url": "synthetic",
+                    "collection": "CORE",
+                    "tax_group": "synthetic",
+                    "tf_class": "synthetic",
+                    "tf_family": "synthetic",
+                    "species_assignments": [
+                        {
+                            "tax_id": "0",
+                            "scientific_name": species_name,
+                            "common_name": species_name.to_ascii_lowercase(),
+                        }
+                    ]
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let snapshot = serde_json::json!({
+        "schema": "gentle.jaspar_remote_metadata_snapshot.v1",
+        "rows": rows,
+    });
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(crate::resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH);
+    FileRestoreGuard::replace(
+        path,
+        serde_json::to_vec_pretty(&snapshot).expect("serialize synthetic JASPAR snapshot"),
+    )
+}
+
+fn cutrun_test_tfbs_feature(
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    factor: &str,
+) -> gb_io::seq::Feature {
+    let motif_id = GentleEngine::resolve_tf_motif_for_scoring(factor)
+        .unwrap_or_else(|err| panic!("resolve motif '{factor}': {}", err.message))
+        .0;
+    gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(start_0based, end_0based_exclusive),
+        qualifiers: vec![
+            ("bound_moiety".into(), Some(factor.to_string())),
+            ("tf_id".into(), Some(motif_id)),
+        ],
+    }
+}
+
+fn write_cutrun_test_fasta_reads(path: &Path, records: &[(&str, &str)]) {
+    let mut text = String::new();
+    for (header, sequence) in records {
+        text.push('>');
+        text.push_str(header);
+        text.push('\n');
+        text.push_str(sequence);
+        text.push('\n');
+    }
+    fs::write(path, text).expect("write CUT&RUN FASTA reads");
 }
 
 #[test]
@@ -16450,6 +16547,525 @@ fn test_export_cutrun_read_coverage_writes_cut_sites_summary() {
     assert!(text.contains("1\t4\t1"));
     assert!(text.contains("5\t8\t2"));
     assert!(text.contains("12\t15\t1"));
+}
+
+#[test]
+fn test_inspect_cutrun_regulatory_support_read_report_only_produces_strong_support_without_peaks() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
+        .expect("resolve SP1")
+        .2;
+    let supported_prefix = "TTGACCAA";
+    let filler = "AACCGGTTAACCGGTT";
+    let unsupported_prefix = "CCGTAACC";
+    let sequence = format!(
+        "{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA"
+    );
+    let reference_catalog_path =
+        write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
+    let reads_path = root.join("reads.fasta");
+    write_cutrun_test_fasta_reads(
+        &reads_path,
+        &[
+            ("supported_read_a", &format!("{supported_prefix}{sp1_consensus}")),
+            ("supported_read_b", &format!("{supported_prefix}{sp1_consensus}")),
+        ],
+    );
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        1,
+        sequence.len(),
+    );
+    let report_id = "toy_cutrun_regulatory_reads".to_string();
+    engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_cutrun_roi")
+        .expect("toy CUT&RUN ROI")
+        .features_mut()
+        .extend([
+            cutrun_test_tfbs_feature(
+                supported_prefix.len(),
+                supported_prefix.len() + sp1_consensus.len(),
+                "SP1",
+            ),
+            cutrun_test_tfbs_feature(
+                supported_prefix.len() + sp1_consensus.len() + filler.len() + unsupported_prefix.len(),
+                supported_prefix.len()
+                    + sp1_consensus.len()
+                    + filler.len()
+                    + unsupported_prefix.len()
+                    + sp1_consensus.len(),
+                "SP1",
+            ),
+        ]);
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: Some(reads_path.to_string_lossy().to_string()),
+            input_r2_path: None,
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some(report_id.clone()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret read-only CUT&RUN reads");
+
+    let report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            150,
+            &[],
+        )
+        .expect("inspect CUT&RUN regulatory support");
+
+    assert_eq!(report.support_windows.len(), 1);
+    assert_eq!(
+        report.support_windows[0].support_strength,
+        CutRunSupportStrength::Strong
+    );
+    assert_eq!(report.support_windows[0].overlapping_peak_count, 0);
+    assert_eq!(report.support_windows[0].supporting_fragment_count, 2);
+    assert_eq!(report.confirmed_tfbs_rows.len(), 1);
+    assert_eq!(report.unconfirmed_tfbs_rows.len(), 1);
+}
+
+#[test]
+fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_tfbs() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
+        .expect("resolve SP1")
+        .2;
+    let supported_prefix = "TTGACCAA";
+    let filler = "AACCGGTTAACCGGTT";
+    let unsupported_prefix = "CCGTAACC";
+    let sequence = format!(
+        "{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA"
+    );
+    let reference_catalog_path =
+        write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
+    let reads_path = root.join("reads.fasta");
+    write_cutrun_test_fasta_reads(
+        &reads_path,
+        &[
+            ("supported_read_a", &format!("{supported_prefix}{sp1_consensus}")),
+            ("supported_read_b", &format!("{supported_prefix}{sp1_consensus}")),
+        ],
+    );
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let supported_feature_start = supported_prefix.len();
+    let unsupported_feature_start =
+        supported_prefix.len() + sp1_consensus.len() + filler.len() + unsupported_prefix.len();
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        1,
+        sequence.len(),
+    );
+    engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_cutrun_roi")
+        .expect("toy CUT&RUN ROI")
+        .features_mut()
+        .extend([
+            cutrun_test_tfbs_feature(
+                supported_feature_start,
+                supported_feature_start + sp1_consensus.len(),
+                "SP1",
+            ),
+            cutrun_test_tfbs_feature(
+                unsupported_feature_start,
+                unsupported_feature_start + sp1_consensus.len(),
+                "SP1",
+            ),
+        ]);
+    let report_id = "toy_cutrun_regulatory_reads".to_string();
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: Some(reads_path.to_string_lossy().to_string()),
+            input_r2_path: None,
+            dataset_id: None,
+            catalog_path: None,
+            cache_dir: None,
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some(report_id.clone()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret read-only CUT&RUN reads");
+
+    let report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            150,
+            &[],
+        )
+        .expect("inspect CUT&RUN regulatory support");
+
+    let confirmed = report.confirmed_tfbs_rows.first().expect("confirmed TFBS row");
+    assert_eq!(
+        confirmed.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+    );
+    assert_eq!(confirmed.local_start_0based, supported_feature_start);
+    assert_eq!(
+        confirmed.strongest_support_strength,
+        Some(CutRunSupportStrength::Strong)
+    );
+
+    let unconfirmed = report
+        .unconfirmed_tfbs_rows
+        .first()
+        .expect("unconfirmed TFBS row");
+    assert_eq!(
+        unconfirmed.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+    );
+    assert_eq!(unconfirmed.local_start_0based, unsupported_feature_start);
+    assert!(unconfirmed.strongest_support_window_id.is_none());
+    assert!(unconfirmed.strongest_support_strength.is_none());
+}
+
+#[test]
+fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_common_neighbor_motifs()
+{
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let _snapshot_guard =
+        install_cutrun_test_jaspar_snapshot(&["CTCF", "SP1"], "Synthetic species");
+    let ctcf_consensus = GentleEngine::resolve_tf_motif_for_scoring("CTCF")
+        .expect("resolve CTCF")
+        .2;
+    let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
+        .expect("resolve SP1")
+        .2;
+    let window_one = "ATATCGATATCG";
+    let window_two = "CGTTAACCGTTA";
+    assert!(
+        !GentleEngine::contains_motif_any_strand(window_one.as_bytes(), &ctcf_consensus)
+            .expect("check window one consensus")
+    );
+    assert!(
+        !GentleEngine::contains_motif_any_strand(window_two.as_bytes(), &ctcf_consensus)
+            .expect("check window two consensus")
+    );
+
+    let mut sequence = vec![b'A'; 320];
+    let window_one_start = 20usize;
+    let window_two_start = 120usize;
+    let neighbor_one_start = 46usize;
+    let neighbor_two_start = 146usize;
+    sequence[window_one_start..window_one_start + window_one.len()]
+        .copy_from_slice(window_one.as_bytes());
+    sequence[window_two_start..window_two_start + window_two.len()]
+        .copy_from_slice(window_two.as_bytes());
+    sequence[neighbor_one_start..neighbor_one_start + sp1_consensus.len()]
+        .copy_from_slice(sp1_consensus.as_bytes());
+    sequence[neighbor_two_start..neighbor_two_start + sp1_consensus.len()]
+        .copy_from_slice(sp1_consensus.as_bytes());
+    let sequence = String::from_utf8(sequence).expect("synthetic CUT&RUN sequence");
+
+    let reference_catalog_path =
+        write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
+    let reads_path = root.join("dataset_reads.fasta");
+    write_cutrun_test_fasta_reads(
+        &reads_path,
+        &[
+            ("window_one_a", window_one),
+            ("window_one_b", window_one),
+            ("window_two_a", window_two),
+            ("window_two_b", window_two),
+        ],
+    );
+    let cutrun_catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_ctcf_reads": {{
+    "summary": "Toy CTCF CUT&RUN reads",
+    "target_factor": "CTCF",
+    "species": "Synthetic species",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "reads_r1_local": "{}",
+    "read_layout": "single_end"
+  }}
+}}"#,
+            reads_path.display()
+        ),
+    )
+    .expect("write CUT&RUN dataset catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        1,
+        sequence.len(),
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_ctcf_reads".to_string(),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare CUT&RUN dataset");
+    let report_id = "toy_ctcf_reads_report".to_string();
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: None,
+            input_r2_path: None,
+            dataset_id: Some("toy_ctcf_reads".to_string()),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some(report_id.clone()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret dataset-backed CUT&RUN reads");
+
+    let report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            24,
+            &["Synthetic".to_string()],
+        )
+        .expect("inspect CUT&RUN regulatory support");
+
+    assert_eq!(report.support_windows.len(), 2);
+    assert_eq!(report.motif_absent_supported_windows.len(), 2);
+    assert!(report
+        .motif_absent_supported_windows
+        .iter()
+        .all(|window| window.occupancy_interpretation
+            == CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs));
+    assert!(report
+        .motif_absent_supported_windows
+        .iter()
+        .all(|window| window.motifs_inside_window.is_empty()));
+    assert!(report
+        .motif_absent_supported_windows
+        .iter()
+        .all(|window| window
+            .motifs_in_neighbor_window
+            .iter()
+            .any(|hit| hit.motif_label.as_deref() == Some("SP1"))));
+    let near_summary = report
+        .common_motifs_near_supported_windows
+        .first()
+        .expect("neighbor-window summary");
+    assert_eq!(near_summary.context_scope, CutRunMotifContextScope::NeighborWindow);
+    assert_eq!(near_summary.window_count, 2);
+    assert_eq!(near_summary.window_fraction, 1.0);
+    assert_eq!(near_summary.motif_label.as_deref(), Some("SP1"));
+}
+
+#[test]
+fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let _snapshot_guard =
+        install_cutrun_test_jaspar_snapshot(&["CTCF", "SP1"], "Synthetic species");
+    let ctcf_consensus = GentleEngine::resolve_tf_motif_for_scoring("CTCF")
+        .expect("resolve CTCF")
+        .2;
+    let window = "ATATCGATATCG";
+    assert!(
+        !GentleEngine::contains_motif_any_strand(window.as_bytes(), &ctcf_consensus)
+            .expect("check motif-poor window consensus")
+    );
+    let mut sequence = vec![b'A'; 220];
+    let window_start = 90usize;
+    sequence[window_start..window_start + window.len()].copy_from_slice(window.as_bytes());
+    let sequence = String::from_utf8(sequence).expect("synthetic motif-poor sequence");
+    let reference_catalog_path =
+        write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
+    let reads_path = root.join("dataset_reads.fasta");
+    write_cutrun_test_fasta_reads(
+        &reads_path,
+        &[("window_a", window), ("window_b", window)],
+    );
+    let cutrun_catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_ctcf_reads": {{
+    "summary": "Toy CTCF CUT&RUN reads",
+    "target_factor": "CTCF",
+    "species": "Synthetic species",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "reads_r1_local": "{}",
+    "read_layout": "single_end"
+  }}
+}}"#,
+            reads_path.display()
+        ),
+    )
+    .expect("write motif-poor CUT&RUN dataset catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        1,
+        sequence.len(),
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_ctcf_reads".to_string(),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare motif-poor CUT&RUN dataset");
+    let report_id = "toy_ctcf_reads_report".to_string();
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: None,
+            input_r2_path: None,
+            dataset_id: Some("toy_ctcf_reads".to_string()),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some(report_id.clone()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret motif-poor CUT&RUN reads");
+
+    let report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            24,
+            &["Synthetic".to_string()],
+        )
+        .expect("inspect motif-poor CUT&RUN support");
+
+    assert_eq!(report.motif_absent_supported_windows.len(), 1);
+    let motif_poor = &report.motif_absent_supported_windows[0];
+    assert_eq!(
+        motif_poor.occupancy_interpretation,
+        CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
+    );
+    assert!(motif_poor.motifs_inside_window.is_empty());
+    assert!(motif_poor.motifs_in_neighbor_window.is_empty());
 }
 
 #[test]

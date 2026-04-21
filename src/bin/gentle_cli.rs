@@ -708,7 +708,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
   gentle_cli [--state PATH|--project PATH] cutrun list-read-reports [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] cutrun show-read-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n  \
+  gentle_cli [--state PATH|--project PATH] cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
@@ -5059,6 +5060,54 @@ mod tests {
                 if report_id == "toy_cutrun_reads"
                     && path == "coverage.tsv"
                     && kind == gentle::engine::CutRunCoverageKind::CutSites
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_cutrun_inspect_regulatory_support() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "cutrun".to_string(),
+            "inspect-regulatory-support".to_string(),
+            "toy_slice".to_string(),
+            "--dataset".to_string(),
+            "toy_ctcf".to_string(),
+            "--read-report".to_string(),
+            "toy_cutrun_reads".to_string(),
+            "--promoter-search-start".to_string(),
+            "10".to_string(),
+            "--promoter-search-end".to_string(),
+            "180".to_string(),
+            "--neighbor-window-bp".to_string(),
+            "42".to_string(),
+            "--species-filter".to_string(),
+            "human".to_string(),
+            "--species-filter".to_string(),
+            "mouse".to_string(),
+            "--path".to_string(),
+            "support.json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::CutRunInspectRegulatorySupport {
+                seq_id,
+                dataset_ids,
+                read_report_ids,
+                promoter_search_start_0based,
+                promoter_search_end_0based_exclusive,
+                neighbor_window_bp,
+                species_filters,
+                output_path,
+            })
+                if seq_id == "toy_slice"
+                    && dataset_ids == vec!["toy_ctcf".to_string()]
+                    && read_report_ids == vec!["toy_cutrun_reads".to_string()]
+                    && promoter_search_start_0based == Some(10)
+                    && promoter_search_end_0based_exclusive == Some(180)
+                    && neighbor_window_bp == 42
+                    && species_filters == vec!["human".to_string(), "mouse".to_string()]
+                    && output_path.as_deref() == Some("support.json")
         ));
     }
 

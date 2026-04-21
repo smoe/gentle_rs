@@ -1,5 +1,5 @@
 {
-   "command_count": 346,
+   "command_count": 347,
    "commands": [
       {
          "aliases": [
@@ -1918,6 +1918,20 @@
          "path": "cutrun export-coverage",
          "summary": "Export per-base coverage, cut-site counts, or fragment spans from one saved CUT&RUN read report.",
          "usage": "cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCutRunRegulatorySupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun inspect-regulatory-support",
+         "summary": "Aggregate CUT&RUN ROI evidence into support windows, confirmed/unconfirmed TFBS rows, and motif-context summaries.",
+         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
       },
       {
          "aliases": [],
