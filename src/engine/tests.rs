@@ -11480,10 +11480,12 @@ fn place_arrangement_on_existing_rack_appends_second_block_and_exports_labels() 
         .expect("export labels");
     let svg = std::fs::read_to_string(&label_path).expect("labels svg");
     assert!(svg.contains("data-label-preset=\"print_a4\""));
-    assert!(svg.contains("viewBox=\"0 0 562 132\""));
-    assert!(svg.contains("rack-"));
-    assert!(svg.contains("arrangement: B"));
-    assert!(svg.contains("role: lane_1"));
+    assert!(svg.contains("GENtle rack labels"));
+    assert!(svg.contains("arrangement B"));
+    assert!(svg.contains("role lane_1"));
+    assert!(svg.contains("container-3"));
+    assert!(!svg.contains("arrangement: B"));
+    assert!(!svg.contains("origin:"));
 }
 
 #[test]

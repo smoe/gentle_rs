@@ -1552,13 +1552,181 @@ impl GentleEngine {
         }
     }
 
-    pub(super) fn export_rack_labels_svg(
+    fn truncate_rack_label_text(text: &str, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return String::new();
+        }
+        let trimmed = text.trim();
+        let chars = trimmed.chars().collect::<Vec<_>>();
+        if chars.len() <= max_chars {
+            return trimmed.to_string();
+        }
+        if max_chars <= 1 {
+            return "…".to_string();
+        }
+        let keep = max_chars.saturating_sub(1);
+        let mut out = chars.into_iter().take(keep).collect::<String>();
+        out.push('…');
+        out
+    }
+
+    fn wrap_rack_label_text(text: &str, max_chars: usize, max_lines: usize) -> Vec<String> {
+        if max_chars == 0 || max_lines == 0 {
+            return vec![];
+        }
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return vec![];
+        }
+        let words = trimmed.split_whitespace().collect::<Vec<_>>();
+        if words.is_empty() {
+            return vec![];
+        }
+        let mut lines = Vec::new();
+        let mut current = String::new();
+        let mut idx = 0usize;
+        while idx < words.len() {
+            let word = words[idx];
+            let candidate = if current.is_empty() {
+                word.to_string()
+            } else {
+                format!("{current} {word}")
+            };
+            if candidate.chars().count() <= max_chars {
+                current = candidate;
+                idx += 1;
+                continue;
+            }
+            if current.is_empty() {
+                lines.push(Self::truncate_rack_label_text(word, max_chars));
+                idx += 1;
+            } else {
+                lines.push(current.clone());
+                current.clear();
+            }
+            if lines.len() >= max_lines {
+                return lines;
+            }
+        }
+        if !current.is_empty() && lines.len() < max_lines {
+            lines.push(current);
+        }
+        if idx < words.len() && let Some(last) = lines.last_mut() {
+            *last = Self::truncate_rack_label_text(last, max_chars);
+        }
+        lines.truncate(max_lines);
+        lines
+    }
+
+    fn build_rack_label_body_lines(
+        &self,
+        entry: &RackPlacementEntry,
+        body_char_limit: usize,
+        max_body_lines: usize,
+    ) -> Vec<String> {
+        if max_body_lines == 0 {
+            return vec![];
+        }
+        let mut lines = vec![Self::truncate_rack_label_text(
+            &format!("role {}", entry.role_label.trim()),
+            body_char_limit,
+        )];
+        let push_if_room = |lines: &mut Vec<String>, text: String| {
+            if lines.len() < max_body_lines {
+                lines.push(text);
+            }
+        };
+        match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => {
+                if let Some(container) = self.state.container_state.containers.get(container_id) {
+                    if container.members.len() > 1 {
+                        push_if_room(
+                            &mut lines,
+                            Self::truncate_rack_label_text(
+                                &format!("pool {} seqs", container.members.len()),
+                                body_char_limit,
+                            ),
+                        );
+                    } else if let Some(seq_id) = container.members.first() {
+                        push_if_room(
+                            &mut lines,
+                            Self::truncate_rack_label_text(
+                                &format!("seq {}", seq_id.trim()),
+                                body_char_limit,
+                            ),
+                        );
+                        if let Some(dna) = self.state.sequences.get(seq_id) {
+                            let topology = if dna.is_circular() {
+                                "circular"
+                            } else {
+                                "linear"
+                            };
+                            push_if_room(
+                                &mut lines,
+                                Self::truncate_rack_label_text(
+                                    &format!("{} bp | {}", dna.len(), topology),
+                                    body_char_limit,
+                                ),
+                            );
+                        }
+                    } else if let Some(name) = container
+                        .name
+                        .as_ref()
+                        .filter(|name| !name.trim().is_empty())
+                    {
+                        push_if_room(
+                            &mut lines,
+                            Self::truncate_rack_label_text(name, body_char_limit),
+                        );
+                    }
+                }
+                push_if_room(
+                    &mut lines,
+                    Self::truncate_rack_label_text(container_id.trim(), body_char_limit),
+                );
+            }
+            Some(RackOccupant::LadderReference { ladder_name }) => {
+                let remaining = max_body_lines.saturating_sub(lines.len());
+                for wrapped in Self::wrap_rack_label_text(
+                    &format!("ladder {}", ladder_name.trim()),
+                    body_char_limit,
+                    remaining.max(1),
+                ) {
+                    if lines.len() >= max_body_lines {
+                        break;
+                    }
+                    lines.push(wrapped);
+                }
+            }
+            None => push_if_room(
+                &mut lines,
+                Self::truncate_rack_label_text("empty", body_char_limit),
+            ),
+        }
+        lines.truncate(max_body_lines);
+        lines
+    }
+
+    pub(crate) fn render_rack_labels_svg_text(
         &self,
         rack_id: &str,
         arrangement_id: Option<&str>,
         preset: RackLabelSheetPreset,
-        path: &str,
-    ) -> Result<usize, EngineError> {
+    ) -> Result<(String, usize), EngineError> {
+        struct RackLabelSheetLayout {
+            label_width: f32,
+            label_height: f32,
+            columns: usize,
+            margin: f32,
+            header_height: f32,
+            header_font_size: usize,
+            title_font_size: usize,
+            body_font_size: usize,
+            line_step: f32,
+            corner_radius: f32,
+            body_char_limit: usize,
+            max_body_lines: usize,
+        }
         let rack = self
             .state
             .container_state
@@ -1590,152 +1758,147 @@ impl GentleEngine {
                 ),
             });
         }
-        struct RackLabelSheetLayout {
-            label_width: f32,
-            label_height: f32,
-            columns: usize,
-            margin: f32,
-            title_font_size: usize,
-            body_font_size: usize,
-            line_step: f32,
-            corner_radius: f32,
-        }
         let layout = match preset {
             RackLabelSheetPreset::CompactCards => RackLabelSheetLayout {
                 label_width: 280.0,
-                label_height: 120.0,
+                label_height: 118.0,
                 columns: 2,
                 margin: 18.0,
+                header_height: 28.0,
+                header_font_size: 13,
                 title_font_size: 15,
-                body_font_size: 13,
-                line_step: 15.0,
+                body_font_size: 12,
+                line_step: 14.0,
                 corner_radius: 8.0,
+                body_char_limit: 31,
+                max_body_lines: 4,
             },
             RackLabelSheetPreset::PrintA4 => RackLabelSheetLayout {
                 label_width: 178.0,
-                label_height: 104.0,
+                label_height: 100.0,
                 columns: 3,
                 margin: 14.0,
+                header_height: 24.0,
+                header_font_size: 10,
                 title_font_size: 12,
-                body_font_size: 10,
-                line_step: 12.0,
+                body_font_size: 9,
+                line_step: 11.0,
                 corner_radius: 6.0,
+                body_char_limit: 22,
+                max_body_lines: 4,
             },
             RackLabelSheetPreset::WideCards => RackLabelSheetLayout {
                 label_width: 520.0,
-                label_height: 88.0,
+                label_height: 92.0,
                 columns: 1,
                 margin: 18.0,
+                header_height: 28.0,
+                header_font_size: 12,
                 title_font_size: 14,
                 body_font_size: 11,
                 line_step: 12.0,
                 corner_radius: 8.0,
+                body_char_limit: 62,
+                max_body_lines: 4,
             },
         };
-        let label_width = layout.label_width;
-        let label_height = layout.label_height;
-        let columns = layout.columns;
-        let margin = layout.margin;
-        let svg_width = margin * 2.0 + columns as f32 * label_width;
-        let svg_height =
-            margin * 2.0 + ((rows.len() + columns - 1) / columns) as f32 * label_height;
+        let svg_width = layout.margin * 2.0 + layout.columns as f32 * layout.label_width;
+        let svg_height = layout.margin * 2.0
+            + layout.header_height
+            + rows.len().div_ceil(layout.columns) as f32 * layout.label_height;
+        let rack_title = if rack.name.trim().is_empty() {
+            rack.rack_id.clone()
+        } else {
+            format!("{} ({})", rack.name.trim(), rack.rack_id.trim())
+        };
+        let scope_label = arrangement_filter
+            .map(|arrangement_id| {
+                let arrangement_name = self.rack_arrangement_display_name(arrangement_id);
+                format!("arrangement {}", arrangement_name.trim())
+            })
+            .unwrap_or_else(|| "whole rack".to_string());
+        let header_text = Self::truncate_rack_label_text(
+            &format!(
+                "GENtle rack labels | {} | {} | {}",
+                rack_title.trim(),
+                scope_label.trim(),
+                preset.as_str()
+            ),
+            match preset {
+                RackLabelSheetPreset::CompactCards => 76,
+                RackLabelSheetPreset::PrintA4 => 74,
+                RackLabelSheetPreset::WideCards => 110,
+            },
+        );
+
         let mut svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svg_width}\" height=\"{svg_height}\" viewBox=\"0 0 {svg_width} {svg_height}\" data-label-preset=\"{}\">",
             preset.as_str()
         );
         svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"{}\" font-weight=\"700\" fill=\"#173042\">{}</text>",
+            layout.margin,
+            layout.margin + layout.header_font_size as f32,
+            layout.header_font_size,
+            Self::xml_escape(&header_text)
+        ));
         for (idx, entry) in rows.iter().enumerate() {
-            let col = idx % columns;
-            let row = idx / columns;
-            let x = margin + col as f32 * label_width;
-            let y = margin + row as f32 * label_height;
-            let mut lines = vec![
-                format!("{}  {}", rack.rack_id, entry.coordinate),
-                format!("role: {}", entry.role_label),
-            ];
-            match entry.occupant.as_ref() {
-                Some(RackOccupant::Container { container_id }) => {
-                    lines.push(format!("container: {container_id}"));
-                    if let Some(container) = self.state.container_state.containers.get(container_id)
-                    {
-                        if let Some(name) = container
-                            .name
-                            .as_ref()
-                            .filter(|name| !name.trim().is_empty())
-                        {
-                            lines.push(name.clone());
-                        }
-                        if let Some(seq_id) = container.members.first() {
-                            lines.push(format!("seq: {seq_id}"));
-                            if let Some(dna) = self.state.sequences.get(seq_id) {
-                                let topology = if dna.is_circular() {
-                                    "circular"
-                                } else {
-                                    "linear"
-                                };
-                                lines.push(format!("{} bp | {}", dna.len(), topology));
-                            }
-                        }
-                        if let Some(op_id) = container.created_by_op.as_ref() {
-                            lines.push(format!("op: {op_id}"));
-                        }
-                    }
-                }
-                Some(RackOccupant::LadderReference { ladder_name }) => {
-                    lines.push(format!("ladder: {ladder_name}"));
-                }
-                None => lines.push("empty".to_string()),
-            }
-            if let Some(arrangement) = self
-                .state
-                .container_state
-                .arrangements
-                .get(&entry.arrangement_id)
-            {
-                lines.push(format!(
-                    "arrangement: {}",
-                    arrangement
-                        .name
-                        .as_ref()
-                        .filter(|name| !name.trim().is_empty())
-                        .cloned()
-                        .unwrap_or_else(|| arrangement.arrangement_id.clone())
-                ));
-                if let Some(op_id) = arrangement.created_by_op.as_ref() {
-                    lines.push(format!("origin: {op_id}"));
-                }
-            }
+            let col = idx % layout.columns;
+            let row = idx / layout.columns;
+            let x = layout.margin + col as f32 * layout.label_width;
+            let y = layout.margin + layout.header_height + row as f32 * layout.label_height;
             svg.push_str(&format!(
                 "<rect x=\"{x}\" y=\"{y}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"#f7fbfd\" stroke=\"#5d8aa8\" stroke-width=\"1.2\"/>",
-                label_width - 12.0,
-                label_height - 12.0,
+                layout.label_width - 12.0,
+                layout.label_height - 12.0,
                 layout.corner_radius,
                 layout.corner_radius
             ));
-            for (line_idx, line) in lines.iter().enumerate() {
-                let font_size = if line_idx == 0 {
-                    layout.title_font_size
-                } else {
-                    layout.body_font_size
-                };
-                let font_weight = if line_idx == 0 { "700" } else { "400" };
-                let line_y = y + 24.0 + line_idx as f32 * layout.line_step;
+            let title = Self::truncate_rack_label_text(
+                &format!("{} {}", rack.rack_id.trim(), entry.coordinate.trim()),
+                layout.body_char_limit,
+            );
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"{}\" font-weight=\"700\" fill=\"#173042\">{}</text>",
+                x + 12.0,
+                y + 24.0,
+                layout.title_font_size,
+                Self::xml_escape(&title)
+            ));
+            let body_lines = self.build_rack_label_body_lines(
+                entry,
+                layout.body_char_limit,
+                layout.max_body_lines,
+            );
+            for (line_idx, line) in body_lines.iter().enumerate() {
+                let line_y = y + 24.0 + (line_idx + 1) as f32 * layout.line_step;
                 svg.push_str(&format!(
-                    "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"{}\" font-weight=\"{}\" fill=\"#173042\">{}</text>",
+                    "<text x=\"{}\" y=\"{}\" font-family=\"monospace\" font-size=\"{}\" font-weight=\"400\" fill=\"#173042\">{}</text>",
                     x + 12.0,
                     line_y,
-                    font_size,
-                    font_weight,
+                    layout.body_font_size,
                     Self::xml_escape(line)
                 ));
             }
         }
         svg.push_str("</svg>");
+        Ok((svg, rows.len()))
+    }
+
+    pub(super) fn export_rack_labels_svg(
+        &self,
+        rack_id: &str,
+        arrangement_id: Option<&str>,
+        preset: RackLabelSheetPreset,
+        path: &str,
+    ) -> Result<usize, EngineError> {
+        let (svg, count) = self.render_rack_labels_svg_text(rack_id, arrangement_id, preset)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack labels SVG '{}': {e}", path),
         })?;
-        Ok(rows.len())
+        Ok(count)
     }
 
     pub(super) fn export_rack_carrier_labels_svg(

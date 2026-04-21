@@ -2650,9 +2650,18 @@ Serial gel export is available in two places:
   - `Arrangements` table: `Open Rack` opens the linked physical rack draft for
     that arrangement, creating the default rack on demand for older/legacy
     arrangements that do not yet have one.
-  - `Arrangements` table: `Labels SVG` exports one deterministic label sheet
-    scoped to that arrangement on its linked rack draft, using the currently
-    selected label-sheet preset.
+  - `Arrangements` table: `Preview Labels` opens one in-app preview of the
+    deterministic label sheet scoped to that arrangement on its linked rack
+    draft.
+    - the same preview window then exports the SVG once the cards look ready
+      to print
+    - arrangement-scoped label cards now prioritize:
+      - rack position
+      - role
+      - sequence or ladder identity
+      - bp length/topology when sequence-backed
+    - long arrangement/op provenance no longer overflows each card; the scope
+      is shown in the sheet header instead
   - `Arrangements` table: `Carrier SVG` exports one carrier-matched front-strip
     plus module-label SVG for that arrangement from its linked rack draft,
     using the currently selected physical template and carrier-label preset.
@@ -2792,9 +2801,11 @@ Interaction model:
 
 Exports:
 
-- `Labels SVG...` in the rack window exports one deterministic rack label
-  sheet using the selected label-sheet preset.
-- `Labels SVG` from the arrangement table exports the same label style but
+- `Preview Labels...` in the rack window opens one in-app preview of the
+  deterministic rack label sheet using the selected label-sheet preset.
+  - `Export SVG...` from that preview writes the exact same label sheet once
+    you are happy with it
+- `Preview Labels` from the arrangement table opens the same label style but
   filtered to the selected arrangement only.
 - `Physical template` in the rack window selects the first printable carrier
   family layered on top of the same rack snapshot:

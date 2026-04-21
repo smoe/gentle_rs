@@ -954,6 +954,7 @@ pub struct GENtleApp {
     show_genome_bed_track_dialog: bool,
     show_gibson_dialog: bool,
     show_arrangement_gel_preview_dialog: bool,
+    show_rack_labels_preview_dialog: bool,
     show_rack_dialog: bool,
     show_place_arrangement_rack_dialog: bool,
     show_pcr_design_dialog: bool,
@@ -993,6 +994,7 @@ pub struct GENtleApp {
     gibson_preview_output: Option<GibsonAssemblyPreview>,
     gibson_preview_svg_uri: String,
     arrangement_gel_preview: ArrangementGelPreviewState,
+    rack_labels_preview: RackLabelsPreviewState,
     rack_view_rack_id: String,
     rack_view_status: String,
     rack_profile_editor_kind: RackProfileKind,
@@ -2131,6 +2133,29 @@ impl Default for ArrangementGelPreviewState {
 }
 
 #[derive(Clone)]
+struct RackLabelsPreviewState {
+    rack_id: String,
+    rack_title: String,
+    arrangement_id: Option<String>,
+    arrangement_title: Option<String>,
+    svg_uri: String,
+    status: String,
+}
+
+impl Default for RackLabelsPreviewState {
+    fn default() -> Self {
+        Self {
+            rack_id: String::new(),
+            rack_title: String::new(),
+            arrangement_id: None,
+            arrangement_title: None,
+            svg_uri: String::new(),
+            status: String::new(),
+        }
+    }
+}
+
+#[derive(Clone)]
 struct CloningPatternCatalogEntry {
     label: String,
     path: String,
@@ -2610,6 +2635,7 @@ impl Default for GENtleApp {
             show_genome_bed_track_dialog: false,
             show_gibson_dialog: false,
             show_arrangement_gel_preview_dialog: false,
+            show_rack_labels_preview_dialog: false,
             show_rack_dialog: false,
             show_place_arrangement_rack_dialog: false,
             show_pcr_design_dialog: false,
@@ -2653,6 +2679,7 @@ impl Default for GENtleApp {
             gibson_preview_output: None,
             gibson_preview_svg_uri: String::new(),
             arrangement_gel_preview: ArrangementGelPreviewState::default(),
+            rack_labels_preview: RackLabelsPreviewState::default(),
             rack_view_rack_id: String::new(),
             rack_view_status: String::new(),
             rack_profile_editor_kind: RackProfileKind::SmallTube4x6,
@@ -2859,6 +2886,10 @@ impl GENtleApp {
 
     fn arrangement_gel_preview_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Arrangement Gel Preview Viewport")
+    }
+
+    fn rack_labels_preview_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Rack Labels Preview Viewport")
     }
 
     fn pcr_design_viewport_id() -> ViewportId {
@@ -5399,6 +5430,8 @@ Error: `{err}`"
             "Gibson focus acquisition"
         } else if viewport_id == Self::arrangement_gel_preview_viewport_id() {
             "Arrangement Gel focus acquisition"
+        } else if viewport_id == Self::rack_labels_preview_viewport_id() {
+            "Rack Labels focus acquisition"
         } else if viewport_id == Self::pcr_design_viewport_id() {
             "PCR Designer focus acquisition"
         } else if viewport_id == Self::sequencing_confirmation_viewport_id() {
@@ -6528,6 +6561,7 @@ Error: `{err}`"
         self.show_genome_bed_track_dialog = false;
         self.show_gibson_dialog = false;
         self.show_arrangement_gel_preview_dialog = false;
+        self.show_rack_labels_preview_dialog = false;
         self.show_rack_dialog = false;
         self.show_place_arrangement_rack_dialog = false;
         self.show_pcr_design_dialog = false;
@@ -6546,6 +6580,7 @@ Error: `{err}`"
         self.gibson_extra_inserts.clear();
         self.gibson_output_id_hint.clear();
         self.gibson_show_all_unique_cutters = false;
+        self.rack_labels_preview = RackLabelsPreviewState::default();
         self.gibson_status.clear();
         self.gibson_preview_output = None;
         self.gibson_preview_svg_uri.clear();
@@ -7624,6 +7659,185 @@ Error: `{err}`"
         }
     }
 
+    fn rack_labels_preview_title(&self) -> String {
+        let rack_label = if self.rack_labels_preview.rack_title.trim().is_empty() {
+            self.rack_labels_preview.rack_id.trim().to_string()
+        } else {
+            self.rack_labels_preview.rack_title.trim().to_string()
+        };
+        match self
+            .rack_labels_preview
+            .arrangement_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(arrangement_title) => {
+                format!("Rack Labels — {} / {}", rack_label, arrangement_title)
+            }
+            None if rack_label.is_empty() => "Rack Labels".to_string(),
+            None => format!("Rack Labels — {}", rack_label),
+        }
+    }
+
+    fn open_rack_labels_preview_dialog(&mut self, rack_id: &str, arrangement_id: Option<&str>) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack label preview requires a non-empty rack id".to_string();
+            return;
+        }
+        self.refresh_lineage_cache_if_needed();
+        let Some(rack) = self
+            .lineage_racks
+            .iter()
+            .find(|row| row.rack_id == rack_id)
+            .cloned()
+        else {
+            self.app_status = format!("Rack '{}' is not available", rack_id);
+            return;
+        };
+        let arrangement_id = arrangement_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let arrangement_title = arrangement_id.as_ref().map(|id| {
+            self.lineage_arrangements
+                .iter()
+                .find(|row| row.arrangement_id == *id)
+                .map(|row| {
+                    if row.name.trim().is_empty() {
+                        row.arrangement_id.clone()
+                    } else {
+                        row.name.clone()
+                    }
+                })
+                .unwrap_or_else(|| id.clone())
+        });
+        if self.show_rack_labels_preview_dialog
+            && self.rack_labels_preview.rack_id == rack_id
+            && self.rack_labels_preview.arrangement_id == arrangement_id
+        {
+            self.queue_focus_viewport(Self::rack_labels_preview_viewport_id());
+            return;
+        }
+        self.rack_labels_preview.rack_id = rack.rack_id.clone();
+        self.rack_labels_preview.rack_title = if rack.name.trim().is_empty() {
+            rack.rack_id.clone()
+        } else {
+            format!("{} ({})", rack.name.trim(), rack.rack_id.trim())
+        };
+        self.rack_labels_preview.arrangement_id = arrangement_id;
+        self.rack_labels_preview.arrangement_title = arrangement_title;
+        self.rack_labels_preview.status.clear();
+        self.rack_labels_preview.svg_uri.clear();
+        self.show_rack_labels_preview_dialog = true;
+        self.mark_viewport_open_requested(Self::rack_labels_preview_viewport_id());
+        self.queue_focus_viewport(Self::rack_labels_preview_viewport_id());
+        self.refresh_rack_labels_preview_svg();
+    }
+
+    fn refresh_rack_labels_preview_svg(&mut self) {
+        let rack_id = self.rack_labels_preview.rack_id.trim().to_string();
+        if rack_id.is_empty() {
+            self.rack_labels_preview.status =
+                "No rack is selected for label preview.".to_string();
+            self.rack_labels_preview.svg_uri.clear();
+            return;
+        }
+        let arrangement_id = self
+            .rack_labels_preview
+            .arrangement_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let rendered = {
+            let engine = self.engine.read().unwrap();
+            engine.render_rack_labels_svg_text(
+                &rack_id,
+                arrangement_id.as_deref(),
+                self.rack_label_sheet_preset,
+            )
+        };
+        let (svg, label_count) = match rendered {
+            Ok(result) => result,
+            Err(err) => {
+                self.rack_labels_preview.status =
+                    format!("Could not refresh rack label preview: {}", err.message);
+                self.rack_labels_preview.svg_uri.clear();
+                return;
+            }
+        };
+        let scope_stem = arrangement_id
+            .as_deref()
+            .map(|value| Self::sanitize_file_stem(value, "arrangement"))
+            .unwrap_or_else(|| "whole_rack".to_string());
+        let base_name = format!(
+            "gentle_rack_labels_preview_{}_{}_{}",
+            Self::sanitize_file_stem(&rack_id, "rack"),
+            scope_stem,
+            self.rack_label_sheet_preset.as_str()
+        );
+        let svg_path = std::env::temp_dir().join(format!("{base_name}.svg"));
+        let png_path = std::env::temp_dir().join(format!("{base_name}.png"));
+        let raster_result = (|| -> std::result::Result<(), String> {
+            fs::write(&svg_path, &svg).map_err(|e| {
+                format!(
+                    "Could not write temporary rack labels preview SVG '{}': {e}",
+                    svg_path.display()
+                )
+            })?;
+            let mut opt = usvg::Options::default();
+            opt.fontdb_mut().load_system_fonts();
+            let tree = usvg::Tree::from_str(&svg, &opt)
+                .map_err(|e| format!("Could not parse rack labels SVG: {e}"))?;
+            let pixmap_size = tree
+                .size()
+                .to_int_size()
+                .scale_by(1.0)
+                .ok_or_else(|| "Could not determine rack label raster size".to_string())?;
+            let mut pixmap = tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
+                .ok_or_else(|| {
+                    format!(
+                        "Could not allocate rack label raster {}x{}",
+                        pixmap_size.width(),
+                        pixmap_size.height()
+                    )
+                })?;
+            resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+            pixmap.save_png(&png_path).map_err(|e| {
+                format!(
+                    "Could not write temporary rack labels preview PNG '{}': {e}",
+                    png_path.display()
+                )
+            })?;
+            Ok(())
+        })();
+        match raster_result {
+            Ok(()) => {
+                self.rack_labels_preview.svg_uri = Self::file_uri_from_path(&png_path);
+                let scope_label = self
+                    .rack_labels_preview
+                    .arrangement_title
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!(" arrangement '{}'", value))
+                    .unwrap_or_else(|| " whole rack scope".to_string());
+                self.rack_labels_preview.status = format!(
+                    "Previewing {} rack label card(s) for{} using preset '{}'.",
+                    label_count,
+                    scope_label,
+                    self.rack_label_sheet_preset.as_str()
+                );
+            }
+            Err(err) => {
+                self.rack_labels_preview.status = err;
+                self.rack_labels_preview.svg_uri.clear();
+            }
+        }
+    }
+
     fn rack_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("gentle_rack_view")
     }
@@ -7875,11 +8089,21 @@ Error: `{err}`"
         }
     }
 
-    fn prompt_export_arrangement_labels_svg(&mut self, arrangement_id: &str) {
-        let Some(rack_id) = self.ensure_default_rack_for_arrangement_ui(arrangement_id) else {
+    fn prompt_export_rack_labels_svg_scoped(
+        &mut self,
+        rack_id: &str,
+        arrangement_id: Option<&str>,
+        stem: &str,
+    ) {
+        let rack_id = rack_id.trim();
+        if rack_id.is_empty() {
+            self.app_status = "Rack label SVG export requires a non-empty rack id".to_string();
             return;
-        };
-        let stem = Self::sanitize_file_stem(arrangement_id, "rack_labels");
+        }
+        let arrangement_id = arrangement_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
         let default_file_name = format!("{stem}.labels.svg");
         let path = rfd::FileDialog::new()
             .set_file_name(&default_file_name)
@@ -7895,9 +8119,9 @@ Error: `{err}`"
             .write()
             .unwrap()
             .apply(Operation::ExportRackLabelsSvg {
-                rack_id: rack_id.clone(),
+                rack_id: rack_id.to_string(),
                 path: path_text.clone(),
-                arrangement_id: Some(arrangement_id.trim().to_string()),
+                arrangement_id,
                 preset: self.rack_label_sheet_preset,
             });
         match result {
@@ -7912,6 +8136,13 @@ Error: `{err}`"
                 self.app_status = format!("Could not export rack labels SVG: {}", err.message);
             }
         }
+    }
+
+    fn open_arrangement_labels_preview_dialog(&mut self, arrangement_id: &str) {
+        let Some(rack_id) = self.ensure_default_rack_for_arrangement_ui(arrangement_id) else {
+            return;
+        };
+        self.open_rack_labels_preview_dialog(&rack_id, Some(arrangement_id));
     }
 
     fn prompt_export_arrangement_carrier_labels_svg(&mut self, arrangement_id: &str) {
@@ -9986,40 +10217,11 @@ Error: `{err}`"
                     }
                 });
             if ui
-                .button("Labels SVG...")
-                .on_hover_text("Export one deterministic label sheet for the currently shown rack using the selected preset")
+                .button("Preview Labels...")
+                .on_hover_text("Open an in-app preview of the deterministic label sheet for the currently shown rack before exporting it")
                 .clicked()
             {
-                let stem = Self::sanitize_file_stem(&rack.name, "rack_labels");
-                let default_file_name = format!("{stem}.labels.svg");
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_file_name(&default_file_name)
-                    .add_filter("SVG", &["svg"])
-                    .save_file()
-                {
-                    let path_text = path.display().to_string();
-                    match self
-                        .engine
-                        .write()
-                        .unwrap()
-                        .apply(Operation::ExportRackLabelsSvg {
-                            rack_id: rack.rack_id.clone(),
-                            path: path_text.clone(),
-                            arrangement_id: None,
-                            preset: self.rack_label_sheet_preset,
-                        }) {
-                        Ok(op_result) => {
-                            self.rack_view_status =
-                                op_result.messages.first().cloned().unwrap_or_else(|| {
-                                    format!("Wrote rack labels SVG to '{path_text}'")
-                                });
-                        }
-                        Err(err) => {
-                            self.rack_view_status =
-                                format!("Could not export rack labels SVG: {}", err.message);
-                        }
-                    }
-                }
+                self.open_rack_labels_preview_dialog(&rack.rack_id, None);
             }
             ui.separator();
             ui.label("Physical template");
@@ -26407,6 +26609,168 @@ Error: `{err}`"
         self.show_arrangement_gel_preview_dialog = open;
     }
 
+    fn render_rack_labels_preview_contents(&mut self, ui: &mut Ui) -> bool {
+        let mut close_requested = false;
+        ui.horizontal(|ui| {
+            if ui
+                .button("Close")
+                .on_hover_text("Close the rack labels preview")
+                .clicked()
+            {
+                close_requested = true;
+            }
+            if ui
+                .button("Export SVG...")
+                .on_hover_text(
+                    "Export the same rack labels SVG that is shown in this preview",
+                )
+                .clicked()
+            {
+                let stem = self
+                    .rack_labels_preview
+                    .arrangement_title
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .map(|value| Self::sanitize_file_stem(value, "rack_labels"))
+                    .unwrap_or_else(|| {
+                        Self::sanitize_file_stem(&self.rack_labels_preview.rack_id, "rack_labels")
+                    });
+                let arrangement_id = self
+                    .rack_labels_preview
+                    .arrangement_id
+                    .as_deref()
+                    .map(str::to_string);
+                let rack_id = self.rack_labels_preview.rack_id.clone();
+                self.prompt_export_rack_labels_svg_scoped(
+                    &rack_id,
+                    arrangement_id.as_deref(),
+                    &stem,
+                );
+            }
+        });
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("Rack");
+            ui.monospace(self.rack_labels_preview.rack_title.clone());
+        });
+        if let Some(arrangement_title) = self
+            .rack_labels_preview
+            .arrangement_title
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            ui.horizontal(|ui| {
+                ui.label("Arrangement");
+                ui.monospace(arrangement_title.to_string());
+            });
+        }
+        let preset_before = self.rack_label_sheet_preset;
+        ui.horizontal(|ui| {
+            ui.label("Label preset");
+            egui::ComboBox::from_id_salt("rack_labels_preview_preset_combo")
+                .selected_text(Self::rack_label_sheet_preset_label(
+                    self.rack_label_sheet_preset,
+                ))
+                .show_ui(ui, |ui| {
+                    for preset in [
+                        RackLabelSheetPreset::CompactCards,
+                        RackLabelSheetPreset::PrintA4,
+                        RackLabelSheetPreset::WideCards,
+                    ] {
+                        ui.selectable_value(
+                            &mut self.rack_label_sheet_preset,
+                            preset,
+                            Self::rack_label_sheet_preset_label(preset),
+                        );
+                    }
+                });
+        });
+        if self.rack_label_sheet_preset != preset_before {
+            self.refresh_rack_labels_preview_svg();
+        }
+        ui.small(
+            "Preview the arrangement-scoped or rack-wide label sheet here first, then export the same SVG when it looks ready to print.",
+        );
+        if !self.rack_labels_preview.status.trim().is_empty() {
+            ui.small(self.rack_labels_preview.status.clone());
+        }
+        ui.separator();
+        ui.label("Label preview");
+        if !self.rack_labels_preview.svg_uri.trim().is_empty() {
+            ui.add(
+                egui::Image::from_uri(self.rack_labels_preview.svg_uri.clone())
+                    .max_width(ui.available_width())
+                    .max_height(620.0)
+                    .shrink_to_fit(),
+            );
+        } else {
+            ui.small("No rack label preview is loaded yet.");
+        }
+        close_requested
+    }
+
+    fn render_rack_labels_preview_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_rack_labels_preview_dialog {
+            return;
+        }
+        let mut open = self.show_rack_labels_preview_dialog;
+        let title = self.rack_labels_preview_title();
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([980.0, 760.0])
+            .with_min_inner_size([760.0, 560.0]);
+        ctx.show_viewport_immediate(
+            Self::rack_labels_preview_viewport_id(),
+            builder,
+            |ctx, class| {
+                self.note_viewport_focus_if_active(
+                    ctx,
+                    Self::rack_labels_preview_viewport_id(),
+                );
+                if class == egui::ViewportClass::EmbeddedWindow {
+                    let mut close_requested = false;
+                    egui::Window::new(title.clone())
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(980.0, 760.0))
+                        .show(ctx, |ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    close_requested =
+                                        self.render_rack_labels_preview_contents(ui);
+                                });
+                        });
+                    if close_requested {
+                        open = false;
+                    }
+                } else {
+                    let mut close_requested = false;
+                    crate::egui_compat::show_central_panel(
+                        ctx,
+                        egui::CentralPanel::default(),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    close_requested =
+                                        self.render_rack_labels_preview_contents(ui);
+                                });
+                        },
+                    );
+                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                        open = false;
+                    }
+                }
+            },
+        );
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_rack_labels_preview_dialog = open;
+    }
+
     fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
@@ -30821,6 +31185,7 @@ Error: `{err}`"
         self.pending_focus_viewports.clear();
         self.show_gibson_dialog = false;
         self.show_arrangement_gel_preview_dialog = false;
+        self.show_rack_labels_preview_dialog = false;
         self.show_rack_dialog = false;
         self.show_place_arrangement_rack_dialog = false;
         self.show_routine_assistant_dialog = false;
@@ -30834,6 +31199,7 @@ Error: `{err}`"
         self.gibson_output_id_hint.clear();
         self.gibson_status.clear();
         self.gibson_preview_output = None;
+        self.rack_labels_preview = RackLabelsPreviewState::default();
         self.gibson_preview_svg_uri.clear();
         self.arrangement_gel_preview = ArrangementGelPreviewState::default();
         self.rack_view_rack_id.clear();
@@ -39233,13 +39599,13 @@ Error: `{err}`"
                                                 );
                                             }
                                             if ui
-                                                .button("Labels SVG")
+                                                .button("Preview Labels")
                                                 .on_hover_text(
-                                                    "Export one deterministic label sheet for this arrangement from its linked rack draft using the current label preset",
+                                                    "Open an in-app preview of the deterministic label sheet for this arrangement from its linked rack draft before exporting it",
                                                 )
                                                 .clicked()
                                             {
-                                                self.prompt_export_arrangement_labels_svg(
+                                                self.open_arrangement_labels_preview_dialog(
                                                     &arrangement.arrangement_id,
                                                 );
                                             }
@@ -43617,6 +43983,7 @@ impl GENtleApp {
             self.render_genome_bed_track_dialog(ctx);
             self.render_gibson_dialog(ctx);
             self.render_arrangement_gel_preview_dialog(ctx);
+            self.render_rack_labels_preview_dialog(ctx);
             self.render_place_arrangement_on_rack_dialog(ctx);
             self.render_rack_dialog(ctx);
             self.render_pcr_design_dialog(ctx);
@@ -48800,6 +49167,54 @@ mod tests {
             "GeneRuler 100bp DNA Ladder Plus"
         );
         assert!(!app.arrangement_gel_preview.svg_uri.is_empty());
+    }
+
+    #[test]
+    fn open_arrangement_labels_preview_dialog_seeds_scope_and_preview() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_a".to_string(),
+            DNAsequence::from_sequence(&"ATGC".repeat(40)).unwrap(),
+        );
+        state.container_state.containers.insert(
+            "container-1".to_string(),
+            Container {
+                container_id: "container-1".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Vector".to_string()),
+                members: vec!["seq_a".to_string()],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.arrangements.insert(
+            "arr-1".to_string(),
+            Arrangement {
+                arrangement_id: "arr-1".to_string(),
+                mode: ArrangementMode::Serial,
+                name: Some("Demo labels".to_string()),
+                lane_container_ids: vec!["container-1".to_string()],
+                ladders: vec![],
+                lane_role_labels: vec!["vector".to_string()],
+                default_rack_id: None,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+        app.open_arrangement_labels_preview_dialog("arr-1");
+
+        assert!(app.show_rack_labels_preview_dialog);
+        assert_eq!(app.rack_labels_preview.arrangement_id.as_deref(), Some("arr-1"));
+        assert_eq!(
+            app.rack_labels_preview.arrangement_title.as_deref(),
+            Some("Demo labels")
+        );
+        assert!(!app.rack_labels_preview.rack_id.is_empty());
+        assert!(!app.rack_labels_preview.svg_uri.is_empty());
     }
 
     #[test]
