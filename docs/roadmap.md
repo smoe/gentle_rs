@@ -2223,6 +2223,12 @@ order. Durable architecture constraints and decisions remain in
     - `compact_cards`
     - `print_a4`
     - `wide_cards`
+  - rack-label review is now less blind:
+    - arrangement-scoped and rack-wide label actions first open an in-app
+      preview window
+    - that preview exports the same SVG only after visual review
+    - compact-card content now prioritizes rack position / role / sample
+      identity instead of overflowing each card with full provenance text
   - custom rack-profile authoring is now available as a shared engine/GUI/CLI
     path on top of the same persisted rack snapshot model
   - rack authoring now also supports:

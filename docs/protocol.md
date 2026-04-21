@@ -3126,13 +3126,19 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `compact_cards`
   - `print_a4`
   - `wide_cards`
-- Label rows currently include:
-  - rack id
-  - position
+- The sheet now carries one scope header:
+  - rack title
+  - arrangement scope when requested
+  - preset id
+- Individual cards prioritize printable lane identity over verbose provenance:
+  - rack id + coordinate
   - role
-  - container/ladder display name
-  - sequence id when sequence-backed
+  - ladder name or sequence id / pool summary
   - bp length/topology when sequence-backed
+  - container id as a final compact provenance hint when space remains
+- Verbose arrangement/origin text is intentionally not repeated on every card;
+  it lives in the shared sheet header instead so compact-card exports remain
+  printable.
 
 `ExportRackFabricationSvg` semantics:
 
